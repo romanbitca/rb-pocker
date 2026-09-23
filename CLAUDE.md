@@ -54,6 +54,11 @@ needs the human (e.g. P1/P2 in EXECUTION.md), or the same CI failure survives th
 
 ## Environment
 
-- Node 24 LTS (`.nvmrc`). Docker Desktop must be running for Docker checks.
+- Node 24 LTS (`.nvmrc`), installed as Homebrew `node@24` but **not linked** (the global default
+  stays Node 22 for the owner's other projects). Prefix every node/npm/npx command in this repo with
+  `PATH=/opt/homebrew/opt/node@24/bin:$PATH` and check `node -v` shows v24.
+- Docker Desktop must be running for Docker checks.
+- CI: the heavy `slow` job runs **weekly** (not nightly as PLAN §17.5 says) to save Actions
+  minutes on this private repo.
 - Owner tests on a phone and is not a native English speaker: keep user-facing copy plain,
   and keep notifications/reports short.

@@ -14,13 +14,14 @@ Legend: `[ ]` todo · `[~]` in progress (branch exists) · `[x]` merged to `main
 
 | # | Item | Status |
 |---|---|---|
-| P1 | Node 24 LTS installed and active (local is 22.22.1; Nest 12 CLI needs ≥ 22.22.3 or ≥ 24.15). `.nvmrc` pins 24 | open — needs the human's OK to install |
+| P1 | Node 24 LTS (Nest 12 CLI needs ≥ 22.22.3 or ≥ 24.15). `.nvmrc` pins 24 | done — Homebrew `node@24` 24.21.0, unlinked; use via PATH prefix (see CLAUDE.md) |
 | P2 | Docker Desktop running (needed for chunk 0.5 and the `docker` acceptance checks) | open — Docker is installed but not running |
 | P3 | GitHub repo `romanbitca/rb-pocker` cloned, `romanbitca` gh account active, local git email `me@romanbitca.com` | done |
 | P4 | All pinned versions from PLAN §2.5 exist on npm (checked 23 Sep 2026: react 19.3.0, vite 8.3.0, plugin-react 6.1.1, vite-plugin-pwa 1.3.0, typescript 6.0.3, zustand 5.0.15, @nestjs/core 12.1.0, serve-static 12.0.0, cli 12.0.5, helmet 8.3.0, vitest 5.0.1, @testing-library/react 16.3.3, fast-check 4.10.2, @playwright/test 1.63.0, hand-evaluator 4.3.0, pokersolver 2.1.4) | done |
 
 ## Deviations from PLAN.md (recorded in PLAN.md as well)
 
+- CI `slow` job runs weekly instead of nightly (owner decision, 23 Sep 2026: saves Actions minutes on a private repo).
 - Repository is `romanbitca/rb-pocker` (PLAN §0.1 says `rb-poker-coach`). The directory name has no effect on code; package names stay `@rb/web` / `@rb/server`.
 
 ---
@@ -34,7 +35,7 @@ Legend: `[ ]` todo · `[~]` in progress (branch exists) · `[x]` merged to `main
 - [ ] 0.5 `chore/docker-image` - `Dockerfile`, `docker-compose.yml`, `.dockerignore`; container reaches `healthy` (acceptance 3). Needs P2.
 - [ ] 0.6 `test/playwright-offline-e2e` - Playwright projects (6 viewports, Chromium + WebKit), `webServer` = root `npm start`, offline test, no-external-request and no-`/api` assertions (acceptance 4).
 - [ ] 0.7 `chore/bundle-size-budget` - `scripts/size-budget.ts` table + failing fixture (acceptance 6).
-- [ ] 0.8 `ci/github-actions-pipeline` - `check`, `e2e`, `docker`, `slow` (nightly, may be empty).
+- [ ] 0.8 `ci/github-actions-pipeline` - `check`, `e2e`, `docker`, `slow` (weekly, may be empty).
 - [ ] 0.9 `docs/readme-and-coolify-checklist` - README: local run, phone testing, the §17.6 Coolify checklist for the human.
 
 ## Stage 1 - Cards, randomness, evaluator, describe() (PLAN §5, §6.1)
