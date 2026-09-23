@@ -23,5 +23,9 @@ fixed slice of the Claude plan.
 ## Workflow
 
 - GitHub: `romanbitca/rb-pocker`, using the `romanbitca` gh account.
+- Git is fully delegated to Claude: create branches, commit, push, and merge as judged best.
+- Branch names must describe the actual feature being built, e.g.
+  `feature/table-lobby`, `feature/hand-evaluator`, `fix/pot-split-rounding`.
+  Never use generic names like `claude/...`, `wip`, `dev`, or `branch-1`.
 - Commit and push after each completed chunk so progress is never lost.
 - Track progress as checkboxes in the plan file so work resumes cleanly after a pause.
