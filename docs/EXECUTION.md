@@ -1,0 +1,141 @@
+# RB Poker Coach - Execution Plan
+
+This is the working checklist for building [PLAN.md](PLAN.md). PLAN.md is the source of truth for
+*what* to build. This file tracks *how far along we are* and *in which order*. Each `[ ]` is one
+**chunk**: a unit of work sized to finish within one usage window, on its own branch, merged by PR.
+
+Legend: `[ ]` todo · `[~]` in progress (branch exists) · `[x]` merged to `main` · `[H]` waiting on the human
+
+**Current position:** not started. Next chunk: `0.1`.
+
+---
+
+## Prerequisites (before the first chunk)
+
+| # | Item | Status |
+|---|---|---|
+| P1 | Node 24 LTS installed and active (local is 22.22.1; Nest 12 CLI needs ≥ 22.22.3 or ≥ 24.15). `.nvmrc` pins 24 | open — needs the human's OK to install |
+| P2 | Docker Desktop running (needed for chunk 0.5 and the `docker` acceptance checks) | open — Docker is installed but not running |
+| P3 | GitHub repo `romanbitca/rb-pocker` cloned, `romanbitca` gh account active, local git email `me@romanbitca.com` | done |
+| P4 | All pinned versions from PLAN §2.5 exist on npm (checked 23 Sep 2026: react 19.3.0, vite 8.3.0, plugin-react 6.1.1, vite-plugin-pwa 1.3.0, typescript 6.0.3, zustand 5.0.15, @nestjs/core 12.1.0, serve-static 12.0.0, cli 12.0.5, helmet 8.3.0, vitest 5.0.1, @testing-library/react 16.3.3, fast-check 4.10.2, @playwright/test 1.63.0, hand-evaluator 4.3.0, pokersolver 2.1.4) | done |
+
+## Deviations from PLAN.md (recorded in PLAN.md as well)
+
+- Repository is `romanbitca/rb-pocker` (PLAN §0.1 says `rb-poker-coach`). The directory name has no effect on code; package names stay `@rb/web` / `@rb/server`.
+
+---
+
+## Stage 0 - Scaffold, pipeline, PWA shell (PLAN §0.2, §17, §18 Stage 0)
+
+- [ ] 0.1 `chore/monorepo-scaffold` - npm workspaces, `apps/web` (Vite 8 + React 19 + Zustand + strict TS + CSS Modules + tokens.css), `apps/server` (Nest 12 ESM, `/api/health`), Vitest `unit`/`slow` projects in both, fast-check, Prettier, root scripts. One trivial test per workspace.
+- [ ] 0.2 `feature/eslint-module-boundaries` - boundary rules (§2.1), `Math.random` ban, server-must-not-import-web; fixtures asserted through ESLint's API (acceptance 5).
+- [ ] 0.3 `feature/nest-static-serving-and-security-headers` - `security.ts`, helmet config, Permissions-Policy, serve-static with SPA fallback + excludes, per-path cache headers; supertest suite over a `dist` fixture (acceptance 2).
+- [ ] 0.4 `feature/pwa-shell` - manifest, icons, vite-plugin-pwa `generateSW` with `injectRegister: false`, build-time meta CSP, green felt "RB Poker Coach" page, no-inline-script check.
+- [ ] 0.5 `chore/docker-image` - `Dockerfile`, `docker-compose.yml`, `.dockerignore`; container reaches `healthy` (acceptance 3). Needs P2.
+- [ ] 0.6 `test/playwright-offline-e2e` - Playwright projects (6 viewports, Chromium + WebKit), `webServer` = root `npm start`, offline test, no-external-request and no-`/api` assertions (acceptance 4).
+- [ ] 0.7 `chore/bundle-size-budget` - `scripts/size-budget.ts` table + failing fixture (acceptance 6).
+- [ ] 0.8 `ci/github-actions-pipeline` - `check`, `e2e`, `docker`, `slow` (nightly, may be empty).
+- [ ] 0.9 `docs/readme-and-coolify-checklist` - README: local run, phone testing, the §17.6 Coolify checklist for the human.
+
+## Stage 1 - Cards, randomness, evaluator, describe() (PLAN §5, §6.1)
+
+- [ ] 1.1 `feature/cards-and-seeded-rng` - `core/cards.ts`, `core/rng.ts`, `core/assert.ts`; Appendix C.4 golden values, chi-square and `randInt` tests.
+- [ ] 1.2 `feature/seven-card-evaluator` - `eval/tables.ts`, `eval/evaluate.ts`; naive 21-subset oracle, 1M differential vs `@poker-apprentice/hand-evaluator` + pokersolver, exhaustive C.1 count in `slow`, micro-benchmark.
+- [ ] 1.3 `feature/hand-describe-labels` - `eval/describe.ts`: best five, core, kickers, names, sub-labels, `playsTheBoard`; Appendix D.1 and B19–B24.
+
+## Stage 2 - Rules engine (PLAN §3, §4, Appendix A.3–A.4, B)
+
+- [ ] 2.1 `feature/engine-types-and-invariants` - Appendix A types, `checkInvariants` (I1–I14) before any reducer logic.
+- [ ] 2.2 `feature/engine-table-setup-and-deal` - `createTable`, `startHand`, `nextTable` (button, bot replacement, 3→2 rule).
+- [ ] 2.3 `feature/engine-betting-rules` - `legalActions`, `step` reducer, raise-to sizes, reopening, street advance on `advance`.
+- [ ] 2.4 `feature/engine-side-pot-settlement` - `settle.ts` (uncalled refunds, side pots, odd chips) + independent chip-layer oracle written from §3.8 only; 100k differential.
+- [ ] 2.5 `feature/engine-observe-replay-reshuffle` - `observe` (non-leak test), `replay`, `reshuffle`, JSON round trip, deep-freeze no-mutation.
+- [ ] 2.6 `test/engine-rule-vectors-and-properties` - all 44 Appendix B vectors, property run (100k hands unit / 10M steps slow), ≤ 400 inputs termination, branch coverage ≥ 95%.
+
+## Stage 3 - Playable table (PLAN §12, §13, §14 minimal, A.8)
+
+- [ ] 3.1 `feature/zustand-store-and-table-controller` - store slices, `TableController` (scheduling, `advance` gating, gates, epoch), temporary `SimpleBot` behind the async interface, test hooks `?seed=` / `window.__pc`.
+- [ ] 3.2 `feature/local-session-and-settings-storage` - `persist/storage.ts`, minimal `pc.v1.profile` (settings), `pc.v1.session` saved after every step, resume.
+- [ ] 3.3 `feature/card-and-seat-components` - SVG cards (no Unicode suits), `Seat` (memo), `layout/seats.ts` ellipse tables, dealer button, bets.
+- [ ] 3.4 `feature/table-screen-layouts` - Table in portrait / landscape / wide, board, pot, hero strip with label + highlight, secure-context feature detection.
+- [ ] 3.5 `feature/action-bar-and-sizing-tray` - presets, slider, disabled Fold with tooltip, 56 px / 44 px targets, Android Back closes tray.
+- [ ] 3.6 `feature/hand-rankings-panel` - persistent panel on wide screens, edge tab + drawer, live highlight, beats-you / you-beat, focus trap, bot pause while open.
+- [ ] 3.7 `feature/one-tap-play-and-setup-screens` - Welcome, Home (one-tap Play / continue), Setup, Menu, Settings (Game section), out-of-chips dialog, top-up.
+- [ ] 3.8 `test/playable-table-e2e` - acceptance 1–9 (50 hands × viewports, overlap checks, no bot card leak in DOM, resume deep-equal).
+- [ ] 3.9 [H] **Human gate:** play 10 hands on the phone over LAN, confirm §1.5 assumptions (Q1).
+
+## Stage 4 - Draws, outs, win chance (PLAN §6.2–6.6, §7)
+
+- [ ] 4.1 `feature/draws-and-outs-analysis` - `analysis/handinfo.ts` (draws, outs rule, risky outs R1–R5, nuts/beaters); D.2.
+- [ ] 4.2 `feature/chances-by-the-river` - `analysis/chances.ts`; D.3.
+- [ ] 4.3 `feature/win-chance-equity` - `analysis/equity.ts` exact + fixed-n seeded Monte Carlo; C.2–C.3.
+- [ ] 4.4 `feature/preflop-equity-tables` - `scripts/gen-preflop.ts`, `analysis/preflop.ts`, `check-tables` in CI.
+- [ ] 4.5 `feature/equity-worker` - `workers/protocol.ts`, `equity.worker.ts`, `app/workerClient.ts` (jobId, epoch, cancel, stale-drop, timeouts).
+- [ ] 4.6 `feature/win-badge-and-draw-chips` - badge (skeleton, `~`, hysteresis, popover), price chip, draw chips, By-river column.
+- [ ] 4.7 `feature/all-in-run-out-and-bench` - all-in TV mode, luck line, `#bench` route, throttled latency checks.
+- [ ] 4.8 [H] **Human gate:** `#bench` numbers from one real Android phone.
+
+## Stage 5 - Coach hints and Easy/Medium bots: public MVP (PLAN §8, §9, §10)
+
+- [ ] 5.1 `feature/range-and-push-fold-tables` - `gen-ranges.ts`, `gen-pushfold.ts`, range + push/fold acceptance.
+- [ ] 5.2 `feature/opponent-range-model` - `brain/features.ts`, `ranges.ts`, full §8.6 model, `opponentStats.ts`, `tunables.ts`.
+- [ ] 5.3 `feature/preflop-and-push-fold-policy` - `preflopPolicy.ts`, `pushfold.ts`.
+- [ ] 5.4 `feature/postflop-policy-and-bet-sizing` - `postflopPolicy.ts`, `sizing.ts`.
+- [ ] 5.5 `feature/coach-guardrails-and-ev-model` - `guardrails.ts`, `ev.ts`; each guardrail has a test that fails without it.
+- [ ] 5.6 `feature/coach-explanations` - `explain.ts`, `i18n/en.ts` templates, `check-copy.ts`.
+- [ ] 5.7 `feature/bot-personalities-easy-medium` - `profiles.ts`, `decide.ts`, `hint`, think time, non-cheating property test, Appendix E golden spots.
+- [ ] 5.8 `feature/brain-worker` - `brain.worker.ts` replaces `SimpleBot` (moved to `scripts/bots/`).
+- [ ] 5.9 `feature/coach-strip-and-sheet` - Beginner/Intermediate UI, recommended ring, "Use coach size", RANGE_ADJUST, glossary popovers.
+- [ ] 5.10 `feature/bot-and-coach-level-selectors` - level cards, personality labels, bot card.
+- [ ] 5.11 `test/self-play-calibration` - `scripts/selfplay.ts` + baselines; acceptance 5–6.
+- [ ] 5.12 [H] **Human gate:** read 10 hints on the phone → announce MVP.
+
+## Stage 6 - Grading, feedback, Undo, Advanced/Exam (PLAN §8.9, §10.2–10.3, §11)
+
+- [ ] 6.1 `feature/decision-grading` - `grade.ts`, leak tags, controller `grading` state, grade chips.
+- [ ] 6.2 `feature/mistake-feedback-and-undo` - feedback card, toolbar Undo, `reshuffle`, practice flag, §11.5 tests, `?script=` hook.
+- [ ] 6.3 `feature/hand-review-replay` - hand summary and read-only Review.
+- [ ] 6.4 `feature/advanced-quiz-and-exam-level` - quiz, Exam behaviour, full level matrix.
+- [ ] 6.5 `test/grading-and-undo-e2e` - acceptance 2–6.
+
+## Stage 7 - Hard and Expert bots (PLAN §9.5, §10.1)
+
+- [ ] 7.1 `feature/hard-expert-bot-profiles` - range model on for bots, exploits (n ≥ 30), balanced river bluffs, hidden labels, observed-stats card.
+- [ ] 7.2 `feature/per-seat-bot-levels` - per-seat override from next hand.
+- [ ] 7.3 `test/hard-expert-self-play` - acceptance 1–5.
+
+## Stage 8 - Persistence and stats (PLAN §14, Appendix H)
+
+- [ ] 8.1 `feature/profile-commit-protocol` - schema guards, migrations scaffold, atomic commit + backup, crash injection tests.
+- [ ] 8.2 `feature/stats-model-and-screen` - stats reducers, Stats screen (4 tabs, charts), 20-hand fixture.
+- [ ] 8.3 `feature/tab-lock-and-export-import` - Web Locks writer, `rev` fallback, export/import/reset, `persist()`.
+- [ ] 8.4 `feature/level-suggestions-and-install-hints` - Settings Data section, install nudge, suggestions.
+- [ ] 8.5 [H] **Human gate:** iOS Export → Save to Files → Import.
+
+## Stage 9 - Polish, accessibility, fairness, release (PLAN §12.11–12.14, §15, §16)
+
+- [ ] 9.1 `feature/sounds-haptics-and-wake-lock`
+- [ ] 9.2 `feature/learn-lessons-and-glossary` - lessons, glossary, full-page rankings, "Which hand wins?".
+- [ ] 9.3 `feature/first-table-tips-and-keyboard-shortcuts`
+- [ ] 9.4 `feature/provable-shuffle-check` - Review ✓ over 1,000 recorded hands.
+- [ ] 9.5 `feature/service-worker-update-between-hands`
+- [ ] 9.6 `chore/accessibility-audit` - axe clean, reduced motion, keyboard-only hand.
+- [ ] 9.7 `chore/performance-pass` - Lighthouse ≥ 90 / 95, budgets.
+- [ ] 9.8 [H] **Human gate:** Coolify connected (Q6), device matrix, VoiceOver/TalkBack → release v1.0.
+
+---
+
+## Human gates: how the loop handles them
+
+A `[H]` item never blocks the loop. When one is reached, Claude marks it `[H]`, writes what the human
+needs to do in "Waiting on the human" below, sends a notification, and continues with the next stage.
+If the human's answer later reveals a problem, the fix becomes a new chunk ahead of the current one.
+
+### Waiting on the human
+
+_(nothing yet)_
+
+## Log
+
+| Date | Chunk | Result | Usage window (baseline → end) |
+|---|---|---|---|
