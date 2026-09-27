@@ -6,7 +6,7 @@ This is the working checklist for building [PLAN.md](PLAN.md). PLAN.md is the so
 
 Legend: `[ ]` todo · `[~]` in progress (branch exists) · `[x]` merged to `main` · `[H]` waiting on the human
 
-**Current position:** Stage 0 in progress (overnight run started 27 Sep 2026 20:40Z). Parallel wave: 0.2, 0.3→0.5, 0.4→0.7 (merge as done), Stage 1 and the 2.4 settlement oracle (PRs held until Stage 0 is green).
+**Current position:** Stage 0 ✅ complete (CI green). Merging Stage 1 (PRs #3 → #9 → #10). In parallel: engine 2.1–2.2 and UI 3.3/3.6 (branches stacked on Stage 1, held for stage order); oracle PR #5 held for Stage 2.
 
 ---
 
@@ -33,10 +33,10 @@ Legend: `[ ]` todo · `[~]` in progress (branch exists) · `[x]` merged to `main
 - [x] 0.3 `feature/nest-static-serving-and-security-headers` - `security.ts`, helmet config, Permissions-Policy, serve-static with SPA fallback + excludes, per-path cache headers; supertest suite over a `dist` fixture (acceptance 2).
 - [x] 0.4 `feature/pwa-shell` - manifest, icons, vite-plugin-pwa `generateSW` with `injectRegister: false`, build-time meta CSP, green felt "RB Poker Coach" page, no-inline-script check.
 - [x] 0.5 `chore/docker-image` - `Dockerfile`, `docker-compose.yml`, `.dockerignore`; container reaches `healthy` (acceptance 3). Needs P2.
-- [~] 0.6 `test/playwright-offline-e2e` - Playwright projects (6 viewports, Chromium + WebKit), `webServer` = root `npm start`, offline test, no-external-request and no-`/api` assertions (acceptance 4).
+- [x] 0.6 `test/playwright-offline-e2e` - Playwright projects (6 viewports, Chromium + WebKit), `webServer` = root `npm start`, offline test, no-external-request and no-`/api` assertions (acceptance 4).
 - [x] 0.7 `chore/bundle-size-budget` - `scripts/size-budget.ts` table + failing fixture (acceptance 6).
-- [~] 0.8 `ci/github-actions-pipeline` - `check`, `e2e`, `docker`, `slow` (weekly, may be empty).
-- [~] 0.9 `docs/readme-and-coolify-checklist` - README: local run, phone testing, the §17.6 Coolify checklist for the human.
+- [x] 0.8 `ci/github-actions-pipeline` - `check`, `e2e`, `docker`, `slow` (weekly, may be empty).
+- [x] 0.9 `docs/readme-and-coolify-checklist` - README: local run, phone testing, the §17.6 Coolify checklist for the human.
 
 ## Stage 1 - Cards, randomness, evaluator, describe() (PLAN §5, §6.1)
 
@@ -151,3 +151,4 @@ _(nothing yet)_
 | 27 Sep 21:30Z | 2.4 (oracle part) | [PR #5](https://github.com/romanbitca/rb-pocker/pull/5) open, held for Stage 2 | — |
 | 27 Sep 21:10–21:48Z | 1.1, 1.2, 1.3 | PRs [#3](https://github.com/romanbitca/rb-pocker/pull/3), [#9](https://github.com/romanbitca/rb-pocker/pull/9), [#10](https://github.com/romanbitca/rb-pocker/pull/10) open (stacked, held until Stage 0 CI is green). C.4 golden ✓, 1M differential 0 mismatches, exhaustive C.1 ✓ (2.9 s), 16.4M evals/s | — |
 | 27 Sep 21:40Z | 0.7 | [PR #8](https://github.com/romanbitca/rb-pocker/pull/8) merged; initial JS 69 KB gzip | — |
+| 27 Sep 21:36–22:10Z | 0.6, 0.9, 0.8 | PRs [#11](https://github.com/romanbitca/rb-pocker/pull/11), [#12](https://github.com/romanbitca/rb-pocker/pull/12), [#13](https://github.com/romanbitca/rb-pocker/pull/13) merged; CI green (check 35 s, docker 57 s, e2e 2m43s). **Stage 0 complete** | — |
