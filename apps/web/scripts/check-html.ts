@@ -1,6 +1,7 @@
 /**
- * CI check of the built app shell (PLAN §15.2, pitfall 32). The CSP allows only `script-src 'self'`,
- * so any inline script would be blocked and could leave a blank page. The built `index.html` must:
+ * CI check of the built app shell (PLAN §15.2, pitfall 32). The CSP allows only
+ * `script-src 'self'`, so an inline script would be blocked and could leave a blank page.
+ * The built `index.html` must:
  * 1. have no inline `<script>`: every script has a `src` and an empty body;
  * 2. have no inline event-handler attribute (`onload="…"`), which the CSP blocks too;
  * 3. carry exactly one `<meta http-equiv="Content-Security-Policy">`, equal to `META_CSP`, inside
@@ -11,29 +12,7 @@
  */
 import { readFileSync } from 'node:fs';
 import { META_CSP } from './csp.ts';
-
-/** A start tag: `<name …>`, where quoted attribute values may contain `>`. */
-const TAG_ATTRS = String.raw`((?:[^>"']|"[^"]*"|'[^']*')*)>`;
-const ATTR = /([^\s=/>"']+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+)))?/g;
-
-function decodeEntities(value: string): string {
-  return value
-    .replace(/&quot;/g, '"')
-    .replace(/&#0*39;|&apos;/g, "'")
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&amp;/g, '&');
-}
-
-/** Attribute names (lower case) and decoded values of a start tag; a bare attribute maps to ''. */
-function parseAttributes(source: string): Map<string, string> {
-  const attributes = new Map<string, string>();
-  for (const [, name, double, single, bare] of source.matchAll(ATTR)) {
-    if (name === undefined) continue;
-    attributes.set(name.toLowerCase(), decodeEntities(double ?? single ?? bare ?? ''));
-  }
-  return attributes;
-}
+import { ATTRIBUTES, parseAttributes, startTags, stripComments } from './html.ts';
 
 function shorten(text: string): string {
   const oneLine = text.replace(/\s+/g, ' ').trim();
@@ -44,11 +23,11 @@ function shorten(text: string): string {
 export function checkHtml(html: string, expectedCsp: string = META_CSP): string[] {
   const problems: string[] = [];
   // Comments are ignored: they neither run nor apply a policy.
-  const doc = html.replace(/<!--[\s\S]*?-->/g, '');
+  const doc = stripComments(html);
 
   // 1. Scripts.
   const scripts = [
-    ...doc.matchAll(new RegExp(`<script\\b${TAG_ATTRS}([\\s\\S]*?)</script\\s*>`, 'gi')),
+    ...doc.matchAll(new RegExp(`<script\\b${ATTRIBUTES}([\\s\\S]*?)</script\\s*>`, 'gi')),
   ];
   for (const script of scripts) {
     const src = parseAttributes(script[1] ?? '').get('src') ?? '';
@@ -61,26 +40,25 @@ export function checkHtml(html: string, expectedCsp: string = META_CSP): string[
   if (openings !== scripts.length) problems.push('a <script> tag is never closed');
 
   // 2. Inline event handlers on any element.
-  for (const tag of doc.matchAll(new RegExp(`<([a-z][a-z0-9-]*)\\b${TAG_ATTRS}`, 'gi'))) {
-    for (const name of parseAttributes(tag[2] ?? '').keys()) {
+  for (const tag of startTags(doc)) {
+    for (const name of tag.attributes.keys()) {
       if (/^on[a-z]/.test(name)) {
-        problems.push(`inline event handler ${name}= on <${tag[1]}>: ${shorten(tag[0])}`);
+        problems.push(`inline event handler ${name}= on <${tag.name}>: ${shorten(tag.source)}`);
       }
     }
   }
 
   // 3. The meta CSP.
-  const isCsp = (attributes: string) =>
-    parseAttributes(attributes).get('http-equiv')?.toLowerCase() === 'content-security-policy';
-  const metas = [...doc.matchAll(new RegExp(`<meta\\b${TAG_ATTRS}`, 'gi'))];
-  const cspMetas = metas.filter((meta) => isCsp(meta[1] ?? ''));
+  const cspMetas = startTags(doc, 'meta').filter(
+    (meta) => meta.attributes.get('http-equiv')?.toLowerCase() === 'content-security-policy',
+  );
   const csp = cspMetas[0];
   if (csp === undefined) {
     problems.push('no <meta http-equiv="Content-Security-Policy">');
   } else if (cspMetas.length > 1) {
     problems.push(`${cspMetas.length} CSP meta tags; expected exactly one`);
   } else {
-    const content = parseAttributes(csp[1] ?? '').get('content');
+    const content = csp.attributes.get('content');
     if (content !== expectedCsp) {
       problems.push(`meta CSP is "${content ?? ''}", expected "${expectedCsp}"`);
     }
