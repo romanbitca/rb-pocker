@@ -58,7 +58,11 @@ needs the human (e.g. P1/P2 in EXECUTION.md), or the same CI failure survives th
   every chunk. Never use generic names like `claude/...`, `wip`, `dev`, or `branch-1`.
 - One chunk = one branch = one PR, squash-merged into `main` when CI is green.
 - Commit messages follow PLAN §0.2 style (`feat(engine): ...`, `chore: ...`, `test: ...`).
-- GitHub: `romanbitca/rb-pocker` (private), `romanbitca` gh account, local email `me@romanbitca.com`.
+- GitHub: `romanbitca/rb-pocker` (private), `romanbitca` account, local email `me@romanbitca.com`.
+  The owner's **global** active gh account may be a different one (other projects need it): never
+  run `gh auth switch`. `git push` works through a repo-local credential helper (in `.git/config`,
+  shared by all worktrees). For `gh`, use the wrapper `/Users/romanbitca/work/code/rb-pocker/.loop/gh`
+  (sets `GH_TOKEN` for `romanbitca`), e.g. `.loop/gh pr create ...`.
 
 ## Environment
 
