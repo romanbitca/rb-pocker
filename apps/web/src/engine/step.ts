@@ -15,6 +15,7 @@
  */
 import { EngineError } from '../core/assert.ts';
 import { deriveSeed, rngFromSeed, shuffleRange } from '../core/rng.ts';
+import { cloneHand, deepFreeze } from './clone.ts';
 import { checkInvariants } from './invariants.ts';
 import { legalActions } from './legal.ts';
 import { firstToAct, isActive, isLive, nextSeat, put, roundComplete } from './rules.ts';
@@ -38,7 +39,7 @@ const FREEZE_OUTPUT = import.meta.env?.DEV === true;
 
 /** Applies one input (§4.3) to a copy of `h` and returns the copy. Never changes `h`. */
 export function step(h: HandState, input: EngineInput): HandState {
-  const next = cloneState(h);
+  const next = cloneHand(h);
   const inp = input as Partial<Record<string, unknown>> | null;
   if (typeof inp !== 'object' || inp === null) illegal('the input must be an object');
   switch (inp.kind) {
@@ -292,25 +293,4 @@ function reshuffle(h: HandState, decisionId: unknown, undoIndex: unknown): void 
 
 function illegal(detail: string): never {
   throw new EngineError('ILLEGAL_ACTION', detail);
-}
-
-/** A deep copy of a plain-JSON value (§4.6: states hold only objects, arrays and primitives). */
-function cloneState<T>(x: T): T {
-  if (typeof x !== 'object' || x === null) return x;
-  if (Array.isArray(x)) {
-    const out: unknown[] = new Array<unknown>(x.length);
-    for (let i = 0; i < x.length; i++) out[i] = cloneState(x[i] as unknown);
-    return out as T;
-  }
-  const out: Record<string, unknown> = {};
-  for (const key of Object.keys(x)) out[key] = cloneState((x as Record<string, unknown>)[key]);
-  return out as T;
-}
-
-function deepFreeze<T>(x: T): T {
-  if (typeof x === 'object' && x !== null && !Object.isFrozen(x)) {
-    Object.freeze(x);
-    for (const v of Object.values(x)) deepFreeze(v as unknown);
-  }
-  return x;
 }
