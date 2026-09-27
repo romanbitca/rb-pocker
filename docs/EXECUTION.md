@@ -6,7 +6,7 @@ This is the working checklist for building [PLAN.md](PLAN.md). PLAN.md is the so
 
 Legend: `[ ]` todo · `[~]` in progress (branch exists) · `[x]` merged to `main` · `[H]` waiting on the human
 
-**Current position:** Stages 0 and 1 ✅ complete (CI green). Stage 2 in progress: 2.1/2.2 PRs #14/#16 ready (need rebase onto main), 2.3/2.4 being built; oracle PR #5 to be folded into 2.4. UI 3.3/3.6 built early (held for stage order).
+**Current position:** Stages 0 and 1 ✅ complete (CI green). Stage 2: 2.1–2.4 merged (CI green); 2.5/2.6 in progress. UI 3.3/3.6 built early (held for stage order).
 
 ---
 
@@ -46,12 +46,12 @@ Legend: `[ ]` todo · `[~]` in progress (branch exists) · `[x]` merged to `main
 
 ## Stage 2 - Rules engine (PLAN §3, §4, Appendix A.3–A.4, B)
 
-- [~] 2.1 `feature/engine-types-and-invariants` - Appendix A types, `checkInvariants` (I1–I14) before any reducer logic.
-- [~] 2.2 `feature/engine-table-setup-and-deal` - `createTable`, `startHand`, `nextTable` (button, bot replacement, 3→2 rule).
-- [~] 2.3 `feature/engine-betting-rules` - `legalActions`, `step` reducer, raise-to sizes, reopening, street advance on `advance`.
-- [~] 2.4 `feature/engine-side-pot-settlement` - `settle.ts` (uncalled refunds, side pots, odd chips) + independent chip-layer oracle written from §3.8 only; 100k differential.
-- [ ] 2.5 `feature/engine-observe-replay-reshuffle` - `observe` (non-leak test), `replay`, `reshuffle`, JSON round trip, deep-freeze no-mutation.
-- [ ] 2.6 `test/engine-rule-vectors-and-properties` - all 44 Appendix B vectors, property run (100k hands unit / 10M steps slow), ≤ 400 inputs termination, branch coverage ≥ 95%.
+- [x] 2.1 `feature/engine-types-and-invariants` - Appendix A types, `checkInvariants` (I1–I14) before any reducer logic.
+- [x] 2.2 `feature/engine-table-setup-and-deal` - `createTable`, `startHand`, `nextTable` (button, bot replacement, 3→2 rule).
+- [x] 2.3 `feature/engine-betting-rules` - `legalActions`, `step` reducer, raise-to sizes, reopening, street advance on `advance`.
+- [x] 2.4 `feature/engine-side-pot-settlement` - `settle.ts` (uncalled refunds, side pots, odd chips) + independent chip-layer oracle written from §3.8 only; 100k differential.
+- [~] 2.5 `feature/engine-observe-replay-reshuffle` - `observe` (non-leak test), `replay`, `reshuffle`, JSON round trip, deep-freeze no-mutation.
+- [~] 2.6 `test/engine-rule-vectors-and-properties` - all 44 Appendix B vectors, property run (100k hands unit / 10M steps slow), ≤ 400 inputs termination, branch coverage ≥ 95%.
 
 ## Stage 3 - Playable table (PLAN §12, §13, §14 minimal, A.8)
 
@@ -169,4 +169,4 @@ _(nothing yet)_
 | 27 Sep 21:47–22:43Z | 3.3, 3.6 (early) | PRs [#15](https://github.com/romanbitca/rb-pocker/pull/15), [#17](https://github.com/romanbitca/rb-pocker/pull/17) open, held for stage order (need rebase onto main). View models in `src/ui/views.ts`; seat geometry fixed for 360–390 px phones (PLAN §12.4 amended) | 69% → ~75% |
 | 27 Sep 22:37–23:22Z | 2.3, 2.4 | PRs [#18](https://github.com/romanbitca/rb-pocker/pull/18), [#20](https://github.com/romanbitca/rb-pocker/pull/20) ready. Engine vs independent oracle: 0 mismatches on 100k (unit) + 1M (slow) all-in hands; 2,500-hand property run; engine branch coverage 99.0%; B1–B20, B25–B29, B32, B34–B40, B43–B44 through the real engine | 71% → 86% |
 | 27 Sep 22:44–23:20Z | 3.2 (early) | [PR #19](https://github.com/romanbitca/rb-pocker/pull/19) ready, held for stage order; persist branch coverage 95.6% | (same window) |
-| 27 Sep 23:25Z → | Stage 2 merge train | #14 → #16 → #18 → #20 onto main with CI; closes #5 | Sonnet agent, 86% → |
+| 27 Sep 23:25–23:58Z | Stage 2 merge train | #14, #16, #18, #20 merged with green CI (check, e2e, docker); settlement now uses `describe()`; #5 closed as superseded | Sonnet agent, 86% → 89% (Sonnet ≈ 3× cheaper than Opus per token) |
