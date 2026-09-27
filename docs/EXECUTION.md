@@ -6,7 +6,7 @@ This is the working checklist for building [PLAN.md](PLAN.md). PLAN.md is the so
 
 Legend: `[ ]` todo · `[~]` in progress (branch exists) · `[x]` merged to `main` · `[H]` waiting on the human
 
-**Current position:** Stage 0 in progress (overnight run started 27 Sep 2026 20:40Z). Working on `0.1`.
+**Current position:** Stage 0 in progress (overnight run started 27 Sep 2026 20:40Z). Parallel wave: 0.2, 0.3→0.5, 0.4→0.7 (merge as done), Stage 1 and the 2.4 settlement oracle (PRs held until Stage 0 is green).
 
 ---
 
@@ -28,21 +28,21 @@ Legend: `[ ]` todo · `[~]` in progress (branch exists) · `[x]` merged to `main
 
 ## Stage 0 - Scaffold, pipeline, PWA shell (PLAN §0.2, §17, §18 Stage 0)
 
-- [~] 0.1 `chore/monorepo-scaffold` - npm workspaces, `apps/web` (Vite 8 + React 19 + Zustand + strict TS + CSS Modules + tokens.css), `apps/server` (Nest 12 ESM, `/api/health`), Vitest `unit`/`slow` projects in both, fast-check, Prettier, root scripts. One trivial test per workspace.
-- [ ] 0.2 `feature/eslint-module-boundaries` - boundary rules (§2.1), `Math.random` ban, server-must-not-import-web; fixtures asserted through ESLint's API (acceptance 5).
-- [ ] 0.3 `feature/nest-static-serving-and-security-headers` - `security.ts`, helmet config, Permissions-Policy, serve-static with SPA fallback + excludes, per-path cache headers; supertest suite over a `dist` fixture (acceptance 2).
-- [ ] 0.4 `feature/pwa-shell` - manifest, icons, vite-plugin-pwa `generateSW` with `injectRegister: false`, build-time meta CSP, green felt "RB Poker Coach" page, no-inline-script check.
-- [ ] 0.5 `chore/docker-image` - `Dockerfile`, `docker-compose.yml`, `.dockerignore`; container reaches `healthy` (acceptance 3). Needs P2.
+- [x] 0.1 `chore/monorepo-scaffold` - npm workspaces, `apps/web` (Vite 8 + React 19 + Zustand + strict TS + CSS Modules + tokens.css), `apps/server` (Nest 12 ESM, `/api/health`), Vitest `unit`/`slow` projects in both, fast-check, Prettier, root scripts. One trivial test per workspace.
+- [~] 0.2 `feature/eslint-module-boundaries` - boundary rules (§2.1), `Math.random` ban, server-must-not-import-web; fixtures asserted through ESLint's API (acceptance 5).
+- [~] 0.3 `feature/nest-static-serving-and-security-headers` - `security.ts`, helmet config, Permissions-Policy, serve-static with SPA fallback + excludes, per-path cache headers; supertest suite over a `dist` fixture (acceptance 2).
+- [~] 0.4 `feature/pwa-shell` - manifest, icons, vite-plugin-pwa `generateSW` with `injectRegister: false`, build-time meta CSP, green felt "RB Poker Coach" page, no-inline-script check.
+- [~] 0.5 `chore/docker-image` - `Dockerfile`, `docker-compose.yml`, `.dockerignore`; container reaches `healthy` (acceptance 3). Needs P2.
 - [ ] 0.6 `test/playwright-offline-e2e` - Playwright projects (6 viewports, Chromium + WebKit), `webServer` = root `npm start`, offline test, no-external-request and no-`/api` assertions (acceptance 4).
-- [ ] 0.7 `chore/bundle-size-budget` - `scripts/size-budget.ts` table + failing fixture (acceptance 6).
+- [~] 0.7 `chore/bundle-size-budget` - `scripts/size-budget.ts` table + failing fixture (acceptance 6).
 - [ ] 0.8 `ci/github-actions-pipeline` - `check`, `e2e`, `docker`, `slow` (weekly, may be empty).
 - [ ] 0.9 `docs/readme-and-coolify-checklist` - README: local run, phone testing, the §17.6 Coolify checklist for the human.
 
 ## Stage 1 - Cards, randomness, evaluator, describe() (PLAN §5, §6.1)
 
-- [ ] 1.1 `feature/cards-and-seeded-rng` - `core/cards.ts`, `core/rng.ts`, `core/assert.ts`; Appendix C.4 golden values, chi-square and `randInt` tests.
-- [ ] 1.2 `feature/seven-card-evaluator` - `eval/tables.ts`, `eval/evaluate.ts`; naive 21-subset oracle, 1M differential vs `@poker-apprentice/hand-evaluator` + pokersolver, exhaustive C.1 count in `slow`, micro-benchmark.
-- [ ] 1.3 `feature/hand-describe-labels` - `eval/describe.ts`: best five, core, kickers, names, sub-labels, `playsTheBoard`; Appendix D.1 and B19–B24.
+- [~] 1.1 `feature/cards-and-seeded-rng` - `core/cards.ts`, `core/rng.ts`, `core/assert.ts`; Appendix C.4 golden values, chi-square and `randInt` tests.
+- [~] 1.2 `feature/seven-card-evaluator` - `eval/tables.ts`, `eval/evaluate.ts`; naive 21-subset oracle, 1M differential vs `@poker-apprentice/hand-evaluator` + pokersolver, exhaustive C.1 count in `slow`, micro-benchmark.
+- [~] 1.3 `feature/hand-describe-labels` - `eval/describe.ts`: best five, core, kickers, names, sub-labels, `playsTheBoard`; Appendix D.1 and B19–B24.
 
 ## Stage 2 - Rules engine (PLAN §3, §4, Appendix A.3–A.4, B)
 
@@ -140,3 +140,4 @@ _(nothing yet)_
 
 | Date | Chunk | Result | Usage window (baseline → end) |
 |---|---|---|---|
+| 27 Sep 20:44–21:05Z | 0.1 | [PR #1](https://github.com/romanbitca/rb-pocker/pull/1) merged; all local checks green | overnight mode; ~4% of window |
