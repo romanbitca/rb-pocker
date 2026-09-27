@@ -327,8 +327,8 @@ export default defineConfig(
     languageOptions: { globals: globals.browser },
   },
   {
-    // The server, config files and scripts: run in Node.
-    files: ['apps/server/**', '**/*.config.{js,ts}', 'eslint.config.js'],
+    // The server, config files and the root scripts: run in Node.
+    files: ['apps/server/**', '**/*.config.{js,ts}', 'eslint.config.js', 'scripts/**'],
     languageOptions: { globals: globals.node },
   },
   {

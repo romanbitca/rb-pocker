@@ -8,11 +8,12 @@
     "dev": "vite --host",
     "build": "vite build",
     "check:html": "node scripts/check-html.ts dist/index.html",
+    "e2e": "playwright test",
     "gen:icons": "node scripts/gen-icons.ts",
     "size": "node scripts/size-budget.ts",
     "test": "vitest run --project unit",
     "test:slow": "vitest run --project slow",
-    "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.node.json"
+    "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.node.json && tsc -p tsconfig.e2e.json"
   },
   "dependencies": {
     "react": "19.3.0",
