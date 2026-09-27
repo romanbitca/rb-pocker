@@ -34,7 +34,7 @@ Legend: `[ ]` todo · `[~]` in progress (branch exists) · `[x]` merged to `main
 - [x] 0.4 `feature/pwa-shell` - manifest, icons, vite-plugin-pwa `generateSW` with `injectRegister: false`, build-time meta CSP, green felt "RB Poker Coach" page, no-inline-script check.
 - [x] 0.5 `chore/docker-image` - `Dockerfile`, `docker-compose.yml`, `.dockerignore`; container reaches `healthy` (acceptance 3). Needs P2.
 - [~] 0.6 `test/playwright-offline-e2e` - Playwright projects (6 viewports, Chromium + WebKit), `webServer` = root `npm start`, offline test, no-external-request and no-`/api` assertions (acceptance 4).
-- [~] 0.7 `chore/bundle-size-budget` - `scripts/size-budget.ts` table + failing fixture (acceptance 6).
+- [x] 0.7 `chore/bundle-size-budget` - `scripts/size-budget.ts` table + failing fixture (acceptance 6).
 - [~] 0.8 `ci/github-actions-pipeline` - `check`, `e2e`, `docker`, `slow` (weekly, may be empty).
 - [~] 0.9 `docs/readme-and-coolify-checklist` - README: local run, phone testing, the §17.6 Coolify checklist for the human.
 
@@ -46,8 +46,8 @@ Legend: `[ ]` todo · `[~]` in progress (branch exists) · `[x]` merged to `main
 
 ## Stage 2 - Rules engine (PLAN §3, §4, Appendix A.3–A.4, B)
 
-- [ ] 2.1 `feature/engine-types-and-invariants` - Appendix A types, `checkInvariants` (I1–I14) before any reducer logic.
-- [ ] 2.2 `feature/engine-table-setup-and-deal` - `createTable`, `startHand`, `nextTable` (button, bot replacement, 3→2 rule).
+- [~] 2.1 `feature/engine-types-and-invariants` - Appendix A types, `checkInvariants` (I1–I14) before any reducer logic.
+- [~] 2.2 `feature/engine-table-setup-and-deal` - `createTable`, `startHand`, `nextTable` (button, bot replacement, 3→2 rule).
 - [ ] 2.3 `feature/engine-betting-rules` - `legalActions`, `step` reducer, raise-to sizes, reopening, street advance on `advance`.
 - [ ] 2.4 `feature/engine-side-pot-settlement` - `settle.ts` (uncalled refunds, side pots, odd chips) + independent chip-layer oracle written from §3.8 only; 100k differential.
 - [ ] 2.5 `feature/engine-observe-replay-reshuffle` - `observe` (non-leak test), `replay`, `reshuffle`, JSON round trip, deep-freeze no-mutation.
