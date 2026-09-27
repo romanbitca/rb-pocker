@@ -16,7 +16,7 @@ permissions:
 
 jobs:
   docker:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04 # the same image as the e2e job (see e2e.yml)
     timeout-minutes: 20
     env:
       # docker-compose.yml passes it to the container, as Coolify does at run time (§17.6).

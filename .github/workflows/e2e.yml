@@ -14,7 +14,9 @@ permissions:
 
 jobs:
   e2e:
-    runs-on: ubuntu-latest
+    # Pinned: ubuntu-latest becomes Ubuntu 26 from 19 Oct 2026, and `playwright install
+    # --with-deps` supports only the Ubuntu versions its release knows. Move with Playwright.
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7

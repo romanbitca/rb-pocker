@@ -16,7 +16,7 @@ permissions:
 
 jobs:
   slow:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04 # the same image as the e2e job (see e2e.yml)
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v7
@@ -32,7 +32,7 @@ jobs:
   # (Settings → Secrets and variables → Actions → Variables).
   check-deploy:
     if: vars.DEPLOY_URL != ''
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
