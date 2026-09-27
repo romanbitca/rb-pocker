@@ -21,7 +21,6 @@ import {
   raise,
   randomInput,
   seatOf,
-  settlesNext,
 } from './play.ts';
 
 describe('step: errors (§4.5)', () => {
@@ -110,7 +109,7 @@ describe('step: purity (§4.2)', () => {
       fc.property(handArb, ({ h, policySeed }) => {
         const rng = rngFromSeed(policySeed);
         let s = deepFreeze(clone(h));
-        for (let i = 0; i < 400 && !settlesNext(s); i++) {
+        for (let i = 0; i < 400 && s.phase !== 'complete'; i++) {
           const before = JSON.stringify(s);
           const next = step(s, randomInput(s, rng));
           expect(JSON.stringify(s)).toBe(before);
@@ -145,7 +144,7 @@ describe('step: purity (§4.2)', () => {
         const inputs: EngineInput[] = [];
         const rng = rngFromSeed(policySeed);
         let s = h;
-        for (let i = 0; i < 400 && !settlesNext(s); i++) {
+        for (let i = 0; i < 400 && s.phase !== 'complete'; i++) {
           const input = randomInput(s, rng);
           inputs.push(input);
           s = step(s, input);
@@ -316,16 +315,15 @@ describe('step: reshuffle (§4.3, §11.3; B40)', () => {
 });
 
 describe('step: random legal play (property)', () => {
-  it('2–9 seats, stacks from one chip to 500 bb: every step keeps the invariants (log replay too)', () => {
-    let showdowns = 0;
-    let foldWins = 0;
-    let runouts = 0;
+  it('2–9 seats, stacks from one chip to 500 bb: every step keeps the invariants and every hand completes in ≤ 400 inputs', () => {
+    const endings = { showdown: 0, fold: 0, runout: 0, sidePots: 0, split: 0, riverBet: 0 };
+    let longest = 0;
     fc.assert(
       fc.property(handArb, ({ h, policySeed }) => {
         const rng = rngFromSeed(policySeed);
         let s = h;
         let inputs = 0;
-        while (!settlesNext(s)) {
+        while (s.phase !== 'complete') {
           const input = randomInput(s, rng);
           if (input.kind === 'act') {
             // The legal bounds are exact: one chip outside them is refused.
@@ -337,20 +335,35 @@ describe('step: random legal play (property)', () => {
           }
           s = play(s, input);
           inputs++;
-          expect(inputs).toBeLessThan(400);
+          expect(inputs).toBeLessThanOrEqual(400);
         }
-        if (s.phase === 'showdown') showdowns++;
-        else foldWins++;
-        if (s.runout) runouts++;
+        longest = Math.max(longest, inputs);
+        const r = s.result;
+        if (r === null) throw new Error('complete without a result');
+        endings[r.endedBy]++;
+        if (s.runout) endings.runout++;
+        if (r.pots.length > 1) endings.sidePots++;
+        if (r.potWinners.some((w) => w.length > 1)) endings.split++;
+        if (s.log.some((ev) => ev.e === 'act' && ev.street === 'river' && ev.amountIn > 0)) {
+          endings.riverBet++;
+        }
+        // Nothing is created or lost, and every input after the end is refused.
+        expect(s.seats.reduce((a, x) => a + x.stack, 0)).toBe(s.startTotal);
         expect(legalActions(s)).toBeNull();
-        expect(s.seats.reduce((a, x) => a + x.stack + x.totalBet, 0)).toBe(s.startTotal);
+        expect(engineError(() => step(s, ADVANCE)).code).toBe('BAD_PHASE');
       }),
-      { seed: FC_SEED, numRuns: 2000 },
+      { seed: FC_SEED, numRuns: 2500 },
     );
-    // The runs reach every ending (so the property means something).
-    expect(showdowns).toBeGreaterThan(100);
-    expect(foldWins).toBeGreaterThan(100);
-    expect(runouts).toBeGreaterThan(100);
+    // The runs reach every ending (so the property means something). Seen with the fixed seed:
+    // 2,237 showdowns, 263 fold wins, 1,443 run-outs, 1,666 with side pots, 178 with a split
+    // pot, 567 with chips bet on the river; the longest hand took 51 inputs.
+    expect(endings.showdown).toBeGreaterThan(1500);
+    expect(endings.fold).toBeGreaterThan(150);
+    expect(endings.runout).toBeGreaterThan(800);
+    expect(endings.sidePots).toBeGreaterThan(800);
+    expect(endings.split).toBeGreaterThan(80);
+    expect(endings.riverBet).toBeGreaterThan(300);
+    expect(longest).toBeLessThanOrEqual(400);
   });
 
   it('any input either gives a valid state or throws EngineError, and never changes its input', () => {
@@ -388,7 +401,7 @@ describe('step: random legal play (property)', () => {
             expect(e).toBeInstanceOf(EngineError);
             expect(JSON.stringify(s)).toBe(before);
           }
-          if (settlesNext(s)) break;
+          if (s.phase === 'complete') break;
         }
       }),
       { seed: FC_SEED, numRuns: 500 },

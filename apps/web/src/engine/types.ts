@@ -123,7 +123,8 @@ export type LogEvent =
   | { e: 'reveal'; seats: number[]; reason: 'runout' | 'showdown' }
   | { e: 'reshuffle'; decisionId: number; undoIndex: number }
   // pot = index into result.pots (0 = main pot); seats = that pot's winners in odd-chip order
-  // (§3.8); amounts = what each of them gets, parallel to seats
+  // (§3.8); amounts = what each of them gets, parallel to seats. One per pot, logged the last
+  // side pot first and the main pot last (§3.8)
   | { e: 'award'; pot: number; seats: number[]; amounts: number[] };
 
 export interface Pot {

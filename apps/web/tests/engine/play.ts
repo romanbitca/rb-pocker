@@ -90,12 +90,15 @@ export function deepFreeze<T>(x: T): T {
   return x;
 }
 
-/** A "to" amount in [min, max]: the minimum, the maximum (all-in) or anything between. */
+/**
+ * A "to" amount in [min, max] of a natural size: the minimum 40% of the time, all-in 10%, and
+ * otherwise anything up to twice the minimum (so hands also go to the river with chips behind).
+ */
 function amountIn(bounds: { min: number; max: number }, rng: Rng): number {
-  const r = randInt(rng, 4);
-  if (r === 0) return bounds.min;
-  if (r === 1) return bounds.max;
-  return bounds.min + randInt(rng, bounds.max - bounds.min + 1);
+  const r = randInt(rng, 10);
+  if (r < 4) return bounds.min;
+  if (r === 4) return bounds.max;
+  return bounds.min + randInt(rng, Math.min(bounds.max - bounds.min, bounds.min) + 1);
 }
 
 /**
