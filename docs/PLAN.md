@@ -149,6 +149,7 @@ rb-poker-coach/
 │   │   │   │   └── generated/    # committed outputs of scripts/gen-*.ts + checksums.json; never hand-edited
 │   │   │   └── i18n/en.ts        # EVERY user-visible string and coach template (Appendix F)
 │   │   └── tests/                # mirrors src/; *.slow.test.ts only run in the slow project
+│   │       ├── lint/             # eslint.config.js through ESLint's API (§2.1, Stage 0 acceptance 5)
 │   │       └── e2e/              # Playwright specs (run against the Nest-served production build)
 │   └── server/                   # package "@rb/server": NestJS 12, ESM; builds to apps/server/dist (§2.6)
 │       ├── package.json          # deps: @nestjs/core, @nestjs/common, @nestjs/platform-express, @nestjs/serve-static, helmet
@@ -330,14 +331,25 @@ core ◄── eval ◄── engine ◄──────────── app
 | `core` | nothing | anything | Leaf utilities |
 | `eval` | `core` | everything else | Pure maths |
 | `engine` | `core`, `eval` | `analysis`, `brain`, `app`, `ui`, `persist` | Rules never depend on strategy or UI |
-| `analysis` | `core`, `eval`, `import type` from `engine/types` | `engine` runtime | Hero maths works on cards, not state |
-| `brain` | `core`, `eval`, `analysis`, `import type` from `engine/types` | `engine` runtime (`observe`, `start`, `step`) | ⚠️ The brain only ever sees an `Observation` |
-| `workers` | `brain`, `analysis`, `eval`, `core`, `workers/protocol` | `engine` runtime, `app`, `ui` | Workers receive observations and hero cards only |
+| `analysis` | `core`, `eval`, `data`, `import type` from `engine/types` | `engine` runtime | Hero maths works on cards, not state |
+| `brain` | `core`, `eval`, `analysis`, `data`, `import type` from `engine/types`, and its one function `observationKey` | `engine` runtime (`observe`, `start`, `step`) | ⚠️ The brain only ever sees an `Observation` |
+| `workers` | `brain`, `analysis`, `eval`, `core`, `data`, `workers/protocol`, `import type` from `engine/types`, and `observationKey` | `engine` runtime, `app`, `ui` | Workers receive observations and hero cards only |
+| `workers/protocol` | only `import type`, from `core`, `engine/types`, `analysis`, `brain` | any run-time import | Message types only (Appendix A.6) |
 | `persist` | `core`, `engine/invariants`, types | `ui`, `app` | Storage testable without a DOM |
-| `app` | all of the above | `ui` components | Orchestration |
-| `ui` | `app/store`, `core`, `i18n`, types | `engine` reducer, `brain` | The UI dispatches through the controller |
+| `app` | all of the above, `sound`; types from any module | `ui` (even its types); `i18n` and `data` at run time | Orchestration |
+| `ui` | `app/store`, `core`, `i18n`, `data`, `sound`, types | `engine` reducer, `brain` | The UI dispatches through the controller |
+| `data` | only `import type`, from `core` and `eval` | everything else | Static rows and generated tables (§7.5, F.7, F.8) |
+| `i18n` | only `import type` | any run-time import | Strings only (§0.3) |
+| `sound` | nothing | anything | Web Audio only (§12.8) |
+| `main.tsx` | `app`, `ui`, `i18n` | everything else | Entry point: boot and render |
 
-ESLint `no-restricted-imports` (or `eslint-plugin-boundaries`) enforces this and MUST fail CI on a violation. The table covers `apps/web/src` and is unchanged by the monorepo. `apps/server` MUST NOT import anything from `apps/web/src` (it only serves the built files in `apps/web/dist`); a lint rule enforces this too. If the server ever needs game code, move `core`, `eval` and `engine` into `packages/game`: the boundary rules already make that a move, not a rewrite (future, not v1).
+How to read the table (the lint rule reads it the same way):
+- A module is a top-level folder of `apps/web/src`; every module may import its own files. `app/store` means `app/store.ts` (or an `app/store/` folder). `workers/protocol` has its own row: the worker files may import it, and it imports only types.
+- "Types" means `import type` / `export type` (or an `import('…')` type). With `verbatimModuleSyntax`, an inline `import { type X } from '…'` compiles to `import {} from '…'` and still loads the module, so it counts as a run-time import.
+- `observationKey` (A.4) lives in `engine/types.ts`, and the brain (the coach seed, §2.4) and `brain.worker` (the hint cache, §8.11) call it. It reads only an `Observation`, so it is the one run-time name they may take from `engine/types`.
+- Anything not in a module's row is forbidden, including files outside `apps/web/src` and folders missing from this table (a new folder needs its row here and in `eslint.config.js` first). npm packages are outside this table.
+
+A small local ESLint rule, `rb/web-module-boundaries` in `eslint.config.js` (its table `WEB_MODULES` mirrors this one), enforces this and MUST fail CI on a violation. It resolves every import to a path (static imports, `export … from`, dynamic `import()`, `import('…')` types), so relative imports at any depth and aliases (`@/`, `~/`, `#`, `src/`, `/src/`, `@rb/web/…`) are all caught; `import()` needs a string literal. The table covers `apps/web/src` and is unchanged by the monorepo. `apps/server` MUST NOT import anything from `apps/web` (it only serves the built files in `apps/web/dist`); the rule `rb/server-no-web-imports` enforces this. `apps/web/tests/lint/boundaries.test.ts` checks both rules and the `Math.random` ban through ESLint's API (Stage 0, acceptance 5). If the server ever needs game code, move `core`, `eval` and `engine` into `packages/game`: the boundary rules already make that a move, not a rewrite (future, not v1).
 
 ### 2.2 Threads
 
@@ -2232,6 +2244,7 @@ The human answered on 23 Sep 2026. Answered rows show the decision; open rows ke
 | 1.3.1 | 28 Sep 2026 | Scaffold (chunk 0.1): every §2.5 pin installed as written; the unpinned test, lint and format tools pinned exactly (§2.5 Tests, Lint and format rows); `.npmrc` `save-exact`; npm 11 blocks dependency install scripts, and the two it lists are denied in `allowScripts` (`@swc/core`: its native binary comes as an optional dependency; `fsevents`: ships prebuilt). Import convention (§0.3). Vitest `unit`/`slow` defines only the selected project, so a bare `vitest` never runs slow tests; the server has the same split. Server: `setup.ts` (`configureApp`, shared with the tests), `HealthModule` + `HealthService`; an empty `SOURCE_COMMIT` counts as unset (§0.1). Vite 8's Oxc transform also emits decorator metadata (Testing strategy, Server row) |
 | 1.3.2 | 28 Sep 2026 | Static serving and headers (chunk 0.3): `security.ts` also exports the expected header values and the static cache rule; `strictTransportSecurity` written as a boolean (`exactOptionalPropertyTypes`, same behaviour) (§17.2); the `assets/` cache rule is judged relative to `rootPath`, and `no-store` covers every `/api` response, 404s included (§2.6 b); `WEB_DIST_DIR` override; misses outside `/api` get Express's own 404 page with its stricter CSP, because Nest 12 mounts its JSON 404 handler under the global prefix only (§2.6 a); new pitfalls 44 (dot-folder checkouts break the SPA fallback) and 45 (`Test.createTestingModule` gives serve-static a no-op loader); the server tests serve their fixture from a temporary copy and boot like `main.ts` (Testing strategy, Server row); with the SPA fallback in place, the scaffold's "`/health` is a 404" test now checks that `/health` is the game page, not the health JSON |
 | 1.3.3 | 28 Sep 2026 | PWA shell (chunk 0.4): the meta CSP string lives in `apps/web/scripts/csp.ts` (the web app does not import `apps/server`; the E2E should compare it with the header) and is inserted right after `<meta charset>`, so it precedes every script; `scripts/check-html.ts` (`npm run check:html -w @rb/web`) also rejects inline event handlers and a meta CSP placed after a script; the icons are drawn by `scripts/gen-icons.ts` (a light spade on felt) and a test checks the committed PNGs are exactly its output; the manifest's name, short name and description come from `en.ts`; `index.html` also links `icons/icon-192.png` as the favicon (otherwise `/favicon.ico` gets the SPA fallback); `tsconfig.node.json` also covers `scripts/` and `tests/scripts/`. vite-plugin-pwa adds the manifest and its icons to the precache although the glob already matches them; Workbox ignores the identical duplicates |
+| 1.3.4 | 28 Sep 2026 | Lint boundaries (chunk 0.2): the §2.1 rules are a small local ESLint rule (`rb/web-module-boundaries` in `eslint.config.js`), not `no-restricted-imports` or `eslint-plugin-boundaries`. `no-restricted-imports` matches import strings, not paths (so no allow-lists such as "`core` imports nothing", and false matches by folder name), skips dynamic `import()`, and its `allowTypeImports` accepts an inline `import { type X }`, which `verbatimModuleSyntax` keeps as a run-time import. `eslint-plugin-boundaries` classifies an import by resolving it to a file on disk, and in Stage 0 none of the modules exist yet. §2.1 table: rows for `workers/protocol`, `data`, `i18n`, `sound` and `main.tsx`; `data` added to `analysis`, `brain`, `workers` and `ui` (§0.1, §7.5, §13), `sound` to `app` and `ui` (§12.8); `workers` may import types from `engine/types`; the brain and the workers may call `observationKey` (A.4 puts it in `engine/types.ts`; §2.4 and §8.11 call it there); how to read the table is written out. `apps/server` must not import anything from `apps/web`, not only from `apps/web/src` |
 
 ---
 
