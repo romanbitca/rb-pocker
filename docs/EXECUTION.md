@@ -136,6 +136,12 @@ If the human's answer later reveals a problem, the fix becomes a new chunk ahead
 
 _(nothing yet)_
 
+### Pending fixes (apply at merge time)
+
+- 1.3 (PR #10): PLAN D.1 row 6 best5 order contradicts rows 7 and 22. Decision (orchestrator, 27 Sep): within a rank, order by suit s > h > d > c (selection still prefers hole cards, §5.4). Change row 6 to `7♥ 7♦ 7♣ K♠ 2♦`, state the order rule in §5.4, turn the `it.fails` for row 6 into a normal test.
+- PLAN change-log rows 1.3.x were numbered independently by parallel agents: renumber them in merge order.
+- Later (Stage 9 or a small fix): Workbox `navigateFallbackDenylist: [/^\/api\//]` so a browser with the SW installed shows JSON at `/api/health` (needs a §15.1 edit).
+
 ## Log
 
 | Date | Chunk | Result | Usage window (baseline → end) |
@@ -143,3 +149,5 @@ _(nothing yet)_
 | 27 Sep 20:44–21:05Z | 0.1 | [PR #1](https://github.com/romanbitca/rb-pocker/pull/1) merged; all local checks green | overnight mode; ~4% of window |
 | 27 Sep 21:07–21:35Z | 0.3, 0.4, 0.2, 0.5 | PRs [#2](https://github.com/romanbitca/rb-pocker/pull/2), [#4](https://github.com/romanbitca/rb-pocker/pull/4), [#6](https://github.com/romanbitca/rb-pocker/pull/6), [#7](https://github.com/romanbitca/rb-pocker/pull/7) merged (local checks; no CI yet). Docker image healthy; PLAN pitfalls 44–45 added | 4% → 31% (5 agents in parallel) |
 | 27 Sep 21:30Z | 2.4 (oracle part) | [PR #5](https://github.com/romanbitca/rb-pocker/pull/5) open, held for Stage 2 | — |
+| 27 Sep 21:10–21:48Z | 1.1, 1.2, 1.3 | PRs [#3](https://github.com/romanbitca/rb-pocker/pull/3), [#9](https://github.com/romanbitca/rb-pocker/pull/9), [#10](https://github.com/romanbitca/rb-pocker/pull/10) open (stacked, held until Stage 0 CI is green). C.4 golden ✓, 1M differential 0 mismatches, exhaustive C.1 ✓ (2.9 s), 16.4M evals/s | — |
+| 27 Sep 21:40Z | 0.7 | [PR #8](https://github.com/romanbitca/rb-pocker/pull/8) merged; initial JS 69 KB gzip | — |
