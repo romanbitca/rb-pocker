@@ -56,7 +56,7 @@ Legend: `[ ]` todo · `[~]` in progress (branch exists) · `[x]` merged to `main
 ## Stage 3 - Playable table (PLAN §12, §13, §14 minimal, A.8)
 
 - [ ] 3.1 `feature/zustand-store-and-table-controller` - store slices, `TableController` (scheduling, `advance` gating, gates, epoch), temporary `SimpleBot` behind the async interface, test hooks `?seed=` / `window.__pc`.
-- [ ] 3.2 `feature/local-session-and-settings-storage` - `persist/storage.ts`, minimal `pc.v1.profile` (settings), `pc.v1.session` saved after every step, resume.
+- [~] 3.2 `feature/local-session-and-settings-storage` - `persist/storage.ts`, minimal `pc.v1.profile` (settings), `pc.v1.session` saved after every step, resume.
 - [~] 3.3 `feature/card-and-seat-components` - SVG cards (no Unicode suits), `Seat` (memo), `layout/seats.ts` ellipse tables, dealer button, bets.
 - [ ] 3.4 `feature/table-screen-layouts` - Table in portrait / landscape / wide, board, pot, hero strip with label + highlight, secure-context feature detection.
 - [ ] 3.5 `feature/action-bar-and-sizing-tray` - presets, slider, disabled Fold with tooltip, 56 px / 44 px targets, Android Back closes tray.
@@ -136,6 +136,18 @@ If the human's answer later reveals a problem, the fix becomes a new chunk ahead
 
 _(nothing yet)_
 
+### Rebase map for stacked branches (old base..old tip, from git merge-base, 27 Sep 23:25Z)
+
+| PR | Branch | Replay onto main |
+|---|---|---|
+| #14 | feature/engine-types-and-invariants | 55d23ee..ba91ca9 |
+| #16 | feature/engine-table-setup-and-deal | ba91ca9..25aef21 |
+| #18 | feature/engine-betting-rules | 25aef21..997d122 |
+| #20 | feature/engine-side-pot-settlement | 997d122..11890f8 |
+| #19 | feature/local-session-and-settings-storage | ba91ca9..f54cce4 |
+| #15 | feature/card-and-seat-components | e84ece6..bb2a8f6 |
+| #17 | feature/hand-rankings-panel | bb2a8f6..7624866 |
+
 ### Pending fixes (apply at merge time)
 
 - ✅ done in PR #10 — 1.3 (PR #10): PLAN D.1 row 6 best5 order contradicts rows 7 and 22. Decision (orchestrator, 27 Sep): within a rank, order by suit s > h > d > c (selection still prefers hole cards, §5.4). Change row 6 to `7♥ 7♦ 7♣ K♠ 2♦`, state the order rule in §5.4, turn the `it.fails` for row 6 into a normal test.
@@ -155,3 +167,6 @@ _(nothing yet)_
 | 27 Sep 21:37–22:35Z | 2.1, 2.2 | PRs [#14](https://github.com/romanbitca/rb-pocker/pull/14), [#16](https://github.com/romanbitca/rb-pocker/pull/16) open (stacked on Stage 1, held). I0–I15 with mutation tests; 3,000-table fast-check; B1/B26/B30/B31/B36 full. PLAN §3.7 fixed so B34 is reachable | 53% → 66% |
 | 27 Sep 22:12–22:40Z | Stage 1 merge | PRs #3, #9, #10 rebased and merged with green CI (check, docker, e2e); D.1 row 6 fixed. **Stage 1 complete** | Sonnet agent |
 | 27 Sep 21:47–22:43Z | 3.3, 3.6 (early) | PRs [#15](https://github.com/romanbitca/rb-pocker/pull/15), [#17](https://github.com/romanbitca/rb-pocker/pull/17) open, held for stage order (need rebase onto main). View models in `src/ui/views.ts`; seat geometry fixed for 360–390 px phones (PLAN §12.4 amended) | 69% → ~75% |
+| 27 Sep 22:37–23:22Z | 2.3, 2.4 | PRs [#18](https://github.com/romanbitca/rb-pocker/pull/18), [#20](https://github.com/romanbitca/rb-pocker/pull/20) ready. Engine vs independent oracle: 0 mismatches on 100k (unit) + 1M (slow) all-in hands; 2,500-hand property run; engine branch coverage 99.0%; B1–B20, B25–B29, B32, B34–B40, B43–B44 through the real engine | 71% → 86% |
+| 27 Sep 22:44–23:20Z | 3.2 (early) | [PR #19](https://github.com/romanbitca/rb-pocker/pull/19) ready, held for stage order; persist branch coverage 95.6% | (same window) |
+| 27 Sep 23:25Z → | Stage 2 merge train | #14 → #16 → #18 → #20 onto main with CI; closes #5 | Sonnet agent, 86% → |
