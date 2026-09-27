@@ -59,8 +59,11 @@ An npm-workspaces monorepo: `apps/web` is the game (everything the player runs),
 ```
 rb-poker-coach/
 ├── package.json                  # "workspaces": ["apps/*"]; scripts: dev, dev:server, build, start, test, test:slow, e2e,
-│                                 #   lint, typecheck, size, gen, selfplay, docker:up (each delegates with -w)
+│                                 #   typecheck, size, gen, selfplay, docker:up (each delegates with -w); lint, format,
+│                                 #   format:check (run at the root); allowScripts (dependency install scripts stay off)
 ├── package-lock.json             # one lockfile for both apps
+├── .npmrc                        # save-exact=true: every dependency is pinned exactly
+├── .prettierrc.json              # Prettier: single quotes, width 100; .prettierignore skips Markdown and the lockfile
 ├── Dockerfile                    # multi-stage, non-root, EXPOSE 3000, HEALTHCHECK on /api/health (§17.3)
 ├── docker-compose.yml            # one service, port 3000:3000, NODE_ENV=production: the image Coolify runs
 ├── .dockerignore                 # node_modules, **/dist, .git
@@ -71,8 +74,9 @@ rb-poker-coach/
 │   │   ├── index.html            # app shell: viewport meta, #root, apple-touch-icon, <noscript>; no inline scripts (meta CSP injected at build, §15.2)
 │   │   ├── package.json          # deps: react, react-dom, zustand; scripts: dev, build, test, test:slow, e2e, gen, gen:check, size, selfplay
 │   │   ├── tsconfig.json         # strict, noUncheckedIndexedAccess, exactOptionalPropertyTypes; types: vite-plugin-pwa/react
+│   │   ├── tsconfig.node.json    # the same flags with Node types, for vite.config.ts and vitest.config.ts
 │   │   ├── vite.config.ts        # @vitejs/plugin-react + vite-plugin-pwa (generateSW), worker format 'es', /api proxy to :3000 in dev
-│   │   ├── vitest.config.ts      # projects: unit (default) and slow (SLOW=1)
+│   │   ├── vitest.config.ts      # projects: unit (default) and slow (only *.slow.test.*; SLOW=1 or --project slow)
 │   │   ├── playwright.config.ts  # phone, landscape, tablet, desktop projects; Chromium + WebKit; webServer = the Nest-served build
 │   │   ├── public/
 │   │   │   └── icons/            # 192, 512, 512-maskable PNG, apple-touch 180
@@ -146,12 +150,18 @@ rb-poker-coach/
 │   └── server/                   # package "@rb/server": NestJS 12, ESM; builds to apps/server/dist (§2.6)
 │       ├── package.json          # deps: @nestjs/core, @nestjs/common, @nestjs/platform-express, @nestjs/serve-static, helmet
 │       ├── tsconfig.json         # module/moduleResolution nodenext, target ES2023, experimentalDecorators, emitDecoratorMetadata
+│       ├── tsconfig.build.json   # what `nest build` compiles: src → dist (dist/main.js)
 │       ├── nest-cli.json
+│       ├── vitest.config.ts      # unplugin-swc (decorator metadata for DI); projects unit and slow, as in apps/web
 │       ├── src/
-│       │   ├── main.ts           # helmet + Permissions-Policy, setGlobalPrefix('api'), enableShutdownHooks, listen 0.0.0.0:PORT
+│       │   ├── main.ts           # configureApp, enableShutdownHooks, listen 0.0.0.0:PORT
+│       │   ├── setup.ts          # configureApp(app): setGlobalPrefix('api'), X-Powered-By off, helmet + Permissions-Policy
+│       │   │                     #   (§17.2); shared by main.ts and the HTTP tests, so tests see the real setup
 │       │   ├── app.module.ts     # ServeStaticModule (apps/web/dist, SPA fallback, cache headers) + HealthModule
 │       │   ├── security.ts       # the helmet options and the CSP string (single source for §17.2)
-│       │   └── health.controller.ts # GET /api/health → { status, version, commit }
+│       │   ├── health.module.ts  # HealthController + HealthService
+│       │   ├── health.service.ts # version from package.json, commit from SOURCE_COMMIT (unset or empty → 'dev')
+│       │   └── health.controller.ts # GET /api/health → { status, version, commit }, Cache-Control: no-store
 │       └── test/                 # Vitest unit + HTTP e2e (supertest) against a small apps/web/dist fixture
 ├── .github/workflows/            # check, e2e, docker, slow (§17.5); no deploy job: Coolify deploys on push
 ├── docs/PLAN.md                  # this document
@@ -179,6 +189,7 @@ rb-poker-coach/
 - **Time:** engine logic is time-free. Only `app/controller.ts` uses timers.
 - **Randomness:** only through `core/rng.ts`. ESLint bans `Math.random` in `src/`.
 - **Strings:** every user-visible string lives in `src/i18n/en.ts`. The brain produces reason codes, never English.
+- **Imports:** relative imports name the real file. `apps/web` writes `.ts`/`.tsx` (`allowImportingTsExtensions`, as in Vite's own template); `erasableSyntaxOnly` (no enums, namespaces or parameter properties) keeps every web file loadable by Node 24's built-in type stripping, so `scripts/*.ts` can import `src/` without a build step. `apps/server` writes `.js` (`module: nodenext`; `tsc` emits Node ESM).
 - **Name:** the product is **RB Poker Coach** (home-screen short name "RB Poker"); every user-visible string uses it. Internal identifiers keep the short `pc` / `poker-coach` form and MUST NOT be renamed (storage keys `pc.v1.*`, the `pc-writer` lock, `window.__pc`, the export file's `app: 'poker-coach'` field), so saved data never needs a migration for the name (§14.2).
 
 ### 0.4 Decisions at a glance
@@ -389,7 +400,8 @@ Consequences:
 | State | Pure engine reducer (§4, unchanged) + **one Zustand 5.0.15 store** (`app/store.ts`) with slices `game`, `equity`, `coach`, `ui`, `settings`. The store only holds the reducer's output and UI state; it never runs game logic. Components subscribe with narrow selectors (`useShallow` from `zustand/react/shallow` when selecting several fields); equity progress writes only the `equity` slice; seat components are wrapped in `React.memo`. No router library (§12.1) | Replay, undo, resume and tests are trivial; ~0.9 KB gzip; narrow selectors keep worker progress from re-rendering the table | XState (+12 KB), Redux Toolkit (boilerplate), React context as the store (re-renders every consumer) |
 | Styling | CSS Modules + `tokens.css` custom properties | Seat geometry is computed at runtime | Tailwind |
 | Evaluator | Own (§5) | Needs best five, kickers, masks | `phe` (rank only, 2018), `poker-evaluator` (130 MB), `@pokertools/evaluator` (no best five). `@poker-apprentice/hand-evaluator` 4.3.0 and `pokersolver` 2.1.4 are **dev-only oracles** |
-| Tests | Vitest 5, **fast-check**, Playwright, @axe-core/playwright, **@testing-library/react 16.3.3** + @testing-library/dom 10 (installed explicitly) | Property tests are the main engine defence | — |
+| Tests | **Vitest 5.0.2** (+ @vitest/coverage-v8 5.0.2; jsdom 30.1.1 for component tests), **fast-check 4.10.2**, **Playwright 1.63.0**, @axe-core/playwright 4.13.0, **@testing-library/react 16.3.3** + @testing-library/dom 10.4.2 (installed explicitly); server: supertest 7.3.0, unplugin-swc 2.0.0 + @swc/core 1.16.2 | Property tests are the main engine defence | — |
+| Lint and format | **ESLint 10.11.0** (flat config) + @eslint/js 10.0.1 + **typescript-eslint 8.70.1** `recommended`, globals 17.12.0; **Prettier 3.9.9** | Standard, fast; ESLint also carries the §2.1 boundary rules | — |
 | Storage | `localStorage` (§14) | Small data, synchronous, atomic per key | Cookies, IndexedDB in v1 |
 | Server | **NestJS 12.1.0** (`@nestjs/core`, `common`, `platform-express`; ESM-only, Express 5), **@nestjs/serve-static 12.0.0**, **helmet 8.3.0**, @nestjs/cli 12.0.5 (§2.6) | The human chose Nest.js; serve-static + helmet cover the whole v1 role | A database, an ORM, auth modules (nothing to store); Nest 12.1's new `app.useSecurityHeaders()` (released 23 Sep 2026; MAY replace helmet later once proven) |
 | Hosting | Local first; then the owner's **Coolify v4** server (Dockerfile build pack, Traefik proxy with Let's Encrypt) (§17) | The human's own server; same container locally and in production | Cloudflare / static hosts (the human chose Coolify) |
@@ -2111,7 +2123,7 @@ Build in order. Every stage ends running locally via `npm start` and `docker com
 | Data | Node | Generated tables match checksums; 20 cells re-sampled within 0.5 points (§7.5) | on `scripts/gen-*` changes, nightly |
 | Simulation | `scripts/selfplay.ts` | Bot calibration, coach win rate, anti-exploit | nightly; required before merging bot changes |
 | Component | Vitest + @testing-library/react | Hero strip, badge states, action-bar states, ladder highlight, templates; seat re-render count (pitfall 37) | every push |
-| Server | Vitest + supertest against the Nest app with a small `dist` fixture (Nest's dependency injection needs decorator metadata: if Vitest's transform does not emit it, add `unplugin-swc` as the Nest docs recommend; the first test boots `AppModule`, so this fails loudly in Stage 0) | Every §17.2 header on `/`, on the SPA fallback and on `/sw.js`; cache rules per path; `/api/health` 200 with `version` and `commit`; no `Set-Cookie` anywhere; `/table/42` → `index.html`; `/api` and `/api/nope` → JSON 404, not `index.html`; missing `/assets/x.js` → 404; no HSTS unless `NODE_ENV=production`; no `upgrade-insecure-requests` | every push |
+| Server | Vitest + supertest against the Nest app with a small `dist` fixture (Nest's dependency injection needs decorator metadata: `unplugin-swc` emits it in tests, as the Nest docs recommend. Checked at scaffold: Vite 8's own Oxc transform also emits it, and Nest 12's ESM starter relies on that, so `unplugin-swc` MAY be dropped later. The first test boots `AppModule` and asserts `design:paramtypes`; with metadata off it fails loudly: HTTP 500) | Every §17.2 header on `/`, on the SPA fallback and on `/sw.js`; cache rules per path; `/api/health` 200 with `version` and `commit`; no `Set-Cookie` anywhere; `/table/42` → `index.html`; `/api` and `/api/nope` → JSON 404, not `index.html`; missing `/assets/x.js` → 404; no HSTS unless `NODE_ENV=production`; no `upgrade-insecure-requests` | every push |
 | End-to-end | Playwright (Chromium, WebKit) against the Nest-served production build (`npm run build && npm start`) | Play (one tap) → play → hint → undo → drawer → stats → export/import; Setup; level matrix; layouts at 6 viewports; offline; no external requests and no `/api` requests during play; response headers; two tabs; resume; reduced motion; keyboard-only | every PR |
 | Container | `docker compose` in CI | Image builds, becomes `healthy`, serves the §17.2 headers | every PR to `main` |
 | Accessibility | @axe-core/playwright + manual script | No serious/critical violations; VoiceOver/TalkBack script | every PR (axe), each release (manual) |
@@ -2212,6 +2224,7 @@ The human answered on 23 Sep 2026. Answered rows show the decision; open rows ke
 | 1.1 | 23 Sep 2026 | Implementer dry-run fixes: global `handSeq` rule (§14.3); `BrainProfile`/`COACH`/`profileFor` (A.5); undo truncates replay inputs, waits for the grade, `grade: null` on failure (§11.3, A.7); seat stats persisted in the session (§9.5); bots never compute `eRandom` (§8.2); layout breakpoints, edge-tab gutter, compact tray, Menu contents (§12.3); system/failure states (§12.14); controller modes and gates (A.8); level-suggestion data (`recentHands`, `currentSession`); Stage 3 gets the settings-only profile and test hooks, Stage 5 builds the full range model; config ranges (§3.2); template placeholders, feedback fallback, glossary keys (F.1, F.5, F.9); build-only meta CSP and relative manifest URLs (§15) |
 | 1.2 | 23 Sep 2026 | Domain audit: capped `winPot` for pot odds when the hero is short (§0.3, §8.2, F.1, F.5); bot decision seeds no longer derived from the deck seed (§2.4, §9.6); short opening all-in does not reopen for players who checked (§3.6, B37); "strictly after the button" wording (§3.7); board-only two pair / trips sub-labels + D.1 vectors (§6.1, F.3); flake-proof Monte Carlo tolerances (§7.5, §7.7); badge hysteresis defined; decisive semi-bluff size (§8.5); Blunder floor applies to the price signal (§8.9); COMMITTED copy; full house 1 in 39; rarity-vs-rank footer (§13.2, F.7); ITP cookie cap wording (§1.5, §14.1); help lines updated to 1-800-MY-RESET and GamCare (§16.2, G.3); Cloudflare cookie/analytics features off, no `Set-Cookie` check (§17); `webmanifest` precached (§15.1). All reference numbers in C.2, C.3 (exact rows) and D.3 re-computed with an independent evaluator and confirmed |
 | 1.3 | 23 Sep 2026 | The human's answers and stack change. Q2 decided by us (the big number stays "any cards"); Q3: the human typed "RB Poker Caouch", **we read it as "RB Poker Coach"** (short name "RB Poker") — please correct us if another name was meant; internal `pc.*` identifiers unchanged (§0.3); Q4: Exam kept; Q6: the owner's Coolify server. Front end **React 19 + Zustand 5** instead of Preact + signals (§2.5, §15.3 budgets re-set, pitfall 37); **NestJS 12 server** in an npm-workspaces monorepo (§0.1, §2.1, §2.6); **local first, Docker, then Coolify** instead of Cloudflare, GitHub Pages fallback removed, CI deploy job removed (§17, §18); secure-context degradation for plain-http LAN testing (§12.14, pitfall 43); **one-tap Play** from Welcome and Home, Setup optional (§12.1, §12.2, Stage 3); privacy text for self-hosting (§16.1, G.2); Node 24, TypeScript 6.0. Review pass: `useRegisterSW` called unconditionally (§15.1), initial-JS target 130 KB under the 150 KB gate (§15.3), dealing never waits for a worker (§12.14), Traefik access log and sticky sessions off (§17.6), Playwright `webServer` from the repo root (§17.5) |
+| 1.3.1 | 28 Sep 2026 | Scaffold (chunk 0.1): every §2.5 pin installed as written; the unpinned test, lint and format tools pinned exactly (§2.5 Tests, Lint and format rows); `.npmrc` `save-exact`; npm 11 blocks dependency install scripts, and the two it lists are denied in `allowScripts` (`@swc/core`: its native binary comes as an optional dependency; `fsevents`: ships prebuilt). Import convention (§0.3). Vitest `unit`/`slow` defines only the selected project, so a bare `vitest` never runs slow tests; the server has the same split. Server: `setup.ts` (`configureApp`, shared with the tests), `HealthModule` + `HealthService`; an empty `SOURCE_COMMIT` counts as unset (§0.1). Vite 8's Oxc transform also emits decorator metadata (Testing strategy, Server row) |
 
 ---
 

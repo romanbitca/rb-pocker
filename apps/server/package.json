@@ -1,0 +1,37 @@
+{
+  "name": "@rb/server",
+  "version": "0.1.0",
+  "private": true,
+  "description": "RB Poker Coach: the small NestJS server that serves the built game.",
+  "type": "module",
+  "scripts": {
+    "dev": "nest start --watch",
+    "build": "nest build",
+    "start": "node dist/main.js",
+    "test": "vitest run --project unit",
+    "test:slow": "vitest run --project slow",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@nestjs/common": "12.1.0",
+    "@nestjs/core": "12.1.0",
+    "@nestjs/platform-express": "12.1.0",
+    "@nestjs/serve-static": "12.0.0",
+    "helmet": "8.3.0",
+    "reflect-metadata": "0.2.2",
+    "rxjs": "7.8.2"
+  },
+  "devDependencies": {
+    "@nestjs/cli": "12.0.5",
+    "@nestjs/testing": "12.1.0",
+    "@swc/core": "1.16.2",
+    "@types/express": "5.0.6",
+    "@types/node": "24.19.0",
+    "@types/supertest": "7.2.1",
+    "supertest": "7.3.0",
+    "typescript": "6.0.3",
+    "unplugin-swc": "2.0.0",
+    "vite": "8.3.0",
+    "vitest": "5.0.2"
+  }
+}
