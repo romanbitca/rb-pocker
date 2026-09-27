@@ -7,6 +7,8 @@
   "scripts": {
     "dev": "vite --host",
     "build": "vite build",
+    "check:html": "node scripts/check-html.ts dist/index.html",
+    "gen:icons": "node scripts/gen-icons.ts",
     "test": "vitest run --project unit",
     "test:slow": "vitest run --project slow",
     "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.node.json"

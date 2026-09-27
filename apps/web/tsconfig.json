@@ -10,7 +10,7 @@
     "erasableSyntaxOnly": true,
     "noUncheckedSideEffectImports": true,
     "jsx": "react-jsx",
-    "types": ["vite/client"],
+    "types": ["vite/client", "vite-plugin-pwa/react"],
 
     "strict": true,
     "noUncheckedIndexedAccess": true,
@@ -24,5 +24,6 @@
     "skipLibCheck": true,
     "noEmit": true
   },
-  "include": ["src", "tests"]
+  "include": ["src", "tests"],
+  "exclude": ["tests/scripts"]
 }

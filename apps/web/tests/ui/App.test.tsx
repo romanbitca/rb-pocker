@@ -1,8 +1,17 @@
 // @vitest-environment jsdom
 import { cleanup, render, screen } from '@testing-library/react';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { en } from '../../src/i18n/en.ts';
 import { App } from '../../src/ui/App.tsx';
+
+const { useRegisterSW } = vi.hoisted(() => ({
+  useRegisterSW: vi.fn(() => ({
+    needRefresh: [false, () => {}],
+    offlineReady: [false, () => {}],
+    updateServiceWorker: async () => {},
+  })),
+}));
+vi.mock('virtual:pwa-register/react', () => ({ useRegisterSW }));
 
 afterEach(cleanup);
 
@@ -19,5 +28,12 @@ describe('App', () => {
     render(<App />);
 
     expect(screen.getByText(en.app.tagline)).toBeTruthy();
+  });
+
+  it('registers the service worker through useRegisterSW (PLAN §15.1)', () => {
+    useRegisterSW.mockClear();
+    render(<App />);
+
+    expect(useRegisterSW).toHaveBeenCalled();
   });
 });
