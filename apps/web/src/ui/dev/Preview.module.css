@@ -1,0 +1,144 @@
+/* Dev-only preview (never in production builds). A rough mock of the Table screen's shell. */
+.root {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--text);
+  touch-action: manipulation;
+}
+
+.screen {
+  position: absolute;
+  inset: 0;
+}
+
+.topBar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 4px;
+  background: var(--surface);
+  font-size: 13px;
+}
+.topBar button {
+  min-width: 44px;
+  height: 44px;
+  border: 0;
+  border-radius: var(--radius-2);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 20px;
+}
+.topBar .wideButton {
+  padding: 0 8px;
+  font-size: 13px;
+  text-decoration: underline;
+}
+.count {
+  min-width: 64px;
+  text-align: center;
+}
+.layoutName {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+/* The table box: the felt stadium is inset 12% × 6% (PLAN §12.3). */
+.table {
+  position: absolute;
+}
+.felt {
+  position: absolute;
+  inset: 6% 12%;
+  border: 6px solid #2a1d14;
+  border-radius: 999px;
+  background: radial-gradient(ellipse at 50% 45%, var(--felt) 0%, var(--felt-dark) 100%);
+  box-shadow: inset 0 0 0 2px rgb(255 255 255 / 6%);
+}
+
+.tab {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-2) 0 0 var(--radius-2);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 700;
+  writing-mode: vertical-rl;
+}
+
+.heroStrip {
+  position: absolute;
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  padding: 0 12px 8px;
+  border-top: 1px solid rgb(255 255 255 / 8%);
+  background: var(--surface);
+}
+.heroCards {
+  display: flex;
+  margin-top: calc(-1 * var(--hero-overlap, 24px));
+  align-self: flex-start;
+}
+.heroText {
+  align-self: center;
+  color: var(--muted);
+  font-size: 13px;
+}
+.overlap {
+  margin-left: -19px;
+}
+.heroInset {
+  position: absolute;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding-bottom: 4px;
+}
+
+.mock {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px dashed rgb(255 255 255 / 15%);
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 12px;
+}
+
+/* Card gallery (?preview=ui&view=cards). */
+.gallery {
+  position: absolute;
+  inset: 0;
+  overflow: auto;
+  padding: 16px;
+  background: radial-gradient(ellipse at 50% 30%, var(--felt) 0%, var(--felt-dark) 100%);
+}
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 10px;
+  margin-bottom: 18px;
+}
+.row h2 {
+  width: 100%;
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+}
+.deck {
+  display: grid;
+  grid-template-columns: repeat(13, 24px);
+  gap: 4px;
+}

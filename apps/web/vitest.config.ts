@@ -59,6 +59,7 @@ export default mergeConfig(
           'src/eval/**/*.ts': { branches: 90 },
         },
       },
+      css: { include: [/\.css(?:\?.*)?$/] },
       projects: [
         slowRequested
           ? { extends: true, test: { name: 'slow', include: [SLOW_TESTS] } }
