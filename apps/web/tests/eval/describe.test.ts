@@ -16,7 +16,7 @@ const D1: [string, string, string, string, string, string][] = [
   ['Q♠ Q♦', 'J♣ 7♥ 2♦', 'Pair of Queens', 'Overpair', 'Q♠ Q♦ J♣ 7♥ 2♦', ''],
   ['5♠ 5♦', 'K♣ Q♥ 9♦', 'Pair of Fives', 'Pocket pair under the board', '5♠ 5♦ K♣ Q♥ 9♦', ''],
   ['7♠ 7♦', '7♣ K♥ 2♦', 'Three of a Kind, Sevens', 'A set: well hidden and strong', '7♠ 7♦ 7♣ K♥ 2♦', ''],
-  ['K♠ 7♦', '7♣ 7♥ 2♦', 'Three of a Kind, Sevens', 'Trips: others may share your card', '7♦ 7♥ 7♣ K♠ 2♦', 'holeUsed 2 (K kicker)'],
+  ['K♠ 7♦', '7♣ 7♥ 2♦', 'Three of a Kind, Sevens', 'Trips: others may share your card', '7♥ 7♦ 7♣ K♠ 2♦', 'holeUsed 2 (K kicker)'],
   ['K♣ K♦', 'K♠ 7♥ 7♣ 2♦ 3♠', 'Full House, Kings full of Sevens', 'Uses 2 of your cards', 'K♠ K♦ K♣ 7♥ 7♣', 'core = all 5'],
   ['9♠ 9♦', '8♣ 8♥ 7♦ 7♠ K♣', 'Two Pair, Nines and Eights', 'One pair is on the board', '9♠ 9♦ 8♥ 8♣ K♣', 'kickers [K♣]'],
   ['9♠ 9♦', '8♣ 8♥ 7♦ 7♠ 2♣', 'Two Pair, Nines and Eights', 'One pair is on the board', '9♠ 9♦ 8♥ 8♣ 7♠', 'kicker 7 from the third pair'],
@@ -36,14 +36,6 @@ const D1: [string, string, string, string, string, string][] = [
   ['K♠ 7♣', '— (preflop)', 'King-Seven offsuit', '—', '[]', 'category highCard'],
   ['9♥ 9♣', '— (preflop)', 'Pocket Nines', '—', '[]', 'category pair'],
 ];
-
-/**
- * ⚠️ Known PLAN conflict (reported, not resolved here): within one rank, row 6 lists the hole card
- * first (7♦ 7♥ 7♣), while rows 7 and 22 list the higher suit first even ahead of hole cards
- * (K♠ K♦ K♣, Q♠ Q♥ Q♦ Q♣). No single rule gives all three. The code orders by suit, so row 6 is
- * checked as a set here, and its exact PLAN order is pinned as a known failure below.
- */
-const ORDER_CONFLICT_ROWS = new Set([6]);
 
 /** A.2: `preflopClass` is the §7.5 class name preflop ("AKs"), else null. */
 const PREFLOP_CLASS: Record<string, string> = { 'K♠ 7♣': 'K7o', '9♥ 9♣': '99' };
@@ -79,7 +71,6 @@ const CORE_SIZE: Record<HandCategory, number> = {
 };
 
 const show = (cs: readonly Card[]): string => formatCards(cs);
-const sorted = (cs: readonly Card[]): string => formatCards([...cs].sort((a, b) => a - b));
 
 suite('describe(): Appendix D.1 vectors', () => {
   D1.forEach(([holeText, boardText, name, subText, best5Text, notes], i) => {
@@ -98,13 +89,8 @@ suite('describe(): Appendix D.1 vectors', () => {
       expect(info.name).toBe(name);
       expect(info.subLabel).toBe(expectedSub);
       expect(info.category).toBe(category);
-      if (ORDER_CONFLICT_ROWS.has(rowNo)) {
-        expect(sorted(info.best5)).toBe(sorted(best5));
-        expect(sorted(info.core)).toBe(sorted(best5.slice(0, coreSize)));
-      } else {
-        expect(show(info.best5)).toBe(show(best5));
-        expect(show(info.core)).toBe(show(best5.slice(0, coreSize)));
-      }
+      expect(show(info.best5)).toBe(show(best5));
+      expect(show(info.core)).toBe(show(best5.slice(0, coreSize)));
       expect(show(info.kickers)).toBe(show(best5.slice(coreSize)));
       expect(info.holeUsed).toBe(best5.filter((c) => h.includes(c)).length);
       expect(info.playsTheBoard).toBe(subText.startsWith('The board plays'));
@@ -133,11 +119,11 @@ suite('describe(): Appendix D.1 vectors', () => {
     expect(describe(hole('7♠ K♠'), []).name).toBe('King-Seven suited');
   });
 
-  // Pins the PLAN's exact order for row 6 so the conflict stays visible: this assertion FAILS
-  // with the current ordering (7♥ 7♦ 7♣ K♠ 2♦). Resolve the PLAN, then make this a normal test.
-  it.fails('row 6: exact PLAN order 7♦ 7♥ 7♣ K♠ 2♦ (conflicts with rows 7 and 22)', () => {
+  // PLAN §5.4 / Appendix D.1 row 6 (v1.3.12): a rank's cards in `best5` are always listed by suit
+  // (s > h > d > c), never hole-cards-first; only which cards are *selected* prefers hole cards.
+  it('row 6: cards within the trips are listed by suit, not hole-cards-first', () => {
     const info = describe(hole('K♠ 7♦'), cards('7♣ 7♥ 2♦'));
-    expect(show(info.best5)).toBe(show(cards('7♦ 7♥ 7♣ K♠ 2♦')));
+    expect(show(info.best5)).toBe(show(cards('7♥ 7♦ 7♣ K♠ 2♦')));
   });
 });
 
