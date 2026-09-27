@@ -196,7 +196,7 @@ rb-poker-coach/
 - ⚠️ **Pot you can win (short calls):** when the hero cannot cover the bet, the part of the bet they cannot match is not theirs to win. For `need`, `EV(call)`, the price chip and coach text use `winPot = hero.totalBet + Σ over other dealt-in seats of min(s.totalBet, T)`, where `T = hero.totalBet + toCall` is the hero's total after calling (`toCall` already capped at the stack). Then `need = toCall / (winPot + toCall)`; when the hero covers the bet, `winPot == pot` and nothing changes. Example: hero and villain have 50 each in (pot 100), villain bets 500 more (pot 600), hero has 50 left → `T = 100`, `winPot = 50 + 100 = 150`, `need = 50 / 200 = 25%`, not `50 / 650 = 8%`. When `winPot < pot`, the numbers line says "Pot you can win {winPot}". Unit test with exactly these numbers.
 - **Time:** engine logic is time-free. Only `app/controller.ts` uses timers.
 - **Randomness:** only through `core/rng.ts`. ESLint bans `Math.random` in `src/`.
-- **Strings:** every user-visible string lives in `src/i18n/en.ts`. The brain produces reason codes, never English.
+- **Strings:** every user-visible string lives in `src/i18n/en.ts`. The brain produces reason codes, never English. One exception, forced by §2.1 (`core` and `eval` import nothing outside themselves): the card words (`RANK_NAMES`, `RANK_PLURALS`, `SUIT_NAMES` in `core/cards.ts`, used by `cardAriaLabel` and the hand names), kept together in one table so a translation replaces it as well.
 - **Imports:** relative imports name the real file. `apps/web` writes `.ts`/`.tsx` (`allowImportingTsExtensions`, as in Vite's own template); `erasableSyntaxOnly` (no enums, namespaces or parameter properties) keeps every web file loadable by Node 24's built-in type stripping, so `scripts/*.ts` can import `src/` without a build step. `apps/server` writes `.js` (`module: nodenext`; `tsc` emits Node ESM).
 - **Name:** the product is **RB Poker Coach** (home-screen short name "RB Poker"); every user-visible string uses it. Internal identifiers keep the short `pc` / `poker-coach` form and MUST NOT be renamed (storage keys `pc.v1.*`, the `pc-writer` lock, `window.__pc`, the export file's `app: 'poker-coach'` field), so saved data never needs a migration for the name (§14.2).
 
@@ -770,7 +770,7 @@ function randInt(rng: Rng, n: number): number {           // 1 ≤ n ≤ 2^32
 
 - Fisher–Yates: `for i = hi down to lo+1: j = lo + randInt(i − lo + 1); swap(i, j)`. Full deck `lo = 0, hi = 51`; undo reshuffle `lo = deckPos`.
 - 52! ≈ 2^226 > 2^128, so not every order is reachable from one seed; irrelevant for play.
-- Tests: golden deck for a fixed seed; chi-square over 1,000,000 shuffles (each card's final position uniform, p > 0.001, fixed test seed); `randInt(3)` uniform over 3,000,000 draws.
+- Tests: golden deck for a fixed seed; chi-square over 1,000,000 shuffles (each card's final position uniform, p > 0.001, fixed test seed); `randInt(3)` uniform over 3,000,000 draws. Implemented as: every deck shuffled from its own `deriveSeed(seed, 'deck', i)` stream, as a hand does; pass = the whole 52 × 52 card-by-position table has p > 0.001 **and** every card has p > 0.001 / 52 (Bonferroni: 52 tests together still false-alarm at most 0.1%); plus `randInt(3·2^30)` in 12 equal buckets, where plain `x % n` would make the first four buckets twice as likely. Unit runs 50,000 shuffles and 300,000 draws; slow runs the full sizes.
 
 ---
 
@@ -2175,7 +2175,7 @@ Build in order. Every stage ends running locally via `npm start` and `docker com
 
 ### Rules
 
-- Every statistical test uses a **fixed seed** (deterministic in CI; significance threshold p > 0.001). Nightly runs repeat them with a random seed printed in the log; a failure is reproduced from that seed.
+- Every statistical test uses a **fixed seed** (deterministic in CI; significance threshold p > 0.001). Nightly runs repeat them with a random seed printed in the log; a failure is reproduced from that seed. Mechanism: `TEST_SEED=random` draws a seed and prints it, `TEST_SEED=<32 hex>` reproduces a run (`tests/helpers/seed.ts`).
 - Every bug fix adds a failing test first.
 - Coverage: `src/engine/` ≥ 95% branches; `src/eval/`, `src/analysis/`, `src/persist/` ≥ 90%; `src/brain/` ≥ 85%. SHOULD: mutation testing (e.g. StrykerJS) on `engine/settle.ts` and `engine/legal.ts` before release.
 - Test hooks (`?seed=`, `?script=`, `window.__pc` exposing state, dispatch and worker logs) exist only in development and E2E builds; a test asserts they are absent from the production bundle.
@@ -2262,6 +2262,7 @@ The human answered on 23 Sep 2026. Answered rows show the decision; open rows ke
 | 1.3.6 | 28 Sep 2026 | Size budget (chunk 0.7): `scripts/size-budget.ts` and root `npm run size`; what each §15.3 size row counts is now written under the table (gzip level 6 with node:zlib, 1 KB = 1,000 bytes, initial JS = what `index.html` loads plus static imports, workers by their `*.worker-<hash>.js` name, precache = the `sw.js` list); shared `scripts/html.ts` readers for `check-html.ts` and `size-budget.ts` |
 | 1.3.7 | 28 Sep 2026 | Playwright (chunk 0.6): `apps/web/playwright.config.ts` has 12 projects (Chromium and WebKit × the six §17.5 viewports; phones, landscape and tablet emulate a mobile device: user agent, pixel ratio, touch); `PORT` moves the E2E server when 3000 is taken. Root `npm run e2e` = `scripts/build-if-needed.mjs` (builds only when the build is missing or older than the sources), then `playwright test` in `apps/web` (§0.1). `tsconfig.e2e.json` type-checks the config and specs with DOM and Node types. The §15.2 request listener is on the browser context, so it also sees the service worker, and it flags WebSockets; specs import `test` from `tests/e2e/fixtures.ts`, and a spec checks that the guard records what it must. The offline test kills its own server instead of relying on `setOffline` alone, because Playwright's WebKit offline mode breaks the service worker (§15.2, new pitfall 46). The E2E compares the CSP header with `META_CSP` + `frame-ancestors` and checks the meta tag, as 1.3.3 asked |
 | 1.3.8 | 28 Sep 2026 | CI (chunk 0.8): `.github/workflows/check.yml`, `e2e.yml`, `docker.yml`, `slow.yml` (§17.5); every workflow cancels superseded runs; runners pinned to `ubuntu-24.04` (`ubuntu-latest` moves to Ubuntu 26 on 19 Oct 2026); `check` also runs `format:check`, and `check-tables`/`check-copy` join when they exist; the `docker` job waits with `docker compose up --wait` and reuses `scripts/check-deploy.mjs` with `--commit`, so `docker-compose.yml` now passes `SOURCE_COMMIT` through (§17.3, §0.1); the weekly deploy check is its own job in `slow.yml` and compares the commit with `main`. `scripts/check-deploy.mjs` imports its expected values from `security.ts` (Node 24 strips the types; needs `npm ci`), also checks the SPA fallback, `no-store` on `/api/health` and no `X-Powered-By`, prints one line per URL, and has a server test (pass, no HSTS, a cookie, wrong or missing commit, server down) (§17.6 step 7). §0.2: the `slow` job is weekly |
+| 1.3.9 | 28 Sep 2026 | Cards and seeded RNG (chunk 1.1): the card words live in `core/cards.ts`, the one exception to "every string in `en.ts`" (§0.3), because `core` imports nothing (§2.1); A.1 lists the extra exports (seed helpers, the C.4 reference functions, `rankLabel` for the "10, never T" rule, `newDeck`, `parseCards`/`formatCards`); `EngineError`/`InvariantError` are defined in `core/assert.ts` and re-exported by `engine/types.ts` (§0.1 vs A.3). §5.6 test details: per-card Bonferroni threshold, the `randInt(3·2^30)` modulo-bias check, unit vs slow sizes; `TEST_SEED` (Testing strategy → Rules) |
 
 ---
 
@@ -2282,14 +2283,35 @@ export interface Rng { next(): number }                        // uint32
 export function rngFromSeed(seed: Seed128): Rng;               // sfc32, 16 outputs discarded
 export function deriveSeed(parent: Seed128, label: string, ...ints: number[]): Seed128;
 export function randInt(rng: Rng, n: number): number;          // unbiased, 0..n-1
-export function shuffleRange(arr: Card[], lo: number, hi: number, rng: Rng): void;
+export function shuffleRange<T>(arr: T[], lo: number, hi: number, rng: Rng): void; // Card[] for decks
+export function fnv1a32(s: string): number;                    // Appendix C.4 reference ports,
+export function splitmix32(a: number): () => number;           //   exported for the golden tests
+export function sfc32(a: number, b: number, c: number, d: number): () => number;
+export function isSeed128(s: unknown): s is Seed128;
+export function seedWords(seed: Seed128): [number, number, number, number]; // big-endian words
+export function seedFromWords(w0: number, w1: number, w2: number, w3: number): Seed128;
+export function randomSeed(): Seed128;                         // crypto.getRandomValues (§2.4)
 export const rankOf = (c: Card): Rank => c >> 2;
 export const suitOf = (c: Card): Suit => (c & 3) as Suit;
-export function parseCard(s: string): Card;                    // "Ah" → 50
+export const makeCard = (rank: Rank, suit: Suit): Card => rank * 4 + suit;
+export function isCard(c: unknown): c is Card;
+export function newDeck(): Card[];                             // [0..51], a fresh array
+export function parseCard(s: string): Card;                    // "Ah" → 50; "10h" also accepted
 export function formatCard(c: Card): string;                   // 50 → "Ah"
+export function parseCards(s: string): Card[];                 // "Ah Kd" → [50, 45]
+export function formatCards(cards: readonly Card[]): string;   // [50, 45] → "Ah Kd"
+export function rankLabel(r: Rank): string;                    // card face: "2".."10", "J", "Q", "K", "A"; never "T"
 export function cardAriaLabel(c: Card): string;                // "Ace of hearts"
 export function classOf(a: Card, b: Card): number;             // 0..168 (§7.5 grid)
 export function className(idx: number): string;                // "AKs", "T9o", "77"
+export const RANK_CHARS = '23456789TJQKA', SUIT_CHARS = 'cdhs'; // text form
+export const RANK_NAMES: readonly string[];                    // "Two".."Ace" (F.2; §0.3 Strings)
+export const RANK_PLURALS: readonly string[];                  // "Twos".."Aces"
+export const SUIT_NAMES: readonly string[];                    // "clubs", "diamonds", "hearts", "spades"
+
+// core/assert.ts: invariant(cond, message) throws InvariantError([message]); EngineError and
+// InvariantError (A.3) are defined here and re-exported by engine/types.ts.
+export function invariant(condition: unknown, message: string): asserts condition;
 ```
 
 ### A.2 Evaluator (`src/eval/*.ts`)
