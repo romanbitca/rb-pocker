@@ -196,7 +196,7 @@ rb-poker-coach/
 - ⚠️ **Pot you can win (short calls):** when the hero cannot cover the bet, the part of the bet they cannot match is not theirs to win. For `need`, `EV(call)`, the price chip and coach text use `winPot = hero.totalBet + Σ over other dealt-in seats of min(s.totalBet, T)`, where `T = hero.totalBet + toCall` is the hero's total after calling (`toCall` already capped at the stack). Then `need = toCall / (winPot + toCall)`; when the hero covers the bet, `winPot == pot` and nothing changes. Example: hero and villain have 50 each in (pot 100), villain bets 500 more (pot 600), hero has 50 left → `T = 100`, `winPot = 50 + 100 = 150`, `need = 50 / 200 = 25%`, not `50 / 650 = 8%`. When `winPot < pot`, the numbers line says "Pot you can win {winPot}". Unit test with exactly these numbers.
 - **Time:** engine logic is time-free. Only `app/controller.ts` uses timers.
 - **Randomness:** only through `core/rng.ts`. ESLint bans `Math.random` in `src/`.
-- **Strings:** every user-visible string lives in `src/i18n/en.ts`. The brain produces reason codes, never English. One exception, forced by §2.1 (`core` and `eval` import nothing outside themselves): the card words (`RANK_NAMES`, `RANK_PLURALS`, `SUIT_NAMES` in `core/cards.ts`, used by `cardAriaLabel` and the hand names), kept together in one table so a translation replaces it as well.
+- **Strings:** every user-visible string lives in `src/i18n/en.ts`. The brain produces reason codes, never English. One exception, forced by §2.1 (`core` and `eval` import nothing outside themselves): the card words (`RANK_NAMES`, `RANK_PLURALS`, `SUIT_NAMES` in `core/cards.ts`, used by `cardAriaLabel` and the hand names) and the hand names and sub-labels that `describe()` returns (`HAND_TEXT` in `eval/describe.ts`, Appendix F.2–F.3), each kept together in one table so a translation replaces them as well.
 - **Imports:** relative imports name the real file. `apps/web` writes `.ts`/`.tsx` (`allowImportingTsExtensions`, as in Vite's own template); `erasableSyntaxOnly` (no enums, namespaces or parameter properties) keeps every web file loadable by Node 24's built-in type stripping, so `scripts/*.ts` can import `src/` without a build step. `apps/server` writes `.js` (`module: nodenext`; `tsc` emits Node ESM).
 - **Name:** the product is **RB Poker Coach** (home-screen short name "RB Poker"); every user-visible string uses it. Internal identifiers keep the short `pc` / `poker-coach` form and MUST NOT be renamed (storage keys `pc.v1.*`, the `pc-writer` lock, `window.__pc`, the export file's `app: 'poker-coach'` field), so saved data never needs a migration for the name (§14.2).
 
@@ -739,7 +739,8 @@ The UI and coach path; allocation is fine here.
 - Works for 2 cards (preflop: Pair or High card) and 5–7 cards.
 - ⚠️ `playsTheBoard` = board has 5 cards **and** `score7(board) == score7(hole + board)`. When true: `best5` = the five board cards, `holeUsed = 0`, `core` = the board cards forming the category. Never derive it from `holeUsed` (with board A-K-Q-J-10 and a 10 in hand, a naive picker would choose the hole 10).
 - Otherwise `best5` is built from the score: flush / straight flush → cards of the flush suit with the scored ranks; everything else → for each scored rank, the needed cards of that rank, **preferring hole cards, then the higher suit (s > h > d > c)**, so the highlight shows the player's own contribution deterministically.
-- `core` = cards forming the category (the pair, both pairs, trips, all five for straight/flush/full house, the quads); `kickers` = `best5` minus `core`; `holeUsed` = hole cards in `best5`.
+- `core` = cards forming the category (the pair, both pairs, trips, all five for straight/flush/full house, the quads; for high card, the high card itself, as in F.7); `kickers` = `best5` minus `core`; `holeUsed` = hole cards in `best5`. `best5` lists the `core` cards first, then the kickers from high to low (a straight runs high to low, the wheel ends with the Ace).
+- Preflop (2 cards): `score = 0`, `best5`, `core` and `kickers` are empty, `holeUsed = 0`, `preflopClass` = `className(classOf(...))`.
 - `name` and `subLabel`: §6.1 and Appendix F.2–F.3.
 
 ### 5.5 Evaluator tests (MUST)
@@ -2268,6 +2269,7 @@ The human answered on 23 Sep 2026. Answered rows show the decision; open rows ke
 | 1.3.8 | 28 Sep 2026 | CI (chunk 0.8): `.github/workflows/check.yml`, `e2e.yml`, `docker.yml`, `slow.yml` (§17.5); every workflow cancels superseded runs; runners pinned to `ubuntu-24.04` (`ubuntu-latest` moves to Ubuntu 26 on 19 Oct 2026); `check` also runs `format:check`, and `check-tables`/`check-copy` join when they exist; the `docker` job waits with `docker compose up --wait` and reuses `scripts/check-deploy.mjs` with `--commit`, so `docker-compose.yml` now passes `SOURCE_COMMIT` through (§17.3, §0.1); the weekly deploy check is its own job in `slow.yml` and compares the commit with `main`. `scripts/check-deploy.mjs` imports its expected values from `security.ts` (Node 24 strips the types; needs `npm ci`), also checks the SPA fallback, `no-store` on `/api/health` and no `X-Powered-By`, prints one line per URL, and has a server test (pass, no HSTS, a cookie, wrong or missing commit, server down) (§17.6 step 7). §0.2: the `slow` job is weekly |
 | 1.3.9 | 28 Sep 2026 | Cards and seeded RNG (chunk 1.1): the card words live in `core/cards.ts`, the one exception to "every string in `en.ts`" (§0.3), because `core` imports nothing (§2.1); A.1 lists the extra exports (seed helpers, the C.4 reference functions, `rankLabel` for the "10, never T" rule, `newDeck`, `parseCards`/`formatCards`); `EngineError`/`InvariantError` are defined in `core/assert.ts` and re-exported by `engine/types.ts` (§0.1 vs A.3). §5.6 test details: per-card Bonferroni threshold, the `randInt(3·2^30)` modulo-bias check, unit vs slow sizes; `TEST_SEED` (Testing strategy → Rules) |
 | 1.3.10 | 28 Sep 2026 | Evaluator (chunk 1.2): bit-parallel rank-multiplicity masks instead of `cnt[13]`, and module-local table references because Vitest's module runner slows imported bindings ~4× (§5.3 notes, with measured speeds); A.2 adds `score5`, `score6`, `HAND_CATEGORIES`, `scoreNibbles` and the `tables.ts` exports; §5.5 records the sample sizes, the small-deck samples and the benchmark's warn-only behaviour. Appendix C.1 counts reproduced exactly |
+| 1.3.11 | 28 Sep 2026 | `describe()` (chunk 1.3): the hand names and sub-labels live in `HAND_TEXT` in `eval/describe.ts` (§0.3 Strings exception, since `eval` imports only `core`); §5.4 spells out the high-card `core`, the `best5` order and the preflop fields; D.1 notes that the nuts suffix comes from the UI and records an **open conflict** in D.1's within-rank order (row 6 vs rows 7 and 22; expected values unchanged, row 6's exact order is a known failing test until decided) |
 
 ---
 
@@ -2347,7 +2349,8 @@ export interface HandInfo {
   holeUsed: 0 | 1 | 2;
   playsTheBoard: boolean;       // §5.4
 }
-export function describe(hole: [Card, Card], board: Card[]): HandInfo;
+export function describe(hole: [Card, Card], board: Card[]): HandInfo; // board of 0, 3, 4 or 5 cards
+export const HAND_TEXT: { ... };  // eval/describe.ts: the F.2 names and F.3 sub-labels (§0.3 Strings)
 ```
 
 ### A.3 Engine (`src/engine/types.ts`)
@@ -2844,6 +2847,10 @@ function sfc32(a,b,c,d){return function(){a>>>=0;b>>>=0;c>>>=0;d>>>=0;let t=(a+b
 | Q♣ Q♦ | Q♥ Q♠ 7♦ 7♣ 2♠ | Four of a Kind, Queens | Uses 2 of your cards | Q♠ Q♥ Q♦ Q♣ 7♦ | kicker 7♦ (higher suit than 7♣) |
 | K♠ 7♣ | — (preflop) | King-Seven offsuit | — | [] | category highCard |
 | 9♥ 9♣ | — (preflop) | Pocket Nines | — | [] | category pair |
+
+The " · Best possible hand" suffix in two rows is not part of `describe()`: the UI appends it from the hand analysis (`nuts`, §6.5), as A.2 says. `tests/eval/describe.test.ts` checks every other field of every row, including `core` = the leading category cards of `best5` and `kickers` = the rest.
+
+⚠️ **Open (found in Stage 1.3, not yet decided):** the order of cards *within one rank* in `best5` differs between rows. Row 6 (K♠ 7♦ on 7♣ 7♥ 2♦) lists the hole card first: 7♦ 7♥ 7♣. Rows 7 and 22 list the higher suit first even ahead of hole cards: K♠ K♦ K♣ (K♣ K♦ in the hand), Q♠ Q♥ Q♦ Q♣ (Q♣ Q♦ in the hand). No single rule gives all three. The code chooses the cards as §5.4 says (hole cards first, then the higher suit) and lists them higher suit first, so it matches every row except row 6's order (it gives 7♥ 7♦ 7♣ K♠ 2♦; the set of cards, name, sub-label, `core`, `kickers` and `holeUsed` all match). The test pins row 6's exact order as a known failure (`it.fails`) until this is decided. To decide: either fix row 6 to 7♥ 7♦ 7♣ K♠ 2♦, or rows 7 and 22 to hole-cards-first (K♦ K♣ K♠ 7♥ 7♣; Q♦ Q♣ Q♠ Q♥ 7♦) and change the listing order in `describe.ts`.
 
 ### D.2 Outs and risky outs (verified with the prototype evaluator)
 
