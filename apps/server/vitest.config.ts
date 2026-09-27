@@ -19,6 +19,8 @@ export default defineConfig({
   // Vite's own TypeScript transform (PLAN "Testing strategy", Server row).
   plugins: [swc.vite({ module: { type: 'es6' } })],
   test: {
+    // Sets WEB_DIST_DIR: the HTTP tests serve a small fixture instead of apps/web/dist.
+    globalSetup: ['test/global-setup.ts'],
     // The server has no slow tests yet; `npm run test:slow` must still pass.
     passWithNoTests: slowRequested,
     projects: [
