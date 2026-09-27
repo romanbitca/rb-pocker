@@ -526,7 +526,7 @@ For the seat to act, `toCall = currentBet − streetBet`. "A responder exists" m
 Let `L` = dealt-in, non-folded seats ("live") and `A` = seats in `L` that are not all-in ("active").
 
 - **Won by folds:** as soon as `|L| == 1`, betting stops, uncalled chips are refunded (§3.8), and the hand settles on the next `advance`. No cards are shown.
-- **Betting round complete** when: `|A| == 0`; or `|A| == 1` and that seat's `streetBet ≥` every other live seat's `streetBet`; or `|A| ≥ 2` and every seat in `A` has `lastActedAtBet !== null` and `streetBet == currentBet`.
+- **Betting round complete** when: `|A| == 0`; or `|A| == 1` and that seat faces no bet (`streetBet ≥ currentBet`; as `currentBet` is the largest street bet, it then has at least as much in as every other live seat); or `|A| ≥ 2` and every seat in `A` has `lastActedAtBet !== null` and `streetBet == currentBet`. The `|A| == 1` rule matters preflop against a short all-in BB: `currentBet` is still the full `bb` (§3.3), so a small blind with more in than the BB must still call or fold (B34), heads-up too.
 - On round completion: refund uncalled chips, `phase = 'roundComplete'`, `toAct = null`.
 - **Next street** (on `advance`): reset every `streetBet = 0` and `lastActedAtBet = null`; `currentBet = 0`, `minRaiseInc = bb`, `lastAggressor = null`; burn and deal. If `|A| ≥ 2`, first to act = first seat of `A` clockwise **strictly after** the button, wrapping (so the button, if active, acts last); otherwise no betting (run-out).
 - **Preflop first to act:** the first seat of `A` clockwise strictly after the BB, wrapping (heads-up this is the button/SB).
@@ -600,7 +600,7 @@ nextTable(table: TableState, done: HandState): TableState;       // stacks, butt
 topUp(table: TableState, seat: number, toStack: number): TableState;  // hero reload / top-up between hands only; reloads += 1
 withLevels(table: TableState, botLevel: BotLevel, seatLevels: (BotLevel | null)[]): TableState;  // level change, between hands only
 // engine/start.ts
-startHand(table: TableState, handSeed: Seed128): HandState;       // shuffle, deal, post blinds → 'betting' (or 'roundComplete' if blinds put everyone all-in)
+startHand(table: TableState, handSeed: Seed128): HandState;       // shuffle, deal, post blinds → 'betting', or 'roundComplete' when the blinds already end the round (§3.7: heads-up with an all-in small blind, B36)
 // engine/legal.ts
 legalActions(h: HandState): LegalActions | null;                  // null unless phase === 'betting'
 // engine/step.ts
@@ -610,7 +610,7 @@ observe(h: HandState, seat: number, extras: ObserveExtras): Observation;
 // engine/replay.ts
 replay(rec: ReplayRecord): HandState;
 // engine/invariants.ts
-checkInvariants(h: HandState): void;                              // throws InvariantError listing every broken invariant
+checkInvariants(h: HandState, options?: { replayLog?: boolean }): void; // throws InvariantError listing every broken invariant; replayLog adds I12 (tests)
 ```
 
 `step` MUST NOT mutate its input: deep-clone (the state is small plain JSON), change the clone, run `checkInvariants`, return the clone. In development builds, deep-freeze returned states so accidental mutation throws.
@@ -658,24 +658,26 @@ reshuffle(h, decisionId, undoIndex):                         // only from the co
 
 ### 4.4 Invariants
 
-`checkInvariants(h)` MUST check all of these after every step, in development, tests **and production** (cost < 0.1 ms).
+`checkInvariants(h)` MUST check all of these after every step, in development, tests **and production** (cost < 0.1 ms). "Also:" parts are the checks `engine/invariants.ts` adds to a row; I0 and I15 are its own rows. It reports every broken invariant, each message starting with its id ("I7 all-in flag: seat 1: …"), and it is written independently of `start.ts`, `step.ts` and `settle.ts` (it re-derives the deal order, the blind seats and the §3.7 round end itself), so a slip there is caught instead of copied.
 
 | # | Invariant |
 |---|---|
-| I1 | **Chip conservation.** If `phase != 'complete'`: `Σ (stack + totalBet) == h.startTotal`. If `complete`: `Σ stack == h.startTotal` and `Σ result.payouts == Σ totalBet` |
-| I2 | Every amount is a safe, non-negative integer |
+| I0 | The state is well-formed: `schema: 1`, 2–9 seats and per-seat arrays of that length, seat indices in range, a known street, phase and log events, `bb` even ≥ 2 and `sb = bb / 2`. If this fails, nothing else is checked |
+| I1 | **Chip conservation.** If `phase != 'complete'`: `Σ (stack + totalBet) == h.startTotal`. If `complete`: `Σ stack == h.startTotal` and `Σ result.payouts == Σ totalBet`. Also: `startTotal == Σ startStacks`; before `complete`, per seat `stack + totalBet == startStacks[i]` (chips move between seats only at settlement; a refund goes back to the seat that bet it); at `complete`, `Σ pots == Σ totalBet`, `net[i] == payouts[i] − totalBet[i]` and `stack == startStacks[i] + net[i]` |
+| I2 | Every amount is a safe, non-negative integer (stacks, bets, blinds, pots, payouts and the amounts in the log; `net` is a safe integer of either sign) |
 | I3 | For every seat `0 ≤ streetBet ≤ totalBet` |
-| I4 | While betting, `currentBet == max(max streetBet, street == 'preflop' ? bb : 0)`; `currentBet` never decreases within a street |
+| I4 | While betting, `currentBet == max(max streetBet, street == 'preflop' ? bb : 0)`; `currentBet` never decreases within a street (one state cannot show that: the I12 log replay checks it) |
 | I5 | `minRaiseInc ≥ bb` |
-| I6 | After any refund, max `totalBet` over all seats == max `totalBet` over live seats |
-| I7 | `allIn ⇔ (dealtIn ∧ ¬folded ∧ stack == 0)` |
-| I8 | `h.deck` is a permutation of 0..51; hole cards and board equal the §3.4 deck positions; no card appears twice |
+| I6 | After any refund, max `totalBet` over all seats == max `totalBet` over live seats (checked in every phase but `betting`: a round's refund happens as it ends) |
+| I7 | `allIn ⇔ (dealtIn ∧ ¬folded ∧ stack == 0)`, also after a refund and after settlement (a seat that gets chips back is no longer all-in) |
+| I8 | `h.deck` is a permutation of 0..51; hole cards and board equal the §3.4 deck positions; no card appears twice. Also: `deckPos == 2k + 0 / 4 / 6 / 8` on the preflop / flop / turn / river (`k` = seats dealt in) |
 | I9 | Board length: preflop 0, flop 3, turn 4, river 5 |
-| I10 | `phase == 'betting' ⇔ toAct !== null`; `toAct` is live and not all-in; `legalActions(h)` is non-empty |
-| I11 | A folded seat is never in any pot's `eligible` nor in `revealed` |
-| I12 | `log` replays to `h` (tests only) |
-| I13 | Seats not dealt in have `hole == null`, `totalBet == 0`, and never act |
-| I14 | `result` is null before `complete` and non-null, never changed, after it |
+| I10 | `phase == 'betting' ⇔ toAct !== null`; `toAct` is live and not all-in; `legalActions(h)` is non-empty (true exactly when `toCall ≥ 0` for that seat). Also: that seat still has to act (`lastActedAtBet === null` or `streetBet < currentBet`), at least two seats are live, and the §3.7 betting round is not over |
+| I11 | A folded seat is never in any pot's `eligible` nor in `revealed`. Also: pot winners are eligible for that pot, only pot winners are paid, shown hands are live, nothing is revealed while betting, and in a run-out every live hand is revealed |
+| I12 | `log` replays to `h` (tests only: `checkInvariants(h, { replayLog: true })` rebuilds bets, folds, stacks, the street, board, aggressors, reveals, reshuffles and payouts from `h.log` alone and compares; the input replay of whole hands is §4.7) |
+| I13 | Seats not dealt in have `hole == null`, `totalBet == 0`, and never act. Also: `dealtIn ⇔ startStacks[i] > 0`, and a dealt-in seat has hole cards |
+| I14 | `result` is null before `complete` and non-null, never changed, after it. Also: `endedBy == 'fold'` exactly when one seat is live, and then no cards are shown or revealed; a showdown happens on the river and shows and reveals exactly the live seats |
+| I15 | Button and blinds sit on dealt-in seats as §3.3 places them: heads-up `sbSeat == button` and `bbSeat` is the other seat; otherwise `sbSeat` is the first dealt-in seat after the button and `bbSeat` the next one (Known pitfall 3) |
 
 ### 4.5 Errors in production
 
@@ -2272,6 +2274,7 @@ The human answered on 23 Sep 2026. Answered rows show the decision; open rows ke
 | 1.3.10 | 28 Sep 2026 | Evaluator (chunk 1.2): bit-parallel rank-multiplicity masks instead of `cnt[13]`, and module-local table references because Vitest's module runner slows imported bindings ~4× (§5.3 notes, with measured speeds); A.2 adds `score5`, `score6`, `HAND_CATEGORIES`, `scoreNibbles` and the `tables.ts` exports; §5.5 records the sample sizes, the small-deck samples and the benchmark's warn-only behaviour. Appendix C.1 counts reproduced exactly |
 | 1.3.11 | 28 Sep 2026 | `describe()` (chunk 1.3): the hand names and sub-labels live in `HAND_TEXT` in `eval/describe.ts` (§0.3 Strings exception, since `eval` imports only `core`); §5.4 spells out the high-card `core`, the `best5` order and the preflop fields; D.1 notes that the nuts suffix comes from the UI and records an **open conflict** in D.1's within-rank order (row 6 vs rows 7 and 22; expected values unchanged, row 6's exact order is a known failing test until decided) |
 | 1.3.12 | 28 Sep 2026 | Merge fix (Stage 1 orchestration): closed the D.1 within-rank order conflict from 1.3.11 — a rank's cards in `best5` are always listed by suit (s > h > d > c), and that is a separate rule from which cards are *selected* when a rank has spare candidates (still hole cards first) (§5.4); D.1 row 6's `best5` corrected to 7♥ 7♦ 7♣ K♠ 2♦ to match rows 7, 22 and the code; the describe test's `it.fails` on row 6 is now a normal passing assertion |
+| 1.3.13 | 28 Sep 2026 | Engine types and invariants (chunk 2.1). **§3.7 round end with one active seat:** it now ends when that seat faces no bet (`streetBet ≥ currentBet`). The old wording ("at least as much in as every other live seat") ended the round before a small blind facing a short all-in BB could act, so B34's "SB fold" and §3.8's only refund to a folded seat could not happen, against §3.3 ("callers must put in the full `bb`"). Nothing else changes: `currentBet` is the largest street bet except preflop against a short BB. The §4.2 `startHand` comment follows. **§4.4:** `checkInvariants(h, { replayLog })`; the rows list the extra checks `invariants.ts` makes ("Also:": per-seat chip conservation, `deckPos`, the seat to act still has to act and the round is not over, only live seats win, are paid or are shown, `dealtIn ⇔ startStacks > 0`, `endedBy` consistency); new I0 (well-formed) and I15 (button and blind seats); I12 replays `h.log` behind the option and also checks I4's "never decreases". **A.3:** the lists `STREETS` … `PERSONALITY_IDS` and `ENGINE_VERSION` (the engine cannot read package.json, §2.1; a test keeps them equal); the comments pin what later chunks rely on: `handsDealt` counts finished hands (the top bar shows `handsDealt + 1`), `award.pot` is an index into `result.pots`, I7 also holds after refunds and settlement, settlement leaves `streetBet` and `totalBet` as they are, `hole` is [first card dealt, second]. `observationKey` is canonical JSON with sorted keys |
 
 ---
 
@@ -2363,6 +2366,10 @@ export type Phase = 'betting' | 'roundComplete' | 'showdown' | 'complete';
 export type BotLevel = 'easy' | 'medium' | 'hard' | 'expert';
 export type CoachLevel = 'beginner' | 'intermediate' | 'advanced' | 'exam';
 export type PersonalityId = 'rock' | 'tag' | 'lag' | 'station' | 'maniac';
+export const STREETS: readonly Street[];            // the unions above as lists, in order (validation)
+export const PHASES: readonly Phase[]; export const BOT_LEVELS: readonly BotLevel[];
+export const COACH_LEVELS: readonly CoachLevel[]; export const PERSONALITY_IDS: readonly PersonalityId[];
+export const ENGINE_VERSION: string;                // = apps/web/package.json "version" (a test keeps them equal)
 
 export type PlayerAction =
   | { type: 'fold' } | { type: 'check' } | { type: 'call' }
@@ -2375,40 +2382,43 @@ export type EngineInput =
 
 export interface TableConfig {
   seatCount: number;                       // 2..9
-  sb: number; bb: number;                  // bb even ≥ 2, sb = bb / 2
-  startingStack: number;                   // 10..500 bb
+  sb: number; bb: number;                  // bb even, 2..100,000; sb = bb / 2
+  startingStack: number;                   // 200..1,000,000 and 10..500 bb (§3.2)
   botLevel: BotLevel;
   seatLevels: (BotLevel | null)[];         // per-seat override, index = seat; null = table level; [0] always null
 }
 export interface PlayerSlot {
-  playerId: string;                        // "hero" or "bot-7"
+  playerId: string;                        // "hero" or "bot-7" ('bot-' + nameCursor: unique for the table's life)
   name: string; kind: 'hero' | 'bot';
   personality: PersonalityId | null;       // null for hero
-  stack: number;
+  stack: number;                           // chips between hands
 }
 export interface TableState {
   schema: 1; engineVersion: string; tableId: string; tableSeed: Seed128;
   config: TableConfig;
   slots: PlayerSlot[];                     // index = seat; hero is seat 0
-  button: number;                          // last hand's button; -1 before the first hand
-  prevBB: number | null;                   // for the 3→2 rule
-  nextHandSeq: number;                     // global, see §14.3 "handSeq rule"
-  handsDealt: number;                      // per table; the top bar shows "Hand {handsDealt}"
-  personalityCursor: number; nameCursor: number; reloads: number;
+  button: number;                          // last hand's button; -1 before the first hand (startHand moves it, §3.3)
+  prevBB: number | null;                   // last hand's BB, for the 3→2 rule; null before the first hand
+  nextHandSeq: number;                     // the next hand's handSeq, ≥ 1; global, see §14.3 "handSeq rule"
+  handsDealt: number;                      // hands finished at this table (nextTable adds 1); the top bar shows "Hand {handsDealt + 1}"
+  personalityCursor: number; nameCursor: number; reloads: number;   // cursors only grow (§9.3)
 }
 export interface SeatState {
-  dealtIn: boolean; stack: number; hole: [Card, Card] | null;
-  folded: boolean; allIn: boolean;
-  streetBet: number; totalBet: number; lastActedAtBet: number | null;
+  dealtIn: boolean; stack: number;
+  hole: [Card, Card] | null;               // [first card dealt, second card dealt]; null when not dealt in
+  folded: boolean;                         // false for a seat not dealt in
+  allIn: boolean;                          // I7, also after refunds and settlement
+  streetBet: number; totalBet: number;     // after uncalled refunds; settlement leaves them as they are
+  lastActedAtBet: number | null;
 }
-export type LogEvent =
-  | { e: 'post'; seat: number; blind: 'sb' | 'bb'; amount: number; allIn: boolean }
+export type LogEvent =                     // posts are the first two events: SB, then BB
+  | { e: 'post'; seat: number; blind: 'sb' | 'bb'; amount: number; allIn: boolean }   // amount = min(blind, stack)
   | { e: 'act'; seat: number; street: Street; action: PlayerAction; amountIn: number; allIn: boolean; full: boolean }
   | { e: 'refund'; seat: number; amount: number }
-  | { e: 'street'; street: Street; cards: Card[] }
-  | { e: 'reveal'; seats: number[]; reason: 'runout' | 'showdown' }
+  | { e: 'street'; street: Street; cards: Card[] }                   // the cards this street adds
+  | { e: 'reveal'; seats: number[]; reason: 'runout' | 'showdown' }  // at most one per hand
   | { e: 'reshuffle'; decisionId: number; undoIndex: number }
-  | { e: 'award'; pot: number; seats: number[]; amounts: number[] };
+  | { e: 'award'; pot: number; seats: number[]; amounts: number[] }; // pot = index into result.pots; seats = its winners
 export interface Pot { amount: number; eligible: number[] }
 export interface HandResult {
   endedBy: 'fold' | 'showdown';
@@ -2422,13 +2432,13 @@ export interface HandState {
   sb: number; bb: number;
   seats: SeatState[]; button: number; sbSeat: number; bbSeat: number;
   street: Street; phase: Phase; board: Card[];
-  deck: Card[]; deckPos: number;           // permutation of 0..51
+  deck: Card[]; deckPos: number;           // permutation of 0..51; deckPos = 2k, 2k+4, 2k+6, 2k+8 by street (§3.4)
   currentBet: number; minRaiseInc: number;
   lastAggressor: number | null; preflopAggressor: number | null;
   toAct: number | null; runout: boolean;
   revealed: number[];                      // seats whose hole cards are public
   undoneDecisions: number[];
-  startTotal: number; startStacks: number[];
+  startTotal: number; startStacks: number[];   // stacks before the blinds (0 = not dealt in); startTotal = Σ
   log: LogEvent[]; result: HandResult | null;
 }
 export interface LegalActions {
@@ -2437,8 +2447,8 @@ export interface LegalActions {
   bet: { min: number; max: number } | null;      // "to" amounts
   raise: { min: number; max: number } | null;    // "to" amounts
 }
-export class EngineError extends Error { code: 'NOT_YOUR_TURN' | 'ILLEGAL_ACTION' | 'BAD_AMOUNT' | 'BAD_PHASE' | 'UNDO_USED' }
-export class InvariantError extends Error { broken: string[] }
+export class EngineError extends Error { code: 'NOT_YOUR_TURN' | 'ILLEGAL_ACTION' | 'BAD_AMOUNT' | 'BAD_PHASE' | 'UNDO_USED' }  // both defined in core/assert.ts,
+export class InvariantError extends Error { broken: string[] }                                                              //   re-exported here
 export interface ReplayRecord { engineVersion: string; seed: Seed128; commit: string | null; table: TableState; inputs: EngineInput[] }
 ```
 
