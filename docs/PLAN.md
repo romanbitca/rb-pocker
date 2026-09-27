@@ -107,8 +107,9 @@ rb-poker-coach/
 │   │   │   │   └── describe.ts   # HandInfo: best5, core, kickers, name, subLabel, playsTheBoard
 │   │   │   ├── engine/           # pure reducer; imports core + eval only
 │   │   │   │   ├── types.ts      # Appendix A.3–A.4
-│   │   │   │   ├── table.ts      # createTable, nextTable (button, bot replacement, 3→2 rule)
+│   │   │   │   ├── table.ts      # createTable, initialSlots, nextTable (button, bot replacement, 3→2 rule), topUp, withLevels
 │   │   │   │   ├── start.ts      # startHand: shuffle, deal, post blinds
+│   │   │   │   ├── rules.ts      # shared §3 helpers for start/step/settle: live, active, next seat, deal order, blinds, round end, put
 │   │   │   │   ├── legal.ts      # legalActions
 │   │   │   │   ├── step.ts       # step(state, input): the reducer
 │   │   │   │   ├── settle.ts     # uncalled refunds, side pots, odd chips, payouts
@@ -196,7 +197,7 @@ rb-poker-coach/
 - ⚠️ **Pot you can win (short calls):** when the hero cannot cover the bet, the part of the bet they cannot match is not theirs to win. For `need`, `EV(call)`, the price chip and coach text use `winPot = hero.totalBet + Σ over other dealt-in seats of min(s.totalBet, T)`, where `T = hero.totalBet + toCall` is the hero's total after calling (`toCall` already capped at the stack). Then `need = toCall / (winPot + toCall)`; when the hero covers the bet, `winPot == pot` and nothing changes. Example: hero and villain have 50 each in (pot 100), villain bets 500 more (pot 600), hero has 50 left → `T = 100`, `winPot = 50 + 100 = 150`, `need = 50 / 200 = 25%`, not `50 / 650 = 8%`. When `winPot < pot`, the numbers line says "Pot you can win {winPot}". Unit test with exactly these numbers.
 - **Time:** engine logic is time-free. Only `app/controller.ts` uses timers.
 - **Randomness:** only through `core/rng.ts`. ESLint bans `Math.random` in `src/`.
-- **Strings:** every user-visible string lives in `src/i18n/en.ts`. The brain produces reason codes, never English. One exception, forced by §2.1 (`core` and `eval` import nothing outside themselves): the card words (`RANK_NAMES`, `RANK_PLURALS`, `SUIT_NAMES` in `core/cards.ts`, used by `cardAriaLabel` and the hand names) and the hand names and sub-labels that `describe()` returns (`HAND_TEXT` in `eval/describe.ts`, Appendix F.2–F.3), each kept together in one table so a translation replaces them as well.
+- **Strings:** every user-visible string lives in `src/i18n/en.ts`. The brain produces reason codes, never English. Exceptions, forced by §2.1 (`core` and `eval` import nothing outside themselves) or by where the data naturally lives: the card words (`RANK_NAMES`, `RANK_PLURALS`, `SUIT_NAMES` in `core/cards.ts`, used by `cardAriaLabel` and the hand names) and the hand names and sub-labels that `describe()` returns (`HAND_TEXT` in `eval/describe.ts`, Appendix F.2–F.3), each kept together in one table so a translation replaces them as well. The 24 bot names (§9.3) are proper names, not translated, and `nextTable` picks them, so they live in `engine/table.ts` (`BOT_NAMES`); the hero's name ("You") comes from `en.ts` through `initialSlots`.
 - **Imports:** relative imports name the real file. `apps/web` writes `.ts`/`.tsx` (`allowImportingTsExtensions`, as in Vite's own template); `erasableSyntaxOnly` (no enums, namespaces or parameter properties) keeps every web file loadable by Node 24's built-in type stripping, so `scripts/*.ts` can import `src/` without a build step. `apps/server` writes `.js` (`module: nodenext`; `tsc` emits Node ESM).
 - **Name:** the product is **RB Poker Coach** (home-screen short name "RB Poker"); every user-visible string uses it. Internal identifiers keep the short `pc` / `poker-coach` form and MUST NOT be renamed (storage keys `pc.v1.*`, the `pc-writer` lock, `window.__pc`, the export file's `app: 'poker-coach'` field), so saved data never needs a migration for the name (§14.2).
 
@@ -470,10 +471,10 @@ This section is normative: the engine MUST implement exactly these rules, and Ap
 
 ### 3.3 Button and blinds
 
-- **First hand:** button = `randInt(seatCount)` from the table seed. **Next hands:** the button moves to the next dealt-in seat clockwise (simplified moving button, not a dead button: someone may occasionally skip or repeat a blind in future modes; acceptable for play money).
+- **First hand:** button = `randInt(seatCount)` from the table seed (engine mode: if that seat is not dealt in, the next dealt-in seat clockwise). **Next hands:** the button moves to the next dealt-in seat clockwise (simplified moving button, not a dead button: someone may occasionally skip or repeat a blind in future modes; acceptable for play money). `TableState.button` keeps the last hand's button; `startHand` moves it (`buttonForHand`).
 - **3+ players:** SB = first dealt-in seat left of the button; BB = the next dealt-in seat.
 - **Heads-up:** the button posts the SB; the other seat is the BB. The general rules below then give the correct order automatically: preflop the button acts first; after the flop the BB acts first (TDA r.34).
-- **3 → 2 transition (engine only):** if the previous hand's BB is still dealt in, that player gets the button/SB, so nobody posts the BB twice in a row (TDA r.34).
+- **3 → 2 transition (engine only):** if the previous hand's BB is still dealt in, that player gets the button/SB, so nobody posts the BB twice in a row (TDA r.34). The engine applies this to every hand with two seats dealt in (`prevBB` is a seat): in a steady heads-up game it is the usual alternation.
 - **Short blinds:** a player who cannot cover a blind posts the whole stack and is all-in. Even if the BB is short, `currentBet` starts at the full `bb`; callers must put in the full `bb`, and any excess is returned as uncalled (§3.8). A common room convention (UNVERIFIED as a TDA rule; our decision).
 - Posting a blind is **not** an action (it does not set `lastActedAtBet`). This is how the BB gets its option.
 
@@ -595,11 +596,17 @@ Every card that becomes visible (a new street, face-up hands in a run-out, showd
 
 ```ts
 // engine/table.ts
-createTable(cfg: TableConfig, slots: PlayerSlot[], tableSeed: Seed128): TableState;
-nextTable(table: TableState, done: HandState): TableState;       // stacks, button, bot replacement (deterministic from tableSeed)
-topUp(table: TableState, seat: number, toStack: number): TableState;  // hero reload / top-up between hands only; reloads += 1
+initialSlots(cfg: TableConfig, tableSeed: Seed128, heroName: string): PlayerSlot[];  // the hero + seeded bots (§9.3), all at startingStack
+createTable(cfg: TableConfig, slots: PlayerSlot[], tableSeed: Seed128): TableState;  // button −1; needs two players with chips
+nextTable(table: TableState, done: HandState): TableState;       // stacks, button, bot replacement (deterministic from tableSeed);
+                                                                 //   done must be complete, pass checkInvariants and come from this table
+topUp(table: TableState, seat: number, toStack: number): TableState;  // hero reload / top-up between hands only; reloads += 1; seat 0, stack < toStack ≤ startingStack
 withLevels(table: TableState, botLevel: BotLevel, seatLevels: (BotLevel | null)[]): TableState;  // level change, between hands only
+buttonForHand(table: TableState): number;                        // §3.3: the button startHand will use
+validateTable(table: TableState): void;                          // throws EngineError for a corrupt table (every function above checks it)
+BOT_NAMES; PERSONALITY_LISTS; nameOrder(tableSeed): string[];    // §9.3 data and the table's name order
 // engine/start.ts
+deckFromSeed(handSeed: Seed128): Card[];                         // §2.4: Fisher–Yates of 0..51 with deriveSeed(handSeed, 'deck')
 startHand(table: TableState, handSeed: Seed128): HandState;       // shuffle, deal, post blinds → 'betting', or 'roundComplete' when the blinds already end the round (§3.7: heads-up with an all-in small blind, B36)
 // engine/legal.ts
 legalActions(h: HandState): LegalActions | null;                  // null unless phase === 'betting'
@@ -614,6 +621,8 @@ checkInvariants(h: HandState, options?: { replayLog?: boolean }): void; // throw
 ```
 
 `step` MUST NOT mutate its input: deep-clone (the state is small plain JSON), change the clone, run `checkInvariants`, return the clone. In development builds, deep-freeze returned states so accidental mutation throws.
+
+Bad input to the table and start functions throws `EngineError`: `BAD_AMOUNT` for a number out of range (seat count, blinds, stacks, seats, counters), `ILLEGAL_ACTION` for an invalid choice (slot kind, personality, level, name, seed), `BAD_PHASE` when the call does not fit the state (`nextTable` with a hand that is not over or not from this table, `startHand` with fewer than two players with chips). `startHand` returns a state that passes `checkInvariants`.
 
 ### 4.3 Reducer algorithm
 
@@ -1174,7 +1183,7 @@ VPIP/PFR targets follow common player-type definitions (TAG ~22/18 with AF ~2.5;
 
 ### 9.3 Table mix, per-seat override and names
 
-- Bots get personalities from a fixed list per level, taking the first `seatCount − 1` entries; replacement bots continue down the list, cycling.
+- Bots get personalities from a fixed list per level, taking the first `seatCount − 1` entries; replacement bots continue down the list, cycling. (Bot `i`, in seat `i + 1`, takes entry `i` of its seat's level list, so with per-seat levels at setup each seat reads its own list; `createTable` leaves `personalityCursor = nameCursor = seatCount − 1`.)
 
 | Level | Personality list |
 |---|---|
@@ -1184,7 +1193,7 @@ VPIP/PFR targets follow common player-type definitions (TAG ~22/18 with AF ~2.5;
 | Expert | TAG, LAG, TAG, LAG, TAG, Rock, LAG, TAG |
 
 - **Per-seat override (optional):** Setup → More options → "Set each bot's level", or tap a seat between hands → bot card → level picker. Stored in `TableConfig.seatLevels`; a seat with an override uses that level's parameters and label visibility. The seated bot keeps its personality; when that seat's bot is later replaced, the newcomer takes entry `personalityCursor mod 8` of the **seat's** level list, and the single `personalityCursor` advances. Takes effect at the next hand.
-- **Names:** 24 short neutral first names (≤ 8 characters, no real public figures). Order = Fisher–Yates of the list with `rngFromSeed(deriveSeed(tableSeed, 'names'))`; each new bot takes the next name at `nameCursor`, skipping names currently seated, wrapping after 24 (so a name may return later, never twice at once). `playerId = 'bot-' + nameCursor` before it advances. First button: `randInt(rngFromSeed(deriveSeed(tableSeed, 'button')), seatCount)`. `tableId` = first 8 hex characters of `deriveSeed(tableSeed, 'id')`. Names: Anna, Ben, Carla, Dev, Emeka, Fatima, Gus, Hana, Ivan, Jade, Kofi, Lena, Mateo, Nora, Omar, Priya, Quinn, Rosa, Sam, Tariq, Uma, Viktor, Wen, Yara.
+- **Names:** 24 short neutral first names (≤ 8 characters, no real public figures). Order = Fisher–Yates of the list with `rngFromSeed(deriveSeed(tableSeed, 'names'))`; each new bot takes the next name at `nameCursor`, skipping names currently seated, wrapping after 24 (so a name may return later, never twice at once). "Currently seated" includes the bots being replaced and the newcomers already named in the same `nextTable`, so a busted bot's name never sits straight back down. `playerId = 'bot-' + nameCursor` before it advances; `nameCursor` itself never wraps (the name is entry `nameCursor mod 24`), so a `playerId` is never reused at a table. First button: `randInt(rngFromSeed(deriveSeed(tableSeed, 'button')), seatCount)`. `tableId` = first 8 hex characters of `deriveSeed(tableSeed, 'id')`. Names: Anna, Ben, Carla, Dev, Emeka, Fatima, Gus, Hana, Ivan, Jade, Kofi, Lena, Mateo, Nora, Omar, Priya, Quinn, Rosa, Sam, Tariq, Uma, Viktor, Wen, Yara.
 - **Bot card** (tap a seat): Easy/Medium → name, personality icon and name, one-line description, "How to beat them" tip (Appendix F.6), stack. Hard/Expert → "Style: unknown. Here is what you have seen:" with observed stats in plain words ("Plays 34% of hands · Raises 20% · Bets often").
 
 ### 9.4 Mixing, noise and defence
@@ -2275,6 +2284,7 @@ The human answered on 23 Sep 2026. Answered rows show the decision; open rows ke
 | 1.3.11 | 28 Sep 2026 | `describe()` (chunk 1.3): the hand names and sub-labels live in `HAND_TEXT` in `eval/describe.ts` (§0.3 Strings exception, since `eval` imports only `core`); §5.4 spells out the high-card `core`, the `best5` order and the preflop fields; D.1 notes that the nuts suffix comes from the UI and records an **open conflict** in D.1's within-rank order (row 6 vs rows 7 and 22; expected values unchanged, row 6's exact order is a known failing test until decided) |
 | 1.3.12 | 28 Sep 2026 | Merge fix (Stage 1 orchestration): closed the D.1 within-rank order conflict from 1.3.11 — a rank's cards in `best5` are always listed by suit (s > h > d > c), and that is a separate rule from which cards are *selected* when a rank has spare candidates (still hole cards first) (§5.4); D.1 row 6's `best5` corrected to 7♥ 7♦ 7♣ K♠ 2♦ to match rows 7, 22 and the code; the describe test's `it.fails` on row 6 is now a normal passing assertion |
 | 1.3.13 | 28 Sep 2026 | Engine types and invariants (chunk 2.1). **§3.7 round end with one active seat:** it now ends when that seat faces no bet (`streetBet ≥ currentBet`). The old wording ("at least as much in as every other live seat") ended the round before a small blind facing a short all-in BB could act, so B34's "SB fold" and §3.8's only refund to a folded seat could not happen, against §3.3 ("callers must put in the full `bb`"). Nothing else changes: `currentBet` is the largest street bet except preflop against a short BB. The §4.2 `startHand` comment follows. **§4.4:** `checkInvariants(h, { replayLog })`; the rows list the extra checks `invariants.ts` makes ("Also:": per-seat chip conservation, `deckPos`, the seat to act still has to act and the round is not over, only live seats win, are paid or are shown, `dealtIn ⇔ startStacks > 0`, `endedBy` consistency); new I0 (well-formed) and I15 (button and blind seats); I12 replays `h.log` behind the option and also checks I4's "never decreases". **A.3:** the lists `STREETS` … `PERSONALITY_IDS` and `ENGINE_VERSION` (the engine cannot read package.json, §2.1; a test keeps them equal); the comments pin what later chunks rely on: `handsDealt` counts finished hands (the top bar shows `handsDealt + 1`), `award.pot` is an index into `result.pots`, I7 also holds after refunds and settlement, settlement leaves `streetBet` and `totalBet` as they are, `hole` is [first card dealt, second]. `observationKey` is canonical JSON with sorted keys |
+| 1.3.14 | 28 Sep 2026 | Table setup and deal (chunk 2.2). **Button (§3.3):** `TableState.button` keeps the last hand's button and `startHand` moves it (`buttonForHand`); the first hand's draw from the table seed passes to the next dealt-in seat if the drawn seat has no chips (engine mode); the 3 → 2 rule applies to every hand with two seats dealt in, which in a steady heads-up game is the usual alternation. **Seating (§9.3):** `createTable` keeps its §4.2 signature and `initialSlots(cfg, tableSeed, heroName)` builds the default players (bot `i` takes entry `i` of its own seat's level list; the hero's name comes from `en.ts`); the bot names live in `engine/table.ts` (§0.3: proper names picked by the engine). `nextTable` checks that `done` is complete, passes the invariants and was dealt from this table; sets `nextHandSeq = max(nextHandSeq, handSeq + 1)` and `handsDealt + 1`; replacement names skip every seated name, the busted bot's own and this batch's newcomers included; `nameCursor` never wraps, so no `playerId` is reused. `topUp`: the hero only, up to the starting stack. Between hands a table may have a single player with chips (a hero busted heads-up waits for a reload); `createTable` and `startHand` need two. **Layout (§0.1, §4.2):** new `engine/rules.ts` (shared §3 helpers for start/step/settle; `invariants.ts` keeps its own copies on purpose), `settle.ts` with only `refundUncalled` so far, `deckFromSeed`, `validateTable`, and the `EngineError` codes of the table and start functions |
 
 ---
 

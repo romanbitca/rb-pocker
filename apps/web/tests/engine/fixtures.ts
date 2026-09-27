@@ -183,7 +183,7 @@ function put(s: SeatState, x: number): number {
 }
 
 /** Call (no raise, no round-end logic): the caller sets toAct / phase. */
-function callBy(h: HandState, seat: number): void {
+export function callBy(h: HandState, seat: number): void {
   const s = seatAt(h, seat);
   const amountIn = put(s, h.currentBet - s.streetBet);
   s.lastActedAtBet = h.currentBet;
@@ -198,7 +198,7 @@ function callBy(h: HandState, seat: number): void {
   });
 }
 
-function checkBy(h: HandState, seat: number): void {
+export function checkBy(h: HandState, seat: number): void {
   seatAt(h, seat).lastActedAtBet = h.currentBet;
   h.log.push({
     e: 'act',
@@ -211,7 +211,7 @@ function checkBy(h: HandState, seat: number): void {
   });
 }
 
-function foldBy(h: HandState, seat: number): void {
+export function foldBy(h: HandState, seat: number): void {
   seatAt(h, seat).folded = true;
   h.log.push({
     e: 'act',
@@ -251,7 +251,7 @@ export function betTo(h: HandState, seat: number, to: number): void {
 }
 
 /** §4.3 advance, the "next street" part: reset the street, burn, deal. */
-function dealNextStreet(h: HandState): void {
+export function dealNextStreet(h: HandState): void {
   const k = h.seats.filter((s) => s.dealtIn).length;
   for (const s of h.seats) {
     s.streetBet = 0;
@@ -326,7 +326,7 @@ export function allInAtBlinds(deck?: Card[]): HandState {
 }
 
 /** The best five of seven cards, by brute force. */
-function best5(seven: readonly Card[]): Card[] {
+export function best5(seven: readonly Card[]): Card[] {
   let best: Card[] = [];
   let bestScore = -1;
   for (let a = 0; a < 7; a++) {
