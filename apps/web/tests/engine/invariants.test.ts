@@ -30,6 +30,16 @@ const ids = (h: HandState, replayLog = false): string[] => [
 
 const seat = (h: HandState, i: number): SeatState => h.seats[i] as SeatState;
 
+const foldEvent = (s: number, street: 'preflop' | 'flop'): HandState['log'][number] => ({
+  e: 'act',
+  seat: s,
+  street,
+  action: { type: 'fold' },
+  amountIn: 0,
+  allIn: false,
+  full: false,
+});
+
 // Valid states for every phase, built by hand (fixtures.ts).
 const headsUp = (): HandState => handAtStart({ stacks: [10000, 10000], button: 0 });
 const threeHanded = (): HandState => handAtStart({ stacks: [10000, 10000, 10000], button: 0 });
@@ -313,6 +323,168 @@ const CASES: Case[] = [
     },
   ],
   ['I15', 'the button on a seat not dealt in', seatOut, (h) => (h.button = 1)],
+  [
+    'I1',
+    'a pot that does not hold the bets',
+    foldDone,
+    (h) => ((h.result as NonNullable<HandState['result']>).pots[0] = { amount: 99, eligible: [2] }),
+  ],
+  [
+    'I8',
+    'the same hole cards twice',
+    headsUp,
+    (h) => (seat(h, 0).hole = [...(seat(h, 1).hole as [number, number])]),
+  ],
+  ['I11', 'a seat revealed twice', () => allInShowdown().flop, (h) => h.revealed.push(1)],
+  ['I11', 'a folded seat revealed', foldOver, (h) => h.revealed.push(0)],
+  [
+    'I11',
+    'a pot nobody can win',
+    foldDone,
+    (h) => ((h.result as NonNullable<HandState['result']>).pots[0] = { amount: 100, eligible: [] }),
+  ],
+  [
+    'I11',
+    'a pot without a winner',
+    foldDone,
+    (h) => ((h.result as NonNullable<HandState['result']>).potWinners[0] = []),
+  ],
+  ['I13', 'a dealt-in seat without cards', seatOut, (h) => (seat(h, 0).hole = null)],
+  [
+    'I13',
+    'a seat with chips left out',
+    seatOut,
+    (h) => {
+      h.startStacks[1] = 5;
+      seat(h, 1).stack = 5;
+      h.startTotal += 5;
+    },
+  ],
+  [
+    'I13',
+    'a seat that is not dealt in has bet',
+    seatOut,
+    (h) => {
+      h.startStacks[1] = 10;
+      h.startTotal += 10;
+      Object.assign(seat(h, 1), { streetBet: 10, totalBet: 10 });
+    },
+  ],
+  ['I14', 'a fold win that reveals cards', foldDone, (h) => h.revealed.push(2)],
+];
+
+/** Breakages that necessarily break other invariants too: the named one must be among them. */
+const ALSO: Case[] = [
+  [
+    'I2',
+    'a fractional net',
+    foldDone,
+    (h) => ((h.result as NonNullable<HandState['result']>).net[0] = 0.5),
+  ],
+  ['I10', 'the seat to act has more in than the bet', headsUp, (h) => (h.currentBet = 40)],
+  [
+    'I11',
+    'a folded seat shown',
+    foldDone,
+    (h) =>
+      (h.result as NonNullable<HandState['result']>).shown.push({
+        seat: 0,
+        score: 0,
+        category: 'highCard',
+        best5: [],
+      }),
+  ],
+  [
+    'I15',
+    'only one seat dealt in',
+    headsUp,
+    (h) => {
+      Object.assign(seat(h, 1), {
+        dealtIn: false,
+        hole: null,
+        stack: 0,
+        streetBet: 0,
+        totalBet: 0,
+      });
+      h.startStacks[1] = 0;
+      h.startTotal = 10000;
+    },
+  ],
+];
+
+/** Malformed states: I0 reports them and nothing else runs. */
+const MALFORMED: [what: string, make: () => HandState, mutate: (h: HandState) => void][] = [
+  [
+    'a post amount that is not a number',
+    headsUp,
+    (h) => ((h.log[0] as { amount: unknown }).amount = 'x'),
+  ],
+  [
+    'an unknown action',
+    flopBet,
+    (h) => ((h.log[h.log.length - 1] as { action: unknown }).action = { type: 'jump' }),
+  ],
+  [
+    'a refund to no seat',
+    foldOver,
+    (h) => ((h.log[h.log.length - 1] as { seat: number }).seat = 9),
+  ],
+  [
+    'an unknown street',
+    headsUpFlop,
+    (h) => ((h.log[h.log.length - 1] as { street: string }).street = 'fifth'),
+  ],
+  [
+    'an unknown reveal reason',
+    () => allInShowdown().flop,
+    (h) => ((h.log[3] as { reason: string }).reason = 'x'),
+  ],
+  [
+    'a fractional decision id',
+    headsUpFlop,
+    (h) => h.log.push({ e: 'reshuffle', decisionId: 1.5, undoIndex: 0 }),
+  ],
+  [
+    'an award to no seat',
+    foldDone,
+    (h) => ((h.log[h.log.length - 1] as { seats: number[] }).seats = [9]),
+  ],
+  ['a log event that is not an object', headsUp, (h) => h.log.push(null as never)],
+  ['a log that is not a list', headsUp, (h) => ((h as { log: unknown }).log = {})],
+  ['an unknown ending', foldDone, (h) => ((h.result as { endedBy: string }).endedBy = 'draw')],
+  ['pots that are not a list', foldDone, (h) => ((h.result as { pots: unknown }).pots = {})],
+  [
+    'a malformed pot',
+    foldDone,
+    (h) => ((h.result as { pots: unknown[] }).pots[0] = { amount: 100 }),
+  ],
+  [
+    'a winner list per pot missing',
+    foldDone,
+    (h) => (h.result as { potWinners: unknown[] }).potWinners.pop(),
+  ],
+  [
+    'winners that are not seats',
+    foldDone,
+    (h) => ((h.result as { potWinners: unknown[] }).potWinners[0] = [9]),
+  ],
+  ['net for too few seats', foldDone, (h) => (h.result as { net: unknown[] }).net.pop()],
+  [
+    'shown hands that are not a list',
+    foldDone,
+    (h) => ((h.result as { shown: unknown }).shown = null),
+  ],
+  [
+    'a malformed shown hand',
+    () => allInShowdown().complete,
+    (h) =>
+      (((h.result as { shown: { best5: unknown }[] }).shown[0] as { best5: unknown }).best5 = [99]),
+  ],
+  ['a phase that does not exist', headsUp, (h) => ((h as { phase: string }).phase = 'river')],
+  ['a board card that is not a card', headsUpFlop, (h) => (h.board[0] = 52)],
+  ['a short deck', headsUp, (h) => h.deck.pop()],
+  ['a deck position past the end', headsUp, (h) => (h.deckPos = 53)],
+  ['a seat with no stack', headsUp, (h) => delete (seat(h, 0) as { stack?: number }).stack],
 ];
 
 describe('checkInvariants: each invariant catches its own breakage', () => {
@@ -331,6 +503,34 @@ describe('checkInvariants: each invariant catches its own breakage', () => {
     }
     expect(caught).toBeInstanceOf(InvariantError);
     expect((caught as InvariantError).message).toContain(id);
+  });
+
+  it.each(ALSO)('%s (with others): %s', (id, _, make, mutate) => {
+    const h = make();
+    expect(broken(h, true)).toEqual([]);
+    mutate(h);
+    expect(ids(h)).toContain(id);
+  });
+
+  it.each(MALFORMED)('I0: %s', (_, make, mutate) => {
+    const h = make();
+    expect(broken(h, true)).toEqual([]);
+    mutate(h);
+    expect(ids(h)).toEqual(['I0']);
+    expect(ids(h, true)).toEqual(['I0']);
+  });
+
+  it('I0: a check that throws becomes an I0 message, whatever was thrown', () => {
+    for (const thrown of [new Error('boom'), 'boom']) {
+      const h = foldDone();
+      Object.defineProperty(h.result as object, 'endedBy', {
+        get() {
+          throw thrown;
+        },
+      });
+      expect(broken(h)).toEqual(['I0 well-formed: the state could not be checked (boom)']);
+    }
+    expect(ids(null as unknown as HandState)).toEqual(['I0']);
   });
 
   it('covers every invariant I0–I15 (I12 below)', () => {
@@ -400,6 +600,122 @@ describe('checkInvariants: I12 log replay (only with replayLog)', () => {
       (h) => ((h.log[h.log.length - 1] as { full: boolean }).full = false),
     ],
     ['blinds posted in the wrong order', threeHanded, (h) => h.log.reverse()],
+    [
+      'blinds that are not the first events',
+      headsUp,
+      (h) => {
+        h.log.unshift({ e: 'reshuffle', decisionId: 1, undoIndex: 0 });
+        h.undoneDecisions.push(1);
+      },
+    ],
+    ['a missing big blind', headsUp, (h) => h.log.splice(1, 1)],
+    [
+      'a post with the wrong all-in flag',
+      headsUp,
+      (h) => ((h.log[0] as { allIn: boolean }).allIn = true),
+    ],
+    [
+      'an action before the blinds',
+      headsUpFlop,
+      (h) => h.log.unshift(...h.log.splice(2, 1)), // the button's call moved to the front
+    ],
+    [
+      'an action on the wrong street',
+      headsUpFlop,
+      (h) => ((h.log[2] as { street: string }).street = 'flop'),
+    ],
+    ['a folded seat acting again', foldOver, (h) => h.log.push(foldEvent(0, 'preflop'))],
+    ['a fold when checking is free', headsUpFlop, (h) => h.log.push(foldEvent(1, 'flop'))],
+    [
+      'a check facing a bet',
+      flopBet,
+      (h) =>
+        h.log.push({
+          e: 'act',
+          seat: 0,
+          street: 'flop',
+          action: { type: 'check' },
+          amountIn: 0,
+          allIn: false,
+          full: false,
+        }),
+    ],
+    [
+      'a call with nothing to call',
+      headsUpFlop,
+      (h) =>
+        h.log.push({
+          e: 'act',
+          seat: 1,
+          street: 'flop',
+          action: { type: 'call' },
+          amountIn: 0,
+          allIn: false,
+          full: false,
+        }),
+    ],
+    [
+      'a bet into a bet',
+      flopBet,
+      (h) =>
+        h.log.push({
+          e: 'act',
+          seat: 0,
+          street: 'flop',
+          action: { type: 'bet', to: 400 },
+          amountIn: 400,
+          allIn: false,
+          full: true,
+        }),
+    ],
+    [
+      'more chips than the stack',
+      headsUp,
+      (h) =>
+        h.log.push({
+          e: 'act',
+          seat: 0,
+          street: 'preflop',
+          action: { type: 'raise', to: 20000 },
+          amountIn: 19950,
+          allIn: false,
+          full: true,
+        }),
+    ],
+    [
+      'an action with the wrong all-in flag',
+      headsUpFlop,
+      (h) => ((h.log[2] as { allIn: boolean }).allIn = true),
+    ],
+    [
+      'streets out of order',
+      headsUpFlop,
+      (h) => ((h.log[4] as { street: string }).street = 'turn'),
+    ],
+    ['a flop of two cards', headsUpFlop, (h) => (h.log[4] as { cards: number[] }).cards.pop()],
+    [
+      'a second reveal',
+      () => allInShowdown().complete,
+      (h) => h.log.push({ e: 'reveal', seats: [1, 0], reason: 'showdown' }),
+    ],
+    ['reveals in another order', () => allInShowdown().complete, (h) => h.revealed.reverse()],
+    [
+      'an award before the end',
+      foldOver,
+      (h) => h.log.push({ e: 'award', pot: 0, seats: [2], amounts: [100] }),
+    ],
+    [
+      'an award of a pot that does not exist',
+      foldDone,
+      (h) => ((h.log[h.log.length - 1] as { pot: number }).pot = 3),
+    ],
+    ['a pot awarded twice', foldDone, (h) => h.log.push(h.log[h.log.length - 1] as never)],
+    [
+      'an award to the wrong seat',
+      foldDone,
+      (h) => ((h.log[h.log.length - 1] as { seats: number[] }).seats = [1]),
+    ],
+    ['a pot never awarded', foldDone, (h) => h.log.pop()],
   ];
 
   it.each(LOG_CASES)('%s', (_, make, mutate) => {

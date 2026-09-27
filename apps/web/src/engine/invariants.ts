@@ -819,8 +819,12 @@ function checkLogReplay(h: HandState, fail: Fail): void {
         break;
       case 'award': {
         const r = h.result;
-        const pot = r?.pots[ev.pot];
-        if (r === null || pot === undefined) {
+        if (r === null) {
+          fail('I12', `${at}: an award before the hand is complete`);
+          break;
+        }
+        const pot = r.pots[ev.pot];
+        if (pot === undefined) {
           fail('I12', `${at}: there is no pot ${ev.pot}`);
           break;
         }
@@ -875,10 +879,7 @@ function checkLogReplay(h: HandState, fail: Fail): void {
     fail('I12', `undoneDecisions ${seatList(h.undoneDecisions)}, log ${seatList(undone)}`);
   }
   const r = h.result;
-  if (r === null) {
-    if (potsAwarded.size > 0) fail('I12', 'awards before the hand is complete');
-    return;
-  }
+  if (r === null) return;
   if (potsAwarded.size !== r.pots.length) {
     fail('I12', `${potsAwarded.size} of ${r.pots.length} pots are awarded in the log`);
   }
