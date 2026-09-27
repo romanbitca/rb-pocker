@@ -1,22 +1,23 @@
 import fc from 'fast-check';
-import { describe, expect, it } from 'vitest';
+import { describe as suite, expect, it } from 'vitest';
 import { formatCards, parseCards, type Card } from '../../src/core/cards.ts';
 import { rngFromSeed, shuffleRange } from '../../src/core/rng.ts';
+import { describe } from '../../src/eval/describe.ts';
 import { score5, score7 } from '../../src/eval/evaluate.ts';
-import { bestFive, oddChipOrder, sidePots, splitPot } from '../../src/engine/settle.ts';
+import { oddChipOrder, sidePots, splitPot } from '../../src/engine/settle.ts';
 import { step } from '../../src/engine/step.ts';
 import { clone } from './fixtures.ts';
 import { FC_SEED, deal, tableWith } from './helpers.ts';
 import { handArb, randomInput, seatOf, seedArb } from './play.ts';
 
-/** `bestFive` from text: "hole" and "board" as "Ah Kd" lists. */
+/** `describe().best5` (§5.4, the cards shown at the showdown) from text: "Ah Kd" lists. */
 function best(hole: string, board: string): string {
-  const h = parseCards(hole);
+  const h = parseCards(hole) as [Card, Card];
   const b = parseCards(board);
-  return formatCards(bestFive(h, b, score7([...h, ...b], 7)));
+  return formatCards(describe(h, b).best5);
 }
 
-describe('splitPot and oddChipOrder (§3.8 odd chips)', () => {
+suite('splitPot and oddChipOrder (§3.8 odd chips)', () => {
   it('splits evenly and gives the remainder one chip at a time from the first winner', () => {
     expect(splitPot(301, 2)).toEqual([151, 150]);
     expect(splitPot(100, 3)).toEqual([34, 33, 33]);
@@ -35,7 +36,7 @@ describe('splitPot and oddChipOrder (§3.8 odd chips)', () => {
   });
 });
 
-describe('sidePots (§3.8)', () => {
+suite('sidePots (§3.8)', () => {
   it('takes folded chips at their levels and lets only live seats win', () => {
     // B15 by hand: A folded after 200, B all-in 150, C 200 after the refund.
     const h = clone(deal(tableWith([10000, 150, 10000], { button: 0 })));
@@ -71,7 +72,7 @@ describe('sidePots (§3.8)', () => {
   });
 });
 
-describe('bestFive (§5.4 rules, the cards shown at the showdown)', () => {
+suite('describe().best5 (§5.4 rules, the cards shown at the showdown)', () => {
   it('the board plays: the five board cards, never a hole card that only ties (pitfall 10)', () => {
     expect(best('Tc 2d', 'Ah Kd Qc Jh Ts')).toBe('Ah Kd Qc Jh Ts');
     expect(best('Qc Jd', 'Ah Ad As Ks Kh')).toBe('As Ah Ad Ks Kh');
@@ -100,10 +101,10 @@ describe('bestFive (§5.4 rules, the cards shown at the showdown)', () => {
       fc.property(seedArb, (seed) => {
         const deck = Array.from({ length: 52 }, (_, i) => i as Card);
         shuffleRange(deck, 0, 51, rngFromSeed(seed));
-        const hole = deck.slice(0, 2);
+        const hole = deck.slice(0, 2) as [Card, Card];
         const board = deck.slice(2, 7);
         const score = score7([...hole, ...board], 7);
-        const five = bestFive(hole, board, score);
+        const five = describe(hole, board).best5;
         expect(five).toHaveLength(5);
         expect(new Set(five).size).toBe(5);
         expect(five.every((c) => hole.includes(c) || board.includes(c))).toBe(true);

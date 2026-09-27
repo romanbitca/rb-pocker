@@ -7,8 +7,9 @@
  * Appendix B vectors, and a differential test against the independent chip-layer oracle
  * (`tests/engine/settle.oracle.ts`, written from §3.8 alone) on random multi-way all-ins.
  */
-import { makeCard, rankOf, suitOf, type Card, type Rank, type Suit } from '../core/cards.ts';
-import { categoryOf, score5, score7, scoreNibbles } from '../eval/evaluate.ts';
+import type { Card } from '../core/cards.ts';
+import { describe } from '../eval/describe.ts';
+import { categoryOf, score7 } from '../eval/evaluate.ts';
 import { isLive } from './rules.ts';
 import type { HandResult, HandState, LogEvent, Pot, SeatState } from './types.ts';
 
@@ -152,7 +153,8 @@ export function settle(h: HandState): void {
               seat: i,
               score,
               category: categoryOf(score),
-              best5: bestFive(holeOf(h, i), h.board, score),
+              // §5.4, via the shared eval/describe.ts rule (board of 5 cards is always full here).
+              best5: describe(holeOf(h, i), h.board).best5,
             };
           }),
   };
@@ -160,59 +162,9 @@ export function settle(h: HandState): void {
   h.toAct = null;
 }
 
-/**
- * The five cards that make `score` from these hole cards and a five-card board, in the order of
- * §5.4 (the same rule as `describe().best5` in eval/describe.ts): if the board alone scores the
- * same, the five board cards (the board plays; never a hole card that merely ties, pitfall 10);
- * a flush or straight flush is the flush suit's cards of the scored ranks; otherwise, rank by
- * scored rank (category cards first, then kickers), the needed cards of that rank, chosen
- * preferring hole cards and then the higher suit (s > h > d > c), listed higher suit first.
- */
-export function bestFive(hole: readonly Card[], board: readonly Card[], score: number): Card[] {
-  const own = score5(board) === score ? [] : hole;
-  const cards = [...own, ...board];
-  const [n0, n1, n2, n3, n4] = scoreNibbles(score);
-  const code = score >> 20;
-  const straight = (high: Rank): Rank[] => [0, 1, 2, 3, 4].map((d) => (high - d + 13) % 13);
-  if (code === 8 || code === 5) {
-    // Straight flush or flush: five or more of the seven cards share one suit.
-    const suit = ([0, 1, 2, 3] as const).find(
-      (x) => cards.filter((c) => suitOf(c) === x).length >= 5,
-    ) as Suit;
-    const ranks = code === 8 ? straight(n0) : [n0, n1, n2, n3, n4];
-    return ranks.map((r) => makeCard(r, suit));
-  }
-  const used = new Set<Card>();
-  const fromHand = (c: Card): number => (own.includes(c) ? 1 : 0);
-  const take = (rank: Rank, count: number): Card[] => {
-    const chosen = cards
-      .filter((c) => rankOf(c) === rank && !used.has(c))
-      .sort((a, b) => fromHand(b) - fromHand(a) || suitOf(b) - suitOf(a))
-      .slice(0, count);
-    for (const c of chosen) used.add(c);
-    return chosen.sort((a, b) => suitOf(b) - suitOf(a));
-  };
-  switch (code) {
-    case 7:
-      return [...take(n0, 4), ...take(n1, 1)];
-    case 6:
-      return [...take(n0, 3), ...take(n1, 2)];
-    case 4:
-      return straight(n0).flatMap((r) => take(r, 1));
-    case 3:
-      return [...take(n0, 3), ...take(n1, 1), ...take(n2, 1)];
-    case 2:
-      return [...take(n0, 2), ...take(n1, 2), ...take(n2, 1)];
-    case 1:
-      return [...take(n0, 2), ...take(n1, 1), ...take(n2, 1), ...take(n3, 1)];
-    default:
-      return [n0, n1, n2, n3, n4].flatMap((r) => take(r, 1));
-  }
-}
-
 const seat = (h: HandState, i: number): SeatState => h.seats[i] as SeatState;
 
-const holeOf = (h: HandState, i: number): Card[] => [...(seat(h, i).hole as [Card, Card])];
+const holeOf = (h: HandState, i: number): [Card, Card] => seat(h, i).hole as [Card, Card];
 
 function seatsWhere(h: HandState, ok: (s: SeatState) => boolean): number[] {
   return h.seats.flatMap((s, i) => (ok(s) ? [i] : []));
