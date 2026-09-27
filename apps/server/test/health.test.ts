@@ -1,13 +1,11 @@
 import 'reflect-metadata';
 import { readFileSync } from 'node:fs';
 import type { NestExpressApplication } from '@nestjs/platform-express';
-import { Test } from '@nestjs/testing';
 import request from 'supertest';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
-import { AppModule } from '../src/app.module.js';
 import { HealthController } from '../src/health.controller.js';
 import { HealthService } from '../src/health.service.js';
-import { configureApp } from '../src/setup.js';
+import { startApp } from './start-app.js';
 
 const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as {
   version: string;
@@ -17,10 +15,7 @@ describe('AppModule', () => {
   let app: NestExpressApplication;
 
   beforeAll(async () => {
-    const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
-    app = moduleRef.createNestApplication<NestExpressApplication>({ logger: false });
-    configureApp(app);
-    await app.init();
+    app = await startApp();
   });
 
   afterAll(async () => {
@@ -71,9 +66,12 @@ describe('AppModule', () => {
     });
   });
 
-  it('serves routes only under the /api prefix', async () => {
+  it('serves routes only under the /api prefix: /health is the game page, not the health JSON', async () => {
+    // Before the SPA fallback existed (chunk 0.3) this path was a 404.
     const res = await request(app.getHttpServer()).get('/health');
 
-    expect(res.status).toBe(404);
+    expect(res.status).toBe(200);
+    expect(res.headers['content-type']).toMatch(/^text\/html/);
+    expect(res.text).not.toContain('"status"');
   });
 });
