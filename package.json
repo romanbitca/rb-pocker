@@ -15,6 +15,7 @@
     "dev:server": "npm run dev -w @rb/server",
     "build": "npm run build -w @rb/web && npm run build -w @rb/server",
     "start": "node apps/server/dist/main.js",
+    "docker:up": "docker compose up --build",
     "test": "npm run test -w @rb/web -w @rb/server",
     "test:slow": "npm run test:slow -w @rb/web -w @rb/server",
     "typecheck": "npm run typecheck -w @rb/web -w @rb/server",

@@ -66,7 +66,7 @@ rb-poker-coach/
 ├── .prettierrc.json              # Prettier: single quotes, width 100; .prettierignore skips Markdown and the lockfile
 ├── Dockerfile                    # multi-stage, non-root, EXPOSE 3000, HEALTHCHECK on /api/health (§17.3)
 ├── docker-compose.yml            # one service, port 3000:3000, NODE_ENV=production: the image Coolify runs
-├── .dockerignore                 # node_modules, **/dist, .git
+├── .dockerignore                 # **/node_modules, **/dist, .git, .claude, .loop, docs, .env* … (§17.3)
 ├── eslint.config.js              # module-boundary rules (§2.1), the Math.random ban, server-must-not-import-web; MUST fail CI
 ├── scripts/check-deploy.mjs      # post-deploy header/health/no-cookie check against a URL (§17.6)
 ├── apps/
@@ -1838,7 +1838,7 @@ Resulting CSP (helmet joins directives with `;` and no space): `default-src 'sel
 
 - `npm run build` builds `@rb/web` (to `apps/web/dist`) and then `@rb/server` (to `apps/server/dist`); `npm start` runs `node apps/server/dist/main.js`, which serves the game at `http://localhost:3000` with every §17.2 header. This is how each stage is "deployed" locally.
 - `npm run docker:up` runs `docker compose up --build`: one service built from the root `Dockerfile`, `ports: ["3000:3000"]`, `environment: NODE_ENV=production`. `docker compose ps` MUST show the container `healthy`.
-- `Dockerfile` outline (each step checked on the host; the full image build is UNVERIFIED until Stage 0 runs it):
+- `Dockerfile` (the root file adds only comments to this; the full build was verified in chunk 0.5, see below):
 
 ```dockerfile
 # syntax=docker/dockerfile:1
@@ -1878,6 +1878,12 @@ CMD ["node","dist/main.js"]
 ```
 
 - Why this shape: the runtime image holds only the server's production dependencies (no React, Vite or dev tools), runs as the non-root `node` user, and needs no `curl` for its health check. The check uses `127.0.0.1`, not `localhost` (which can resolve to `::1` on Alpine). `node` is PID 1 and handles SIGTERM through `enableShutdownHooks()`; never start the container with `npm start`.
+- `.dockerignore` keeps installed packages and old builds out of the context (`**/node_modules`, `**/dist`, coverage and test reports, logs), plus everything the build does not read (`.git`, `.github`, `.claude` (agent worktrees, each with its own `node_modules`), `.loop`, `docs`, root `*.md`, the Docker files) and `.env*`.
+- **Verified on 28 Sep 2026 (chunk 0.5)** with Docker 29.4.0 and `node:24-alpine` (Node 24.21.0, npm 11.19.0, Alpine 3.24): the outline above built and ran **as written; no fix was needed**. `docker compose up --build -d` → `docker compose ps` showed `healthy` after about 12 s; `curl -I http://localhost:3000/` had every §17.2 header, HSTS (the image sets `NODE_ENV=production`), `Cache-Control: no-cache` and no `Set-Cookie`; `/table/42` → `index.html` (pitfall 44 cannot happen under `/app`), a hashed `/assets/*` file → `immutable`, `/api/nope` → JSON 404 `no-store`, `/api/health` → 200. Re-checked on the PWA shell build (chunk 0.4): `/sw.js`, `/manifest.webmanifest`, `workbox-*.js` and the icons → `no-cache`. Details checked on the way:
+  - `npm ci` works under npm 11's install-script policy: on Linux the only dependency with an install script is `@swc/core`, denied in the root `allowScripts` (its binary comes as the optional `@swc/core-linux-*-musl` package); `fsevents` is skipped on Linux. No install-script warnings. The lockfile holds the arm64 and x64 musl bindings (rolldown, lightningcss, rollup, swc).
+  - `npm ci --omit=dev --workspace @rb/server` installs only the server's production tree: 101 packages, 22.6 MB, no React, Vite or SWC; the image is 176 MB. The process runs as `node` (uid 1000).
+  - `docker compose down` stops the container in about 0.5 s (node handles SIGTERM as PID 1). Startup lines only in the logs; no request logging.
+  - A `linux/amd64` build (the CI and Coolify platform, emulated on the arm64 host) also built and became `healthy`, with the same headers.
 
 ### 17.4 Phone testing and the secure context
 
@@ -2229,7 +2235,7 @@ The human answered on 23 Sep 2026. Answered rows show the decision; open rows ke
 | `<a download>` in iOS standalone | Web Share is the primary path |
 | GDPR applicability with no data leaving the device | Privacy screen shipped regardless |
 | PokerSnowie error-rate benchmarks, GTO Wizard thresholds | Not used for thresholds |
-| The full multi-stage Docker image build (steps were checked one by one on a host without Docker) | Stage 0 acceptance 3 and the `docker` CI job |
+| ~~The full multi-stage Docker image build (steps were checked one by one on a host without Docker)~~ | **Closed 28 Sep 2026 (chunk 0.5):** built and ran `healthy` locally as written, on arm64 and on emulated amd64 (§17.3). The `docker` CI job keeps checking it on every PR to `main` |
 | Coolify's **Force HTTPS** default; whether the Traefik proxy writes an access log by default; whether `SOURCE_COMMIT` is set at runtime by default | First Coolify deploy: check the settings, `check-deploy` (commit in `/api/health`), inspect the proxy logs; fix §17.6 |
 | Whether any secure-context API works behind a self-signed certificate on phones | Not needed: LAN http for gameplay, Coolify HTTPS for the rest (§17.4) |
 
@@ -2245,6 +2251,7 @@ The human answered on 23 Sep 2026. Answered rows show the decision; open rows ke
 | 1.3.2 | 28 Sep 2026 | Static serving and headers (chunk 0.3): `security.ts` also exports the expected header values and the static cache rule; `strictTransportSecurity` written as a boolean (`exactOptionalPropertyTypes`, same behaviour) (§17.2); the `assets/` cache rule is judged relative to `rootPath`, and `no-store` covers every `/api` response, 404s included (§2.6 b); `WEB_DIST_DIR` override; misses outside `/api` get Express's own 404 page with its stricter CSP, because Nest 12 mounts its JSON 404 handler under the global prefix only (§2.6 a); new pitfalls 44 (dot-folder checkouts break the SPA fallback) and 45 (`Test.createTestingModule` gives serve-static a no-op loader); the server tests serve their fixture from a temporary copy and boot like `main.ts` (Testing strategy, Server row); with the SPA fallback in place, the scaffold's "`/health` is a 404" test now checks that `/health` is the game page, not the health JSON |
 | 1.3.3 | 28 Sep 2026 | PWA shell (chunk 0.4): the meta CSP string lives in `apps/web/scripts/csp.ts` (the web app does not import `apps/server`; the E2E should compare it with the header) and is inserted right after `<meta charset>`, so it precedes every script; `scripts/check-html.ts` (`npm run check:html -w @rb/web`) also rejects inline event handlers and a meta CSP placed after a script; the icons are drawn by `scripts/gen-icons.ts` (a light spade on felt) and a test checks the committed PNGs are exactly its output; the manifest's name, short name and description come from `en.ts`; `index.html` also links `icons/icon-192.png` as the favicon (otherwise `/favicon.ico` gets the SPA fallback); `tsconfig.node.json` also covers `scripts/` and `tests/scripts/`. vite-plugin-pwa adds the manifest and its icons to the precache although the glob already matches them; Workbox ignores the identical duplicates |
 | 1.3.4 | 28 Sep 2026 | Lint boundaries (chunk 0.2): the §2.1 rules are a small local ESLint rule (`rb/web-module-boundaries` in `eslint.config.js`), not `no-restricted-imports` or `eslint-plugin-boundaries`. `no-restricted-imports` matches import strings, not paths (so no allow-lists such as "`core` imports nothing", and false matches by folder name), skips dynamic `import()`, and its `allowTypeImports` accepts an inline `import { type X }`, which `verbatimModuleSyntax` keeps as a run-time import. `eslint-plugin-boundaries` classifies an import by resolving it to a file on disk, and in Stage 0 none of the modules exist yet. §2.1 table: rows for `workers/protocol`, `data`, `i18n`, `sound` and `main.tsx`; `data` added to `analysis`, `brain`, `workers` and `ui` (§0.1, §7.5, §13), `sound` to `app` and `ui` (§12.8); `workers` may import types from `engine/types`; the brain and the workers may call `observationKey` (A.4 puts it in `engine/types.ts`; §2.4 and §8.11 call it there); how to read the table is written out. `apps/server` must not import anything from `apps/web`, not only from `apps/web/src` |
+| 1.3.5 | 28 Sep 2026 | Docker image (chunk 0.5): the §17.3 `Dockerfile` built and ran `healthy` as written (arm64 and emulated amd64), no fix needed; `npm ci` works under npm 11's install-script policy with the existing `allowScripts`; the "full Docker image build" UNVERIFIED row is closed. `docker-compose.yml`, `.dockerignore` (now also `.claude`, `.loop`, `docs`, `.env*`, §0.1) and the root `docker:up` script added (§17.3) |
 
 ---
 
