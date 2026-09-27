@@ -69,15 +69,17 @@ rb-poker-coach/
 ├── .dockerignore                 # **/node_modules, **/dist, .git, .claude, .loop, docs, .env* … (§17.3)
 ├── eslint.config.js              # module-boundary rules (§2.1), the Math.random ban, server-must-not-import-web; MUST fail CI
 ├── scripts/check-deploy.mjs      # post-deploy header/health/no-cookie check against a URL (§17.6)
+├── scripts/build-if-needed.mjs   # `npm run e2e` runs it first: `npm run build` when the build is missing or older than the sources
 ├── apps/
 │   ├── web/                      # package "@rb/web": the game (React + Vite PWA); builds to apps/web/dist
 │   │   ├── index.html            # app shell: viewport meta, #root, apple-touch-icon, <noscript>; no inline scripts (meta CSP injected at build, §15.2)
 │   │   ├── package.json          # deps: react, react-dom, zustand; scripts: dev, build, test, test:slow, e2e, gen, gen:check, gen:icons, check:html, size, selfplay
 │   │   ├── tsconfig.json         # strict, noUncheckedIndexedAccess, exactOptionalPropertyTypes; types: vite-plugin-pwa/react
 │   │   ├── tsconfig.node.json    # the same flags with Node types, for vite.config.ts, vitest.config.ts, scripts/ and tests/scripts/
+│   │   ├── tsconfig.e2e.json     # the same flags with DOM and Node types, for playwright.config.ts and tests/e2e/
 │   │   ├── vite.config.ts        # @vitejs/plugin-react + vite-plugin-pwa (generateSW), worker format 'es', /api proxy to :3000 in dev
 │   │   ├── vitest.config.ts      # projects: unit (default) and slow (only *.slow.test.*; SLOW=1 or --project slow)
-│   │   ├── playwright.config.ts  # phone, landscape, tablet, desktop projects; Chromium + WebKit; webServer = the Nest-served build
+│   │   ├── playwright.config.ts  # phone, landscape, tablet, desktop projects; Chromium + WebKit; webServer = the Nest-served build (PORT moves it)
 │   │   ├── public/
 │   │   │   └── icons/            # 192, 512, 512-maskable PNG, apple-touch 180; drawn by scripts/gen-icons.ts
 │   │   ├── scripts/
@@ -151,7 +153,8 @@ rb-poker-coach/
 │   │   │   └── i18n/en.ts        # EVERY user-visible string and coach template (Appendix F)
 │   │   └── tests/                # mirrors src/; *.slow.test.ts only run in the slow project
 │   │       ├── lint/             # eslint.config.js through ESLint's API (§2.1, Stage 0 acceptance 5)
-│   │       └── e2e/              # Playwright specs (run against the Nest-served production build)
+│   │       └── e2e/              # Playwright specs (run against the Nest-served production build); fixtures.ts: the
+│   │                             #   `test` every spec uses, with the §15.2 network guard; own-server.ts: a private server to kill
 │   └── server/                   # package "@rb/server": NestJS 12, ESM; builds to apps/server/dist (§2.6)
 │       ├── package.json          # deps: @nestjs/core, @nestjs/common, @nestjs/platform-express, @nestjs/serve-static, helmet
 │       ├── tsconfig.json         # module/moduleResolution nodenext, target ES2023, experimentalDecorators, emitDecoratorMetadata
@@ -1724,7 +1727,7 @@ On start, `navigator.locks.request('pc-writer', { ifAvailable: true }, …)` and
 
 - The app makes **no** fetches at runtime, not even to our own server: it MUST NOT call `/api` (§2.6). The CSP (§17.2) has `connect-src 'self'` and no third-party origins, both as a response header from the Nest server and as a `<meta http-equiv>` in `index.html`. The meta copy is defence in depth: a page served from the service-worker cache (offline, or while the server is down) still carries it. Do not apply the CSP on the Vite dev server (HMR needs inline scripts and websockets): the source `index.html` has **no** CSP meta; a ~10-line Vite plugin with `apply: 'build'` and `transformIndexHtml` injects it into the built file only. CI asserts the built `index.html` contains it (`scripts/check-html.ts`, `npm run check:html -w @rb/web`, after the build).
 - CI checks that built `index.html` has no inline `<script>` without `src` (the same script; it also rejects inline event handlers and a meta CSP placed after a script, which would not cover it).
-- Playwright: load once, `context.setOffline(true)`, reload, play a full 6-player hand to showdown, open the rankings drawer, Stats and Learn. A `page.on('request')` listener fails any test in the suite if a request leaves the origin **or goes to `/api`**.
+- Playwright: load once, wait until the service worker controls the page, go offline, reload, play a full 6-player hand to showdown, open the rankings drawer, Stats and Learn. "Go offline" kills the test's own server (`tests/e2e/own-server.ts`) and, in Chromium, also calls `context.setOffline(true)`; WebKit cannot use `setOffline` here (pitfall 46). A request listener on the browser context (`tests/e2e/fixtures.ts`: every page and the service worker) fails any test in the suite if a request leaves the origin **or goes to `/api`**, or a WebSocket opens.
 
 ### 15.3 Budgets (CI-enforced where possible)
 
@@ -2133,6 +2136,7 @@ Build in order. Every stage ends running locally via `npm start` and `docker com
 43. ⚠️ **Plain http on the LAN is not a secure context.** On `http://192.168.x.x` the service worker, Web Locks, `crypto.subtle`, `crypto.randomUUID`, `persist()`, Wake Lock and Web Share are missing. Feature-detect each (§12.14); never call `crypto.randomUUID`; never let a missing API crash the boot.
 44. ⚠️ **SPA fallback in a dot-folder checkout.** `@nestjs/serve-static` 12.0.0 sends the fallback `index.html` with `res.sendFile(<absolute path>)` and no options, and `send` answers 404 when any folder in that absolute path starts with a dot. So `/table/42` is a 404 when the repository sits under `.claude/worktrees/` (agent worktrees) or any other dot-folder; normal files and `/` still work. Docker (`/app`), CI and the main checkout are not affected. The server tests copy their fixture to a temporary folder first; for a manual check from a worktree, point `WEB_DIST_DIR` at a copy of `apps/web/dist` outside it (checked 28 Sep 2026).
 45. **serve-static in tests.** `Test.createTestingModule().compile()` creates providers before any HTTP adapter exists, so `@nestjs/serve-static` silently picks its no-op loader and serves no files. HTTP tests that need the game files boot with `NestFactory.create()`, like `main.ts`.
+46. ⚠️ **Offline tests in WebKit.** In Playwright's WebKit (1.63), `context.setOffline(true)` also fails every response the service worker gives (a controlled page's `fetch` and the reload both fail: "WebKit encountered an internal error"), and a `context.route()` that aborts requests sees the navigation before the service worker does ("Blocked by Web Inspector"). Chromium has neither problem. So the offline test takes the network away for real: it starts its own server on a free port, kills it once the service worker controls the page, and reloads (Chromium also calls `setOffline`). With service workers blocked, that reload fails in both browsers ("connection refused"), so the test cannot pass by accident (checked 28 Sep 2026).
 
 ---
 
@@ -2256,6 +2260,7 @@ The human answered on 23 Sep 2026. Answered rows show the decision; open rows ke
 | 1.3.4 | 28 Sep 2026 | Lint boundaries (chunk 0.2): the §2.1 rules are a small local ESLint rule (`rb/web-module-boundaries` in `eslint.config.js`), not `no-restricted-imports` or `eslint-plugin-boundaries`. `no-restricted-imports` matches import strings, not paths (so no allow-lists such as "`core` imports nothing", and false matches by folder name), skips dynamic `import()`, and its `allowTypeImports` accepts an inline `import { type X }`, which `verbatimModuleSyntax` keeps as a run-time import. `eslint-plugin-boundaries` classifies an import by resolving it to a file on disk, and in Stage 0 none of the modules exist yet. §2.1 table: rows for `workers/protocol`, `data`, `i18n`, `sound` and `main.tsx`; `data` added to `analysis`, `brain`, `workers` and `ui` (§0.1, §7.5, §13), `sound` to `app` and `ui` (§12.8); `workers` may import types from `engine/types`; the brain and the workers may call `observationKey` (A.4 puts it in `engine/types.ts`; §2.4 and §8.11 call it there); how to read the table is written out. `apps/server` must not import anything from `apps/web`, not only from `apps/web/src` |
 | 1.3.5 | 28 Sep 2026 | Docker image (chunk 0.5): the §17.3 `Dockerfile` built and ran `healthy` as written (arm64 and emulated amd64), no fix needed; `npm ci` works under npm 11's install-script policy with the existing `allowScripts`; the "full Docker image build" UNVERIFIED row is closed. `docker-compose.yml`, `.dockerignore` (now also `.claude`, `.loop`, `docs`, `.env*`, §0.1) and the root `docker:up` script added (§17.3) |
 | 1.3.6 | 28 Sep 2026 | Size budget (chunk 0.7): `scripts/size-budget.ts` and root `npm run size`; what each §15.3 size row counts is now written under the table (gzip level 6 with node:zlib, 1 KB = 1,000 bytes, initial JS = what `index.html` loads plus static imports, workers by their `*.worker-<hash>.js` name, precache = the `sw.js` list); shared `scripts/html.ts` readers for `check-html.ts` and `size-budget.ts` |
+| 1.3.7 | 28 Sep 2026 | Playwright (chunk 0.6): `apps/web/playwright.config.ts` has 12 projects (Chromium and WebKit × the six §17.5 viewports; phones, landscape and tablet emulate a mobile device: user agent, pixel ratio, touch); `PORT` moves the E2E server when 3000 is taken. Root `npm run e2e` = `scripts/build-if-needed.mjs` (builds only when the build is missing or older than the sources), then `playwright test` in `apps/web` (§0.1). `tsconfig.e2e.json` type-checks the config and specs with DOM and Node types. The §15.2 request listener is on the browser context, so it also sees the service worker, and it flags WebSockets; specs import `test` from `tests/e2e/fixtures.ts`, and a spec checks that the guard records what it must. The offline test kills its own server instead of relying on `setOffline` alone, because Playwright's WebKit offline mode breaks the service worker (§15.2, new pitfall 46). The E2E compares the CSP header with `META_CSP` + `frame-ancestors` and checks the meta tag, as 1.3.3 asked |
 
 ---
 
