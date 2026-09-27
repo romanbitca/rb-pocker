@@ -730,6 +730,8 @@ Display uses 10 categories: "Royal flush" is category 8 with `n0 == 12`.
 5. Quads → `[q, highest other rank]`. Full house if trips and (second trips or a pair) → `[t1, max(t2, p1)]`. Flush → `TOP5[flushMask]`. Straight → `STRAIGHT_HIGH[any]` (wheel is `(mask & 0x100F) == 0x100F`; Q-K-A-2-3 is **not** a straight). Trips → `[t, top 2 others]`. Two pair → `[p1, p2, highest other rank]` (a third pair's rank can be the kicker). Pair → `[p, top 3 others]`. High card → `TOP5[any]`.
 6. `POPCOUNT`, `STRAIGHT_HIGH`, `TOP5` are 8,192-entry typed arrays computed at module load (< 5 ms), not shipped as data.
 
+Implementation notes (Stage 1): instead of `cnt[13]`, four more 13-bit masks hold the ranks seen at least 1, 2, 3 and 4 times (bit-parallel counting), so "scan from the Ace down" is `31 − Math.clz32(mask)` and nothing is allocated. `evaluate.ts` reads the tables through module-local constants: Vitest's module runner turns every use of an imported binding into a property lookup on the module namespace, which made the hot path about 4× slower under test (a production bundle is unaffected). Later hot paths (equity, §7) do the same. Measured on the owner's Mac (Node 24, inside Vitest): all 133,784,560 hands in 2.9 s (~47M evaluations/s); random hands copied into a 7-card buffer ~16M evaluations/s.
+
 ### 5.4 `describe(hole, board): HandInfo`
 
 The UI and coach path; allocation is fine here.
@@ -750,6 +752,8 @@ The UI and coach path; allocation is fine here.
 | Edge vectors B19–B24, Appendix D.1 | unit | Exact names, sub-labels, `best5`, `playsTheBoard` |
 | `describe` consistency (property) | unit | `score5(best5) == score7(hole + board)` for 100,000 random hands |
 | Suit relabelling (property) | unit | Permuting suits consistently leaves the score unchanged |
+
+Sizes as built (Stage 1): half of each differential sample are showdown pairs (one shared board, 9 distinct cards), half are independent hands; each hand's category must also match the oracle's. Extra samples from **small decks** (1–4 suits × a window of 5–13 ranks that may wrap past the Ace) reach the rare shapes: straight flushes, wheels, Q-K-A-2-3, quads, two trips, three pairs. `pokersolver` (second oracle): 25,000 pairs in unit, 200,000 in slow. Naive oracle: 200,000 seven-card hands + 50,000 small-deck hands + 5- and 6-card hands in unit, 1,000,000 in slow. Also: `score7` equals the best `score5` over the 21 subsets (20,000 hands, unit). The micro-benchmark (`tests/eval/benchmark.test.ts`, unit) prints the rate and only warns below 5M/s (a `::warning::` annotation on GitHub Actions).
 
 ### 5.6 Randomness (`core/rng.ts`)
 
@@ -2263,6 +2267,7 @@ The human answered on 23 Sep 2026. Answered rows show the decision; open rows ke
 | 1.3.7 | 28 Sep 2026 | Playwright (chunk 0.6): `apps/web/playwright.config.ts` has 12 projects (Chromium and WebKit × the six §17.5 viewports; phones, landscape and tablet emulate a mobile device: user agent, pixel ratio, touch); `PORT` moves the E2E server when 3000 is taken. Root `npm run e2e` = `scripts/build-if-needed.mjs` (builds only when the build is missing or older than the sources), then `playwright test` in `apps/web` (§0.1). `tsconfig.e2e.json` type-checks the config and specs with DOM and Node types. The §15.2 request listener is on the browser context, so it also sees the service worker, and it flags WebSockets; specs import `test` from `tests/e2e/fixtures.ts`, and a spec checks that the guard records what it must. The offline test kills its own server instead of relying on `setOffline` alone, because Playwright's WebKit offline mode breaks the service worker (§15.2, new pitfall 46). The E2E compares the CSP header with `META_CSP` + `frame-ancestors` and checks the meta tag, as 1.3.3 asked |
 | 1.3.8 | 28 Sep 2026 | CI (chunk 0.8): `.github/workflows/check.yml`, `e2e.yml`, `docker.yml`, `slow.yml` (§17.5); every workflow cancels superseded runs; runners pinned to `ubuntu-24.04` (`ubuntu-latest` moves to Ubuntu 26 on 19 Oct 2026); `check` also runs `format:check`, and `check-tables`/`check-copy` join when they exist; the `docker` job waits with `docker compose up --wait` and reuses `scripts/check-deploy.mjs` with `--commit`, so `docker-compose.yml` now passes `SOURCE_COMMIT` through (§17.3, §0.1); the weekly deploy check is its own job in `slow.yml` and compares the commit with `main`. `scripts/check-deploy.mjs` imports its expected values from `security.ts` (Node 24 strips the types; needs `npm ci`), also checks the SPA fallback, `no-store` on `/api/health` and no `X-Powered-By`, prints one line per URL, and has a server test (pass, no HSTS, a cookie, wrong or missing commit, server down) (§17.6 step 7). §0.2: the `slow` job is weekly |
 | 1.3.9 | 28 Sep 2026 | Cards and seeded RNG (chunk 1.1): the card words live in `core/cards.ts`, the one exception to "every string in `en.ts`" (§0.3), because `core` imports nothing (§2.1); A.1 lists the extra exports (seed helpers, the C.4 reference functions, `rankLabel` for the "10, never T" rule, `newDeck`, `parseCards`/`formatCards`); `EngineError`/`InvariantError` are defined in `core/assert.ts` and re-exported by `engine/types.ts` (§0.1 vs A.3). §5.6 test details: per-card Bonferroni threshold, the `randInt(3·2^30)` modulo-bias check, unit vs slow sizes; `TEST_SEED` (Testing strategy → Rules) |
+| 1.3.10 | 28 Sep 2026 | Evaluator (chunk 1.2): bit-parallel rank-multiplicity masks instead of `cnt[13]`, and module-local table references because Vitest's module runner slows imported bindings ~4× (§5.3 notes, with measured speeds); A.2 adds `score5`, `score6`, `HAND_CATEGORIES`, `scoreNibbles` and the `tables.ts` exports; §5.5 records the sample sizes, the small-deck samples and the benchmark's warn-only behaviour. Appendix C.1 counts reproduced exactly |
 
 ---
 
@@ -2322,7 +2327,13 @@ export type HandCategory =
   | 'flush' | 'fullHouse' | 'quads' | 'straightFlush' | 'royalFlush';
 
 export function score7(cards: ArrayLike<Card>, n: number): number;   // n = 5, 6 or 7; §5.2
+export function score6(cards: ArrayLike<Card>): number;               // score7(cards, 6)
+export function score5(cards: ArrayLike<Card>): number;               // score7(cards, 5)
 export function categoryOf(score: number): HandCategory;
+export const HAND_CATEGORIES: readonly HandCategory[];               // weakest first; index = display category (royal = 9)
+export function scoreNibbles(score: number): [number, number, number, number, number]; // n0..n4
+// eval/tables.ts: MASK_COUNT (8,192), POPCOUNT (Uint8Array), STRAIGHT_HIGH (Int8Array, −1 = none),
+// TOP5 (Int32Array, the top five ranks as left-aligned nibbles)
 
 export interface HandInfo {
   score: number;                // 0 preflop
