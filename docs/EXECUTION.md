@@ -6,7 +6,7 @@ This is the working checklist for building [PLAN.md](PLAN.md). PLAN.md is the so
 
 Legend: `[ ]` todo · `[~]` in progress (branch exists) · `[x]` merged to `main` · `[H]` waiting on the human
 
-**Current position:** Stage 0 ✅ complete (CI green). Merging Stage 1 (PRs #3 → #9 → #10). In parallel: engine 2.1–2.2 and UI 3.3/3.6 (branches stacked on Stage 1, held for stage order); oracle PR #5 held for Stage 2.
+**Current position:** Stages 0 and 1 ✅ complete (CI green). Stage 2 in progress: 2.1/2.2 PRs #14/#16 ready (need rebase onto main), 2.3/2.4 being built; oracle PR #5 to be folded into 2.4. UI 3.3/3.6 built early (held for stage order).
 
 ---
 
@@ -40,9 +40,9 @@ Legend: `[ ]` todo · `[~]` in progress (branch exists) · `[x]` merged to `main
 
 ## Stage 1 - Cards, randomness, evaluator, describe() (PLAN §5, §6.1)
 
-- [~] 1.1 `feature/cards-and-seeded-rng` - `core/cards.ts`, `core/rng.ts`, `core/assert.ts`; Appendix C.4 golden values, chi-square and `randInt` tests.
-- [~] 1.2 `feature/seven-card-evaluator` - `eval/tables.ts`, `eval/evaluate.ts`; naive 21-subset oracle, 1M differential vs `@poker-apprentice/hand-evaluator` + pokersolver, exhaustive C.1 count in `slow`, micro-benchmark.
-- [~] 1.3 `feature/hand-describe-labels` - `eval/describe.ts`: best five, core, kickers, names, sub-labels, `playsTheBoard`; Appendix D.1 and B19–B24.
+- [x] 1.1 `feature/cards-and-seeded-rng` - `core/cards.ts`, `core/rng.ts`, `core/assert.ts`; Appendix C.4 golden values, chi-square and `randInt` tests.
+- [x] 1.2 `feature/seven-card-evaluator` - `eval/tables.ts`, `eval/evaluate.ts`; naive 21-subset oracle, 1M differential vs `@poker-apprentice/hand-evaluator` + pokersolver, exhaustive C.1 count in `slow`, micro-benchmark.
+- [x] 1.3 `feature/hand-describe-labels` - `eval/describe.ts`: best five, core, kickers, names, sub-labels, `playsTheBoard`; Appendix D.1 and B19–B24.
 
 ## Stage 2 - Rules engine (PLAN §3, §4, Appendix A.3–A.4, B)
 
@@ -138,7 +138,7 @@ _(nothing yet)_
 
 ### Pending fixes (apply at merge time)
 
-- 1.3 (PR #10): PLAN D.1 row 6 best5 order contradicts rows 7 and 22. Decision (orchestrator, 27 Sep): within a rank, order by suit s > h > d > c (selection still prefers hole cards, §5.4). Change row 6 to `7♥ 7♦ 7♣ K♠ 2♦`, state the order rule in §5.4, turn the `it.fails` for row 6 into a normal test.
+- ✅ done in PR #10 — 1.3 (PR #10): PLAN D.1 row 6 best5 order contradicts rows 7 and 22. Decision (orchestrator, 27 Sep): within a rank, order by suit s > h > d > c (selection still prefers hole cards, §5.4). Change row 6 to `7♥ 7♦ 7♣ K♠ 2♦`, state the order rule in §5.4, turn the `it.fails` for row 6 into a normal test.
 - PLAN change-log rows 1.3.x were numbered independently by parallel agents: renumber them in merge order.
 - Later (Stage 9 or a small fix): Workbox `navigateFallbackDenylist: [/^\/api\//]` so a browser with the SW installed shows JSON at `/api/health` (needs a §15.1 edit).
 
@@ -153,3 +153,4 @@ _(nothing yet)_
 | 27 Sep 21:40Z | 0.7 | [PR #8](https://github.com/romanbitca/rb-pocker/pull/8) merged; initial JS 69 KB gzip | — |
 | 27 Sep 21:36–22:10Z | 0.6, 0.9, 0.8 | PRs [#11](https://github.com/romanbitca/rb-pocker/pull/11), [#12](https://github.com/romanbitca/rb-pocker/pull/12), [#13](https://github.com/romanbitca/rb-pocker/pull/13) merged; CI green (check 35 s, docker 57 s, e2e 2m43s). **Stage 0 complete** | — |
 | 27 Sep 21:37–22:35Z | 2.1, 2.2 | PRs [#14](https://github.com/romanbitca/rb-pocker/pull/14), [#16](https://github.com/romanbitca/rb-pocker/pull/16) open (stacked on Stage 1, held). I0–I15 with mutation tests; 3,000-table fast-check; B1/B26/B30/B31/B36 full. PLAN §3.7 fixed so B34 is reachable | 53% → 66% |
+| 27 Sep 22:12–22:40Z | Stage 1 merge | PRs #3, #9, #10 rebased and merged with green CI (check, docker, e2e); D.1 row 6 fixed. **Stage 1 complete** | Sonnet agent |
