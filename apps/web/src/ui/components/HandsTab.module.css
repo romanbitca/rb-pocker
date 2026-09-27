@@ -1,0 +1,58 @@
+/* The Hands edge tab (PLAN §13.1): 44×88 to touch, 28×88 drawn at the right edge.
+   Literal px sizes: tap target (§12.12). */
+.tab {
+  position: relative;
+  display: flex;
+  justify-content: flex-end;
+  width: 44px;
+  height: 88px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+.face {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 88px;
+  border: 1px solid rgb(242 245 243 / 14%);
+  border-right: 0;
+  border-radius: var(--radius-2) 0 0 var(--radius-2);
+  background: var(--surface);
+  box-shadow: -1px 0 4px rgb(0 0 0 / 30%);
+}
+
+/* "Hands" written top to bottom. */
+.label {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  writing-mode: vertical-rl;
+}
+
+.dot {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+.tab:focus-visible {
+  outline: none;
+}
+.tab:focus-visible .face {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}

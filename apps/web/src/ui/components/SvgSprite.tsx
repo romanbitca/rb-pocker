@@ -14,6 +14,7 @@ export const SUIT_SYMBOLS = ['s-c', 's-d', 's-h', 's-s'] as const;
 export const ICONS = {
   chip: 'i-chip',
   close: 'i-close',
+  chevron: 'i-chevron',
   rock: 'p-rock',
   tag: 'p-tag',
   lag: 'p-lag',
@@ -91,6 +92,17 @@ export const SvgSprite = memo(function SvgSprite() {
           strokeWidth="2.4"
           strokeLinecap="round"
           d="M6 6l12 12M18 6 6 18"
+        />
+      </symbol>
+      {/* Chevron pointing right (›): hide a side panel. */}
+      <symbol id="i-chevron" viewBox="0 0 24 24">
+        <path
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2.4"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          d="m9 5 7 7-7 7"
         />
       </symbol>
 

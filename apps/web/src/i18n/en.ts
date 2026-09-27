@@ -78,4 +78,42 @@ export const en = {
   board: {
     label: 'Board',
   },
+
+  /** The hand-rankings panel and drawer (PLAN §13). The ten rows are in `data/rankings.ts`. */
+  rankings: {
+    title: 'Poker hands: best at the top',
+    /** The edge tab and the top-bar button. */
+    tab: 'Hands',
+    open: 'Show all poker hands',
+    close: 'Close',
+    collapse: 'Hide the poker hands',
+    you: 'You',
+    beatsYou: 'beats you',
+    youBeat: 'you beat',
+    youFolded: 'You folded',
+    /** "How often" (7-card odds), e.g. "2.6%" over "1 in 39". */
+    howOften: 'How often',
+    percent: (value: string) => `${value}%`,
+    oneIn: (n: string) => `1 in ${n}`,
+    /** Tie-break footer, always shown (§13.2). */
+    footer: [
+      'A higher row always beats a lower row.',
+      'Same row? The higher cards win: the higher pair, then the kickers.',
+      'Suits never break a tie. No suit beats another.',
+      'Still equal? The pot is split.',
+      'Why does a flush beat a straight? It is rarer.',
+      'The order comes from 5-card hands. With 7 cards, high card is rarer than one pair, but it still ranks lowest.',
+    ],
+    /** Screen-reader row label (§13.4). */
+    row: (rank: number, name: string, example: string, tip: string) =>
+      `Rank ${rank}, ${name}. Example: ${example}. ${tip}`,
+    rowYou: 'You have this hand.',
+    rowFolded: 'You folded this hand.',
+    rowBeatsYou: 'It beats your hand.',
+    rowYouBeat: 'Your hand beats it.',
+    rowHowOften: (percent: string, oneIn: string) => `How often: ${percent}, ${oneIn}.`,
+    /** The "You" line: the hero's actual best five. */
+    yourCards: 'Your cards',
+    listSeparator: ', ',
+  },
 } as const;

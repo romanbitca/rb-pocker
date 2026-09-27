@@ -129,11 +129,19 @@ export interface TableFrame {
   readonly tab: Rect | null;
 }
 
-/**
- * Where the table box sits for a viewport, from the §12.3 / §12.5 shell sizes. `coachPanel` is the
- * wide layout's inline coach panel height (default: its 30vh maximum, the tightest case).
- */
-export function tableFrame(viewport: Size, coachPanel?: number): TableFrame {
+/** Wide-layout options for `tableFrame`. */
+export interface FrameOptions {
+  /** The inline coach panel's height (default: its 30vh maximum, the tightest case). */
+  readonly coachPanel?: number;
+  /** The rankings column is collapsed to its 44 px rail (`settings.handsPanel`, §13.1). */
+  readonly handsCollapsed?: boolean;
+}
+
+/** The collapsed rankings rail (§12.5). */
+export const HANDS_RAIL = 44;
+
+/** Where the table box sits for a viewport, from the §12.3 / §12.5 shell sizes. */
+export function tableFrame(viewport: Size, options: FrameOptions = {}): TableFrame {
   const layout = layoutFor(viewport);
   const { w: W, h: H } = viewport;
   const tabAt = (right: number, top: number, height: number): Rect => ({
@@ -144,8 +152,9 @@ export function tableFrame(viewport: Size, coachPanel?: number): TableFrame {
   switch (layout) {
     case 'wide': {
       const { min, vw, max } = SHELL.wideColumn;
-      const column = Math.min(max, Math.max(min, vw * W));
-      const coach = coachPanel ?? Math.round(SHELL.wideCoachMax * H);
+      const column =
+        options.handsCollapsed === true ? HANDS_RAIL : Math.min(max, Math.max(min, vw * W));
+      const coach = options.coachPanel ?? Math.round(SHELL.wideCoachMax * H);
       const h = H - SHELL.topBar - SHELL.heroStrip - coach - SHELL.actionBar;
       return { layout, box: { x: 0, y: SHELL.topBar, w: W - column, h }, tab: null };
     }

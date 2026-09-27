@@ -1,0 +1,80 @@
+/* The persistent rankings column (PLAN §13.1). It fills the grid cell the Table gives it. */
+.column {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  border-left: 1px solid rgb(242 245 243 / 8%);
+  background: var(--surface);
+  color: var(--text);
+}
+
+.header {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 4px 4px 14px;
+  border-bottom: 1px solid rgb(242 245 243 / 8%);
+}
+.title {
+  flex: 1;
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.25;
+}
+/* Literal 44 px: tap target (§12.12). */
+.collapse {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border: 0;
+  border-radius: var(--radius-2);
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+}
+.icon {
+  width: 20px;
+  height: 20px;
+}
+
+.scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+/* Collapsed: a 44 px rail with a vertical "Hands" button. */
+.rail {
+  display: flex;
+  width: 44px;
+  height: 100%;
+  border-left: 1px solid rgb(242 245 243 / 8%);
+  background: var(--surface);
+}
+.railButton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  min-height: 88px;
+  height: 100%;
+  border: 0;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+.railLabel {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  writing-mode: vertical-rl;
+}

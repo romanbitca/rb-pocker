@@ -4,9 +4,18 @@
  * here; tests/ui/dev/fixtures.test.ts checks them against `describe()`.
  */
 import { parseCard, type Card } from '../../core/cards.ts';
-import type { CardHighlight, CardView, PotView, SeatView } from '../views.ts';
+import { heroHandView } from '../rankings.ts';
+import type { CardHighlight, CardView, HeroHandView, PotView, SeatView } from '../views.ts';
 
-export const PREVIEW_STATES = ['preflop', 'flop', 'river', 'showdown'] as const;
+/** `folded`: the hero folded on the flop. `between`: no hand running. */
+export const PREVIEW_STATES = [
+  'preflop',
+  'flop',
+  'river',
+  'showdown',
+  'folded',
+  'between',
+] as const;
 export type PreviewState = (typeof PREVIEW_STATES)[number];
 
 const cards = (text: string): Card[] => text.split(' ').map(parseCard);
@@ -36,9 +45,10 @@ const PERSONALITIES = ['rock', 'tag', 'lag', 'station', 'maniac', null, 'tag', '
 
 /** Board cards for a state, with the §6.1 highlight of the hero's best five. */
 export function previewBoard(state: PreviewState): CardView[] {
-  const shown = state === 'preflop' ? 0 : state === 'flop' ? 3 : 5;
+  if (state === 'between' || state === 'preflop') return [];
+  if (state === 'folded') return SAMPLE.board.slice(0, 3).map((card) => ({ card }));
   const facts = state === 'flop' ? SAMPLE.flop : SAMPLE.river;
-  return SAMPLE.board.slice(0, shown).map((card) => {
+  return SAMPLE.board.slice(0, state === 'flop' ? 3 : 5).map((card) => {
     const highlight: CardHighlight = (facts.core as readonly Card[]).includes(card)
       ? 'core'
       : (facts.kickers as readonly Card[]).includes(card)
@@ -50,18 +60,54 @@ export function previewBoard(state: PreviewState): CardView[] {
 
 export function previewPot(state: PreviewState): PotView {
   switch (state) {
+    case 'between':
+      return { total: 0, pots: [] };
     case 'preflop':
       return { total: 30, pots: [30] };
     case 'flop':
+    case 'folded':
       return { total: 340, pots: [340] };
     default:
       return { total: 2_990, pots: [1_250, 1_740] };
   }
 }
 
+/** The hero's hand for the rankings panel; `null` between hands. */
+export function previewHero(state: PreviewState): HeroHandView | null {
+  const handSeq = 12;
+  switch (state) {
+    case 'between':
+      return null;
+    case 'preflop':
+      return heroHandView(
+        { category: 'pair', best5: [], kickers: [] },
+        SAMPLE.hole,
+        false,
+        handSeq,
+      );
+    case 'flop':
+    case 'folded':
+      return heroHandView(SAMPLE.flop, SAMPLE.hole, state === 'folded', handSeq);
+    default:
+      return heroHandView(SAMPLE.river, SAMPLE.hole, false, handSeq);
+  }
+}
+
 /** Opponents in a mix of states: folded, called, raised, thinking, all-in, checked. */
 export function previewSeats(opponents: number, state: PreviewState): SeatView[] {
   const showdown = state === 'showdown';
+  if (state === 'between') {
+    return previewSeats(opponents, 'preflop').map((s) => ({
+      ...s,
+      bet: 0,
+      folded: false,
+      allIn: false,
+      toAct: false,
+      lastAction: null,
+      blind: null,
+      cards: { kind: 'none' },
+    }));
+  }
   return Array.from({ length: opponents }, (_, i): SeatView => {
     const seat = i + 1;
     const base: SeatView = {

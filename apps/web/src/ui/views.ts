@@ -10,6 +10,7 @@
  * Stage 3 acceptance 7). A component cannot leak what it is never given.
  */
 import type { Card } from '../core/cards.ts';
+import type { HandCategory } from '../eval/evaluate.ts';
 
 /** How a face-up card is marked (PLAN §6.1): core = raised + 3 px outline, kicker = 1 px outline,
  * off = dimmed to 60% (board cards outside the best five, after the flop). */
@@ -64,4 +65,23 @@ export interface PotView {
   readonly total: number;
   /** Main pot first, then side pots. Fewer than two entries = no side-pot line. */
   readonly pots: readonly number[];
+}
+
+/**
+ * The hero's hand for the hand-rankings panel (PLAN §13.3): `describe(hole, board)` on the main
+ * thread, mapped by `heroHandView()` (ui/rankings.ts). `null` between hands: no highlight.
+ */
+export interface HeroHandView {
+  /** The engine's `handSeq`: the "improved" pulse and the tab dot never compare two hands. */
+  readonly handSeq: number;
+  /** `describe().category`: the highlighted row. Preflop: pair or high card. */
+  readonly category: HandCategory;
+  /** `describe().best5`, category-forming cards first; `[]` preflop. */
+  readonly best5: readonly Card[];
+  /** `describe().kickers`: dimmed on the "You" line. */
+  readonly kickers: readonly Card[];
+  /** The hero's hole cards: outlined on the "You" line where they are used. */
+  readonly hole: readonly [Card, Card];
+  /** The hero folded this hand: grey highlight and "You folded". */
+  readonly folded: boolean;
 }
