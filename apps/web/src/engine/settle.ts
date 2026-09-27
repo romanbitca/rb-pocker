@@ -1,6 +1,7 @@
 /**
- * Settlement (PLAN §3.8). For now only the uncalled-bet refund, which `startHand` needs when the
- * blinds already end the round (B36); side pots, odd chips and payouts come with chunk 2.4.
+ * Settlement (PLAN §3.8). For now the uncalled-bet refund, which `startHand` and the reducer need
+ * whenever a betting round ends (B36); side pots, odd chips, the showdown and the payouts
+ * (`settle`) come with chunk 2.4.
  */
 import type { HandState, SeatState } from './types.ts';
 
@@ -34,4 +35,12 @@ export function refundUncalled(h: HandState): void {
   s.stack += amount;
   s.allIn = !s.folded && s.stack === 0;
   h.log.push({ e: 'refund', seat: topSeat, amount });
+}
+
+/**
+ * The last `advance` of a hand: side pots, the showdown and the payouts (§3.8, §3.9), then
+ * 'complete'. Not written yet: chunk 2.4 (`feature/engine-side-pot-settlement`) implements it.
+ */
+export function settle(h: HandState): void {
+  throw new Error(`settle: hand ${h.handSeq} cannot be settled yet (chunk 2.4)`);
 }
