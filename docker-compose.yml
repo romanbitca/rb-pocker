@@ -6,3 +6,6 @@ services:
       - '3000:3000'
     environment:
       NODE_ENV: production
+      # What /api/health reports as `commit`, like Coolify's runtime SOURCE_COMMIT (§17.6).
+      # Unset locally (reports "dev"); the CI `docker` job passes the commit it tests.
+      SOURCE_COMMIT: ${SOURCE_COMMIT:-}

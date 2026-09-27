@@ -1,0 +1,42 @@
+# PLAN §17.5 `docker`: every pull request to main. Builds the image Coolify runs, waits until the
+# container is healthy, and checks it with the post-deploy script (§17.2 headers, cache rules,
+# /api/health with this commit, no Set-Cookie).
+name: docker
+
+on:
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  docker:
+    runs-on: ubuntu-24.04 # the same image as the e2e job (see e2e.yml)
+    timeout-minutes: 20
+    env:
+      # docker-compose.yml passes it to the container, as Coolify does at run time (§17.6).
+      SOURCE_COMMIT: ${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v7
+      # scripts/check-deploy.mjs reads the expected values from apps/server/src/security.ts.
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - name: Build the image and wait until the container is healthy
+        run: docker compose up --build --detach --wait --wait-timeout 180
+      - run: docker compose ps
+      - name: Check headers, cache rules, health and cookies
+        run: node scripts/check-deploy.mjs http://localhost:3000 --commit "$SOURCE_COMMIT"
+      - name: Container logs
+        if: failure()
+        run: docker compose logs
+      - name: Stop the container
+        if: always()
+        run: docker compose down

@@ -1,0 +1,39 @@
+# PLAN §17.5 `check`: every push to main and every pull request.
+name: check
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# A newer push to the same pull request or branch cancels the run it replaces (saves minutes).
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04 # the same image as the e2e job (see e2e.yml)
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - name: Typecheck (both apps)
+        run: npm run typecheck
+      - name: Lint (module boundaries, Math.random ban, server-must-not-import-web)
+        run: npm run lint
+      - run: npm run format:check
+      - name: Unit, property and server tests
+        run: npm test
+      - run: npm run build
+      - name: Size budget (§15.3)
+        run: npm run size
+      - name: Built index.html has no inline script and carries the meta CSP (§15.2)
+        run: npm run check:html -w @rb/web
