@@ -1944,7 +1944,7 @@ Build in order. Every stage ends running locally via `npm start` and `docker com
 ### Stage 2 - Rules engine
 
 - `engine/*` per §3–§4: `createTable`, `startHand`, `legalActions`, `step`, `settle`, `checkInvariants`, `observe`, `replay`, `nextTable` (button, bot replacement, 3→2 rule), `reshuffle`.
-- `tests/engine/settle.oracle.ts`: an **independent** settlement written from the text of §3.8 without reading `settle.ts` (chip-layer method: walk chip levels, group consecutive layers with identical contributor and eligible sets).
+- `tests/engine/settle.oracle.ts`: an **independent** settlement written from the text of §3.8 without reading `settle.ts` (chip-layer method: walk the chip levels of every seat, folded seats included; a layer with a single contributor is that seat's uncalled refund; merge consecutive layers with identical eligible sets, as §3.8 merges pots, even where the contributor set changes at a folded seat's level).
 
 **Acceptance criteria**
 1. All 44 Appendix B vectors pass.
@@ -2232,6 +2232,7 @@ The human answered on 23 Sep 2026. Answered rows show the decision; open rows ke
 | 1.3.1 | 28 Sep 2026 | Scaffold (chunk 0.1): every §2.5 pin installed as written; the unpinned test, lint and format tools pinned exactly (§2.5 Tests, Lint and format rows); `.npmrc` `save-exact`; npm 11 blocks dependency install scripts, and the two it lists are denied in `allowScripts` (`@swc/core`: its native binary comes as an optional dependency; `fsevents`: ships prebuilt). Import convention (§0.3). Vitest `unit`/`slow` defines only the selected project, so a bare `vitest` never runs slow tests; the server has the same split. Server: `setup.ts` (`configureApp`, shared with the tests), `HealthModule` + `HealthService`; an empty `SOURCE_COMMIT` counts as unset (§0.1). Vite 8's Oxc transform also emits decorator metadata (Testing strategy, Server row) |
 | 1.3.2 | 28 Sep 2026 | Static serving and headers (chunk 0.3): `security.ts` also exports the expected header values and the static cache rule; `strictTransportSecurity` written as a boolean (`exactOptionalPropertyTypes`, same behaviour) (§17.2); the `assets/` cache rule is judged relative to `rootPath`, and `no-store` covers every `/api` response, 404s included (§2.6 b); `WEB_DIST_DIR` override; misses outside `/api` get Express's own 404 page with its stricter CSP, because Nest 12 mounts its JSON 404 handler under the global prefix only (§2.6 a); new pitfalls 44 (dot-folder checkouts break the SPA fallback) and 45 (`Test.createTestingModule` gives serve-static a no-op loader); the server tests serve their fixture from a temporary copy and boot like `main.ts` (Testing strategy, Server row); with the SPA fallback in place, the scaffold's "`/health` is a 404" test now checks that `/health` is the game page, not the health JSON |
 | 1.3.3 | 28 Sep 2026 | PWA shell (chunk 0.4): the meta CSP string lives in `apps/web/scripts/csp.ts` (the web app does not import `apps/server`; the E2E should compare it with the header) and is inserted right after `<meta charset>`, so it precedes every script; `scripts/check-html.ts` (`npm run check:html -w @rb/web`) also rejects inline event handlers and a meta CSP placed after a script; the icons are drawn by `scripts/gen-icons.ts` (a light spade on felt) and a test checks the committed PNGs are exactly its output; the manifest's name, short name and description come from `en.ts`; `index.html` also links `icons/icon-192.png` as the favicon (otherwise `/favicon.ico` gets the SPA fallback); `tsconfig.node.json` also covers `scripts/` and `tests/scripts/`. vite-plugin-pwa adds the manifest and its icons to the precache although the glob already matches them; Workbox ignores the identical duplicates |
+| 1.3.4 | 28 Sep 2026 | Settlement oracle (chunk 2.4, test side). Stage 2 said the oracle groups chip layers "with identical contributor and eligible sets". Two consecutive layers always have different contributors, so read literally it never merges and splits a pot wherever a folded seat's chips end: a different pot list from §3.8 and, with two odd layers, different odd chips (an 8-seat case pays 502 / 500 instead of §3.8's 501 / 501; test in `settle.oracle.test.ts`). §3.8 is normative, so the oracle merges layers with identical eligible sets (Stage 2 reworded). B18 and B44 said "clockwise from the button", which could put a winning button first; they now say "from the seat left of the button", as §3.8 and TDA r.20 do |
 
 ---
 
@@ -2629,7 +2630,7 @@ Blinds 50/100 and stacks 10,000 unless stated. Amounts are "to" (street totals) 
 | 15 | A folded after 200; B all-in 150; C 500 | — | C refunded 300; main 450 (B, C); side 100 (C only, awarded without comparing hands) |
 | 16 | As 14, A best hand, B second best | showdown | A wins 300; B wins 400; C wins 0 |
 | 17 | 301-chip pot, 2 winners | showdown | First winner clockwise from the seat left of the button gets 151, the other 150 |
-| 18 | 100-chip pot, 3 winners | showdown | 34 / 33 / 33, the 34 to the first winner clockwise from the button |
+| 18 | 100-chip pot, 3 winners | showdown | 34 / 33 / 33, the 34 to the first winner clockwise from the seat left of the button (a winning button comes last) |
 | 19 | Board A♠ K♦ Q♣ J♥ 10♠; 2♣3♦ vs 4♥5♠ | showdown | Split; both `playsTheBoard` |
 | 20 | Board A-7-7-3-2 rainbow; A♣K♦ vs A♦Q♣ | showdown | A♣K♦ wins (Two Pair, Aces and Sevens, King kicker) |
 | 21 | Wheel vs 6-high straight; 5-high SF vs 6-high SF; Q-K-A-2-3 | evaluate | Wheel loses to 2-6; 5-high SF loses to 6-high SF; Q-K-A-2-3 is not a straight |
@@ -2655,7 +2656,7 @@ Blinds 50/100 and stacks 10,000 unless stated. Amounts are "to" (street totals) 
 | 41 | 1,000 random states | JSON round trip | Deep-equal |
 | 42 | Recorded 6-player hand with a side pot | `replay` | Identical final state and stacks |
 | 43 | All-in run-out with one folded seat | `advance` | All live seats in `revealed`; the folded seat never |
-| 44 | Main pot split 3 ways (remainder 1) and side pot split 2 ways (remainder 1) | showdown | Each pot's odd chip goes independently to its first winner clockwise from the button |
+| 44 | Main pot split 3 ways (remainder 1) and side pot split 2 ways (remainder 1) | showdown | Each pot's odd chip goes independently to its first winner clockwise from the seat left of the button |
 
 ---
 
