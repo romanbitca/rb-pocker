@@ -41,7 +41,8 @@ export type ProfileLoad =
    * The stored profile is damaged or from an unknown version: the defaults. The raw text was
    * copied to `copiedTo` and the defaults written in its place, so the next launch is normal. Show
    * the §12.11 toast "Your saved data was damaged. We started fresh and kept a copy." When the copy
-   * could not be written (`copiedTo` null) nothing was overwritten; the next save replaces it.
+   * could not be written (`copiedTo` null, or `readOnly`) nothing was overwritten; the next save
+   * replaces it.
    */
   | { status: 'reset'; profile: Profile; problem: string; copiedTo: string | null };
 
@@ -50,11 +51,17 @@ export interface ProfileLoadOptions {
   now?: Date;
   /** Profile migrations (default `PROFILE_MIGRATIONS`; tests pass their own). */
   migrations?: Migrations;
+  /**
+   * Write nothing: no migration write-back, no corrupt copy, no fresh profile. For a tab that does
+   * not hold the `pc-writer` lock (§14.7, Stage 8); the result is the same.
+   */
+  readOnly?: boolean;
 }
 
 /** Reads the profile once at boot (§12.14: synchronous, before Welcome or Home renders). */
 export function loadProfile(store: SafeStorage, options: ProfileLoadOptions = {}): ProfileLoad {
   const now = options.now ?? new Date();
+  const write = options.readOnly !== true;
   const read = store.get(STORAGE_KEYS.profile);
   if (!read.ok) return { status: 'unavailable', profile: defaultProfile(now), reason: read.reason };
   if (read.value === null) return { status: 'new', profile: defaultProfile(now) };
@@ -72,7 +79,7 @@ export function loadProfile(store: SafeStorage, options: ProfileLoadOptions = {}
       if (invalid === null) {
         const profile = migrated.value as Profile;
         const wasOlder = migrated.from !== PROFILE_VERSION;
-        if (wasOlder) store.set(STORAGE_KEYS.profile, JSON.stringify(profile));
+        if (wasOlder && write) store.set(STORAGE_KEYS.profile, JSON.stringify(profile));
         return { status: 'ok', profile, migratedFrom: wasOlder ? migrated.from : null };
       }
       problem = invalid;
@@ -84,7 +91,7 @@ export function loadProfile(store: SafeStorage, options: ProfileLoadOptions = {}
   }
 
   const profile = defaultProfile(now);
-  const copiedTo = keepCorruptCopy(store, read.value, now);
+  const copiedTo = write ? keepCorruptCopy(store, read.value, now) : null;
   if (copiedTo !== null) store.set(STORAGE_KEYS.profile, JSON.stringify(profile));
   return { status: 'reset', profile, problem, copiedTo };
 }

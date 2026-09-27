@@ -157,6 +157,20 @@ describe('persist/profile damaged data (§14.6 rule 2, §14.9)', () => {
     expect(load).toMatchObject({ status: 'reset', copiedTo: null, profile: defaultProfile(NOW) });
     expect(fake.data.get(KEY)).toBe('{broken');
   });
+
+  it('readOnly (a tab without the writer lock, §14.7): the same result, nothing written', () => {
+    const { fake, launch } = setup({ [KEY]: '{broken' });
+    const load = loadProfile(launch(), { now: NOW, readOnly: true });
+    expect(load).toMatchObject({ status: 'reset', copiedTo: null, profile: defaultProfile(NOW) });
+    const older = setup({ [KEY]: JSON.stringify(v0Profile()) });
+    const migrations = { 0: profileV0ToV1 };
+    expect(loadProfile(older.launch(), { now: NOW, migrations, readOnly: true })).toMatchObject({
+      status: 'ok',
+      migratedFrom: 0,
+    });
+    expect(fake.writeLog).toEqual([]);
+    expect(older.fake.writeLog).toEqual([]);
+  });
 });
 
 describe('persist/profile migrations on load (H.2)', () => {

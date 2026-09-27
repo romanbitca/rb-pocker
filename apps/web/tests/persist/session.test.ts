@@ -5,6 +5,7 @@ import {
   loadSession,
   newSession,
   saveSession,
+  type SessionLoad,
   type SessionLoadOptions,
 } from '../../src/persist/session.ts';
 import { isSessionState, type SessionState } from '../../src/persist/schema.ts';
@@ -294,6 +295,22 @@ describe('persist/session discarding what has no usable table (§14.6)', () => {
     const load = loadSession(launch(), { ...OPTIONS, migrations });
     expect(load).toStrictEqual({ status: 'ok', session: midHandSession() });
     expect(JSON.parse(fake.data.get(KEY) as string)).toStrictEqual(midHandSession());
+  });
+
+  it('readOnly (a tab without the writer lock, §14.7): the same results, nothing written or removed', () => {
+    const cases: [string, SessionLoad['status']][] = [
+      ['{broken', 'discarded'],
+      [stored(midHandSession(), (c) => (c.table.nextHandSeq = 5)), 'voided'],
+      [stored(midHandSession(), (c) => ((c as { schema: number }).schema = 0)), 'ok'],
+    ];
+    const migrations = { 0: (x: unknown) => ({ ...(x as object), schema: 1 }) };
+    for (const [raw, status] of cases) {
+      const { fake, launch } = setup({ [KEY]: raw });
+      const load = loadSession(launch(), { ...OPTIONS, migrations, readOnly: true });
+      expect(load.status).toBe(status);
+      expect(fake.writeLog).toEqual([]);
+      expect(fake.data.get(KEY)).toBe(raw);
+    }
   });
 });
 

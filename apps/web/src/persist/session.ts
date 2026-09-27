@@ -11,7 +11,8 @@
  * - a usable table but an unusable hand → the hand is **voided**: dropped, and the table kept with
  *   its hand-start stacks, so the chips go back to where they were before the hand;
  * - no usable table → the session is **discarded**: a new table starts.
- * Either way the repaired state is written back at once, so the next launch starts clean.
+ * Either way the repaired state is written back at once (unless `readOnly`), so the next launch
+ * starts clean.
  */
 import type { SeatStats, TableState } from '../engine/types.ts';
 import { SESSION_MIGRATIONS, SESSION_VERSION, migrate, type Migrations } from './migrations.ts';
@@ -41,11 +42,15 @@ export type SessionLoad =
   | { status: 'ok'; session: SessionState }
   /**
    * The hand could not be restored: it was dropped and `session` keeps the table as at hand start,
-   * so every seat has its hand-start stack back (already written back). Show the §14.3 toast "Your
-   * last hand could not be restored. Chips were returned." `problem` is for Diagnostics.
+   * so every seat has its hand-start stack back (already written back, unless `readOnly`). Show
+   * the §14.3 toast "Your last hand could not be restored. Chips were returned." `problem` is for
+   * Diagnostics.
    */
   | { status: 'voided'; session: SessionState; problem: string }
-  /** Nothing usable (no valid table, or an unknown version): start a new table. The key is removed. */
+  /**
+   * Nothing usable (no valid table, or an unknown version): start a new table. The key is removed
+   * (unless `readOnly`).
+   */
   | { status: 'discarded'; problem: string };
 
 export interface SessionLoadOptions {
@@ -58,6 +63,11 @@ export interface SessionLoadOptions {
   now?: Date;
   /** Session migrations (default `SESSION_MIGRATIONS`; tests pass their own). */
   migrations?: Migrations;
+  /**
+   * Write nothing (no write-back, no removal): for a tab that does not hold the `pc-writer` lock
+   * (§14.7, Stage 8). The result is the same.
+   */
+  readOnly?: boolean;
 }
 
 /** Writes the session: one `JSON.stringify` + one `setItem`, nothing else. Never throws. */
@@ -95,34 +105,34 @@ export function newSession(table: TableState, now: Date): SessionState {
 
 /** Reads the session once at boot (§12.14) and decides resume, void or discard (§14.3). */
 export function loadSession(store: SafeStorage, options: SessionLoadOptions): SessionLoad {
+  const write = options.readOnly !== true;
+  const discard = (problem: string): SessionLoad => {
+    if (write) store.remove(STORAGE_KEYS.session);
+    return { status: 'discarded', problem };
+  };
   const read = store.get(STORAGE_KEYS.session);
   if (!read.ok) return { status: 'unavailable', reason: read.reason };
   if (read.value === null) return { status: 'none' };
 
   const parsed = parseJson(read.value);
-  if (!parsed.ok) return discard(store, `session: ${parsed.problem}`);
+  if (!parsed.ok) return discard(`session: ${parsed.problem}`);
   const migrated = migrate(parsed.value, SESSION_VERSION, options.migrations ?? SESSION_MIGRATIONS);
-  if (!migrated.ok) return discard(store, `session: ${migrated.problem}`);
+  if (!migrated.ok) return discard(`session: ${migrated.problem}`);
   const value = migrated.value;
 
   const problem =
     sessionStateProblem(value) ?? engineProblem(value as SessionState, options.engineVersion);
   if (problem === null) {
     const session = value as SessionState;
-    if (migrated.from !== SESSION_VERSION) saveSession(store, session);
+    if (migrated.from !== SESSION_VERSION && write) saveSession(store, session);
     return { status: 'ok', session };
   }
 
   const fields = value as Record<string, unknown>;
-  if (!isTableState(fields.table)) return discard(store, problem);
+  if (!isTableState(fields.table)) return discard(problem);
   const session = voided(fields, fields.table, options.now ?? new Date());
-  saveSession(store, session);
+  if (write) saveSession(store, session);
   return { status: 'voided', session, problem };
-}
-
-function discard(store: SafeStorage, problem: string): SessionLoad {
-  store.remove(STORAGE_KEYS.session);
-  return { status: 'discarded', problem };
 }
 
 /** The major part of a semver string ("0" for "0.1.0"), or null. */
