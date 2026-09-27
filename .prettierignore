@@ -1,0 +1,7 @@
+# Prettier also skips everything in .gitignore (node_modules, dist, coverage, reports).
+package-lock.json
+.claude/
+.loop/
+
+# Hand-written docs keep their own layout (large tables).
+*.md

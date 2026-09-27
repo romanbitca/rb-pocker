@@ -1,0 +1,58 @@
+/* Design tokens: one dark theme (PLAN §12.8, §12.12). Components use these, never raw values. */
+:root {
+  color-scheme: dark;
+
+  /* Colours */
+  --bg: #0f1512;
+  --surface: #18211c;
+  --felt: #1f6b43;
+  --felt-dark: #154d30;
+  --text: #f2f5f3;
+  --muted: #a9b5ae;
+  --accent: #f5c542;
+
+  /* Grades */
+  --grade-best: #2fbf71;
+  --grade-good: #8bd17c;
+  --grade-slightly-off: #f2c14e;
+  --grade-mistake: #f08a24;
+  --grade-big-mistake: #e5484d;
+
+  /* Cards: face and the four-colour deck */
+  --card-face: #fff;
+  --suit-spades: #111111;
+  --suit-hearts: #c8102e;
+  --suit-diamonds: #0b5bd3;
+  --suit-clubs: #177a36;
+
+  /* Spacing */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+
+  /* Corner radius */
+  --radius-1: 4px;
+  --radius-2: 8px;
+  --radius-3: 14px;
+
+  /* Type: system fonts only (no web fonts) */
+  --font-family: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font-size-base: 16px;
+  --font-size-caption: 11px;
+
+  /* Touch targets */
+  --tap-primary: 56px;
+  --tap-min: 44px;
+
+  /* Motion: durations scale with --speed (Normal 1, Fast 0.5, Instant 0) */
+  --speed: 1;
+  --duration-deal: calc(180ms * var(--speed));
+  --duration-deal-stagger: calc(60ms * var(--speed));
+  --duration-chips: calc(300ms * var(--speed));
+  --duration-flip: calc(250ms * var(--speed));
+  --duration-sheet: calc(200ms * var(--speed));
+  --duration-pulse: calc(400ms * var(--speed));
+}

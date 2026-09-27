@@ -1,0 +1,38 @@
+{
+  "name": "@rb/web",
+  "version": "0.1.0",
+  "private": true,
+  "description": "RB Poker Coach: the game (React + Vite PWA).",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host",
+    "build": "vite build",
+    "test": "vitest run --project unit",
+    "test:slow": "vitest run --project slow",
+    "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.node.json"
+  },
+  "dependencies": {
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "zustand": "5.0.15"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "4.13.0",
+    "@playwright/test": "1.63.0",
+    "@poker-apprentice/hand-evaluator": "4.3.0",
+    "@testing-library/dom": "10.4.2",
+    "@testing-library/react": "16.3.3",
+    "@types/node": "24.19.0",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@vitejs/plugin-react": "6.1.1",
+    "@vitest/coverage-v8": "5.0.2",
+    "fast-check": "4.10.2",
+    "jsdom": "30.1.1",
+    "pokersolver": "2.1.4",
+    "typescript": "6.0.3",
+    "vite": "8.3.0",
+    "vite-plugin-pwa": "1.3.0",
+    "vitest": "5.0.2"
+  }
+}
