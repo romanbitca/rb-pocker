@@ -6,7 +6,7 @@ This is the working checklist for building [PLAN.md](PLAN.md). PLAN.md is the so
 
 Legend: `[ ]` todo · `[~]` in progress (branch exists) · `[x]` merged to `main` · `[H]` waiting on the human
 
-**Current position:** Stages 0 and 1 ✅ complete (CI green). Stage 2: 2.1–2.4 merged (CI green); 2.5/2.6 in progress. UI 3.3/3.6 built early (held for stage order).
+**Current position:** ⏸ Paused by the owner (28 Sep 08:05Z). Stages 0–1 ✅. Stage 2: 2.1–2.4 merged; 2.5 = draft [PR #21](https://github.com/romanbitca/rb-pocker/pull/21) (needs full suite + CI + merge); 2.6 not started. Built early, held for stage order: 3.2 (#19), 3.3 (#15), 3.6 (#17) — rebase map below. Next on resume: finish 2.5 → 2.6, then Stage 3 (3.1 controller first).
 
 ---
 
