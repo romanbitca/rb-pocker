@@ -31,7 +31,7 @@ fixed slice of the Claude plan.
   while the owner is away. Work each 5-hour window up to **95%** (not 100%: a rejected request can
   kill the session before it schedules its wake-up), stop spawning new subagents above ~88%, then
   wait for the reset. Weekly ceiling (95%) still applies. The override ends when the owner next
-  writes a message; then the +30 rule applies again.
+  writes a message; then the +30 rule applies again. **(Ended 28 Sep 08:01Z: +30 rule is back.)**
 - **Order (owner, 2026-09-27): strict plan order.** Every acceptance criterion of a stage passes in
   CI before the next stage is merged. Development of the next stage MAY overlap (parallel branches),
   but merges happen in stage order and never onto a red `main`. Human gates `[H]` still don't block.
