@@ -167,5 +167,5 @@ export const handArb = fc
     }
     const startingStack = Math.min(1_000_000, Math.max(200, 100 * bb));
     const table = tableWith(stacks, { sb: bb / 2, bb, startingStack, tableSeed });
-    return { h: deal(table, handSeed), policySeed, stacks };
+    return { h: deal(table, handSeed), policySeed, stacks, table };
   });

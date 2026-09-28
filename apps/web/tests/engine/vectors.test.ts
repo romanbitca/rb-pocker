@@ -10,14 +10,18 @@
  * The betting and order vectors come first (chunk 2.3); vectors that end in a settlement are
  * played to 'complete' in the last section (chunk 2.4), with rigged decks where cards matter.
  * B21–B24 (evaluator) are in tests/eval; B30–B31 (button between hands) in the table and start
- * tests; B40 (reshuffle) in step.test.ts; B33, B41 and B42 (undo, JSON, replay) come with 2.5.
+ * tests; B40 (reshuffle) in step.test.ts; B33 (undo restore) is in undo.test.ts, next to the
+ * rest of the engine-level undo tests it shares setup with; B41 and B42 (JSON, replay) are below.
  */
+import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 import { parseCards } from '../../src/core/cards.ts';
+import { rngFromSeed } from '../../src/core/rng.ts';
 import { score5 } from '../../src/eval/evaluate.ts';
+import { replay } from '../../src/engine/replay.ts';
 import { step } from '../../src/engine/step.ts';
-import type { HandResult, HandState } from '../../src/engine/types.ts';
-import { deal, rigDeck, tableWith } from './helpers.ts';
+import type { EngineInput, HandResult, HandState, ReplayRecord } from '../../src/engine/types.ts';
+import { FC_SEED, deal, rigDeck, tableWith } from './helpers.ts';
 import {
   ADVANCE,
   advanceWhileRoundComplete,
@@ -26,9 +30,11 @@ import {
   check,
   engineError,
   fold,
+  handArb,
   legalOf,
   play,
   raise,
+  randomInput,
   seatOf,
 } from './play.ts';
 
@@ -654,5 +660,76 @@ describe('Appendix B: settlement (§3.8) and showdown (§3.9)', () => {
     ]);
     expect(r.payouts).toEqual([221, 46, 222, 0]);
     expect(r.net).toEqual([36, 12, 37, -85]);
+  });
+});
+
+describe('Appendix B: serialisation and replay (§4.6, §4.7)', () => {
+  it('B41: 1,000 random states survive a JSON round trip unchanged', () => {
+    let count = 0;
+    fc.assert(
+      fc.property(handArb, fc.nat(400), ({ h, policySeed }, depth) => {
+        const rng = rngFromSeed(policySeed);
+        let s = h;
+        for (let i = 0; i < depth && s.phase !== 'complete'; i++) s = step(s, randomInput(s, rng));
+        expect(JSON.parse(JSON.stringify(s))).toStrictEqual(s);
+        count++;
+      }),
+      { seed: FC_SEED, numRuns: 1000 },
+    );
+    expect(count).toBe(1000);
+  });
+
+  it('B42: replaying a recorded 6-player hand with a side pot reproduces the final state and stacks', () => {
+    // 0 = BTN, 1 = SB, 2 = BB (300, short), 3 = UTG, 4, 5. UTG raises, everyone calls the BB's
+    // all-in of 300; a flop bet is called by the five seats still active, so seat 2 (all-in since
+    // preflop) is eligible only for the main pot, and the rest fight over the side pot too.
+    const stacks = [10000, 10000, 300, 10000, 10000, 10000];
+    const table = tableWith(stacks, { button: 0 });
+    const start = deal(table);
+    const inputs: EngineInput[] = [
+      raise(3, 300),
+      call(4),
+      call(5),
+      call(0),
+      call(1),
+      call(2), // seat 2 all-in for its remaining 200 (total 300)
+      ADVANCE,
+      bet(1, 500),
+      call(3),
+      call(4),
+      call(5),
+      call(0),
+      ADVANCE,
+      check(1),
+      check(3),
+      check(4),
+      check(5),
+      check(0),
+      ADVANCE,
+      check(1),
+      check(3),
+      check(4),
+      check(5),
+      check(0),
+      ADVANCE,
+      ADVANCE,
+    ];
+    const final = play(start, ...inputs);
+    expect(final.phase).toBe('complete');
+    const r = resultOf(final);
+    expect(r.pots).toEqual([
+      { amount: 1800, eligible: [0, 1, 2, 3, 4, 5] },
+      { amount: 2500, eligible: [0, 1, 3, 4, 5] },
+    ]);
+    const record: ReplayRecord = {
+      engineVersion: final.engineVersion,
+      seed: final.seed,
+      commit: null,
+      table,
+      inputs,
+    };
+    const replayed = replay(record);
+    expect(replayed).toStrictEqual(final);
+    expect(replayed.seats.map((s) => s.stack)).toEqual(final.seats.map((s) => s.stack));
   });
 });
