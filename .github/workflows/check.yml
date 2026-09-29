@@ -32,6 +32,10 @@ jobs:
       - run: npm run format:check
       - name: Unit, property and server tests
         run: npm test
+      # V8 coverage of the web unit tests without the volume and timing tests (they add no
+      # coverage; see apps/web/vitest.config.ts); fails below src/engine 95% / src/eval 90% branches.
+      - name: Coverage thresholds
+        run: npm run test:coverage
       - run: npm run build
       - name: Size budget (§15.3)
         run: npm run size

@@ -10,7 +10,7 @@ import {
   type Seed128,
 } from '../../src/core/rng.ts';
 import { deckFromSeed, startHand } from '../../src/engine/start.ts';
-import { buttonForHand, createTable, nextTable, topUp } from '../../src/engine/table.ts';
+import { buttonForHand, createTable } from '../../src/engine/table.ts';
 import type { HandState, SeatState, TableState } from '../../src/engine/types.ts';
 import { handAtStart } from './fixtures.ts';
 import {
@@ -21,7 +21,6 @@ import {
   configFor,
   deal,
   dealOrderOf,
-  finishAllIn,
   rigDeck,
   slotsFor,
   tableWith,
@@ -151,18 +150,8 @@ describe('startHand: button and blinds (§3.3)', () => {
     }
   });
 
-  it('B1: heads-up, the button posts the SB, acts first, and the BB gets the first card', () => {
-    const h = deal(tableWith([10000, 10000], { button: 0 }));
-    expect(h).toMatchObject({ button: 0, sbSeat: 0, bbSeat: 1, toAct: 0, phase: 'betting' });
-    expect(h.log.slice(0, 2)).toEqual([
-      { e: 'post', seat: 0, blind: 'sb', amount: 50, allIn: false },
-      { e: 'post', seat: 1, blind: 'bb', amount: 100, allIn: false },
-    ]);
-    expect(seat(h, 0)).toMatchObject({ stack: 9950, streetBet: 50, totalBet: 50 });
-    expect(seat(h, 1)).toMatchObject({ stack: 9900, streetBet: 100, totalBet: 100 });
-    expect(seat(h, 1).hole?.[0]).toBe(h.deck[0]);
-    expect(seat(h, 0).hole?.[1]).toBe(h.deck[3]);
-  });
+  // The Appendix B vectors about the button and blinds (B1, B2, B6, B25, B26, B30, B31, B34–B36)
+  // run in appendix-b.test.ts, with their startHand checks.
 
   it('heads-up rules hold for every button and stack depth', () => {
     fc.assert(
@@ -185,128 +174,11 @@ describe('startHand: button and blinds (§3.3)', () => {
     );
   });
 
-  it('B2 setup: 4 players, BTN A, SB B, BB C, UTG D: D acts first', () => {
-    // Seats clockwise: A = 0 (button), B = 1, C = 2, D = 3.
-    const h = deal(tableWith([10000, 10000, 10000, 10000], { button: 0 }));
-    expect(h).toMatchObject({ button: 0, sbSeat: 1, bbSeat: 2, toAct: 3 });
-  });
-
-  it('B6 setup: UTG A, BTN B (450), SB C, BB D: A acts first', () => {
-    // Seats clockwise from the button: B = 1, C = 2, D = 3, A = 0.
-    const h = deal(tableWith([10000, 450, 10000, 10000], { button: 1 }));
-    expect(h).toMatchObject({ button: 1, sbSeat: 2, bbSeat: 3, toAct: 0 });
-    expect(seat(h, 1).stack).toBe(450);
-  });
-
-  it('B26: a small blind with 30 posts 30 and is all-in', () => {
-    const h = deal(tableWith([10000, 30, 10000], { button: 0 }));
-    expect(h.log[0]).toEqual({ e: 'post', seat: 1, blind: 'sb', amount: 30, allIn: true });
-    expect(seat(h, 1)).toMatchObject({ stack: 0, allIn: true, streetBet: 30 });
-    expect(h).toMatchObject({ phase: 'betting', toAct: 0, currentBet: 100 });
-  });
-
-  it('B25 setup: a big blind with 60 posts 60 all-in; currentBet stays 100, min raise-to 200', () => {
-    const h = deal(tableWith([10000, 10000, 60], { button: 0 }));
-    expect(h.log[1]).toEqual({ e: 'post', seat: 2, blind: 'bb', amount: 60, allIn: true });
-    expect(h.currentBet).toBe(100);
-    expect(h.currentBet + h.minRaiseInc).toBe(200);
-    expect(h.toAct).toBe(0);
-  });
-
-  it('B34 setup: SB 50, BB all-in for 30: the others act first, then the SB still decides', () => {
-    const three = deal(tableWith([10000, 10000, 30], { button: 0 }));
-    expect(three).toMatchObject({ phase: 'betting', toAct: 0, currentBet: 100 });
-    expect(seat(three, 2)).toMatchObject({ allIn: true, streetBet: 30 });
-    // Heads-up the SB (the button) is the only one who can act and faces the full bb: it must
-    // call or fold, the round is not over (§3.7).
-    const headsUp = deal(tableWith([10000, 30], { button: 0 }));
-    expect(headsUp).toMatchObject({ phase: 'betting', toAct: 0, currentBet: 100 });
-    expect(headsUp.log.filter((ev) => ev.e === 'refund')).toEqual([]);
-  });
-
-  it('B35 setup: 3 players, both blinds all-in: the button acts alone against them', () => {
-    const h = deal(tableWith([10000, 20, 60], { button: 0 }));
-    expect(h).toMatchObject({ phase: 'betting', toAct: 0 });
-    expect(seat(h, 1).allIn && seat(h, 2).allIn).toBe(true);
-  });
-
-  it('B36: heads-up SB 40 and BB 80: round over at once, BB refunded 40, 40 against 40', () => {
-    const h = deal(tableWith([40, 80], { button: 0 }));
-    expect(h).toMatchObject({ phase: 'roundComplete', toAct: null, currentBet: 100 });
-    expect(h.log).toEqual([
-      { e: 'post', seat: 0, blind: 'sb', amount: 40, allIn: true },
-      { e: 'post', seat: 1, blind: 'bb', amount: 80, allIn: true },
-      { e: 'refund', seat: 1, amount: 40 },
-    ]);
-    expect(seat(h, 0)).toMatchObject({ stack: 0, totalBet: 40, allIn: true });
-    expect(seat(h, 1)).toMatchObject({ stack: 40, totalBet: 40, allIn: false });
-  });
-
   it('heads-up with an all-in small blind: the big blind faces no bet, the round is over', () => {
     const h = deal(tableWith([40, 10000], { button: 0 }));
     expect(h).toMatchObject({ phase: 'roundComplete', toAct: null });
     expect(h.log[2]).toEqual({ e: 'refund', seat: 1, amount: 60 });
     expect(seat(h, 1)).toMatchObject({ totalBet: 40, stack: 9960 });
-  });
-
-  it('B30: the hero busts on the button; next hand the button moves to the next dealt-in seat', () => {
-    // Engine mode: the controller would offer a reload first; the engine deals without the hero.
-    let table = tableWith([10000, 10000, 10000, 10000], { button: 0 });
-    let h = rigDeck(deal(table), {
-      holes: { 0: '7c 2d', 1: 'As Ah', 2: 'Ks Kh', 3: 'Qs Qh' },
-      board: '3c 4d 9h Js 8c',
-    });
-    const done = finishAllIn(h);
-    expect(done.result?.payouts[0]).toBe(0);
-    table = nextTable(table, done);
-    expect(table.slots[0]?.stack).toBe(0);
-    h = deal(table, deriveSeed(SEED, 'next'));
-    expect(seat(h, 0).dealtIn).toBe(false);
-    expect(h).toMatchObject({ button: 1, sbSeat: 2, bbSeat: 3, toAct: 1 });
-    // After a reload the hero is dealt in again and the button moved on as usual.
-    const reloaded = deal(topUp(table, 0, 10000), deriveSeed(SEED, 'next'));
-    expect(reloaded).toMatchObject({ button: 1, sbSeat: 2, bbSeat: 3, toAct: 0 });
-  });
-
-  it('B30: a seat with no chips on the last button is skipped (engine mode)', () => {
-    const table = tableWith([10000, 10000, 10000, 10000, 10000]);
-    table.button = 2;
-    (table.slots[2] as { stack: number }).stack = 0;
-    (table.slots[3] as { stack: number }).stack = 0;
-    const h = deal(table);
-    expect(h).toMatchObject({ button: 4, sbSeat: 0, bbSeat: 1, toAct: 4 });
-  });
-
-  it('B31: 3 → 2 players, the previous BB still in: it gets the button and the SB (§3.3)', () => {
-    // Last hand: button 1, SB 2, BB 0. Seat 1 busted; the normal move would give seat 2 the
-    // button and make seat 0 post the BB twice in a row.
-    const table = tableWith([10000, 10000, 10000], { button: 2 });
-    table.button = 1;
-    table.prevBB = 0;
-    (table.slots[1] as { stack: number }).stack = 0;
-    const h = deal(table);
-    expect(h).toMatchObject({ button: 0, sbSeat: 0, bbSeat: 2, toAct: 0 });
-  });
-
-  it('B31 through nextTable: the hero busts on the button of a 3-seat table', () => {
-    // Hand 1: button 0 (hero), SB 1, BB 2. All-in; the BB's aces win everything. Seat 1 is a
-    // bot and is replaced; the hero stays out (engine mode, no reload), so 3 → 2.
-    let table = tableWith([10000, 10000, 10000], { button: 0 });
-    const h = rigDeck(deal(table), {
-      holes: { 0: '7c 2d', 1: 'Ks Kh', 2: 'As Ah' },
-      board: '3c 4d 9h Js 8c',
-    });
-    expect(h).toMatchObject({ button: 0, sbSeat: 1, bbSeat: 2 });
-    table = nextTable(table, finishAllIn(h));
-    expect(table.slots.map((s) => s.stack)).toEqual([0, 10000, 30000]);
-    expect(table).toMatchObject({ button: 0, prevBB: 2 });
-    // The moving button would go to seat 1 and make seat 2 post the BB again.
-    expect(deal(table, deriveSeed(SEED, 'next'))).toMatchObject({
-      button: 2,
-      sbSeat: 2,
-      bbSeat: 1,
-      toAct: 2,
-    });
   });
 
   it('keeps the heads-up alternation: the last BB gets the button', () => {

@@ -1,7 +1,7 @@
 import { describe as suite, expect, it } from 'vitest';
 import { formatCards, type Card } from '../../src/core/cards.ts';
 import { describe, type HandInfo } from '../../src/eval/describe.ts';
-import { categoryOf, score7, type HandCategory } from '../../src/eval/evaluate.ts';
+import { score7, type HandCategory } from '../../src/eval/evaluate.ts';
 import { cards, hole } from '../helpers/cards.ts';
 
 /**
@@ -127,74 +127,8 @@ suite('describe(): Appendix D.1 vectors', () => {
   });
 });
 
-// Appendix B vectors 19–24 (evaluation only; Stage 2 replays them through the engine).
-suite('describe(): Appendix B vectors 19–24', () => {
-  it('B19: A♠ K♦ Q♣ J♥ 10♠ on board, 2♣3♦ vs 4♥5♠: split, both play the board', () => {
-    const board = cards('A♠ K♦ Q♣ J♥ 10♠');
-    const a = describe(hole('2♣ 3♦'), board);
-    const b = describe(hole('4♥ 5♠'), board);
-    expect(a.score).toBe(b.score);
-    expect(a.playsTheBoard).toBe(true);
-    expect(b.playsTheBoard).toBe(true);
-    expect(a.name).toBe('Straight, Ace-high');
-  });
-
-  it('B20: A-7-7-3-2 (no flush possible), A♣K♦ beats A♦Q♣ with the King kicker', () => {
-    const board = cards('A♥ 7♠ 7♦ 3♣ 2♥');
-    const ak = describe(hole('A♣ K♦'), board);
-    const aq = describe(hole('A♦ Q♣'), board);
-    expect(ak.score).toBeGreaterThan(aq.score);
-    expect(ak.name).toBe('Two Pair, Aces and Sevens');
-    expect(aq.name).toBe('Two Pair, Aces and Sevens');
-    expect(show(ak.kickers)).toBe(show(cards('K♦')));
-    expect(show(aq.kickers)).toBe(show(cards('Q♣')));
-  });
-
-  it('B21: wheel < 6-high straight; 5-high SF < 6-high SF; Q-K-A-2-3 is not a straight', () => {
-    const board = cards('3♦ 4♠ 5♥ K♣ Q♦');
-    const wheel = describe(hole('A♥ 2♣'), board);
-    const six = describe(hole('6♥ 2♦'), board);
-    expect(wheel.name).toBe('Straight, Five-high');
-    expect(six.name).toBe('Straight, Six-high');
-    expect(six.score).toBeGreaterThan(wheel.score);
-
-    const sfBoard = cards('2♥ 3♥ 4♥ 5♥ K♣');
-    const steelWheel = describe(hole('A♥ 9♣'), sfBoard);
-    const sixHigh = describe(hole('6♥ 9♦'), sfBoard);
-    expect(steelWheel.name).toBe('Straight Flush, Five-high');
-    expect(sixHigh.name).toBe('Straight Flush, Six-high');
-    expect(sixHigh.score).toBeGreaterThan(steelWheel.score);
-
-    const qka23 = describe(hole('Q♠ K♦'), cards('A♥ 2♣ 3♦ 9♠ 8♥'));
-    expect(qka23.category).toBe('highCard');
-    expect(categoryOf(score7(cards('Q♠ K♦ A♥ 2♣ 3♦'), 5))).toBe('highCard');
-  });
-
-  it('B22: 9♠9♦ on 8♣8♥7♦7♠K♣ is 99-88-K; on 8♣8♥7♦7♠2♣ it is 99-88 with a 7 kicker', () => {
-    const withK = describe(hole('9♠ 9♦'), cards('8♣ 8♥ 7♦ 7♠ K♣'));
-    expect(withK.name).toBe('Two Pair, Nines and Eights');
-    expect(show(withK.best5)).toBe(show(cards('9♠ 9♦ 8♥ 8♣ K♣')));
-    const with2 = describe(hole('9♠ 9♦'), cards('8♣ 8♥ 7♦ 7♠ 2♣'));
-    expect(with2.name).toBe('Two Pair, Nines and Eights');
-    expect(show(with2.kickers)).toBe(show(cards('7♠')));
-    expect(withK.score).toBeGreaterThan(with2.score);
-  });
-
-  it('B23: 7♠7♦ on 7♣ K♥ K♦ K♠ 2♣ is Full House, Kings full of Sevens', () => {
-    const info = describe(hole('7♠ 7♦'), cards('7♣ K♥ K♦ K♠ 2♣'));
-    expect(info.name).toBe('Full House, Kings full of Sevens');
-    expect(info.category).toBe('fullHouse');
-  });
-
-  it('B24: straight flush beats the flush in the same cards; a flush is the top five of the suit', () => {
-    const sf = describe(hole('4♥ 7♥'), cards('3♥ 5♥ 6♥ K♥ 2♥'));
-    expect(sf.name).toBe('Straight Flush, Seven-high');
-    expect(sf.category).toBe('straightFlush');
-    const flush = describe(hole('A♥ 2♥'), cards('K♥ Q♥ 9♥ 5♥ 3♥'));
-    expect(flush.name).toBe('Flush, Ace-high');
-    expect(show(flush.best5)).toBe(show(cards('A♥ K♥ Q♥ 9♥ 5♥')));
-  });
-});
+// Appendix B vectors 19–24 (evaluation, and for B19–B20 the engine showdown too) run in
+// tests/engine/appendix-b.test.ts, with the other 38 vectors: one test per vector, in one file.
 
 suite('describe(): other sub-labels (§6.1)', () => {
   const sub = (h: string, b: string): string | null => describe(hole(h), cards(b)).subLabel;

@@ -6,7 +6,7 @@
  * enforced), and the same run's recorded inputs feed `replay` at the end.
  *
  * B41 (JSON round trip of 1,000 random states) and B42 (a recorded 6-player hand with a side pot)
- * are Appendix B vectors and live in `vectors.test.ts` with the others.
+ * are Appendix B vectors and live in `appendix-b.test.ts` with the others.
  */
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
