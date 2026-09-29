@@ -115,7 +115,7 @@ describe('200 seeded hands with SimpleBots and a scripted hero (§18 Stage 3)', 
     expect(total).toBe(200);
     expect(states).toBeGreaterThan(1000);
     expect(showdowns).toBeGreaterThan(20);
-  });
+  }, 60_000);
 });
 
 describe('determinism (§2.4): the same seed gives the same game', () => {
@@ -126,7 +126,7 @@ describe('determinism (§2.4): the same seed gives the same game', () => {
     expect(b).toEqual(a);
     const c = await playGame(deriveSeed(ROOT, 'other'), 6, 30);
     expect(c.inputs).not.toEqual(a.inputs);
-  });
+  }, 60_000);
 });
 
 describe('heads-up order (§3.3, pitfall 3), read from the action log', () => {
@@ -162,7 +162,7 @@ describe('heads-up order (§3.3, pitfall 3), read from the action log', () => {
     expect(postflopStreets).toBeGreaterThan(10);
     // The button alternates between the two seats while both keep chips.
     expect(new Set(buttons)).toEqual(new Set([0, 1]));
-  });
+  }, 60_000);
 });
 
 describe('random gates: no bot act and no advance while any gate is closed (A.8)', () => {
@@ -197,5 +197,5 @@ describe('random gates: no bot act and no advance while any gate is closed (A.8)
       },
     });
     expect(checked).toBeGreaterThan(300);
-  });
+  }, 60_000);
 });

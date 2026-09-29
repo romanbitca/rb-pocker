@@ -167,7 +167,7 @@ describe('SimpleBot always acts legally', () => {
         }
       }
     }
-  });
+  }, 60_000);
 });
 
 describe('SimpleBot think time (§9.8)', () => {

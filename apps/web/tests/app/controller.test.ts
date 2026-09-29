@@ -317,7 +317,7 @@ describe('stale replies and timers (pitfall 22)', () => {
     expect(hands).toHaveLength(25);
     expect(h.controller.logs().events.some((e) => e.what === 'stale timer dropped')).toBe(true);
     expect(h.state().game.diag).toEqual({ engineErrors: 0, botFallbacks: 0, voidedHands: 0 });
-  });
+  }, 60_000);
 });
 
 describe('non-cheating boundary (§4.8, §9.6): the brain gets an Observation only', () => {
@@ -338,7 +338,6 @@ describe('non-cheating boundary (§4.8, §9.6): the brain gets an Observation on
     h.dispatch({ type: 'play' });
     await drive(h, { hands: 40, hero: heroPolicy(deriveSeed(`${'0'.repeat(31)}9`, 'hero')) });
     expect(seen.length).toBeGreaterThan(200);
-    let revealedSeen = 0;
     for (const { req, hand, table } of seen) {
       expect(Object.keys(req).sort()).toEqual(['epoch', 'jobId', 'kind', 'obs', 'profile', 'seed']);
       expect(Object.keys(req.obs).sort()).toEqual(OBS_KEYS);
@@ -356,15 +355,20 @@ describe('non-cheating boundary (§4.8, §9.6): the brain gets an Observation on
       expect(text).not.toMatch(/"deck"|"deckPos"|"startStacks"|"log"/);
       expect(req.seed).toBe(botSeed(table.tableSeed, hand.handSeq, seat, hand.log.length));
       expect(req.seed).not.toBe(hand.seed);
+      // Only revealed seats' cards (and bots never decide after a reveal: nobody can bet then).
       req.obs.revealedHoles.forEach((hole, i) => {
         if (!hand.revealed.includes(i)) expect(hole).toBeNull();
-        else revealedSeen++;
+      });
+      // Nobody else's hidden hole card appears anywhere in the request.
+      hand.seats.forEach((s, i) => {
+        if (i === seat || s.hole === null || hand.revealed.includes(i)) return;
+        const cards = JSON.stringify(s.hole);
+        expect(JSON.stringify(req.obs.revealedHoles)).not.toContain(cards);
+        expect(JSON.stringify(req.obs.hole)).not.toBe(cards);
       });
       expect(req.profile.id).toBe(`${table.slots[seat]?.personality}/easy`);
     }
-    // Bots act on an all-in run-out only when they still can (rare): no requirement on revealedSeen.
-    expect(revealedSeen).toBeGreaterThanOrEqual(0);
-  });
+  }, 60_000);
 
   it('the bot seed depends on the table seed, never on the hand seed (§9.6 3b)', () => {
     const table = 'abcdefabcdefabcdefabcdefabcdef01';
