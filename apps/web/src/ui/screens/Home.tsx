@@ -6,7 +6,7 @@
  * Tiles for screens that do not exist yet are hidden, not disabled (§18 Stage 3): Learn, Stats and
  * Install app show only when their callback is given.
  */
-import { useId } from 'react';
+import { Fragment, useId } from 'react';
 import type { BotLevel, CoachLevel } from '../../engine/types.ts';
 import { en } from '../../i18n/en.ts';
 import { formatChips } from './numbers.ts';
@@ -38,15 +38,16 @@ export interface HomeProps {
   onInstall?: (() => void) | undefined;
 }
 
-/** "Hand 23 · 6 players · You have 2,340 chips · Easy bots · Beginner coach". */
-export function sessionText(s: SessionLine): string {
-  return en.home.session(
-    s.hand,
-    s.players,
-    formatChips(s.chips),
-    en.levels.bot[s.botLevel],
-    en.levels.coach[s.coachLevel],
-  );
+/** The parts of "Hand 23 · 6 players · You have 2,340 chips · Easy bots · Beginner coach". */
+export function sessionParts(s: SessionLine): string[] {
+  const t = en.home.session;
+  return [
+    t.hand(s.hand),
+    t.players(s.players),
+    t.chips(formatChips(s.chips)),
+    t.bots(en.levels.bot[s.botLevel]),
+    t.coach(en.levels.coach[s.coachLevel]),
+  ];
 }
 
 export function Home({
@@ -84,7 +85,12 @@ export function Home({
           </button>
           {session && (
             <p id={sessionId} className={styles.session}>
-              {sessionText(session)}
+              {sessionParts(session).map((part, i) => (
+                <Fragment key={i}>
+                  {i > 0 && en.home.session.separator}
+                  <span className={styles.nowrap}>{part}</span>
+                </Fragment>
+              ))}
             </p>
           )}
         </div>

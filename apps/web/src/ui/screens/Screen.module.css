@@ -228,6 +228,11 @@
   text-align: center;
 }
 
+/* A line breaks only between these parts ("Easy bots" stays together). */
+.nowrap {
+  white-space: nowrap;
+}
+
 .footer {
   margin: var(--space-5) auto 0;
   font-size: 0.9375rem;
@@ -271,6 +276,19 @@
   margin: 0 0 var(--space-1);
   padding: 0;
   font-size: 1.0625rem;
+  font-weight: 700;
+}
+
+/* Settings: rows further apart than the parts of one row. */
+.rows {
+  display: grid;
+  gap: var(--space-5);
+}
+
+/* A setting's name above its choices. */
+.legend {
+  margin: 0 0 var(--space-1);
+  padding: 0;
   font-weight: 700;
 }
 

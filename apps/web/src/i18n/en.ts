@@ -58,8 +58,16 @@ export const en = {
   /** Later launches (PLAN §12.1, Appendix F.10). Amounts arrive formatted ("2,340"). */
   home: {
     play: 'Play',
-    session: (hand: number, players: number, chips: string, botLevel: string, coachLevel: string) =>
-      `Hand ${hand} · ${players} players · You have ${chips} chips · ${botLevel} bots · ${coachLevel} coach`,
+    /** "Hand 23 · 6 players · You have 2,340 chips · Easy bots · Beginner coach", in parts so a
+     *  line breaks only between them. */
+    session: {
+      hand: (n: number) => `Hand ${n}`,
+      players: (n: number) => `${n} players`,
+      chips: (chips: string) => `You have ${chips} chips`,
+      bots: (level: string) => `${level} bots`,
+      coach: (level: string) => `${level} coach`,
+      separator: ' · ',
+    },
     newTable: 'New table…',
     learn: 'Learn',
     stats: 'Stats',

@@ -144,6 +144,11 @@
 
 .depth p {
   margin: 0;
+  text-wrap: balance;
+}
+
+.depthProblem {
+  border-left-color: var(--grade-mistake);
 }
 
 .band {

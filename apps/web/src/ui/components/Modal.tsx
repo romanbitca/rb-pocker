@@ -35,7 +35,14 @@ const focusables = (root: HTMLElement): HTMLElement[] => [
 const openLayers: HTMLElement[] = [];
 const isTop = (el: HTMLElement): boolean => openLayers[openLayers.length - 1] === el;
 
-export function Modal({ kind, alert = false, labelledBy, describedBy, onDismiss, children }: ModalProps) {
+export function Modal({
+  kind,
+  alert = false,
+  labelledBy,
+  describedBy,
+  onDismiss,
+  children,
+}: ModalProps) {
   const panelRef = useRef<HTMLDivElement>(null);
   // The latest callback, so a parent's inline function never re-runs the effect below.
   const dismiss = useRef(onDismiss);

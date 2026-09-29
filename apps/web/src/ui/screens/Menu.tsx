@@ -41,7 +41,9 @@ export function Menu(props: MenuProps) {
   const add = (key: string, label: string, run: (() => void) | undefined) => {
     if (run) items.push({ key, label, run });
   };
-  if (props.topUpTo !== null) add('topUp', en.menu.topUp(formatChips(props.topUpTo)), props.onTopUp);
+  if (props.topUpTo !== null) {
+    add('topUp', en.menu.topUp(formatChips(props.topUpTo)), props.onTopUp);
+  }
   add('rankings', en.menu.rankings, props.onOpenRankings);
   add('settings', en.menu.settings, props.onOpenSettings);
   add('stats', en.menu.stats, props.onOpenStats);

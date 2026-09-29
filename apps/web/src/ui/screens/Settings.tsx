@@ -31,7 +31,7 @@ export function Settings({ settings, onChangeSettings, onBack }: SettingsProps) 
     <main className={styles.page}>
       <ScreenBar title={en.settings.title} onBack={onBack} />
       <div className={styles.content}>
-        <section className={styles.section} aria-labelledby={`${id}-game`}>
+        <section className={styles.rows} aria-labelledby={`${id}-game`}>
           <h2 id={`${id}-game`} className={styles.sectionTitle}>
             {en.settings.game}
           </h2>
@@ -92,7 +92,7 @@ interface ChoiceProps<V extends string> {
 function Choice<V extends string>({ name, label, hint, options, value, onChange }: ChoiceProps<V>) {
   return (
     <fieldset className={styles.section} aria-describedby={`${name}-hint`}>
-      <legend className={styles.switchLabel}>{label}</legend>
+      <legend className={styles.legend}>{label}</legend>
       <div className={`${styles.choices} ${options.length === 2 ? styles.choices2 : ''}`}>
         {options.map((option) => (
           <label key={option.value} className={styles.choice}>

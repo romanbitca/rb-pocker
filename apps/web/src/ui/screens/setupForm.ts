@@ -64,9 +64,7 @@ export interface SetupForm {
 export type DepthBand = 'short' | 'medium' | 'normal' | 'deep';
 
 export type Stakes =
-  | { kind: 'ok'; bigBlinds: number; band: DepthBand }
-  | { kind: 'tooShallow' }
-  | { kind: 'tooDeep' };
+  { kind: 'ok'; bigBlinds: number; band: DepthBand } | { kind: 'tooShallow' } | { kind: 'tooDeep' };
 
 export interface SetupCheck {
   /** The starting stack, or null when the field is empty or out of range (show its range). */
@@ -159,7 +157,11 @@ export function checkSetup(form: SetupForm, available: AvailableLevels): SetupCh
   const levelsOk =
     available.bot.includes(form.botLevel) && available.coach.includes(form.coachLevel);
   const config =
-    stack !== null && bb !== null && stakes?.kind === 'ok' && levelsOk && inRange(form.players, PLAYERS)
+    stack !== null &&
+    bb !== null &&
+    stakes?.kind === 'ok' &&
+    levelsOk &&
+    inRange(form.players, PLAYERS)
       ? tableConfig(form.players, stack, bb, form.botLevel)
       : null;
   return { stack, bb, stakes, config };

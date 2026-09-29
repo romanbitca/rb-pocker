@@ -10,9 +10,12 @@ if (container === null) {
 }
 const root = createRoot(container);
 
-// Dev-only component preview: `/?preview=ui`. `import.meta.env.DEV` is the constant `false` in
-// production builds, so this branch and the preview module are dropped from the bundle
-// (tests/ui/dev/bundle.test.ts checks the built files).
+// Dev-only previews, one `if` each. `import.meta.env.DEV` is the constant `false` in production
+// builds, so every preview branch and the modules it loads are dropped from the bundle:
+// - `/?preview=ui`: the cards, seats and rankings panel (tests/ui/dev/bundle.test.ts checks the
+//   built files).
+// - `/?preview=screens`: the screens (tests/ui/dev/screensPreview.test.ts checks the built files).
+//   The navigation reducer is passed in because ui/ may not load app/ at run time (PLAN §2.1).
 if (import.meta.env.DEV && new URLSearchParams(window.location.search).get('preview') === 'ui') {
   void import('./ui/dev/Preview.tsx').then(({ Preview }) => {
     root.render(
@@ -21,6 +24,19 @@ if (import.meta.env.DEV && new URLSearchParams(window.location.search).get('prev
       </StrictMode>,
     );
   });
+} else if (
+  import.meta.env.DEV &&
+  new URLSearchParams(window.location.search).get('preview') === 'screens'
+) {
+  void Promise.all([import('./ui/dev/ScreensPreview.tsx'), import('./app/navigation.ts')]).then(
+    ([{ ScreensPreview }, navigation]) => {
+      root.render(
+        <StrictMode>
+          <ScreensPreview navigation={navigation} />
+        </StrictMode>,
+      );
+    },
+  );
 } else {
   root.render(
     <StrictMode>

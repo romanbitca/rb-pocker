@@ -96,7 +96,9 @@ export function Setup({ initial, available, onStartTable, onBack, onOpenPrivacy 
           }}
           extra={
             check.bb !== null && (
-              <p className={s.smallBlind}>{en.setup.blinds.smallBlind(formatChips(check.bb / 2))}</p>
+              <p className={s.smallBlind}>
+                {en.setup.blinds.smallBlind(formatChips(check.bb / 2))}
+              </p>
             )
           }
         />
@@ -333,7 +335,11 @@ function AmountField({
 /** "Each player starts with 2,000 chips = 100 big blinds." and the depth label, or what to fix. */
 function Depth({ id, stakes, stack }: { id: string; stakes: Stakes | null; stack: number | null }) {
   return (
-    <div id={id} className={s.depth} aria-live="polite">
+    <div
+      id={id}
+      className={`${s.depth} ${stakes !== null && stakes.kind !== 'ok' ? s.depthProblem : ''}`}
+      aria-live="polite"
+    >
       {stakes?.kind === 'ok' && stack !== null && (
         <>
           <p>{en.setup.depth.caption(formatChips(stack), formatChips(stakes.bigBlinds))}</p>
@@ -382,7 +388,9 @@ function Levels<L extends BotLevel | CoachLevel>({
                 value={level}
                 checked={value === level}
                 disabled={!open}
-                onChange={() => onChange(level)}
+                onChange={() => {
+                  if (open) onChange(level);
+                }}
               />
               <span className={s.levelFace}>
                 <span className={s.levelName}>{names[level]}</span>

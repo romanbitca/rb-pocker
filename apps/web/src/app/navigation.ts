@@ -116,10 +116,17 @@ export function navigate(nav: Nav, action: NavAction): Nav {
       return nav;
     }
     case 'open':
-      return withState(nav, screens, [...overlays.filter((o) => o !== action.overlay), action.overlay]);
+      return withState(nav, screens, [
+        ...overlays.filter((o) => o !== action.overlay),
+        action.overlay,
+      ]);
     case 'close': {
       const target = action.overlay ?? topOverlay(nav);
-      return withState(nav, screens, overlays.filter((o) => o !== target));
+      return withState(
+        nav,
+        screens,
+        overlays.filter((o) => o !== target),
+      );
     }
   }
 }

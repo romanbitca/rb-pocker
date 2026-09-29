@@ -27,8 +27,8 @@ export function ScreenSwitcher({ nav, screens, overlays }: ScreenSwitcherProps) 
     // The first screen keeps the browser's own focus; later ones take it.
     if (shown.current === screen) return;
     shown.current = screen;
-    const scroller = document.scrollingElement;
-    if (scroller !== null) scroller.scrollTop = 0;
+    // `??`: jsdom and very old engines have no scrollingElement.
+    (document.scrollingElement ?? document.documentElement).scrollTop = 0;
     const heading = holder.current?.querySelector('h1');
     if (heading) {
       heading.tabIndex = -1;

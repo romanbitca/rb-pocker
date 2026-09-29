@@ -1,0 +1,60 @@
+/* Dev-only screens preview (?preview=screens). */
+
+.index {
+  max-width: 560px;
+  margin: 0 auto;
+  padding: var(--space-5) var(--space-4);
+}
+
+.index h1 {
+  font-size: 1.25rem;
+}
+
+.index ul {
+  display: grid;
+  gap: var(--space-2);
+  padding-left: var(--space-5);
+}
+
+.index a {
+  display: inline-block;
+  min-height: var(--tap-min);
+  padding: var(--space-2) 0;
+  color: var(--accent);
+}
+
+/* The Table stand-in. */
+.table {
+  display: grid;
+  place-content: center;
+  gap: var(--space-4);
+  min-height: 100vh;
+  min-height: 100dvh;
+  padding: var(--space-4);
+  background: radial-gradient(ellipse at 50% 42%, var(--felt) 0%, var(--felt-dark) 100%);
+  color: var(--text);
+  text-align: center;
+}
+
+.tableTitle {
+  margin: 0;
+  font-size: 1.25rem;
+}
+
+.tableButtons {
+  display: flex;
+  gap: var(--space-2);
+  justify-content: center;
+}
+
+.devButton {
+  min-width: var(--tap-min);
+  min-height: var(--tap-min);
+  padding: 0 var(--space-4);
+  border: 2px solid var(--text);
+  border-radius: var(--radius-2);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
