@@ -15,19 +15,17 @@
  *   (`hidden`), the screen (`offTable`), the open overlays (`OVERLAY_GATE`) and explicit holds
  *   (the `gate` command). Bots, think timers and `advance` wait while any gate is closed.
  */
+import { useCallback } from 'react';
 import { useStore } from 'zustand';
 import { useShallow } from 'zustand/react/shallow';
 import { createStore, type StoreApi } from 'zustand/vanilla';
-import type {
-  BotLevel,
-  CoachLevel,
-  HandState,
-  LegalActions,
-  PlayerAction,
-  TableState,
-} from '../engine/types.ts';
+import type { HandState, LegalActions, PlayerAction, TableState } from '../engine/types.ts';
+import { defaultSettings } from '../persist/schema.ts';
+import type { Settings } from '../persist/schema.ts';
 
 export { useShallow };
+// The view-model selectors (ui/views.ts shapes): the UI imports them from here (§2.1).
+export * from './tableViews.ts';
 
 // ---------------------------------------------------------------------------------------------
 // Appendix A.8 (the controller's modes and gates; `app/controller.ts` re-exports them)
@@ -133,7 +131,11 @@ export type Toast =
   /** "Nora sits down." / "Nora, Ben and Sam sit down." (§3.1) */
   | { id: number; kind: 'botsJoined'; names: string[] }
   /** "This hand was cancelled because of an internal error. Your chips were returned." (§4.5) */
-  | { id: number; kind: 'handVoided' };
+  | { id: number; kind: 'handVoided' }
+  /** "Your last hand could not be restored. Chips were returned." (§14.3 load table) */
+  | { id: number; kind: 'handNotRestored' }
+  /** "Your saved data was damaged. We started fresh and kept a copy." (§12.11) */
+  | { id: number; kind: 'dataRecovered' };
 
 /** An explicit gate close by `owner` (e.g. a first-table tip); the gate stays closed while any hold exists. */
 export interface GateHold {
@@ -196,46 +198,27 @@ export interface UiSlice {
   gates: Gate[];
   layout: Layout;
   toasts: Toast[];
+  /**
+   * The §12.11 banner "Stats can't be saved in this browser mode…": the browser storage failed
+   * (once per launch, `SafeStorage.onFailure`); [OK] sends `dismissStorageBanner`.
+   */
+  storageBanner: boolean;
 }
 
 /**
- * The settings the table and the controller use (a subset of Appendix A.7 `Settings`, same field
- * names). Chunk 3.2 stores them in `pc.v1.profile`.
+ * The player's settings: Appendix A.7 `Settings`, as stored in `pc.v1.profile` (chunk 3.2). The
+ * controller saves every change (debounced 250 ms, §14.2) and keeps `seatLevels.length ===
+ * players`.
  */
-export interface GameSettings {
-  botLevel: BotLevel;
-  coachLevel: CoachLevel;
-  /** Seats: you + bots, 2..9. */
-  players: number;
-  startingStack: number;
-  sb: number;
-  bb: number;
-  /** Per-seat bot level override, one per seat; [0] (the hero) is always null. */
-  seatLevels: (BotLevel | null)[];
-  speed: Speed;
-  autoNext: boolean;
-  amounts: 'chips' | 'bb';
-}
+export type GameSettings = Settings;
+export type { Settings };
 
 /** First-launch values (§3.2, §12.1): you + 5 bots, 2,000 chips, blinds 10/20, Easy, Beginner. */
-export function defaultGameSettings(): GameSettings {
-  return {
-    botLevel: 'easy',
-    coachLevel: 'beginner',
-    players: 6,
-    startingStack: 2000,
-    sb: 10,
-    bb: 20,
-    seatLevels: [null, null, null, null, null, null],
-    speed: 'normal',
-    autoNext: true,
-    amounts: 'chips',
-  };
-}
+export const defaultGameSettings: () => Settings = defaultSettings;
 
 /** Setup's four questions (§12.2): what a new table is made from. */
 export type TableSetup = Pick<
-  GameSettings,
+  Settings,
   'players' | 'startingStack' | 'sb' | 'bb' | 'botLevel' | 'coachLevel' | 'seatLevels'
 >;
 
@@ -257,7 +240,9 @@ export type UiCommand =
   /** Close (or reopen) a gate explicitly, e.g. while a first-table tip is shown. */
   | { type: 'gate'; gate: Gate; closed: boolean; owner?: string }
   | { type: 'layout'; layout: Layout }
-  | { type: 'dismissToast'; id: number };
+  | { type: 'dismissToast'; id: number }
+  /** [OK] on the storage banner. */
+  | { type: 'dismissStorageBanner' };
 
 /** Commands the TableController handles. */
 export type GameCommand =
@@ -297,6 +282,7 @@ const UI_COMMANDS: ReadonlySet<string> = new Set([
   'gate',
   'layout',
   'dismissToast',
+  'dismissStorageBanner',
 ]);
 
 export const isUiCommand = (cmd: Command): cmd is UiCommand => UI_COMMANDS.has(cmd.type);
@@ -341,6 +327,7 @@ export function initialUi(screen: Screen = 'welcome'): UiSlice {
     gates: [],
     layout: 'portrait',
     toasts: [],
+    storageBanner: false,
   });
 }
 
@@ -409,6 +396,8 @@ export function reduceUi(ui: UiSlice, cmd: UiCommand): UiSlice {
     case 'dismissToast':
       if (!ui.toasts.some((t) => t.id === cmd.id)) return ui;
       return { ...ui, toasts: ui.toasts.filter((t) => t.id !== cmd.id) };
+    case 'dismissStorageBanner':
+      return ui.storageBanner ? { ...ui, storageBanner: false } : ui;
   }
 }
 
@@ -478,6 +467,21 @@ export function useAppStoreShallow<T>(selector: (s: AppState) => T): T {
 /** The stable `dispatch` of the app's store. */
 export function useDispatch(): (cmd: Command) => void {
   return useStore(appStore, selectDispatch);
+}
+
+/**
+ * An overlay as a controlled `open` / `onOpenChange` pair, for the rankings drawer
+ * (`<RankingsDrawer open={open} onOpenChange={setOpen} …/>`), the menu, the sizing tray and the
+ * dialogs. Opening it closes its gate (`OVERLAY_GATE`) and makes Android Back close it first.
+ */
+export function useOverlay(overlay: Overlay): [open: boolean, setOpen: (open: boolean) => void] {
+  const open = useStore(appStore, (s) => s.ui.overlays.includes(overlay));
+  const dispatchCmd = useDispatch();
+  const setOpen = useCallback(
+    (next: boolean) => dispatchCmd({ type: next ? 'openOverlay' : 'closeOverlay', overlay }),
+    [dispatchCmd, overlay],
+  );
+  return [open, setOpen];
 }
 
 export const selectDispatch = (s: AppState): AppState['dispatch'] => s.dispatch;

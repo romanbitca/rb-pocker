@@ -32,17 +32,23 @@ import { observe } from '../engine/observe.ts';
 import { startHand } from '../engine/start.ts';
 import { step } from '../engine/step.ts';
 import { createTable, initialSlots, nextTable, topUp } from '../engine/table.ts';
-import type {
-  BotLevel,
-  EngineInput,
-  HandState,
-  LegalActions,
-  ObserveExtras,
-  PlayerAction,
-  ReplayRecord,
-  TableConfig,
-  TableState,
+import {
+  ENGINE_VERSION,
+  type BotLevel,
+  type EngineInput,
+  type HandState,
+  type LegalActions,
+  type ObserveExtras,
+  type PlayerAction,
+  type ReplayRecord,
+  type TableConfig,
+  type TableState,
 } from '../engine/types.ts';
+import { loadProfile, saveSettings } from '../persist/profile.ts';
+import { emptyHandMeta, settingsProblem } from '../persist/schema.ts';
+import type { Profile, SessionState, Settings } from '../persist/schema.ts';
+import { clearSession, loadSession, saveSession } from '../persist/session.ts';
+import type { SafeStorage } from '../persist/storage.ts';
 import type { BotDecisionRequest, BotProfileRef, BrainClient, BrainReply } from './brain.ts';
 import {
   updateUi,
@@ -50,7 +56,6 @@ import {
   type ControllerMode,
   type Diagnostics,
   type GameCommand,
-  type GameSettings,
   type Speed,
   type Toast,
   type UiCommand,
@@ -82,6 +87,8 @@ export const TIMING = {
   botTimeoutMs: 2000,
   /** How long a toast stays (§12.11). */
   toastMs: 4000,
+  /** Settings changes are saved 250 ms after the last one (§14.2), and at once when hidden. */
+  settingsDebounceMs: 250,
 } as const;
 
 /** Pause and animation factor per speed (§12.8: Normal 1, Fast 0.5, Instant 0). */
@@ -141,6 +148,13 @@ export interface ControllerOptions {
   timers?: Timers;
   /** The reducer (tests only: a failing one exercises the void path). */
   step?: typeof step;
+  /**
+   * The browser storage (chunk 3.2, `createSafeStorage()`): the profile's settings and the session
+   * are loaded at boot and saved as the game goes. Without it (tests) nothing is loaded or saved.
+   */
+  storage?: SafeStorage;
+  /** The wall clock for stored timestamps (default: now). */
+  now?: () => Date;
 }
 
 /** One line of the controller's in-memory log (Diagnostics; `window.__pc.logs()` in test builds). */
@@ -196,7 +210,11 @@ interface BotJob {
   timeout: unknown;
 }
 
-type NewToast = { kind: 'botsJoined'; names: string[] } | { kind: 'handVoided' };
+type NewToast =
+  | { kind: 'botsJoined'; names: string[] }
+  | { kind: 'handVoided' }
+  | { kind: 'handNotRestored' }
+  | { kind: 'dataRecovered' };
 
 const RING = { events: 500, errors: 50, brain: 200, voided: 5 } as const;
 
@@ -205,17 +223,25 @@ function push<T>(ring: T[], item: T, max: number): void {
   if (ring.length > max) ring.splice(0, ring.length - max);
 }
 
-/** Only the settings fields we know, with the types they must have (commands may come from tests). */
-function sanitize(current: GameSettings, patch: Partial<GameSettings>): GameSettings {
-  const next: GameSettings = { ...current, seatLevels: [...current.seatLevels] };
+/**
+ * `current` with `patch` applied, or `current` itself when the result would not be valid
+ * settings (`settingsProblem`, A.7): only known fields, and `seatLevels` resized to one entry per
+ * seat with the hero's null (the stored settings need `seatLevels.length === players`).
+ */
+export function sanitize(current: Settings, patch: Partial<Settings>): Settings {
+  const next: Settings = { ...current, seatLevels: [...current.seatLevels] };
   const target = next as unknown as Record<string, unknown>;
   for (const [key, value] of Object.entries(patch as Record<string, unknown>)) {
-    if (!Object.hasOwn(current, key)) continue;
-    const old = (current as unknown as Record<string, unknown>)[key];
-    if (Array.isArray(old) ? Array.isArray(value) : typeof value === typeof old)
-      target[key] = value;
+    if (!Object.hasOwn(current, key) || key === 'schema') continue;
+    target[key] = Array.isArray(value) ? [...(value as unknown[])] : value;
   }
-  return next;
+  const levels = next.seatLevels;
+  if (Number.isSafeInteger(next.players) && next.players >= 2 && next.players <= 9) {
+    next.seatLevels = Array.from({ length: next.players }, (_, i) =>
+      i === HERO ? null : (levels[i] ?? null),
+    );
+  }
+  return settingsProblem(next) === null ? next : current;
 }
 
 export class TableController {
@@ -226,6 +252,15 @@ export class TableController {
   private readonly timers: Timers;
   private readonly stepFn: typeof step;
   private readonly unsubscribe: () => void;
+  private readonly storage: SafeStorage | null;
+  private readonly now: () => Date;
+  /** The stored profile (settings only in Stage 3); null without storage. */
+  private profile: Profile | null = null;
+  /** When this table's session began (§14.4); stored in the session. */
+  private sessionStart: string | null = null;
+  private settingsTimer: unknown = null;
+  private settingsSeq = 0;
+  private settingsDirty = false;
 
   private epoch = 0;
   private mode: ControllerMode = 'booting';
@@ -269,15 +304,44 @@ export class TableController {
     this.seeds = options.seeds ?? randomSeeds();
     this.timers = options.timers ?? defaultTimers;
     this.stepFn = options.step ?? step;
+    this.storage = options.storage ?? null;
+    this.now = options.now ?? ((): Date => new Date());
     this.unsubscribe = this.store.subscribe((s, prev) => {
       if (s.ui.gates !== prev.ui.gates) this.onGates();
     });
     this.store.setGameHandler((cmd) => this.dispatch(cmd));
   }
 
-  /** Boot is done (chunk 3.2 reads the profile and session first): ready for Play. */
+  /**
+   * Boot (§12.14): with storage, reads the profile (its settings; Welcome on the first launch, else
+   * Home) and the saved session (§14.5: Home's Play continues it; a hand that cannot be restored is
+   * voided with its chips returned, §14.3). Then ready for Play.
+   */
   boot(): void {
-    if (this.mode === 'booting') this.mode = 'idle';
+    if (this.mode !== 'booting') return;
+    const storage = this.storage;
+    if (storage !== null) {
+      storage.onFailure(() => updateUi(this.store, (ui) => ({ ...ui, storageBanner: true })));
+      const now = this.now();
+      const loaded = loadProfile(storage, { now });
+      this.profile = loaded.profile;
+      this.store.setState({ settings: sanitize(loaded.profile.settings, {}) });
+      if (loaded.status === 'reset') {
+        this.error('profile reset', loaded.problem);
+        this.toast({ kind: 'dataRecovered' });
+      }
+      const first = loaded.status === 'new' || loaded.status === 'unavailable';
+      this.ui({ type: 'navigate', screen: first ? 'welcome' : 'home', how: 'reset' });
+      const session = loadSession(storage, { engineVersion: ENGINE_VERSION, now });
+      if (session.status === 'ok' || session.status === 'voided') this.resume(session.session);
+      if (session.status === 'voided') {
+        this.error('session hand voided', session.problem);
+        this.toast({ kind: 'handNotRestored' });
+      } else if (session.status === 'discarded') {
+        this.error('session discarded', session.problem);
+      }
+    }
+    this.mode = 'idle';
     this.publish();
   }
 
@@ -315,8 +379,8 @@ export class TableController {
         this.visibility(cmd.hidden);
         break;
       case 'pagehide':
-        // Chunk 3.2 flushes storage here (§12.13, §14.6).
-        this.trace('pagehide');
+        // §14.6 rule 4: the session is saved after every step; the settings wait 250 ms.
+        this.flushSettings();
         break;
       default:
         this.trace('unknown command', cmd);
@@ -333,6 +397,8 @@ export class TableController {
     this.visibleTimer = null;
     for (const handle of this.toastTimers.values()) this.timers.clearTimeout(handle);
     this.toastTimers.clear();
+    if (this.settingsTimer !== null) this.timers.clearTimeout(this.settingsTimer);
+    this.settingsTimer = null;
   }
 
   snapshot(): ControllerSnapshot {
@@ -364,6 +430,7 @@ export class TableController {
     if (this.table === null && this.hand === null && this.next === null) {
       const table = this.buildTable();
       if (table === null) return;
+      this.beginSession();
       this.startHandAt(table);
     } else if (this.heroBust()) {
       this.navigateToTable();
@@ -376,7 +443,7 @@ export class TableController {
   }
 
   /** §3.1, §12.2: a new table from the settings; an unfinished hand is folded and finished first. */
-  private async newTable(setup: Partial<GameSettings> | undefined): Promise<void> {
+  private async newTable(setup: Partial<Settings> | undefined): Promise<void> {
     if (this.mode === 'booting') return;
     const token = ++this.newTableSeq;
     if (setup !== undefined) this.store.setState({ settings: sanitize(this.settings(), setup) });
@@ -388,6 +455,7 @@ export class TableController {
     }
     // Stage 8 commits the finished hand here (§14.3) and ends the session (§14.4).
     this.closeTable();
+    this.beginSession();
     this.startHandAt(table);
     this.navigateToTable();
     this.publish();
@@ -452,6 +520,7 @@ export class TableController {
       return;
     }
     this.trace('top up', { from: stack, reloads: this.next.reloads });
+    this.saveSession();
   }
 
   /** Out of chips → Change table (§3.1): Setup; the old table's session ends. */
@@ -460,15 +529,21 @@ export class TableController {
       this.trace('change table ignored: a hand is being played');
       return;
     }
-    // Chunk 3.2 clears the saved session here.
     this.closeTable();
+    this.sessionStart = null;
+    if (this.storage !== null) clearSession(this.storage); // §3.1: the old table's session ends
     this.ui({ type: 'navigate', screen: 'setup', how: 'replace' });
   }
 
-  private changeSettings(patch: Partial<GameSettings>): void {
-    const settings = sanitize(this.settings(), patch);
+  private changeSettings(patch: Partial<Settings>): void {
+    const current = this.settings();
+    const settings = sanitize(current, patch);
+    if (settings === current) {
+      this.error('settings refused', patch);
+      return;
+    }
     this.store.setState({ settings });
-    // Chunk 3.2 saves the settings (debounced 250 ms, §14.2).
+    this.scheduleSettingsSave();
     if (this.flow?.kind === 'nextHand' && !settings.autoNext) this.cancelFlow();
     this.pump();
   }
@@ -484,7 +559,7 @@ export class TableController {
       // The bot's turn is asked again once visible (same observation and seed: same decision).
       this.cancelJob();
       updateUi(this.store, (ui) => (ui.hidden ? ui : { ...ui, hidden: true }));
-      // Chunk 3.2 flushes storage here.
+      this.flushSettings(); // §12.13: flush storage when hidden (the session is already saved)
       return;
     }
     if (!this.store.getState().ui.hidden) return;
@@ -559,7 +634,7 @@ export class TableController {
       button: hand.button,
       seats: hand.seats.length,
     });
-    // Chunk 3.2 saves the session here (after every step, §14.5).
+    this.saveSession();
     if (this.newcomers.length > 0) {
       this.toast({ kind: 'botsJoined', names: this.newcomers });
       this.newcomers = [];
@@ -584,7 +659,8 @@ export class TableController {
     this.next = next;
     this.mode = 'handEnd';
     this.trace('hand end', { handSeq: h.handSeq, net: h.result?.net ?? null });
-    // Stage 8 commits the hand here (§14.3); chunk 3.2 saves the session as { table: next, hand: null }.
+    // Stage 8 commits the hand first (§14.3 steps 1–4); step 5: the session moves to the next table.
+    this.saveSession();
   }
 
   /** After the hand-end pause: the next hand, or the out-of-chips dialog (§3.1). */
@@ -735,7 +811,7 @@ export class TableController {
     this.hand = next;
     this.inputs.push(input);
     this.trace('input', input);
-    // Chunk 3.2 saves the session here, after every step (§14.5).
+    this.saveSession(); // after every step (§14.5)
     this.pump();
     this.publish();
   }
@@ -973,6 +1049,93 @@ export class TableController {
     this.cancelJob();
   }
 
+  // -------------------------------------------------------------------------------------------
+  // Storage (chunk 3.2, §14)
+
+  /** A table's session begins (Play or Start game, §14.4); the settings become the last-used ones. */
+  private beginSession(): void {
+    this.sessionStart = this.now().toISOString();
+    this.settingsDirty = true;
+    this.flushSettings(); // also writes the profile on the first launch, so the next one opens Home
+  }
+
+  /** A saved session back in play (§14.5): exactly its table, hand and inputs. */
+  private resume(session: SessionState): void {
+    this.sessionStart = session.sessionStart;
+    if (session.hand === null) {
+      this.table = null;
+      this.hand = null;
+      this.next = session.table;
+      this.inputs = [];
+    } else {
+      this.table = session.table;
+      this.hand = session.hand;
+      this.next = null;
+      this.inputs = [...session.handInputs];
+    }
+    const t = session.table;
+    this.handSeqFloor = Math.max(
+      this.handSeqFloor,
+      t.nextHandSeq,
+      (session.hand?.handSeq ?? 0) + 1,
+    );
+    this.trace('resume', {
+      handSeq: session.hand?.handSeq ?? null,
+      phase: session.hand?.phase ?? null,
+    });
+  }
+
+  /**
+   * `pc.v1.session` (§14.5, A.7), after every step: the table as at hand start with the hand and its
+   * inputs; between hands (after `nextTable`) the next hand's table and no hand. `savedAt` is now.
+   */
+  private saveSession(): void {
+    if (this.storage === null || this.headless) return;
+    const withHand = this.hand !== null && this.next === null;
+    const table = withHand ? this.table : (this.next ?? this.table);
+    if (table === null) return;
+    const now = this.now().toISOString();
+    const session: SessionState = {
+      schema: 1,
+      savedAt: now,
+      sessionStart: this.sessionStart ?? now,
+      table,
+      hand: withHand ? this.hand : null,
+      handInputs: withHand ? this.inputs : [],
+      meta: emptyHandMeta(),
+      undoSnapshot: null,
+      seatStats: table.slots.map(() => null),
+      resumeAfterUpdate: false,
+    };
+    const saved = saveSession(this.storage, session);
+    if (!saved.ok && saved.reason === 'invalid') this.error('session not saved', saved.problem);
+  }
+
+  /** Saves the settings 250 ms after the last change (§14.2). */
+  private scheduleSettingsSave(): void {
+    this.settingsDirty = true;
+    if (this.storage === null) return;
+    if (this.settingsTimer !== null) this.timers.clearTimeout(this.settingsTimer);
+    const token = ++this.settingsSeq;
+    this.settingsTimer = this.timers.setTimeout(() => {
+      if (token === this.settingsSeq) this.flushSettings();
+    }, TIMING.settingsDebounceMs);
+  }
+
+  /** Writes changed settings now (on hidden, pagehide and a new table, §14.6 rule 4). */
+  private flushSettings(): void {
+    if (this.settingsTimer !== null) this.timers.clearTimeout(this.settingsTimer);
+    this.settingsTimer = null;
+    this.settingsSeq++;
+    if (this.storage === null || this.profile === null || !this.settingsDirty) return;
+    const saved = saveSettings(this.storage, this.profile, this.settings(), this.now());
+    this.profile = saved.profile;
+    this.settingsDirty = false;
+    if (!saved.result.ok && saved.result.reason === 'invalid') {
+      this.error('settings not saved', saved.result.problem);
+    }
+  }
+
   /** Forgets the table and its hand (a new table, Change table, a voided hand). */
   private closeTable(): void {
     this.bumpEpoch();
@@ -988,7 +1151,7 @@ export class TableController {
   // -------------------------------------------------------------------------------------------
   // Helpers
 
-  private settings(): GameSettings {
+  private settings(): Settings {
     return this.store.getState().settings;
   }
 

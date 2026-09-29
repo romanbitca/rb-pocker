@@ -5,8 +5,10 @@
  */
 import { createSimpleBrain } from './brain.ts';
 import { createTableController, randomSeeds, type TableController } from './controller.ts';
+import { createSafeStorage } from '../persist/storage.ts';
 import { installLifecycle } from './lifecycle.ts';
 import { appStore } from './store.ts';
+import type { SafeStorage } from '../persist/storage.ts';
 import type * as TestHooks from './testHooks.ts';
 
 export interface StartOptions {
@@ -15,6 +17,8 @@ export interface StartOptions {
   /** The test-hooks module, passed only by development and E2E builds (see main.tsx). */
   hooks?: typeof TestHooks;
   win?: Window;
+  /** The storage (tests pass one over a fake `localStorage`). */
+  storage?: SafeStorage;
 }
 
 export function startApp(options: StartOptions): TableController {
@@ -27,10 +31,12 @@ export function startApp(options: StartOptions): TableController {
     brain: createSimpleBrain(),
     heroName: options.heroName,
     seeds: hooks !== undefined && seed !== null ? hooks.fixedSeeds(seed) : randomSeeds(),
+    // One storage wrapper per launch over the real localStorage (§14.6).
+    storage: options.storage ?? createSafeStorage(),
   });
   installLifecycle(win, appStore);
   if (hooks !== undefined) hooks.installTestHooks(win, appStore, controller, seed);
-  // Chunk 3.2 reads the profile and the saved session before this (§12.14, §14.5).
+  // Reads the profile and the saved session (§12.14, §14.5), then shows Welcome or Home.
   controller.boot();
   return controller;
 }

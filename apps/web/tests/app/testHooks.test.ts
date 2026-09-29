@@ -17,6 +17,7 @@ import {
 
 afterEach(() => {
   vi.useRealTimers();
+  localStorage.clear(); // startApp saves the profile and the session (jsdom's localStorage)
 });
 
 describe('?seed=<hex>', () => {
