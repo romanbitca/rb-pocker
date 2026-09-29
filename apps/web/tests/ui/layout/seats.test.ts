@@ -156,6 +156,12 @@ describe('layouts and the table box (PLAN §12.3, §12.5)', () => {
     expect(tableFrame({ w: 1280, h: 800 }).tab).toBeNull();
   });
 
+  it('gives the wide table the rankings column’s room when it collapses to its 44 px rail', () => {
+    expect(tableFrame({ w: 1280, h: 800 }).box.w).toBe(1280 - 0.24 * 1280);
+    expect(tableFrame({ w: 1280, h: 800 }, { handsCollapsed: true }).box.w).toBe(1280 - 44);
+    expect(tableFrame({ w: 1280, h: 800 }, { coachPanel: 0 }).box.h).toBe(800 - 44 - 112 - 64);
+  });
+
   it('sizes board cards by §12.3, leaving room for the side pods', () => {
     expect(boardCardSize('wide', { w: 973, h: 340 })).toEqual({ w: 48, h: 67 });
     expect(boardCardSize('portrait', { w: 332, h: 472 })).toEqual({ w: 34, h: 48 });

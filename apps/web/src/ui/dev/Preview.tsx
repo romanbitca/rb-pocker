@@ -8,17 +8,22 @@
  * the real Table screen will put them. Its labels are developer text, never shown to players,
  * so they stay here instead of in `i18n/en.ts`.
  */
-import { useEffect, useMemo, useState, type CSSProperties } from 'react';
+import { useCallback, useEffect, useMemo, useState, type CSSProperties } from 'react';
 import { newDeck, parseCard } from '../../core/cards.ts';
 import { Board } from '../components/Board.tsx';
 import { Card, type CardSize } from '../components/Card.tsx';
+import { HandsTab } from '../components/HandsTab.tsx';
 import { Pot } from '../components/Pot.tsx';
+import { RankingsColumn } from '../components/RankingsColumn.tsx';
+import { RankingsDrawer } from '../components/RankingsDrawer.tsx';
 import { Seat } from '../components/Seat.tsx';
 import { SvgSprite } from '../components/SvgSprite.tsx';
 import { SHELL, tableFrame, tableGeometry, type Rect, type Size } from '../layout/seats.ts';
+import { useHandsTabDot } from '../rankings.ts';
 import {
   PREVIEW_STATES,
   previewBoard,
+  previewHero,
   previewPot,
   previewSeats,
   SAMPLE,
@@ -59,8 +64,10 @@ function TablePreview() {
     const s = param('state');
     return PREVIEW_STATES.find((x) => x === s) ?? 'river';
   });
+  const [drawerOpen, setDrawerOpen] = useState(() => param('drawer') === 'open');
+  const [handsCollapsed, setHandsCollapsed] = useState(false);
   const opponents = players - 1;
-  const frame = tableFrame(viewport);
+  const frame = tableFrame(viewport, { handsCollapsed });
   const { layout, box } = frame;
   const geometry = useMemo(
     () => tableGeometry(layout, { w: box.w, h: box.h }, opponents),
@@ -69,6 +76,10 @@ function TablePreview() {
   const seats = useMemo(() => previewSeats(opponents, state), [opponents, state]);
   const board = useMemo(() => previewBoard(state), [state]);
   const pot = useMemo(() => previewPot(state), [state]);
+  const hero = useMemo(() => previewHero(state), [state]);
+  const dot = useHandsTabDot(hero, drawerOpen);
+  const openDrawer = useCallback(() => setDrawerOpen(true), []);
+  const onDrawerChange = useCallback((open: boolean) => setDrawerOpen(open), []);
 
   const wide = layout === 'wide';
   const landscape = layout === 'landscape';
@@ -76,6 +87,10 @@ function TablePreview() {
   const topBar = landscape ? SHELL.topBarLandscape : SHELL.topBar;
   const below = box.y + box.h;
   const nextState = PREVIEW_STATES[(PREVIEW_STATES.indexOf(state) + 1) % PREVIEW_STATES.length];
+  // The drawer covers everything above the action bar (portrait) or the table column (landscape).
+  const drawerArea: Rect = landscape
+    ? { x: 0, y: 0, w: viewport.w - SHELL.landscapeColumn, h: viewport.h }
+    : { x: 0, y: 0, w: viewport.w, h: viewport.h - SHELL.actionBar };
 
   return (
     <div className={styles.screen}>
@@ -97,6 +112,13 @@ function TablePreview() {
         <span className={styles.layoutName}>
           {layout} {viewport.w}×{viewport.h}
         </span>
+        <button
+          type="button"
+          className={styles.wideButton}
+          onClick={() => (wide ? setHandsCollapsed((c) => !c) : setDrawerOpen((o) => !o))}
+        >
+          Hands
+        </button>
       </div>
 
       <div className={styles.table} style={at(box)}>
@@ -117,8 +139,9 @@ function TablePreview() {
       </div>
 
       {frame.tab !== null && (
-        <div className={styles.tab} style={at(frame.tab)}>
-          Hands
+        // 44 px to touch: the tab's extra 16 px reach left over the felt.
+        <div className={styles.tabSlot} style={{ left: frame.tab.x - 16, top: frame.tab.y }}>
+          <HandsTab onOpen={openDrawer} expanded={drawerOpen} dot={dot} />
         </div>
       )}
 
@@ -167,7 +190,17 @@ function TablePreview() {
                 className={styles.overlap}
               />
             </span>
-            <span className={styles.heroText}>Hero strip</span>
+            {hero === null ? (
+              <span className={styles.heroText}>Between hands</span>
+            ) : (
+              <button type="button" className={styles.heroLabel} onClick={openDrawer}>
+                {state === 'preflop'
+                  ? 'Pocket Kings'
+                  : state === 'flop' || state === 'folded'
+                    ? 'Pair of Kings'
+                    : 'Three of a Kind, Kings'}
+              </button>
+            )}
           </div>
           {layout !== 'compact' && !wide && (
             <div
@@ -208,13 +241,23 @@ function TablePreview() {
           </div>
           {wide && (
             <div
-              className={styles.mock}
+              className={styles.column}
               style={{ left: leftWidth, top: 0, width: viewport.w - leftWidth, height: viewport.h }}
             >
-              Hand rankings column
+              <RankingsColumn
+                hero={hero}
+                collapsed={handsCollapsed}
+                onCollapsedChange={setHandsCollapsed}
+              />
             </div>
           )}
         </>
+      )}
+
+      {!wide && (
+        <div className={styles.drawerArea} style={at(drawerArea)}>
+          <RankingsDrawer open={drawerOpen} onOpenChange={onDrawerChange} hero={hero} />
+        </div>
       )}
     </div>
   );

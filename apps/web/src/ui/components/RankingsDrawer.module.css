@@ -1,0 +1,110 @@
+/* The rankings drawer (PLAN §13.1): a right-side modal sheet over a 40% scrim. It fills its nearest
+   positioned ancestor: the area above the action bar (portrait) or the table column (landscape). */
+.root {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  overflow: hidden;
+}
+
+.scrim {
+  position: absolute;
+  inset: 0;
+  background: var(--scrim);
+  animation: fade-in var(--duration-sheet) ease-out;
+  transition: opacity var(--duration-sheet) ease-out;
+}
+
+.sheet {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  width: min(86vw, 340px);
+  padding-top: env(safe-area-inset-top);
+  padding-right: env(safe-area-inset-right);
+  background: var(--surface);
+  box-shadow: -2px 0 8px rgb(0 0 0 / 35%);
+  outline: none;
+  /* Vertical moves scroll the list; horizontal ones reach the drag-to-close handler. */
+  touch-action: pan-y;
+  animation: slide-in var(--duration-sheet) ease-out;
+  transition: transform var(--duration-sheet) ease-out;
+}
+.dragging {
+  transition: none;
+}
+
+.closing .scrim {
+  opacity: 0;
+}
+.closing .sheet {
+  transform: translateX(100%);
+}
+
+.header {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 4px 4px 14px;
+  border-bottom: 1px solid rgb(242 245 243 / 8%);
+}
+.title {
+  flex: 1;
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.25;
+}
+/* Literal 44 px: tap target (§12.12). */
+.close {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border: 0;
+  border-radius: var(--radius-2);
+  background: none;
+  color: var(--text);
+  cursor: pointer;
+}
+.closeIcon {
+  width: 22px;
+  height: 22px;
+}
+
+.scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+@keyframes slide-in {
+  from {
+    transform: translateX(100%);
+  }
+}
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+/* Reduced motion: short fades instead of the slide (§12.8). */
+@media (prefers-reduced-motion: reduce) {
+  .sheet {
+    animation: fade-in 120ms linear;
+    transition: opacity 120ms linear;
+  }
+  .closing .sheet {
+    transform: none;
+    opacity: 0;
+  }
+}
