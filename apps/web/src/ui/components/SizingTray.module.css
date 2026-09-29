@@ -1,0 +1,259 @@
+/* The sizing tray (PLAN §12.7): 104 px = 4 + 44 (presets) + 8 + 44 (slider row) + 4.
+   Literal px sizes on every control: tap targets (§12.12), measured by the component tests. */
+.tray {
+  display: grid;
+  grid-template-rows: 44px 44px;
+  row-gap: 8px;
+  width: 100%;
+  max-width: 600px;
+  height: 104px;
+  margin-inline: auto;
+  padding: 4px max(8px, env(safe-area-inset-right)) 4px max(8px, env(safe-area-inset-left));
+  background: var(--surface);
+  color: var(--text);
+  /* Game surface (§12.13). */
+  touch-action: manipulation;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Portrait: a row of the layout, directly above Row A. */
+.inline {
+  border-top: 1px solid var(--control-border);
+}
+
+/* Compact portrait: over the bottom 104 px of the table area, no scrim (§12.3). The parent
+   (the table area) is the positioned box. */
+.overlay {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 5;
+  border-top: 1px solid var(--control-border);
+  border-radius: var(--radius-3) var(--radius-3) 0 0;
+  box-shadow: 0 -4px 12px rgb(0 0 0 / 35%);
+}
+
+/* Landscape column: the chips, then [−] slider [+], then the amount and ✕. */
+.panel {
+  grid-template-rows: auto auto;
+  height: auto;
+  max-width: none;
+  padding: 8px;
+  border: 1px solid var(--control-border);
+  border-radius: var(--radius-3);
+}
+
+.presets {
+  display: flex;
+  gap: 8px;
+  min-width: 0;
+}
+
+/* Five chips fit a 280 px column; a sixth wraps to a second row. */
+.panel .presets {
+  flex-wrap: wrap;
+  row-gap: 8px;
+}
+
+.panel .chip {
+  flex-basis: 44px;
+}
+
+.chip {
+  display: flex;
+  flex: 1 1 0;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  height: 44px;
+  min-height: 44px;
+  margin: 0;
+  padding: 2px 4px;
+  border: 1px solid var(--control-border);
+  border-radius: var(--radius-2);
+  background: var(--control-bg);
+  color: var(--text);
+  font: inherit;
+  line-height: 1.15;
+  cursor: pointer;
+}
+
+.chip:active:not(:disabled) {
+  background: var(--control-bg-pressed);
+}
+
+/* The chip whose amount is the tray's amount. */
+.chip[aria-pressed='true'] {
+  border-color: var(--control-selected-bg);
+  background: var(--control-selected-bg);
+  color: var(--control-selected-text);
+}
+
+/* Out of the legal range (§12.7). */
+.chip:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.chipLabel {
+  font-size: 0.8125rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.chipAmount {
+  font-size: 0.75rem;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.panel .row {
+  flex-wrap: wrap;
+  row-gap: 8px;
+}
+
+.square {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  min-width: 44px;
+  min-height: 44px;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--control-border);
+  border-radius: var(--radius-2);
+  background: var(--control-bg);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.square:active:not([aria-disabled='true']) {
+  background: var(--control-bg-pressed);
+}
+
+.square[aria-disabled='true'] {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.icon {
+  width: 16px;
+  height: 16px;
+}
+
+/* The native slider, restyled: a 6 px track filled up to the thumb, a 28 px thumb, and a
+   44 px tall hit area (§12.12). --fill (0..1) is set inline. */
+.range {
+  flex: 1 1 auto;
+  min-width: 44px;
+  height: 44px;
+  min-height: 44px;
+  margin: 0;
+  background: transparent;
+  cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.panel .range {
+  flex-basis: calc(100% - 104px);
+}
+
+.range::-webkit-slider-runnable-track {
+  height: 6px;
+  border-radius: 3px;
+  background: linear-gradient(
+    to right,
+    var(--muted) calc(14px + (100% - 28px) * var(--fill, 0)),
+    var(--control-track) calc(14px + (100% - 28px) * var(--fill, 0))
+  );
+}
+
+.range::-webkit-slider-thumb {
+  width: 28px;
+  height: 28px;
+  margin-top: -11px;
+  border: 2px solid var(--surface);
+  border-radius: 50%;
+  background: var(--text);
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.range::-moz-range-track {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--control-track);
+}
+
+.range::-moz-range-progress {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--muted);
+}
+
+.range::-moz-range-thumb {
+  width: 28px;
+  height: 28px;
+  border: 2px solid var(--surface);
+  border-radius: 50%;
+  background: var(--text);
+}
+
+.field {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 4px;
+  height: 44px;
+}
+
+/* 16 px at least, or iOS zooms into the field (§12.13). */
+.input {
+  width: 76px;
+  min-width: 44px;
+  height: 44px;
+  min-height: 44px;
+  margin: 0;
+  padding: 0 6px;
+  border: 1px solid var(--control-border);
+  border-radius: var(--radius-2);
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+  font-size: 16px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+.panel .field {
+  flex: 1 1 auto;
+}
+
+.panel .input {
+  flex: 1 1 auto;
+}
+
+.unit {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--muted);
+}

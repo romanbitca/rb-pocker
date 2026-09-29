@@ -162,6 +162,70 @@ export const en = {
     },
   },
 
+  /**
+   * The action bar (PLAN §12.7, Appendix F.10). `{x}` is an amount already formatted in the
+   * player's unit ("2,340" or "117 BB"); every amount is a "raise to" amount (§0.3).
+   */
+  actions: {
+    /** The bar's group label for screen readers. */
+    group: 'Your actions',
+    fold: 'Fold',
+    check: 'Check',
+    call: (x: string) => `Call ${x}`,
+    callAllIn: (x: string) => `Call all-in ${x}`,
+    /** F.10 "Bet ▲" / "Raise ▲": the ▲ is drawn as an SVG icon, not a text glyph. */
+    bet: 'Bet',
+    raise: 'Raise',
+    betTo: (x: string) => `Bet ${x}`,
+    raiseTo: (x: string) => `Raise to ${x}`,
+    allIn: (x: string) => `All-in ${x}`,
+    waiting: 'Waiting…',
+    /** Shown when the disabled Fold is tapped while checking is free. */
+    foldNotNeeded: 'Checking is free. No need to fold.',
+    /** Shown when the disabled Raise is tapped: a short all-in did not reopen the betting. */
+    cannotRaise: "You can't raise here: the all-in was too small to reopen the betting.",
+    /** Under "Call all-in {x}" when the hero cannot cover the bet (§0.3 `winPot`). */
+    potYouCanWin: (x: string) => `Pot you can win ${x}`,
+  },
+
+  /** The sizing tray (PLAN §12.7). */
+  sizing: {
+    /** The tray's group label for screen readers. */
+    label: { bet: 'Choose your bet', raise: 'Choose your raise' },
+    /** Preset chips: the chip text and what a screen reader says. */
+    preset: {
+      third: { label: '⅓ pot', spoken: 'One third of the pot' },
+      half: { label: '½ pot', spoken: 'Half the pot' },
+      twoThirds: { label: '⅔ pot', spoken: 'Two thirds of the pot' },
+      pot: { label: 'Pot', spoken: 'The size of the pot' },
+      bb25: { label: '2.5 BB', spoken: '2.5 big blinds' },
+      bb3: { label: '3 BB', spoken: '3 big blinds' },
+      bb4: { label: '4 BB', spoken: '4 big blinds' },
+      min: { label: 'Min', spoken: 'The smallest raise' },
+      x25: { label: '2.5×', spoken: '2.5 times the bet' },
+      x3: { label: '3×', spoken: '3 times the bet' },
+      allIn: { label: 'All-in', spoken: 'All your chips' },
+    },
+    /** A preset chip's accessible name: "Half the pot: 60". */
+    presetName: (spoken: string, amount: string) => `${spoken}: ${amount}`,
+    slider: 'Amount',
+    smaller: 'Smaller amount',
+    bigger: 'Bigger amount',
+    field: { chips: 'Type an amount in chips', bb: 'Type an amount in big blinds' },
+    close: 'Close',
+    /** The slider's aria-valuetext: "Raise to 120, 6 big blinds". */
+    valueText: (action: string, other: string) => `${action}, ${other}`,
+    bigBlinds: (x: string, one: boolean) => (one ? `${x} big blind` : `${x} big blinds`),
+    chips: (x: string) => `${x} chips`,
+  },
+
+  /** Amounts in big blinds (Setting "show amounts as BB"; Appendix F: "2.5 BB"). */
+  amounts: {
+    bb: (x: string) => `${x} BB`,
+    /** The unit beside the typed amount in the sizing tray. */
+    bbUnit: 'BB',
+  },
+
   // --- The app itself ---
 
   app: {
