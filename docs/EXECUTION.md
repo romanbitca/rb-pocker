@@ -6,7 +6,7 @@ This is the working checklist for building [PLAN.md](PLAN.md). PLAN.md is the so
 
 Legend: `[ ]` todo · `[~]` in progress (branch exists) · `[x]` merged to `main` · `[H]` waiting on the human
 
-**Current position:** ▶ Resumed 29 Sep 19:40Z (day override: this window up to 95%). Stages 0–1 ✅. Stage 2: 2.1–2.4 merged; finishing 2.5 (PR #21) and 2.6. Stage 3 in parallel: rebasing early PRs #15/#17/#19 onto main (held for stage order); building 3.1 controller, 3.5 action bar, 3.7 screens.
+**Current position:** Stages 0–2 ✅ complete (CI green). Stage 3: merging ready PRs #15, #17, #19, #22, #24, #25 in order; then controller phase 2 (persistence + view models) and 3.4 table screen, then 3.8 e2e. Stage 4 (4.1/4.2) developed in parallel.
 
 ---
 
@@ -50,8 +50,8 @@ Legend: `[ ]` todo · `[~]` in progress (branch exists) · `[x]` merged to `main
 - [x] 2.2 `feature/engine-table-setup-and-deal` - `createTable`, `startHand`, `nextTable` (button, bot replacement, 3→2 rule).
 - [x] 2.3 `feature/engine-betting-rules` - `legalActions`, `step` reducer, raise-to sizes, reopening, street advance on `advance`.
 - [x] 2.4 `feature/engine-side-pot-settlement` - `settle.ts` (uncalled refunds, side pots, odd chips) + independent chip-layer oracle written from §3.8 only; 100k differential.
-- [~] 2.5 `feature/engine-observe-replay-reshuffle` - `observe` (non-leak test), `replay`, `reshuffle`, JSON round trip, deep-freeze no-mutation.
-- [~] 2.6 `test/engine-rule-vectors-and-properties` - all 44 Appendix B vectors, property run (100k hands unit / 10M steps slow), ≤ 400 inputs termination, branch coverage ≥ 95%.
+- [x] 2.5 `feature/engine-observe-replay-reshuffle` - `observe` (non-leak test), `replay`, `reshuffle`, JSON round trip, deep-freeze no-mutation.
+- [x] 2.6 `test/engine-rule-vectors-and-properties` - all 44 Appendix B vectors, property run (100k hands unit / 10M steps slow), ≤ 400 inputs termination, branch coverage ≥ 95%.
 
 ## Stage 3 - Playable table (PLAN §12, §13, §14 minimal, A.8)
 
@@ -171,3 +171,5 @@ _(nothing yet)_
 | 27 Sep 22:44–23:20Z | 3.2 (early) | [PR #19](https://github.com/romanbitca/rb-pocker/pull/19) ready, held for stage order; persist branch coverage 95.6% | (same window) |
 | 27 Sep 23:25–23:58Z | Stage 2 merge train | #14, #16, #18, #20 merged with green CI (check, e2e, docker); settlement now uses `describe()`; #5 closed as superseded | Sonnet agent, 86% → 89% (Sonnet ≈ 3× cheaper than Opus per token) |
 | 28 Sep 00:00–00:22Z | 2.5 | [PR #21](https://github.com/romanbitca/rb-pocker/pull/21) draft: observe (non-leak property), replay (10k), engine-level undo reshuffle, B33/B41/B42; targeted tests green, full suite + CI pending. Agent stopped itself at 93% | 89% → 93%; pause until 01:50Z reset |
+| 29 Sep 19:40–21:05Z | 2.5, 2.6 (+ fix) | PRs [#21](https://github.com/romanbitca/rb-pocker/pull/21), [#26](https://github.com/romanbitca/rb-pocker/pull/26) (test timeouts: main was red), [#23](https://github.com/romanbitca/rb-pocker/pull/23) merged. All 44 B vectors in one runner; 100k-hand property (unit, ~52 s) + 10M steps (slow, 325 s); step+invariants 15 µs; coverage engine 99.1%, eval 97.7% (CI thresholds 95/90). observe() non-leak test strengthened (burn cards). **Stage 2 complete** | 10% → 56% (day override) |
+| 29 Sep 19:40–21:00Z | 3.2/3.3/3.6 rebased; 3.1 (phase 1), 3.5, 3.7 | PRs #15/#17/#19 rebased with green CI; [#25](https://github.com/romanbitca/rb-pocker/pull/25) controller (gates, epochs, SimpleBot via observe only, 200 seeded hands, hooks absent from prod), [#24](https://github.com/romanbitca/rb-pocker/pull/24) action bar/tray, [#22](https://github.com/romanbitca/rb-pocker/pull/22) screens | (same window) |
