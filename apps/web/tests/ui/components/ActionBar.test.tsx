@@ -331,6 +331,20 @@ describe('the sizing tray: open, use, confirm, close (§12.7, Stage 3 acceptance
     expect(button('All-in 1,940')).toBeTruthy();
   });
 
+  it('a chip shows its amount under its name, once: "2.5 BB" in big blinds is one line', () => {
+    setup('open');
+    fireEvent.click(button('Raise'));
+    const chip = within(tray() as HTMLElement).getByRole('button', { name: '2.5 big blinds: 50' });
+    expect(chip.textContent).toBe('2.5 BB50');
+    cleanup();
+    setup('open', 'bb');
+    fireEvent.click(button('Raise'));
+    const inBB = within(tray() as HTMLElement).getByRole('button', {
+      name: '2.5 big blinds: 2.5 BB',
+    });
+    expect(inBB.textContent).toBe('2.5 BB');
+  });
+
   it('in big blinds, the field takes decimals', () => {
     setup('facing', 'bb');
     fireEvent.click(button('Raise'));
@@ -342,7 +356,7 @@ describe('the sizing tray: open, use, confirm, close (§12.7, Stage 3 acceptance
     fireEvent.focus(field);
     fireEvent.change(field, { target: { value: '6.5' } });
     fireEvent.blur(field);
-    expect(button('Raise to 12 BB')).toBeTruthy(); // 130 is below the 240 minimum: clamped
+    expect(button('Raise to 12\u00A0BB')).toBeTruthy(); // 130 is below the 240 minimum: clamped
   });
 });
 

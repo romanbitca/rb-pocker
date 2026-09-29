@@ -198,9 +198,9 @@ export const en = {
       half: { label: '½ pot', spoken: 'Half the pot' },
       twoThirds: { label: '⅔ pot', spoken: 'Two thirds of the pot' },
       pot: { label: 'Pot', spoken: 'The size of the pot' },
-      bb25: { label: '2.5 BB', spoken: '2.5 big blinds' },
-      bb3: { label: '3 BB', spoken: '3 big blinds' },
-      bb4: { label: '4 BB', spoken: '4 big blinds' },
+      bb25: { label: '2.5\u00A0BB', spoken: '2.5 big blinds' },
+      bb3: { label: '3\u00A0BB', spoken: '3 big blinds' },
+      bb4: { label: '4\u00A0BB', spoken: '4 big blinds' },
       min: { label: 'Min', spoken: 'The smallest raise' },
       x25: { label: '2.5×', spoken: '2.5 times the bet' },
       x3: { label: '3×', spoken: '3 times the bet' },
@@ -221,7 +221,8 @@ export const en = {
 
   /** Amounts in big blinds (Setting "show amounts as BB"; Appendix F: "2.5 BB"). */
   amounts: {
-    bb: (x: string) => `${x} BB`,
+    /** A no-break space: "15 BB" never splits across two lines of a button. */
+    bb: (x: string) => `${x}\u00A0BB`,
     /** The unit beside the typed amount in the sizing tray. */
     bbUnit: 'BB',
   },

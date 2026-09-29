@@ -216,11 +216,17 @@ describe('actionBarView: the §12.7 table', () => {
 
   it('amounts in big blinds (Settings "show amounts as BB")', () => {
     const v = viewOf(facingFlopBet(), 'bb');
-    expect(v.middle.label).toBe('Call 2 BB');
+    expect(v.middle.label).toBe('Call 2\u00A0BB');
     const t = trayOf(v);
     // Min 80 · 2.5× 100 · 3× 120 · Pot 40 + 100 + 40 = 180 · All-in 1,980.
-    expect(t.presets.map((p) => p.amountText)).toEqual(['4 BB', '5 BB', '6 BB', '9 BB', '99 BB']);
-    expect(trayActionLabel(t, 130)).toBe('Raise to 6.5 BB');
+    expect(t.presets.map((p) => p.amountText)).toEqual([
+      '4\u00A0BB',
+      '5\u00A0BB',
+      '6\u00A0BB',
+      '9\u00A0BB',
+      '99\u00A0BB',
+    ]);
+    expect(trayActionLabel(t, 130)).toBe('Raise to 6.5\u00A0BB');
   });
 });
 
@@ -421,7 +427,7 @@ describe('amounts: snapping, clamping and the slider steps (§12.7)', () => {
     expect(trayAction(t, 123)).toEqual({ type: 'raise', to: 120 });
     expect(sliderValueText(t, 120)).toBe('Raise to 120, 6 big blinds');
     expect(sliderValueText(t, 50)).toBe('Raise to 50, 2.5 big blinds');
-    expect(sliderValueText({ ...t, amounts: 'bb' }, 120)).toBe('Raise to 6 BB, 120 chips');
+    expect(sliderValueText({ ...t, amounts: 'bb' }, 120)).toBe('Raise to 6\u00A0BB, 120 chips');
     const b = trayOf(viewOf(checkedToHeroOnFlop()));
     expect(trayActionLabel(b, 20)).toBe('Bet 20');
     expect(sliderValueText(b, 20)).toBe('Bet 20, 1 big blind');
@@ -435,7 +441,7 @@ describe('amounts: snapping, clamping and the slider steps (§12.7)', () => {
     expect(formatBigBlinds(120, 20)).toBe('6');
     expect(formatBigBlinds(25, 20)).toBe('1.3');
     expect(formatBigBlinds(400_000, 20)).toBe('20,000');
-    expect(formatAmount(50, 20, 'bb')).toBe('2.5 BB');
+    expect(formatAmount(50, 20, 'bb')).toBe('2.5\u00A0BB');
     expect(formatAmount(2340, 20, 'chips')).toBe('2,340');
   });
 });
@@ -468,7 +474,7 @@ describe('the price and the pot you can win (§0.3, pitfall 18)', () => {
     const v = viewOf(h);
     expect(v.price).toEqual({ toCall: 50, pot: 600, winPot: 150, need: 0.25, needPercent: 25 });
     expect(v.middle.sub).toBe('Pot you can win 150');
-    expect(viewOf(h, 'bb').middle.sub).toBe('Pot you can win 3 BB');
+    expect(viewOf(h, 'bb').middle.sub).toBe('Pot you can win 3\u00A0BB');
     // The preview's fixture is the same spot.
     const fixture = actionBarView({ ...ACTION_SPOTS.shortCall, amounts: 'chips' });
     expect(fixture.price).toEqual(v.price);
@@ -564,5 +570,5 @@ describe('the bar only ever sends what the engine accepts (property, pitfalls 1 
     expect(seen.trays).toBeGreaterThan(300);
     expect(seen.amounts).toBeGreaterThan(5000);
     expect(seen.shortCalls).toBeGreaterThan(0);
-  });
+  }, 20_000); // about 1.5 s on a CI runner; room for a slow one
 });
