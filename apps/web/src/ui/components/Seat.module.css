@@ -1,0 +1,290 @@
+/* Seat pods (PLAN §12.4): a fixed 64×72 box; everything is drawn inside it, except the bet chip,
+   which sits in its own slot from tableGeometry(). */
+.seat {
+  position: absolute;
+  width: 64px;
+  height: 72px;
+}
+
+.pod {
+  position: relative;
+  display: block;
+  width: 64px;
+  height: 72px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  text-align: center;
+}
+button.pod {
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* The drawing; `.folded` fades it, not the bet chip. */
+.body {
+  position: absolute;
+  inset: 0;
+  display: block;
+  transition: opacity var(--duration-flip) ease-out;
+}
+.folded .body {
+  opacity: 0.45;
+}
+
+/* The name plate behind the name and stack. */
+.plate {
+  position: absolute;
+  top: 26px;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  border: 2px solid transparent;
+  border-radius: var(--radius-2);
+  background: var(--pod-bg);
+}
+.toAct .plate {
+  border-color: var(--accent);
+}
+.winner .plate {
+  border-color: var(--accent);
+  background: rgb(245 197 66 / 22%);
+}
+
+.avatar {
+  position: absolute;
+  top: 0;
+  left: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border: 2px solid var(--surface);
+  border-radius: 50%;
+  background: var(--avatar);
+  color: #fff;
+  font-size: 17px;
+  font-weight: 700;
+  line-height: 1;
+}
+.toAct .avatar {
+  border-color: var(--accent);
+}
+
+.name,
+.stack {
+  position: absolute;
+  right: 2px;
+  left: 2px;
+  line-height: 1;
+  white-space: nowrap;
+}
+.name {
+  top: 46px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.nameText {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* Personality badge (Easy and Medium only), before the name: the shape tells them apart. */
+.badge {
+  flex: none;
+  width: 11px;
+  height: 11px;
+  color: var(--text);
+}
+.stack {
+  top: 59px;
+  overflow: hidden;
+  font-size: 13px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  text-overflow: ellipsis;
+}
+
+/* Status tag under the avatar, so its initial stays visible: Fold, All-in, Check, Call, Bet,
+   Raise, or thinking dots. */
+.tag {
+  position: absolute;
+  top: 29px;
+  left: 50%;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 36px;
+  height: 16px;
+  padding: 0 5px;
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+  transform: translateX(-50%);
+}
+.tagFold {
+  color: var(--muted);
+}
+.tagAllIn,
+.tagAggressive {
+  color: var(--accent);
+}
+.thinking {
+  gap: 3px;
+}
+.dot {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: think 1.2s ease-in-out infinite;
+}
+.dot:nth-child(2) {
+  animation-delay: 0.2s;
+}
+.dot:nth-child(3) {
+  animation-delay: 0.4s;
+}
+@keyframes think {
+  0%,
+  100% {
+    opacity: 0.3;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+/* Dealer disc (20 px, white "D") or blind tag, in the top corner that faces the table centre. */
+.dealer,
+.blind {
+  position: absolute;
+  top: 0;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 20px;
+  font-weight: 800;
+  line-height: 1;
+}
+.dealer {
+  width: 20px;
+  border: 1px solid rgb(0 0 0 / 35%);
+  border-radius: 50%;
+  background: #fff;
+  color: #111;
+  font-size: 12px;
+}
+.blind {
+  min-width: 20px;
+  padding: 0 3px;
+  border: 1px solid var(--muted);
+  border-radius: 10px;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 11px;
+}
+.innerRight .dealer,
+.innerRight .blind {
+  right: 0;
+}
+.innerLeft .dealer,
+.innerLeft .blind {
+  left: 0;
+}
+
+/* Face-down backs, tucked under the avatar in the outer top corner. */
+.backs {
+  position: absolute;
+  top: 3px;
+  display: flex;
+}
+.backs > :last-child {
+  margin-left: -9px;
+  transform: rotate(8deg);
+}
+.backs > :first-child {
+  transform: rotate(-6deg);
+}
+.innerRight .backs {
+  left: 2px;
+}
+.innerLeft .backs {
+  right: 2px;
+}
+
+/* Run-out / showdown: two 36×50 faces across the top of the pod (they overlap by 8 px). */
+.shown {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 1;
+  display: flex;
+}
+.shown > :last-child {
+  margin-left: -8px;
+}
+.revealed .plate {
+  top: 40px;
+}
+.revealed .name {
+  top: 49px;
+  font-size: 11px;
+}
+.revealed .stack {
+  top: 60px;
+  font-size: 11px;
+}
+/* The cards say it all at a showdown; the tag would cover them. */
+.revealed .tag {
+  display: none;
+}
+
+/* The bet chip (§12.4), centred in its slot. */
+.bet {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+.betPill {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  height: 20px;
+  padding: 0 6px 0 3px;
+  border-radius: 10px;
+  background: rgb(0 0 0 / 55%);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  white-space: nowrap;
+}
+.chip {
+  width: 14px;
+  height: 14px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dot {
+    animation: none;
+    opacity: 0.8;
+  }
+}

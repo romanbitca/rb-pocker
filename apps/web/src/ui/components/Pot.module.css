@@ -1,0 +1,30 @@
+/* The pot: bottom-aligned in its slot, so it sits right above the board. */
+.pot {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 2px;
+  pointer-events: none;
+}
+
+.total {
+  padding: 3px 10px;
+  border-radius: 12px;
+  background: rgb(0 0 0 / 45%);
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.side {
+  color: var(--text);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+  white-space: nowrap;
+  text-shadow: 0 1px 2px rgb(0 0 0 / 60%);
+}

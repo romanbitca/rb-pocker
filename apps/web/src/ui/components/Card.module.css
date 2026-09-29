@@ -1,0 +1,176 @@
+/* Playing cards (PLAN §13.4, §6.1, §12.8): fixed sizes, index faces, SVG suits, one cheap shadow. */
+.card {
+  position: relative;
+  display: inline-block;
+  flex: none;
+  width: var(--w);
+  height: var(--h);
+  border-radius: var(--radius-1);
+  vertical-align: top;
+  -webkit-user-select: none;
+  user-select: none;
+  transition:
+    transform var(--duration-flip) ease-out,
+    opacity var(--duration-flip) ease-out;
+}
+
+/* Sizes (width × height). */
+.xs {
+  --w: 16px;
+  --h: 22px;
+  border-radius: 3px;
+}
+.sm {
+  --w: 24px;
+  --h: 34px;
+}
+.md {
+  --w: 30px;
+  --h: 42px;
+}
+.lg {
+  --w: 36px;
+  --h: 50px;
+}
+.xl {
+  --w: 52px;
+  --h: 74px;
+  border-radius: var(--radius-2);
+}
+.xxl {
+  --w: 64px;
+  --h: 90px;
+  border-radius: var(--radius-2);
+}
+/* The board sets --board-card-w / --board-card-h from boardCardSize() (layout/seats.ts). */
+.board {
+  --w: var(--board-card-w, 40px);
+  --h: var(--board-card-h, 56px);
+  border-radius: var(--radius-1);
+}
+
+/* Face up. */
+.face {
+  background: var(--card-face);
+  border: 1px solid rgb(0 0 0 / 22%);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 35%);
+  color: var(--suit-colour);
+}
+.clubs {
+  --suit-colour: var(--suit-clubs);
+}
+.diamonds {
+  --suit-colour: var(--suit-diamonds);
+}
+.hearts {
+  --suit-colour: var(--suit-hearts);
+}
+.spades {
+  --suit-colour: var(--suit-spades);
+}
+
+.rank {
+  display: block;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+/* "10" is written in full (§0.3), squeezed a little (§13.4). */
+.ten {
+  letter-spacing: -1px;
+}
+.suit,
+.pip {
+  display: block;
+  flex: none;
+}
+
+/* Small sizes: rank over suit, centred (the §13.4 index-only card). */
+.indexOnly {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+}
+.xs .rank {
+  font-size: 11px;
+}
+.xs .suit {
+  width: 7px;
+  height: 7px;
+}
+.sm .rank {
+  font-size: 14px;
+}
+.sm .suit {
+  width: 10px;
+  height: 10px;
+}
+.md .rank {
+  font-size: 16px;
+}
+.md .suit {
+  width: 12px;
+  height: 12px;
+}
+
+/* Larger sizes: rank and a small suit in the top-left corner (readable when cards overlap), a big
+   suit in the bottom-right. */
+.corner .rank {
+  position: absolute;
+  top: calc(var(--w) * 0.08);
+  left: calc(var(--w) * 0.09);
+  font-size: calc(var(--w) * 0.46);
+}
+.corner .suit {
+  position: absolute;
+  top: calc(var(--w) * 0.56);
+  left: calc(var(--w) * 0.1);
+  width: calc(var(--w) * 0.3);
+  height: calc(var(--w) * 0.3);
+}
+.corner .pip {
+  position: absolute;
+  right: calc(var(--w) * 0.08);
+  bottom: calc(var(--w) * 0.08);
+  width: calc(var(--w) * 0.46);
+  height: calc(var(--w) * 0.46);
+}
+
+/* Face down: no rank, no suit. */
+.back {
+  border: 1.5px solid var(--card-back-edge);
+  background: repeating-linear-gradient(
+    45deg,
+    var(--card-back) 0 3px,
+    var(--card-back-dark) 3px 6px
+  );
+  box-shadow: 0 1px 2px rgb(0 0 0 / 35%);
+}
+
+/* Highlights (§6.1). Raise + outline, so the cue does not depend on colour (§12.12). */
+.core {
+  transform: translateY(-6px);
+  outline: 3px solid var(--accent);
+}
+.kicker {
+  outline: 1px solid var(--accent);
+}
+.off {
+  opacity: 0.6;
+}
+/* Rankings examples: kickers at 45% (§13.2); the hero's own cards outlined (§13.3). */
+.dim {
+  opacity: 0.45;
+}
+.used {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .card {
+    transition: opacity 120ms linear;
+  }
+}

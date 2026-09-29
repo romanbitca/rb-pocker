@@ -1,0 +1,16 @@
+/* The board: five slots with 4 px gaps (§12.3), one fixed height, no layout shift. */
+.board {
+  display: flex;
+  gap: 4px;
+  justify-content: center;
+  height: var(--board-card-h);
+}
+
+/* An empty slot: a dashed outline of a card. */
+.empty {
+  flex: none;
+  width: var(--board-card-w);
+  height: var(--board-card-h);
+  border: 1.5px dashed rgb(242 245 243 / 35%);
+  border-radius: var(--radius-1);
+}

@@ -24,6 +24,22 @@
   --suit-hearts: #c8102e;
   --suit-diamonds: #0b5bd3;
   --suit-clubs: #177a36;
+  --card-back: #8f2d38;
+  --card-back-dark: #7a2530;
+  --card-back-edge: #f2f5f3;
+
+  /* Seat pods: avatar backgrounds, picked by a hash of the name (decoration only, PLAN §12.4).
+     White initials on each are above 4.5:1. */
+  --avatar-0: #3d5a99;
+  --avatar-1: #7a4a99;
+  --avatar-2: #99433d;
+  --avatar-3: #2f7a6b;
+  --avatar-4: #8a5a1f;
+  --avatar-5: #5a6b2f;
+  --avatar-6: #994a73;
+  --avatar-7: #4a5566;
+  --pod-bg: rgb(15 21 18 / 82%);
+  --scrim: rgb(0 0 0 / 40%);
 
   /* Spacing */
   --space-1: 4px;
@@ -55,4 +71,10 @@
   --duration-flip: calc(250ms * var(--speed));
   --duration-sheet: calc(200ms * var(--speed));
   --duration-pulse: calc(400ms * var(--speed));
+}
+
+/* Two-colour deck (Settings → Display, four-colour cards off): clubs black, diamonds red (§12.8). */
+[data-deck='two'] {
+  --suit-clubs: #111111;
+  --suit-diamonds: #c8102e;
 }
