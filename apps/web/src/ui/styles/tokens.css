@@ -7,6 +7,8 @@
   --surface: #18211c;
   --felt: #1f6b43;
   --felt-dark: #154d30;
+  /* The wooden rail around the felt. */
+  --rail: #2a1d14;
   --text: #f2f5f3;
   --muted: #a9b5ae;
   --accent: #f5c542;

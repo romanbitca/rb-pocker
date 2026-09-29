@@ -306,6 +306,76 @@ export const en = {
     label: 'Board',
   },
 
+  /** The Table screen (PLAN §12.3–§12.5). Amounts arrive formatted ("2,340"). */
+  table: {
+    /** The page heading, for screen readers only. */
+    heading: 'Poker table',
+    /** Top bar: "Blinds 10/20 · Hand 12". */
+    blinds: (sb: string, bb: string) => `Blinds ${sb}/${bb}`,
+    hand: (n: string) => `Hand ${n}`,
+    separator: ' · ',
+    menu: 'Menu',
+    /** The hero strip's group label. */
+    yourHand: 'Your hand',
+    /** Under the hero's cards: "You · 2,340". */
+    heroChips: (chips: string) => `You · ${chips}`,
+    /** The hero's hand label is a button: it opens the hand rankings (§12.3). */
+    labelHint: 'Tap to see all poker hands',
+    folded: 'You folded',
+    allIn: 'All-in',
+    yourBet: (chips: string) => `Your bet ${chips}`,
+  },
+
+  /** The hand-end banner (PLAN §12.9, §12.11). `x` is an amount already formatted. */
+  handEnd: {
+    youWin: (x: string) => `You win ${x}!`,
+    wins: (name: string, x: string, hand: string) => `${name} wins ${x} with ${hand}.`,
+    winsNoHand: (name: string, x: string) => `${name} wins ${x}.`,
+    youWinFold: (x: string) => `Everyone folded. You win ${x}.`,
+    winsFold: (name: string, x: string) => `${name} wins ${x}. Everyone else folded.`,
+    /** "Split pot: you and Ben each win 170." */
+    split: (names: string, x: string) => `Split pot: ${names} each win ${x}.`,
+    you: 'you',
+    and: ' and ',
+    comma: ', ',
+    /** At a showdown the hero won: "Ben: Two Pair — loses to your Flush". */
+    loses: (name: string, hand: string, yours: string) =>
+      `${name}: ${hand} — loses to your ${yours}`,
+    /** Category names for the loser line (Appendix F.2 words). */
+    category: {
+      highCard: 'High Card',
+      pair: 'Pair',
+      twoPair: 'Two Pair',
+      trips: 'Three of a Kind',
+      straight: 'Straight',
+      flush: 'Flush',
+      fullHouse: 'Full House',
+      quads: 'Four of a Kind',
+      straightFlush: 'Straight Flush',
+      royalFlush: 'Royal Flush',
+    },
+    nextHand: 'Next hand',
+  },
+
+  /** Short messages (PLAN §12.11). */
+  toast: {
+    /** "Nora sits down." / "Nora and Ben sit down." / "Nora, Ben and Sam sit down." */
+    botsJoined: (names: string, one: boolean) =>
+      one ? `${names} sits down.` : `${names} sit down.`,
+    handVoided: 'This hand was cancelled because of an internal error. Your chips were returned.',
+    handNotRestored: 'Your last hand could not be restored. Chips were returned.',
+    dataRecovered: 'Your saved data was damaged. We started fresh and kept a copy.',
+  },
+
+  /**
+   * The storage-failure banner (PLAN §12.11, §12.14), once per launch. Its second sentence
+   * ("Export before you close the tab.") arrives with Export in Stage 8.
+   */
+  storage: {
+    banner: "Stats can't be saved in this browser mode (for example private browsing).",
+    ok: 'OK',
+  },
+
   /** The hand-rankings panel and drawer (PLAN §13). The ten rows are in `data/rankings.ts`. */
   rankings: {
     title: 'Poker hands: best at the top',

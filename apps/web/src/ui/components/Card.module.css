@@ -50,11 +50,16 @@
 }
 
 /* Face up. */
+/* The rank is the card's own text (no wrapper element: the §15.3 DOM budget). */
 .face {
   background: var(--card-face);
   border: 1px solid rgb(0 0 0 / 22%);
   box-shadow: 0 1px 2px rgb(0 0 0 / 35%);
   color: var(--suit-colour);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  white-space: nowrap;
 }
 .clubs {
   --suit-colour: var(--suit-clubs);
@@ -69,12 +74,6 @@
   --suit-colour: var(--suit-spades);
 }
 
-.rank {
-  display: block;
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
-  line-height: 1;
-}
 /* "10" is written in full (§0.3), squeezed a little (§13.4). */
 .ten {
   letter-spacing: -1px;
@@ -93,21 +92,21 @@
   justify-content: center;
   gap: 1px;
 }
-.xs .rank {
+.xs {
   font-size: 11px;
 }
 .xs .suit {
   width: 7px;
   height: 7px;
 }
-.sm .rank {
+.sm {
   font-size: 14px;
 }
 .sm .suit {
   width: 10px;
   height: 10px;
 }
-.md .rank {
+.md {
   font-size: 16px;
 }
 .md .suit {
@@ -116,11 +115,9 @@
 }
 
 /* Larger sizes: rank and a small suit in the top-left corner (readable when cards overlap), a big
-   suit in the bottom-right. */
-.corner .rank {
-  position: absolute;
-  top: calc(var(--w) * 0.08);
-  left: calc(var(--w) * 0.09);
+   suit in the bottom-right. The padding puts the rank text in the corner. */
+.corner {
+  padding: calc(var(--w) * 0.08) 0 0 calc(var(--w) * 0.09);
   font-size: calc(var(--w) * 0.46);
 }
 .corner .suit {

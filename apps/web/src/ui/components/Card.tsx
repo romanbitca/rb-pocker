@@ -77,6 +77,7 @@ export const Card = memo(function Card({ card, size, highlight, dim, used, class
         sizeClass,
         styles.face,
         INDEX_ONLY.has(size) ? styles.indexOnly : styles.corner,
+        rank.length > 1 && styles.ten,
         SUIT_CLASS[suit],
         highlight !== undefined && HIGHLIGHT_CLASS[highlight],
         dim === true && styles.dim,
@@ -84,9 +85,10 @@ export const Card = memo(function Card({ card, size, highlight, dim, used, class
         className,
       )}
     >
-      <span className={join(styles.rank, rank.length > 1 && styles.ten)} aria-hidden="true">
-        {rank}
-      </span>
+      {/* The rank is a bare text node (no wrapper element): the Table stays under 600 DOM nodes
+          (§15.3) with nine players, the rankings column and every hand shown. `role="img"` with
+          its label makes the text presentational for screen readers. */}
+      {rank}
       <svg className={styles.suit} aria-hidden="true" focusable="false">
         <use href={symbol} />
       </svg>

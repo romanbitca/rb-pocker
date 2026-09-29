@@ -15,6 +15,7 @@ export const ICONS = {
   chip: 'i-chip',
   close: 'i-close',
   chevron: 'i-chevron',
+  menu: 'i-menu',
   rock: 'p-rock',
   tag: 'p-tag',
   lag: 'p-lag',
@@ -92,6 +93,16 @@ export const SvgSprite = memo(function SvgSprite() {
           strokeWidth="2.4"
           strokeLinecap="round"
           d="M6 6l12 12M18 6 6 18"
+        />
+      </symbol>
+      {/* Menu (☰), drawn: three bars. */}
+      <symbol id="i-menu" viewBox="0 0 24 24">
+        <path
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2.4"
+          strokeLinecap="round"
+          d="M4 6.5h16M4 12h16M4 17.5h16"
         />
       </symbol>
       {/* Chevron pointing right (›): hide a side panel. */}

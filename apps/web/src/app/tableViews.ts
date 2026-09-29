@@ -297,8 +297,21 @@ export function heroViewOf(hand: HandState, legal: LegalActions | null): HeroVie
   };
 }
 
-/** The board with §6.1 highlights for the hero's best five (none once the hero folded). */
+/**
+ * The board with §6.1 highlights for the hero's best five (none once the hero folded). After a
+ * showdown that a bot won (the main pot), its winning five instead (§12.9 "winning five
+ * highlighted"); its cards are face up by then (`hand.revealed`), so nothing hidden shows.
+ */
 export function boardViewOf(hand: HandState): CardViewData[] {
+  const result = hand.result;
+  const winner = result?.endedBy === 'showdown' ? result.potWinners[0]?.[0] : undefined;
+  const winnerHole = winner === undefined ? null : (hand.seats[winner]?.hole ?? null);
+  if (winner !== undefined && winner !== HERO && winnerHole !== null) {
+    if (hand.revealed.includes(winner)) {
+      const info = describe(winnerHole, hand.board);
+      return hand.board.map((card) => highlightOf(info, card, true));
+    }
+  }
   const hero = hand.seats[HERO];
   const info = hero === undefined || hero.folded ? null : heroInfo(hand);
   return hand.board.map((card) => highlightOf(info, card, true));
