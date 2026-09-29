@@ -13,7 +13,7 @@ import viteConfig from './vite.config.ts';
  *
  * Coverage (PLAN "Testing strategy", Rules): `npm run test:coverage` (the CI `check` job, after
  * `npm test`) runs the unit project with V8 coverage and fails below the thresholds: `src/engine/`
- * ≥ 95% branches, `src/eval/` ≥ 90% branches. `src/analysis/`, `src/persist/` (≥ 90%) and
+ * ≥ 95% branches, `src/eval/` and `src/persist/` ≥ 90% branches. `src/analysis/` (≥ 90%) and
  * `src/brain/` (≥ 85%) join `include` and `thresholds` in the stages that create them.
  * The coverage run leaves out `VOLUME_TESTS`: they repeat code paths that the other tests already
  * reach (the coverage numbers are the same without them) or they measure speed, and V8 coverage
@@ -51,12 +51,13 @@ export default mergeConfig(
       ...(process.env.CI === 'true' ? { maxWorkers: '100%' } : {}),
       coverage: {
         provider: 'v8',
-        include: ['src/engine/**/*.ts', 'src/eval/**/*.ts'],
+        include: ['src/engine/**/*.ts', 'src/eval/**/*.ts', 'src/persist/**/*.ts'],
         reporter: [['text', { skipFull: false }], 'json-summary'],
         reportsDirectory: 'coverage',
         thresholds: {
           'src/engine/**/*.ts': { branches: 95 },
           'src/eval/**/*.ts': { branches: 90 },
+          'src/persist/**/*.ts': { branches: 90 },
         },
       },
       css: { include: [/\.css(?:\?.*)?$/] },
