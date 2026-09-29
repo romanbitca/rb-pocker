@@ -1,0 +1,14 @@
+{
+  "schema": 0,
+  "savedAt": "2026-09-01T08:00:00.000Z",
+  "setup": {
+    "players": 4,
+    "chips": 5000,
+    "blinds": [25, 50],
+    "bots": "medium",
+    "coach": "intermediate"
+  },
+  "speed": "fast",
+  "muted": true,
+  "theme": "felt-blue"
+}
