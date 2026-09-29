@@ -16,6 +16,8 @@ const root = createRoot(container);
 //   built files).
 // - `/?preview=screens`: the screens (tests/ui/dev/screensPreview.test.ts checks the built files).
 //   The navigation reducer is passed in because ui/ may not load app/ at run time (PLAN §2.1).
+// - `/?preview=actions`: the action bar and sizing tray (tests/ui/dev/actionsBundle.test.ts checks
+//   the built files).
 if (import.meta.env.DEV && new URLSearchParams(window.location.search).get('preview') === 'ui') {
   void import('./ui/dev/Preview.tsx').then(({ Preview }) => {
     root.render(
@@ -37,6 +39,17 @@ if (import.meta.env.DEV && new URLSearchParams(window.location.search).get('prev
       );
     },
   );
+} else if (
+  import.meta.env.DEV &&
+  new URLSearchParams(window.location.search).get('preview') === 'actions'
+) {
+  void import('./ui/dev/ActionsPreview.tsx').then(({ ActionsPreview }) => {
+    root.render(
+      <StrictMode>
+        <ActionsPreview />
+      </StrictMode>,
+    );
+  });
 } else {
   root.render(
     <StrictMode>

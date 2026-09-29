@@ -63,6 +63,15 @@
   --tap-primary: 56px;
   --tap-min: 44px;
 
+  /* Buttons and controls (action bar, sizing tray). Text on --control-bg is ≥ 12:1 and the
+     border is ≥ 3:1 against --bg and --surface (PLAN §12.12). */
+  --control-bg: #243029;
+  --control-bg-pressed: #2f3d35;
+  --control-border: #6b7a71;
+  --control-selected-bg: #f2f5f3;
+  --control-selected-text: #0f1512;
+  --control-track: #3a4841;
+
   /* Motion: durations scale with --speed (Normal 1, Fast 0.5, Instant 0) */
   --speed: 1;
   --duration-deal: calc(180ms * var(--speed));

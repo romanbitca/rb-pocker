@@ -1,0 +1,219 @@
+/* A rough mock of the PLAN §12.3 portrait grid and the §12.5 landscape columns, so the action bar
+   and the tray can be checked in place. Dev only. */
+.shell {
+  display: grid;
+  grid-template-rows: 44px minmax(0, 1fr) auto auto auto auto;
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
+  padding-top: env(safe-area-inset-top);
+  background: var(--bg);
+  color: var(--text);
+}
+
+.shell[data-layout='wide'] > * {
+  width: 100%;
+  max-width: 720px;
+  margin-inline: auto;
+}
+
+.top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+  font-size: 0.8125rem;
+}
+
+.select,
+.toggle {
+  height: 32px;
+  padding: 0 8px;
+  border: 1px solid var(--control-border);
+  border-radius: var(--radius-2);
+  background: var(--control-bg);
+  color: var(--text);
+  font: inherit;
+}
+
+.info {
+  margin-left: auto;
+  color: var(--muted);
+}
+
+.table {
+  position: relative;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.felt {
+  position: absolute;
+  inset: 6% 12%;
+  border-radius: 999px;
+  background: radial-gradient(ellipse at 50% 45%, var(--felt) 0%, var(--felt-dark) 100%);
+}
+
+.last {
+  position: absolute;
+  top: 8px;
+  right: 0;
+  left: 0;
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.875rem;
+  text-align: center;
+}
+
+.pot {
+  position: absolute;
+  top: 34%;
+  left: 50%;
+  margin: 0;
+  font-weight: 700;
+  transform: translate(-50%, -50%);
+}
+
+.board {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  display: flex;
+  gap: 4px;
+  transform: translate(-50%, -50%);
+}
+
+.card {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 56px;
+  border-radius: var(--radius-1);
+  background: var(--card-face);
+  color: var(--suit-spades);
+  font-size: 1.25rem;
+  font-weight: 700;
+  box-shadow: 0 1px 2px rgb(0 0 0 / 40%);
+}
+
+.red {
+  color: var(--suit-hearts);
+}
+
+.hero {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  background: var(--surface);
+}
+
+.hole {
+  display: flex;
+}
+
+.hole .card {
+  width: 64px;
+  height: 90px;
+  font-size: 1.75rem;
+}
+
+.hole .card + .card {
+  margin-left: -19px;
+}
+
+.shell[data-layout='compact'] .hole .card {
+  width: 52px;
+  height: 74px;
+  font-size: 1.5rem;
+}
+
+.handText {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.muted {
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+
+.pill {
+  display: grid;
+  place-items: center;
+  height: 44px;
+  margin-left: auto;
+  padding: 0 16px;
+  border: 1px solid var(--control-border);
+  border-radius: 22px;
+}
+
+.coach {
+  display: flex;
+  align-items: center;
+  height: 48px;
+  margin: 0;
+  padding: 0 12px;
+  border-top: 1px solid rgb(242 245 243 / 8%);
+  background: var(--surface);
+  font-size: 0.9375rem;
+}
+
+.bar {
+  max-width: 600px;
+  margin-inline: auto;
+}
+
+.shell[data-layout='wide'] .bar {
+  max-width: 720px;
+}
+
+/* Landscape phone (§12.5): table column + a 280 px right column. */
+.landscape {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 280px;
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.leftColumn {
+  display: grid;
+  grid-template-rows: 36px minmax(0, 1fr) auto;
+  min-height: 0;
+}
+
+.landscape .top {
+  height: 36px;
+}
+
+.landscape .hero {
+  padding: 4px 12px;
+  background: none;
+}
+
+.landscape .hole .card {
+  width: 44px;
+  height: 62px;
+  font-size: 1.25rem;
+}
+
+.side {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  gap: 8px;
+  min-height: 0;
+  padding: 8px max(8px, env(safe-area-inset-right)) max(8px, env(safe-area-inset-bottom)) 0;
+}
+
+.coachText {
+  flex: 1 1 auto;
+  min-height: 0;
+  margin: 0;
+  overflow: auto;
+  font-size: 0.9375rem;
+}
