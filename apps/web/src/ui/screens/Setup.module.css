@@ -1,0 +1,297 @@
+/* Setup (PLAN §12.2). Shared buttons, chips and sections are in Screen.module.css. */
+
+/* ---- Question 1: players ---- */
+
+.players {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+
+.stepper {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.step {
+  display: grid;
+  place-items: center;
+  width: var(--tap-min);
+  height: var(--tap-min);
+  padding: 0;
+  border: 2px solid var(--text);
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.step svg {
+  width: 22px;
+  height: 22px;
+}
+
+.step[aria-disabled='true'] {
+  border-color: var(--muted);
+  color: var(--muted);
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.count {
+  min-width: 2ch;
+  font-size: 2rem;
+  font-weight: 700;
+  line-height: 1;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.caption {
+  margin: 0;
+  color: var(--muted);
+}
+
+/* 120 px wide (§12.2). */
+.miniTable {
+  flex: none;
+  width: 120px;
+  height: 80px;
+}
+
+.felt {
+  fill: var(--felt);
+  stroke: var(--felt-dark);
+  stroke-width: 3;
+}
+
+.bot {
+  fill: var(--muted);
+}
+
+.hero {
+  fill: var(--accent);
+  stroke: var(--bg);
+  stroke-width: 2;
+}
+
+/* ---- Question 2: chips and blinds ---- */
+
+.custom {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.customRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+}
+
+.customLabel {
+  font-weight: 600;
+}
+
+/* 16 px text: iOS zooms into smaller inputs (pitfall 30). */
+.input {
+  width: 9.5em;
+  min-width: var(--tap-min);
+  min-height: var(--tap-min);
+  padding: 0 var(--space-3);
+  border: 2px solid var(--muted);
+  border-radius: var(--radius-2);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 16px;
+  font-variant-numeric: tabular-nums;
+}
+
+.input:focus-visible {
+  border-color: var(--accent);
+}
+
+.input[aria-invalid='true'] {
+  border-color: var(--grade-mistake);
+}
+
+.smallBlind {
+  margin: 0;
+  color: var(--muted);
+}
+
+.error {
+  margin: 0;
+  color: var(--grade-mistake);
+  font-weight: 600;
+}
+
+/* "Each player starts with 2,000 chips = 100 big blinds." and the depth label. */
+.depth {
+  display: grid;
+  gap: var(--space-1);
+  min-height: 3em;
+  padding: var(--space-3) var(--space-4);
+  border-left: 4px solid var(--accent);
+  border-radius: var(--radius-2);
+  background: var(--surface);
+}
+
+.depth p {
+  margin: 0;
+}
+
+.band {
+  color: var(--muted);
+  font-weight: 600;
+}
+
+/* ---- Questions 3 and 4: level cards, 2×2 on phones (§12.2), one row on wide screens ---- */
+
+.levels {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-2);
+}
+
+@media (min-width: 720px) {
+  .levels {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+.level {
+  position: relative;
+  display: grid;
+  min-width: var(--tap-min);
+  min-height: var(--tap-min);
+  cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.level input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.levelFace {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-height: var(--tap-min);
+  padding: var(--space-3);
+  padding-right: calc(var(--space-3) + 24px);
+  border: 2px solid rgb(242 245 243 / 22%);
+  border-radius: var(--radius-3);
+  background: var(--surface);
+}
+
+.levelName {
+  font-weight: 700;
+}
+
+.levelText {
+  color: var(--muted);
+  font-size: 0.875rem;
+  line-height: 1.35;
+}
+
+/* Chosen: accent border and a tick (the tick is the non-colour cue, §12.12). */
+.tick {
+  position: absolute;
+  top: var(--space-2);
+  right: var(--space-2);
+  display: none;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--bg);
+}
+
+.tick svg {
+  width: 24px;
+  height: 24px;
+}
+
+.level input:checked + .levelFace {
+  border-color: var(--accent);
+}
+
+.level input:checked + .levelFace .tick {
+  display: block;
+}
+
+.level input:focus-visible + .levelFace {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Not built yet: dashed and quiet, with "Coming soon" (§18 Stage 3). Text stays readable. */
+.level input:disabled {
+  cursor: not-allowed;
+}
+
+.level input:disabled + .levelFace {
+  border-style: dashed;
+  background: transparent;
+}
+
+.soon {
+  align-self: flex-start;
+  margin-top: var(--space-1);
+  padding: 2px var(--space-2);
+  border: 1px solid var(--muted);
+  border-radius: var(--radius-1);
+  color: var(--muted);
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+/* ---- Footer and the sticky Start game ---- */
+
+.footer {
+  display: grid;
+  justify-items: center;
+  gap: var(--space-1);
+  color: var(--muted);
+  font-size: 0.9375rem;
+  text-align: center;
+}
+
+.footer p {
+  margin: 0;
+}
+
+/* Sticky above the home indicator (§12.2, §12.13); a short fade softens its top edge. */
+.startBar {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
+  margin-top: auto;
+  padding: var(--space-3) 0 max(var(--space-3), env(safe-area-inset-bottom));
+  background: var(--bg);
+}
+
+.startBar::before {
+  content: '';
+  position: absolute;
+  top: calc(-1 * var(--space-4));
+  right: 0;
+  left: 0;
+  height: var(--space-4);
+  background: linear-gradient(to bottom, transparent, var(--bg));
+  pointer-events: none;
+}
