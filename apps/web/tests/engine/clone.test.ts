@@ -65,4 +65,15 @@ describe('cloneHand and deepFreeze (§4.2)', () => {
     const x = deepFreeze({ a: [1, { b: [2] }], c: { d: null } });
     for (const o of objectsIn(x)) expect(Object.isFrozen(o)).toBe(true);
   });
+
+  it('deepFreeze returns an already frozen state as it is (a step output in development)', () => {
+    const h = step(deal(tableWith([10000, 10000], { button: 0 })), {
+      kind: 'act',
+      seat: 0,
+      action: { type: 'call' },
+    });
+    expect(Object.isFrozen(h)).toBe(true); // §4.2: development builds freeze what step returns
+    expect(deepFreeze(h)).toBe(h);
+    for (const o of objectsIn(h)) expect(Object.isFrozen(o)).toBe(true);
+  });
 });
