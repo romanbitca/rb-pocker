@@ -1,0 +1,367 @@
+/* The Table screen (PLAN §12.3–§12.5): one CSS grid, 100dvh tall; the page itself never scrolls,
+   vertically or horizontally (only sheets and panels scroll inside). Sizes match SHELL in
+   layout/seats.ts. */
+.table {
+  --top-bar: 44px;
+  --hero-strip: 112px;
+  --hero-overlap: 24px;
+  --coach-strip: 48px;
+  --gutter: 28px;
+
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr) auto auto auto;
+  grid-template-areas: 'top' 'table' 'hero' 'coach' 'actions';
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--text);
+  /* Game surface (§12.13): no double-tap zoom, no callout, no selection, no tap flash. */
+  touch-action: manipulation;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Compact portrait (≤ 640 px tall): no coach strip row (§12.3). */
+.compact {
+  --hero-strip: 96px;
+  --hero-overlap: 20px;
+  grid-template-rows: auto minmax(0, 1fr) auto auto;
+  grid-template-areas: 'top' 'table' 'hero' 'actions';
+}
+
+/* Landscape phone (§12.5): the table column and a 280 px right column. */
+.landscape {
+  --top-bar: 36px;
+  grid-template-columns: minmax(0, 1fr) calc(280px + env(safe-area-inset-right));
+  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-areas: 'top side' 'table side';
+}
+
+/* Wide (§12.5, §13.1): the play column and the rankings column (or its 44 px rail). The inline
+   coach panel joins in Stage 5. */
+.wide {
+  grid-template-columns: minmax(0, 1fr) clamp(260px, 24vw, 320px);
+  grid-template-rows: auto minmax(0, 1fr) auto auto;
+  grid-template-areas: 'top rank' 'table rank' 'hero rank' 'actions rank';
+}
+.wide.collapsed {
+  grid-template-columns: minmax(0, 1fr) 44px;
+}
+
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ---- Top bar (§12.3): 44 px (36 px in landscape) + the top safe area ---- */
+
+.top {
+  grid-area: top;
+  position: relative;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: calc(var(--top-bar) + env(safe-area-inset-top));
+  padding: env(safe-area-inset-top) max(4px, env(safe-area-inset-right)) 0
+    max(4px, env(safe-area-inset-left));
+  background: var(--surface);
+}
+.landscape .top {
+  padding-right: 4px;
+}
+
+/* 44×44 to touch (§12.12). In the 36 px landscape bar they reach 8 px down over the felt. */
+.iconButton,
+.handsButton {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  height: 44px;
+  margin: 0;
+  border-radius: var(--radius-2);
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+.landscape .iconButton,
+.landscape .handsButton {
+  align-self: flex-start;
+  margin-top: env(safe-area-inset-top);
+}
+
+.iconButton {
+  width: 44px;
+  padding: 0;
+  border: 0;
+  background: none;
+}
+.iconButton:active {
+  background: var(--control-bg-pressed);
+}
+
+.icon {
+  width: 24px;
+  height: 24px;
+}
+/* Centred on the 36 px landscape bar, not on the 44 px hit area below it. */
+.landscape .icon {
+  margin-top: -8px;
+}
+
+/* 44 px to touch; the drawn face fits inside the bar (36 px, or 30 px in landscape). */
+.handsButton {
+  padding: 0;
+  border: 0;
+  background: none;
+}
+.handsFace {
+  display: flex;
+  align-items: center;
+  height: 36px;
+  padding: 0 12px;
+  border: 1px solid var(--control-border);
+  border-radius: var(--radius-2);
+  background: var(--control-bg);
+  font-size: 0.9375rem;
+  font-weight: 600;
+}
+.landscape .handsFace {
+  height: 30px;
+  margin-top: -8px;
+}
+.handsButton[aria-expanded='true'] .handsFace {
+  border-color: var(--accent);
+}
+.handsButton:focus-visible {
+  outline: none;
+}
+.handsButton:focus-visible .handsFace {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.info {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---- The table (§12.3, §12.4) ---- */
+
+.area {
+  grid-area: table;
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+}
+
+/* The box `tableGeometry()` lays out: the table area minus the Hands tab's gutter. */
+.box {
+  position: absolute;
+  top: 0;
+  right: var(--gutter);
+  bottom: 0;
+  left: 0;
+}
+.landscape .box {
+  left: env(safe-area-inset-left);
+}
+.wide .box {
+  right: 0;
+}
+
+/* The felt "stadium", inset 12% × 6% (a static radial gradient, §12.3). */
+.felt {
+  position: absolute;
+  inset: 6% 12%;
+  border: 6px solid var(--rail);
+  border-radius: 999px;
+  background: radial-gradient(ellipse at 50% 45%, var(--felt) 0%, var(--felt-dark) 100%);
+  box-shadow: inset 0 0 0 2px rgb(255 255 255 / 6%);
+}
+
+/* The Hands edge tab: in the gutter at the right edge, vertically centred (§13.1). */
+.tabSlot {
+  position: absolute;
+  top: calc(50% - 44px);
+  right: 0;
+  z-index: 6;
+}
+
+/* The hero's bet chip (§12.4 "the hero's bet at (50,94)"), drawn like the seats' chips. */
+.bet {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+.betPill {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 6px 1px 2px;
+  border-radius: 10px;
+  background: rgb(0 0 0 / 55%);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 16px;
+  white-space: nowrap;
+}
+.chip {
+  width: 14px;
+  height: 14px;
+}
+
+/* Landscape: the hero's cards inset at the bottom centre of the felt (§12.5), 8 px above the
+   screen's edge. */
+.heroInset {
+  position: absolute;
+  z-index: 4;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+}
+
+/* ---- The hero strip (§12.3): ~112 px (96 px compact); the cards reach up into the felt ---- */
+
+.hero {
+  grid-area: hero;
+  position: relative;
+  z-index: 4;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  column-gap: 8px;
+  justify-self: center;
+  width: 100%;
+  max-width: 600px;
+  height: var(--hero-strip);
+  padding: 0 max(12px, env(safe-area-inset-right)) 0 max(12px, env(safe-area-inset-left));
+}
+.wide .hero {
+  max-width: 720px;
+}
+
+.heroLeft {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  margin-top: calc(-1 * var(--hero-overlap));
+}
+
+.heroLabel {
+  padding-top: 6px;
+}
+
+/* ---- The coach strip (§12.6): its 48 px place, empty until Stage 5 ---- */
+
+.coach {
+  grid-area: coach;
+  height: var(--coach-strip);
+}
+
+/* ---- The tray and Row A (§12.7) ---- */
+
+.actions {
+  grid-area: actions;
+  position: relative;
+  /* Above the drawer host, so the compact tray is never under the scrim. */
+  z-index: 31;
+  justify-self: center;
+  width: 100%;
+  max-width: 600px;
+}
+.wide .actions {
+  max-width: 720px;
+}
+
+/* Compact: over the bottom of the table, right above the hero's cards (§12.3), so the hole cards,
+   the board, the tray and Row A all stay visible (Stage 3 acceptance 2). */
+.actions .trayOverlay {
+  bottom: calc(100% + var(--hero-strip) + var(--hero-overlap));
+}
+
+/* ---- Landscape right column (§12.5): label, (coach), tray, Fold / Call / Raise ---- */
+
+.side {
+  grid-area: side;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  min-height: 0;
+  padding: max(8px, env(safe-area-inset-top)) max(8px, env(safe-area-inset-right))
+    max(8px, env(safe-area-inset-bottom)) 8px;
+  background: var(--surface);
+}
+.side .actions {
+  max-width: none;
+}
+
+.sideHero {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.sideMiddle {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+/* ---- The rankings (§13.1) ---- */
+
+/* The drawer covers the top bar, table, hero strip and coach strip (everything above the action
+   bar) in portrait, and the table column in landscape. */
+.drawerHost {
+  position: relative;
+  z-index: 30;
+  grid-row: 1 / 5;
+  grid-column: 1;
+  min-height: 0;
+  pointer-events: none;
+}
+.drawerHost > * {
+  pointer-events: auto;
+}
+.compact .drawerHost {
+  grid-row: 1 / 4;
+}
+.landscape .drawerHost {
+  grid-row: 1 / 3;
+}
+
+.rankings {
+  grid-area: rank;
+  min-width: 0;
+  min-height: 0;
+}

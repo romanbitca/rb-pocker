@@ -14,3 +14,30 @@
   border: 1.5px dashed rgb(242 245 243 / 35%);
   border-radius: var(--radius-1);
 }
+
+/* A new card turns up (250 ms, §12.8): opacity and transform only, and no `to` keyframe, so a
+   highlighted card ends on its own raised transform. */
+.board > [role='img'] {
+  animation: flip var(--duration-flip) ease-out backwards;
+}
+@keyframes flip {
+  from {
+    opacity: 0;
+    transform: translateY(-8px) scaleX(0.2);
+  }
+}
+@keyframes fade {
+  from {
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  :root:not([data-motion='full']) .board > [role='img'] {
+    animation-name: fade;
+    animation-duration: calc(120ms * var(--speed));
+  }
+}
+:root[data-motion='reduced'] .board > [role='img'] {
+  animation-name: fade;
+  animation-duration: calc(120ms * var(--speed));
+}

@@ -249,9 +249,38 @@ button.pod {
   top: 60px;
   font-size: 11px;
 }
-/* The cards say it all at a showdown; the tag would cover them. */
-.revealed .tag {
+/* The cards say it all at a showdown; the tag, the dealer disc and the blind tag would cover
+   their ranks. */
+.revealed .tag,
+.revealed .dealer,
+.revealed .blind {
   display: none;
+}
+
+/* The faces turn up (250 ms, §12.8); no `to` keyframe, so a highlighted card ends raised. */
+.shown > * {
+  animation: flip var(--duration-flip) ease-out backwards;
+}
+@keyframes flip {
+  from {
+    opacity: 0;
+    transform: scaleX(0.2);
+  }
+}
+@keyframes fade {
+  from {
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  :root:not([data-motion='full']) .shown > * {
+    animation-name: fade;
+    animation-duration: calc(120ms * var(--speed));
+  }
+}
+:root[data-motion='reduced'] .shown > * {
+  animation-name: fade;
+  animation-duration: calc(120ms * var(--speed));
 }
 
 /* The bet chip (§12.4), centred in its slot. */
