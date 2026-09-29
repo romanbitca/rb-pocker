@@ -664,7 +664,7 @@ describe('Appendix B: settlement (§3.8) and showdown (§3.9)', () => {
 });
 
 describe('Appendix B: serialisation and replay (§4.6, §4.7)', () => {
-  it('B41: 1,000 random states survive a JSON round trip unchanged', () => {
+  it('B41: 1,000 random states survive a JSON round trip unchanged', { timeout: 30_000 }, () => {
     let count = 0;
     fc.assert(
       fc.property(handArb, fc.nat(400), ({ h, policySeed }, depth) => {

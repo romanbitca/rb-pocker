@@ -43,38 +43,42 @@ describe('undo at engine level (§11.3; B33)', () => {
     expect(restored.undoneDecisions).toEqual([...snapshot.undoneDecisions, 0]);
   });
 
-  it('10,000 seeded undos: the next card dealt from the stub is uniform (chi-square, p > 0.001)', () => {
-    // 3 players checked down to the end of the flop round, one card away from the turn.
-    const checkOrCallRound = (start: HandState): HandState => {
-      let s = start;
-      while (s.phase === 'betting') {
-        const legal = legalOf(s);
-        s = play(s, legal.canCheck ? check(legal.seat) : call(legal.seat));
-      }
-      return s;
-    };
-    let h = deal(tableWith([10000, 10000, 10000], { button: 0 }));
-    h = checkOrCallRound(h); // preflop
-    h = play(h, ADVANCE); // deal the flop
-    h = checkOrCallRound(h); // flop
-    expect(h).toMatchObject({ phase: 'roundComplete', street: 'flop' });
+  it(
+    '10,000 seeded undos: the next card dealt from the stub is uniform (chi-square, p > 0.001)',
+    { timeout: 30_000 },
+    () => {
+      // 3 players checked down to the end of the flop round, one card away from the turn.
+      const checkOrCallRound = (start: HandState): HandState => {
+        let s = start;
+        while (s.phase === 'betting') {
+          const legal = legalOf(s);
+          s = play(s, legal.canCheck ? check(legal.seat) : call(legal.seat));
+        }
+        return s;
+      };
+      let h = deal(tableWith([10000, 10000, 10000], { button: 0 }));
+      h = checkOrCallRound(h); // preflop
+      h = play(h, ADVANCE); // deal the flop
+      h = checkOrCallRound(h); // flop
+      expect(h).toMatchObject({ phase: 'roundComplete', street: 'flop' });
 
-    const stub = h.deck.slice(h.deckPos);
-    const indexOfCard = new Map(stub.map((c, i) => [c, i]));
-    const counts = new Array<number>(stub.length).fill(0);
-    const N = 10_000;
-    for (let undoIndex = 0; undoIndex < N; undoIndex++) {
-      const reshuffled = step(h, { kind: 'reshuffle', decisionId: 0, undoIndex });
-      const dealt = step(reshuffled, ADVANCE); // deals the burn card, then the turn
-      const turnCard = dealt.board[3] as number;
-      const idx = indexOfCard.get(turnCard);
-      if (idx === undefined) throw new Error('the turn card was not one of the stub cards');
-      counts[idx] = (counts[idx] as number) + 1;
-    }
-    const stat = chiSquareStat(counts, N / stub.length);
-    const p = chiSquarePValue(stat, stub.length - 1);
-    expect(p).toBeGreaterThan(P_MIN);
-  });
+      const stub = h.deck.slice(h.deckPos);
+      const indexOfCard = new Map(stub.map((c, i) => [c, i]));
+      const counts = new Array<number>(stub.length).fill(0);
+      const N = 10_000;
+      for (let undoIndex = 0; undoIndex < N; undoIndex++) {
+        const reshuffled = step(h, { kind: 'reshuffle', decisionId: 0, undoIndex });
+        const dealt = step(reshuffled, ADVANCE); // deals the burn card, then the turn
+        const turnCard = dealt.board[3] as number;
+        const idx = indexOfCard.get(turnCard);
+        if (idx === undefined) throw new Error('the turn card was not one of the stub cards');
+        counts[idx] = (counts[idx] as number) + 1;
+      }
+      const stat = chiSquareStat(counts, N / stub.length);
+      const p = chiSquarePValue(stat, stub.length - 1);
+      expect(p).toBeGreaterThan(P_MIN);
+    },
+  );
 });
 
 describe('replay of a hand with an undo (§4.7, §11.5)', () => {

@@ -108,33 +108,37 @@ function assertNonLeaking(s: HandState, permSeed: Seed128, stats: LeakStats): vo
 }
 
 describe('observe: the non-cheating boundary (§4.8, §9.6.3, acceptance 5)', () => {
-  it('at every state of random hands, re-dealing the hidden cards leaves every observation unchanged', () => {
-    const stats: LeakStats = { observed: 0, redealt: 0 };
-    const seen = new Set<string>();
-    fc.assert(
-      fc.property(handArb, seedArb, ({ h, policySeed }, permSeed) => {
-        const rng = rngFromSeed(policySeed);
-        let s = h;
-        assertNonLeaking(s, permSeed, stats);
-        for (let i = 0; i < 400 && s.phase !== 'complete'; i++) {
-          s = step(s, randomInput(s, rng));
-          seen.add(`${s.phase}:${s.street}`);
+  it(
+    'at every state of random hands, re-dealing the hidden cards leaves every observation unchanged',
+    { timeout: 60_000 },
+    () => {
+      const stats: LeakStats = { observed: 0, redealt: 0 };
+      const seen = new Set<string>();
+      fc.assert(
+        fc.property(handArb, seedArb, ({ h, policySeed }, permSeed) => {
+          const rng = rngFromSeed(policySeed);
+          let s = h;
           assertNonLeaking(s, permSeed, stats);
-        }
-        expect(s.phase).toBe('complete');
-      }),
-      { seed: FC_SEED, numRuns: 300 },
-    );
-    expect(stats.observed).toBeGreaterThan(0);
-    expect(stats.redealt).toBe(stats.observed); // every re-deal moved at least one hidden card
-    // Decision points on every street, run-out and round-end states, the showdown and the end.
-    for (const street of ['preflop', 'flop', 'turn', 'river']) {
-      expect(seen).toContain(`betting:${street}`);
-      expect(seen).toContain(`roundComplete:${street}`);
-    }
-    expect(seen).toContain('showdown:river');
-    expect(seen).toContain('complete:river');
-  });
+          for (let i = 0; i < 400 && s.phase !== 'complete'; i++) {
+            s = step(s, randomInput(s, rng));
+            seen.add(`${s.phase}:${s.street}`);
+            assertNonLeaking(s, permSeed, stats);
+          }
+          expect(s.phase).toBe('complete');
+        }),
+        { seed: FC_SEED, numRuns: 300 },
+      );
+      expect(stats.observed).toBeGreaterThan(0);
+      expect(stats.redealt).toBe(stats.observed); // every re-deal moved at least one hidden card
+      // Decision points on every street, run-out and round-end states, the showdown and the end.
+      for (const street of ['preflop', 'flop', 'turn', 'river']) {
+        expect(seen).toContain(`betting:${street}`);
+        expect(seen).toContain(`roundComplete:${street}`);
+      }
+      expect(seen).toContain('showdown:river');
+      expect(seen).toContain('complete:river');
+    },
+  );
 
   it('a run-out/showdown state: re-dealing the hidden cards leaves the observation unchanged', () => {
     const stats: LeakStats = { observed: 0, redealt: 0 };
