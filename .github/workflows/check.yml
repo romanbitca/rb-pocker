@@ -30,8 +30,10 @@ jobs:
       - name: Lint (module boundaries, Math.random ban, server-must-not-import-web)
         run: npm run lint
       - run: npm run format:check
-      - name: Unit, property and server tests
-        run: npm test
+      # One run of the web unit tests with V8 coverage; it fails below the thresholds in
+      # apps/web/vitest.config.ts (src/engine ≥ 95% branches, src/eval ≥ 90%). Then the server tests.
+      - name: Unit, property and server tests, with coverage thresholds
+        run: npm run test:coverage
       - run: npm run build
       - name: Size budget (§15.3)
         run: npm run size

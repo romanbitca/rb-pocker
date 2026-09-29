@@ -15,6 +15,9 @@ import viteConfig from './vite.config.ts';
  * unit project once with V8 coverage and fails below the thresholds: `src/engine/` ≥ 95% branches,
  * `src/eval/` ≥ 90% branches. `src/analysis/`, `src/persist/` (≥ 90%) and `src/brain/` (≥ 85%)
  * join `include` and `thresholds` in the stages that create them.
+ *
+ * On CI every core runs test files: Vitest's default (cores − 1) leaves one of the runner's two
+ * cores idle, and the unit tests are CPU-bound property runs.
  */
 const SLOW_TESTS = 'tests/**/*.slow.test.{ts,tsx}';
 
@@ -28,10 +31,11 @@ export default mergeConfig(
   viteConfig,
   defineConfig({
     test: {
+      ...(process.env.CI === 'true' ? { maxWorkers: '100%' } : {}),
       coverage: {
         provider: 'v8',
         include: ['src/engine/**/*.ts', 'src/eval/**/*.ts'],
-        reporter: ['text', 'json-summary'],
+        reporter: [['text', { skipFull: false }], 'json-summary'],
         reportsDirectory: 'coverage',
         thresholds: {
           'src/engine/**/*.ts': { branches: 95 },
