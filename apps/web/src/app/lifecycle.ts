@@ -14,7 +14,8 @@
  *   the guard stays, and a later Back with nothing left to close does nothing once.
  * - Layout (§12.3): the three media queries → `{ type: 'layout' }` (`ui.layout` mirrors the CSS).
  */
-import type { AppStore, Layout, UiSlice } from './store.ts';
+import { historyDepth, type Nav } from './navigation.ts';
+import type { AppStore, Layout } from './store.ts';
 
 /** §12.3 layout queries; the first match wins, `portrait` is everything else. */
 export const LAYOUT_QUERIES = {
@@ -29,9 +30,9 @@ export function layoutFor(matches: (query: string) => boolean): Layout {
   return 'portrait';
 }
 
-/** Something that Back can close: an overlay, or a screen with one below it. */
-export function canGoBack(ui: Pick<UiSlice, 'overlays' | 'backStack'>): boolean {
-  return ui.overlays.length > 0 || ui.backStack.length > 0;
+/** Something that Back can undo: an overlay, or a screen with one below it (app/navigation.ts). */
+export function canGoBack(nav: Nav): boolean {
+  return historyDepth(nav) > 0;
 }
 
 /** The history state of the guard entry. */
@@ -44,7 +45,7 @@ const isGuard = (state: unknown): boolean =>
 export function installBackHandler(win: Window, store: AppStore): () => void {
   let guarded = isGuard(win.history.state);
   const sync = (): void => {
-    if (guarded || !canGoBack(store.getState().ui)) return;
+    if (guarded || !canGoBack(store.getState().ui.nav)) return;
     win.history.pushState(GUARD, '');
     guarded = true;
   };
@@ -60,7 +61,7 @@ export function installBackHandler(win: Window, store: AppStore): () => void {
   };
   win.addEventListener('popstate', onPopState);
   const unsubscribe = store.subscribe((s, prev) => {
-    if (s.ui.overlays !== prev.ui.overlays || s.ui.backStack !== prev.ui.backStack) sync();
+    if (s.ui.nav !== prev.ui.nav) sync();
   });
   sync();
   return () => {

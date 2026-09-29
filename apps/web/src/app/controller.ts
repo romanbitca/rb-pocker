@@ -259,6 +259,8 @@ export class TableController {
   /** When this table's session began (§14.4); stored in the session. */
   private sessionStart: string | null = null;
   private settingsTimer: unknown = null;
+  /** Setup's values while the §3.1 question is open (the 'newTable' dialog). */
+  private pendingSetup: Partial<Settings> | null = null;
   private settingsSeq = 0;
   private settingsDirty = false;
 
@@ -331,7 +333,7 @@ export class TableController {
         this.toast({ kind: 'dataRecovered' });
       }
       const first = loaded.status === 'new' || loaded.status === 'unavailable';
-      this.ui({ type: 'navigate', screen: first ? 'welcome' : 'home', how: 'reset' });
+      this.ui({ type: 'go', screen: first ? 'welcome' : 'home' });
       const session = loadSession(storage, { engineVersion: ENGINE_VERSION, now });
       if (session.status === 'ok' || session.status === 'voided') this.resume(session.session);
       if (session.status === 'voided') {
@@ -352,7 +354,7 @@ export class TableController {
         this.play();
         break;
       case 'newTable':
-        void this.newTable(cmd.setup);
+        void this.newTable(cmd.setup, cmd.confirmed === true);
         break;
       case 'act':
         this.heroAct(cmd.action);
@@ -367,7 +369,7 @@ export class TableController {
         this.topUpHero();
         break;
       case 'leaveTable':
-        this.ui({ type: 'navigate', screen: 'home', how: 'reset' });
+        this.ui({ type: 'go', screen: 'home' });
         break;
       case 'changeTable':
         this.changeTable();
@@ -434,7 +436,7 @@ export class TableController {
       this.startHandAt(table);
     } else if (this.heroBust()) {
       this.navigateToTable();
-      this.ui({ type: 'openOverlay', overlay: 'outOfChips' });
+      this.ui({ type: 'open', overlay: 'outOfChips' });
       return;
     } else if (this.hand === null) {
       this.startHandAt((this.next ?? this.table) as TableState);
@@ -443,10 +445,21 @@ export class TableController {
   }
 
   /** §3.1, §12.2: a new table from the settings; an unfinished hand is folded and finished first. */
-  private async newTable(setup: Partial<Settings> | undefined): Promise<void> {
+  private async newTable(setup: Partial<Settings> | undefined, confirmed: boolean): Promise<void> {
     if (this.mode === 'booting') return;
+    const unfinished = this.hand !== null && this.hand.phase !== 'complete';
+    if (unfinished && !confirmed) {
+      // §3.1: "Your unfinished hand will be folded. Start a new table?" The dialog's Yes comes back
+      // with `confirmed`; No (or Back) just closes it and the hand goes on.
+      this.pendingSetup = setup ?? null;
+      this.ui({ type: 'open', overlay: 'newTable' });
+      return;
+    }
+    const patch = setup ?? this.pendingSetup ?? undefined;
+    this.pendingSetup = null;
+    this.ui({ type: 'close', overlay: 'newTable' });
     const token = ++this.newTableSeq;
-    if (setup !== undefined) this.store.setState({ settings: sanitize(this.settings(), setup) });
+    if (patch !== undefined) this.store.setState({ settings: sanitize(this.settings(), patch) });
     const table = this.buildTable();
     if (table === null) return;
     if (this.hand !== null && this.hand.phase !== 'complete') {
@@ -504,7 +517,7 @@ export class TableController {
     }
     this.trace('reload', { reloads: table.reloads });
     this.startHandAt(table);
-    this.ui({ type: 'closeOverlay', overlay: 'outOfChips' });
+    this.ui({ type: 'close', overlay: 'outOfChips' });
   }
 
   /** Menu → Top up (§3.1, §12.3): between hands, when the hero is below the starting stack. */
@@ -532,7 +545,7 @@ export class TableController {
     this.closeTable();
     this.sessionStart = null;
     if (this.storage !== null) clearSession(this.storage); // §3.1: the old table's session ends
-    this.ui({ type: 'navigate', screen: 'setup', how: 'replace' });
+    this.ui({ type: 'replace', screen: 'setup' });
   }
 
   private changeSettings(patch: Partial<Settings>): void {
@@ -670,7 +683,7 @@ export class TableController {
     if ((next.slots[HERO]?.stack ?? 0) === 0) {
       this.mode = 'idle';
       this.trace('hero out of chips');
-      this.ui({ type: 'openOverlay', overlay: 'outOfChips' });
+      this.ui({ type: 'open', overlay: 'outOfChips' });
       return;
     }
     this.startHandAt(next);
@@ -1182,9 +1195,9 @@ export class TableController {
     }
   }
 
+  /** The Table, over Home (app/navigation.ts: Back from the Table goes Home). */
   private navigateToTable(): void {
-    const from = this.store.getState().ui.screen;
-    this.ui({ type: 'navigate', screen: 'table', how: from === 'setup' ? 'replace' : 'push' });
+    this.ui({ type: 'go', screen: 'table' });
   }
 
   /** What `observe` adds for the brain (§4.8, A.4). Stage 5 fills the seat statistics (§9.5). */

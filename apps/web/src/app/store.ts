@@ -6,8 +6,9 @@
  *   only the `equity` slice (Stage 4, pitfall 37).
  * - The UI may import only this module from `app` (PLAN §2.1), so everything the screens need
  *   comes from here: the state, narrow selectors, hooks and `dispatch`. `dispatch` applies UI
- *   commands (screens, overlays, Back, layout, toasts) itself and hands game commands to the
- *   controller, which registers with `setGameHandler`.
+ *   commands (the `NavAction`s of app/navigation.ts, the one navigation model: screens, overlays,
+ *   Back; and gates, layout, toasts) itself and hands game commands to the controller, which
+ *   registers with `setGameHandler`.
  * - Components subscribe with a narrow selector, never to the whole store: `useAppStore(selector)`
  *   for one value, `useAppStoreShallow(selector)` for several (`useShallow`). Seats are
  *   `React.memo` (pitfall 37).
@@ -22,8 +23,18 @@ import { createStore, type StoreApi } from 'zustand/vanilla';
 import type { HandState, LegalActions, PlayerAction, TableState } from '../engine/types.ts';
 import { defaultSettings } from '../persist/schema.ts';
 import type { Settings } from '../persist/schema.ts';
+import {
+  currentScreen,
+  initialNav,
+  navigate,
+  type Nav,
+  type NavAction,
+  type Overlay,
+  type Screen,
+} from './navigation.ts';
 
 export { useShallow };
+export type { Nav, NavAction, Overlay, Screen };
 // The view-model selectors (ui/views.ts shapes): the UI imports them from here (§2.1).
 export * from './tableViews.ts';
 
@@ -57,67 +68,19 @@ export const GATES: readonly Gate[] = [
 // ---------------------------------------------------------------------------------------------
 // UI vocabulary
 
-/** Screens (§12.1). No router library: `ui.screen` is the current one. */
-export type Screen =
-  | 'welcome'
-  | 'home'
-  | 'setup'
-  | 'table'
-  | 'settings'
-  | 'learn'
-  | 'stats'
-  | 'about'
-  | 'review'
-  | 'bench';
-
-/**
- * Overlays: modal sheets, dialogs and the sizing tray. Each one open is a step for Android Back
- * (§12.1: Back closes the top-most overlay first). `OVERLAY_GATE` says which gate it closes.
- */
-export type Overlay =
-  | 'menu' // the ☰ menu sheet (§12.3)
-  | 'rankings' // the hand-rankings drawer (§13.1)
-  | 'coach' // the coach sheet (§12.6)
-  | 'botCard' // tap a seat → bot card (§9.3)
-  | 'summary' // the hand summary sheet (§12.9)
-  | 'tray' // the sizing tray (§12.7): NOT a gate
-  | 'outOfChips' // "You're out of chips" (§3.1)
-  | 'confirmNewTable' // "Your unfinished hand will be folded. Start a new table?" (§3.1)
-  | 'feedback' // the mistake card (§12.6; Stage 6)
-  | 'quiz' // the Advanced quiz (§10.3)
-  | 'tip'; // a first-table tip (§12.11)
-
 /** The gate each overlay closes while it is open (Appendix A.8); null = no gate. */
 export const OVERLAY_GATE: Readonly<Record<Overlay, Gate | null>> = {
   menu: 'menu',
+  outOfChips: 'dialog',
+  newTable: 'dialog',
   rankings: 'sheet',
   coach: 'sheet',
   botCard: 'sheet',
   summary: 'sheet',
   tray: null,
-  outOfChips: 'dialog',
-  confirmNewTable: 'dialog',
   feedback: 'feedback',
   quiz: 'quiz',
   tip: 'tip',
-};
-
-/**
- * What Android Back does when the overlay is on top: `close` it, or `leave` the screen (the
- * out-of-chips dialog cannot be dismissed any other way: Back returns to Home, §3.1).
- */
-export const OVERLAY_BACK: Readonly<Record<Overlay, 'close' | 'leave'>> = {
-  menu: 'close',
-  rankings: 'close',
-  coach: 'close',
-  botCard: 'close',
-  summary: 'close',
-  tray: 'close',
-  outOfChips: 'leave',
-  confirmNewTable: 'close',
-  feedback: 'close',
-  quiz: 'close',
-  tip: 'close',
 };
 
 /** Layout (§12.3): one CSS media query each; first match wins. */
@@ -185,11 +148,12 @@ export interface CoachSlice {
 }
 
 export interface UiSlice {
+  /** Screens and overlays (app/navigation.ts): the one navigation model. Changed by `NavAction`s. */
+  nav: Nav;
+  /** Derived from `nav`: the screen on show. */
   screen: Screen;
-  /** The screens under the current one; Back returns to the last (§12.1). Empty = a root screen. */
-  backStack: Screen[];
-  /** Open overlays, bottom to top. */
-  overlays: Overlay[];
+  /** Derived from `nav`: the open overlays, bottom to top. */
+  overlays: readonly Overlay[];
   /** The page is hidden, or became visible less than 300 ms ago (§12.13). */
   hidden: boolean;
   /** Explicit gate closes (the `gate` command). */
@@ -225,18 +189,13 @@ export type TableSetup = Pick<
 // ---------------------------------------------------------------------------------------------
 // Commands
 
-/** Commands the store applies itself (UI state only). */
+/**
+ * Commands the store applies itself (UI state only): the navigation actions of app/navigation.ts
+ * (`go`, `replace`, `back`, `open`, `close`; Android Back arrives as `back` from app/lifecycle.ts),
+ * and gates, layout, toasts, the storage banner.
+ */
 export type UiCommand =
-  /**
-   * Go to a screen and close every overlay. `push` (default) keeps the current screen for Back;
-   * `replace` swaps it; `reset` clears Back (a root screen). A screen already in the back stack is
-   * returned to (the stack above it is dropped), so Back never loops.
-   */
-  | { type: 'navigate'; screen: Screen; how?: 'push' | 'replace' | 'reset' }
-  | { type: 'openOverlay'; overlay: Overlay }
-  | { type: 'closeOverlay'; overlay: Overlay }
-  /** Android Back / browser back (from `app/lifecycle.ts`): close the top overlay, else go back one screen. */
-  | { type: 'back' }
+  | NavAction
   /** Close (or reopen) a gate explicitly, e.g. while a first-table tip is shown. */
   | { type: 'gate'; gate: Gate; closed: boolean; owner?: string }
   | { type: 'layout'; layout: Layout }
@@ -249,11 +208,12 @@ export type GameCommand =
   /** Welcome / Home Play (§12.1): continue the table, else start one with the last-used settings. */
   | { type: 'play' }
   /**
-   * Setup's Start game, Menu → New table (§12.2): start a new table from the settings (`setup`
-   * patches them first). An unfinished hand is folded and finished without animation (§3.1):
-   * ask the §3.1 question before sending this mid-hand.
+   * Setup's Start game (§12.2): a new table from the settings (`setup` patches them first; they
+   * become the last-used values). With a hand unfinished the controller first asks the §3.1
+   * question (the 'newTable' dialog) and keeps `setup`; the dialog's Yes sends `confirmed: true`:
+   * the hand is folded, finished without animation, and the new table starts.
    */
-  | { type: 'newTable'; setup?: Partial<TableSetup> }
+  | { type: 'newTable'; setup?: Partial<TableSetup>; confirmed?: boolean }
   /** The hero's action; only in mode `heroTurn`, and only inside `game.legal`. */
   | { type: 'act'; action: PlayerAction }
   /** Tap on the hand-end banner or "Next hand ›": start the next hand now. */
@@ -275,10 +235,11 @@ export type GameCommand =
 export type Command = UiCommand | GameCommand;
 
 const UI_COMMANDS: ReadonlySet<string> = new Set([
-  'navigate',
-  'openOverlay',
-  'closeOverlay',
+  'go',
+  'replace',
   'back',
+  'open',
+  'close',
   'gate',
   'layout',
   'dismissToast',
@@ -317,11 +278,13 @@ export function initialGame(): GameSlice {
   };
 }
 
-export function initialUi(screen: Screen = 'welcome'): UiSlice {
+/** The UI state of a launch: Welcome on the first launch, Home after it (§12.1). */
+export function initialUi(firstLaunch = true): UiSlice {
+  const nav = initialNav(firstLaunch);
   return withGates({
-    screen,
-    backStack: [],
-    overlays: [],
+    nav,
+    screen: currentScreen(nav),
+    overlays: nav.overlays,
     hidden: false,
     holds: [],
     gates: [],
@@ -372,16 +335,15 @@ export function updateUi(store: StoreApi<AppState>, change: (ui: UiSlice) => UiS
 /** Applies a UI command; returns `ui` itself when nothing changes. */
 export function reduceUi(ui: UiSlice, cmd: UiCommand): UiSlice {
   switch (cmd.type) {
-    case 'navigate':
-      return withGates(navigate(ui, cmd.screen, cmd.how ?? 'push'));
-    case 'openOverlay':
-      if (ui.overlays.includes(cmd.overlay)) return ui;
-      return withGates({ ...ui, overlays: [...ui.overlays, cmd.overlay] });
-    case 'closeOverlay':
-      if (!ui.overlays.includes(cmd.overlay)) return ui;
-      return withGates({ ...ui, overlays: ui.overlays.filter((o) => o !== cmd.overlay) });
+    case 'go':
+    case 'replace':
     case 'back':
-      return withGates(back(ui));
+    case 'open':
+    case 'close': {
+      const nav = navigate(ui.nav, cmd);
+      if (nav === ui.nav) return ui;
+      return withGates({ ...ui, nav, screen: currentScreen(nav), overlays: nav.overlays });
+    }
     case 'gate': {
       const owner = cmd.owner ?? cmd.gate;
       const held = ui.holds.some((h) => h.gate === cmd.gate && h.owner === owner);
@@ -399,29 +361,6 @@ export function reduceUi(ui: UiSlice, cmd: UiCommand): UiSlice {
     case 'dismissStorageBanner':
       return ui.storageBanner ? { ...ui, storageBanner: false } : ui;
   }
-}
-
-function navigate(ui: UiSlice, screen: Screen, how: 'push' | 'replace' | 'reset'): UiSlice {
-  if (how === 'reset') return { ...ui, screen, backStack: [], overlays: [] };
-  const at = ui.backStack.indexOf(screen);
-  if (at >= 0) return { ...ui, screen, backStack: ui.backStack.slice(0, at), overlays: [] };
-  if (screen === ui.screen) return ui.overlays.length === 0 ? ui : { ...ui, overlays: [] };
-  const backStack = how === 'push' ? [...ui.backStack, ui.screen] : ui.backStack;
-  return { ...ui, screen, backStack, overlays: [] };
-}
-
-function back(ui: UiSlice): UiSlice {
-  const top = ui.overlays[ui.overlays.length - 1];
-  if (top !== undefined && OVERLAY_BACK[top] === 'close') {
-    return { ...ui, overlays: ui.overlays.slice(0, -1) };
-  }
-  const previous = ui.backStack[ui.backStack.length - 1];
-  if (previous !== undefined) {
-    return { ...ui, screen: previous, backStack: ui.backStack.slice(0, -1), overlays: [] };
-  }
-  // A `leave` overlay on a root screen: Home (§3.1: "Back returns to Home").
-  if (top !== undefined) return { ...ui, screen: 'home', overlays: [] };
-  return ui;
 }
 
 /** The gates `ui` closes (GATES order). */
@@ -478,7 +417,7 @@ export function useOverlay(overlay: Overlay): [open: boolean, setOpen: (open: bo
   const open = useStore(appStore, (s) => s.ui.overlays.includes(overlay));
   const dispatchCmd = useDispatch();
   const setOpen = useCallback(
-    (next: boolean) => dispatchCmd({ type: next ? 'openOverlay' : 'closeOverlay', overlay }),
+    (next: boolean) => dispatchCmd({ type: next ? 'open' : 'close', overlay }),
     [dispatchCmd, overlay],
   );
   return [open, setOpen];
@@ -492,8 +431,10 @@ export const selectNextTable = (s: AppState): TableState | null => s.game.next;
 export const selectLegal = (s: AppState): LegalActions | null => s.game.legal;
 export const selectHeroBust = (s: AppState): boolean => s.game.heroBust;
 export const selectDiagnostics = (s: AppState): Diagnostics => s.game.diag;
+/** The navigation state for `ScreenSwitcher` (ui/screens). */
+export const selectNav = (s: AppState): Nav => s.ui.nav;
 export const selectScreen = (s: AppState): Screen => s.ui.screen;
-export const selectOverlays = (s: AppState): Overlay[] => s.ui.overlays;
+export const selectOverlays = (s: AppState): readonly Overlay[] => s.ui.overlays;
 export const selectTopOverlay = (s: AppState): Overlay | null =>
   s.ui.overlays[s.ui.overlays.length - 1] ?? null;
 export const selectGates = (s: AppState): Gate[] => s.ui.gates;

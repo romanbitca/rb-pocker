@@ -84,7 +84,7 @@ describe('the rankings drawer and the sheet gate', () => {
     render(<DrawerHost />);
     await toBotTurn();
     const before = inputs(controller);
-    act(() => state().dispatch({ type: 'openOverlay', overlay: 'rankings' }));
+    act(() => state().dispatch({ type: 'open', overlay: 'rankings' }));
     expect(screen.getByRole('dialog')).toBeTruthy();
     expect(state().ui.gates).toEqual(['sheet']);
     await elapse(30_000);
@@ -100,7 +100,7 @@ describe('the rankings drawer and the sheet gate', () => {
     act(() => state().dispatch({ type: 'play' }));
     render(<DrawerHost />);
     await toBotTurn();
-    act(() => state().dispatch({ type: 'openOverlay', overlay: 'rankings' }));
+    act(() => state().dispatch({ type: 'open', overlay: 'rankings' }));
     expect(window.history.state).toEqual({ pc: 'back-guard' });
     act(() => {
       window.dispatchEvent(new PopStateEvent('popstate', { state: null }));
@@ -114,7 +114,7 @@ describe('the rankings drawer and the sheet gate', () => {
   it('the drawer highlights the hero hand from the store', async () => {
     act(() => state().dispatch({ type: 'play' }));
     render(<DrawerHost />);
-    act(() => state().dispatch({ type: 'openOverlay', overlay: 'rankings' }));
+    act(() => state().dispatch({ type: 'open', overlay: 'rankings' }));
     const hero = selectHeroHandView(state());
     expect(hero).not.toBeNull();
     expect(hero?.hole).toEqual(state().game.hand?.seats[0]?.hole);

@@ -3,25 +3,41 @@
  * and changes it only through `navigate`; `ui/screens/ScreenSwitcher.tsx` renders it. The URL
  * stays `/`.
  *
- * Pure: no DOM and no `history` here. The controller keeps the browser history in step: every
- * screen change or overlay opening pushes one entry, and `popstate` dispatches `{ type: 'back' }`,
- * so the entries above the app's first one always number `historyDepth(nav)`. `back` closes the
- * top-most overlay first, else goes back one screen; an overlay that Back must not close (the
- * out-of-chips dialog, §3.1) takes its screen with it, and then the controller steps the browser
- * history back by the difference.
+ * Pure: no DOM and no `history` here. `app/lifecycle.ts` connects Android Back and the browser's
+ * back button: while Back has something to do (`historyDepth(nav) > 0`: an overlay is open, or a
+ * screen has one below it) one extra history entry, the guard, sits on top; Back pops it and
+ * `popstate` dispatches `{ type: 'back' }`, and the guard returns while more can be undone. So the
+ * browser history never has to follow each screen, and a close by the UI (✕, scrim, Esc) never
+ * calls `history.back()`. `back` closes the top-most overlay first, else goes back one screen;
+ * an overlay that Back must not close (the out-of-chips dialog, §3.1) takes its screen with it.
  */
 
 /** The full-page screens built so far. Later stages add 'stats', 'learn', 'about', 'review'. */
 export type Screen = 'welcome' | 'home' | 'setup' | 'table' | 'settings';
 
 /**
- * Modal layers over a screen. Each one keeps a controller gate closed while it is open
- * (Appendix A.8): 'menu' → `menu`, the dialogs → `dialog`.
+ * Layers over a screen. Each one but the sizing tray keeps a controller gate closed while it is
+ * open (Appendix A.8, `OVERLAY_GATE` in app/store.ts): 'menu' → `menu`, the dialogs → `dialog`, the
+ * modal sheets → `sheet`.
  * - 'menu': the Table's ☰ sheet (§12.3).
  * - 'outOfChips': "You're out of chips…" (§3.1). Only its buttons close it.
  * - 'newTable': "Your unfinished hand will be folded. Start a new table?" (§3.1).
+ * - 'rankings', 'coach', 'botCard', 'summary': the modal sheets (§13.1, §12.6, §9.3, §12.9).
+ * - 'tray': the sizing tray (§12.7): Back closes it first, but it is not a gate.
+ * - 'feedback', 'quiz', 'tip': the mistake card, the quiz and a first-table tip (Stages 6, 5, 9).
  */
-export type Overlay = 'menu' | 'outOfChips' | 'newTable';
+export type Overlay =
+  | 'menu'
+  | 'outOfChips'
+  | 'newTable'
+  | 'rankings'
+  | 'coach'
+  | 'botCard'
+  | 'summary'
+  | 'tray'
+  | 'feedback'
+  | 'quiz'
+  | 'tip';
 
 export interface Nav {
   /** The back stack, oldest first; the last one is on screen. Never empty; [0] is a root. */
@@ -53,6 +69,14 @@ const BACK_CLOSES: Readonly<Record<Overlay, boolean>> = {
   menu: true,
   outOfChips: false,
   newTable: true,
+  rankings: true,
+  coach: true,
+  botCard: true,
+  summary: true,
+  tray: true,
+  feedback: true,
+  quiz: true,
+  tip: true,
 };
 
 /** The first screen: Welcome on the first launch (no saved profile), Home after that (§12.1). */

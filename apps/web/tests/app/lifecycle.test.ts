@@ -47,32 +47,32 @@ describe('Back (§12.1): the top overlay first, never out of the table', () => {
 
   it('puts one guard entry on top while something can be closed, and none at a root screen', () => {
     expect(pushes).toBe(0);
-    store.getState().dispatch({ type: 'navigate', screen: 'home', how: 'reset' });
+    store.getState().dispatch({ type: 'go', screen: 'home' });
     expect(pushes).toBe(0);
-    store.getState().dispatch({ type: 'navigate', screen: 'table' });
+    store.getState().dispatch({ type: 'go', screen: 'table' });
     expect(pushes).toBe(1);
-    store.getState().dispatch({ type: 'openOverlay', overlay: 'menu' });
-    store.getState().dispatch({ type: 'openOverlay', overlay: 'rankings' });
+    store.getState().dispatch({ type: 'open', overlay: 'menu' });
+    store.getState().dispatch({ type: 'open', overlay: 'rankings' });
     expect(pushes).toBe(1); // still one guard
     expect(window.history.state).toEqual({ pc: 'back-guard' });
   });
 
   it('Back with the sizing tray open closes the tray, then Home, then leaves the app (Stage 3 acceptance 8)', () => {
-    store.getState().dispatch({ type: 'navigate', screen: 'home', how: 'reset' });
-    store.getState().dispatch({ type: 'navigate', screen: 'table' });
-    store.getState().dispatch({ type: 'openOverlay', overlay: 'tray' });
+    store.getState().dispatch({ type: 'go', screen: 'home' });
+    store.getState().dispatch({ type: 'go', screen: 'table' });
+    store.getState().dispatch({ type: 'open', overlay: 'tray' });
     pressBack();
     expect(store.getState().ui).toMatchObject({ screen: 'table', overlays: [] });
     expect(pushes).toBe(2); // the guard is back: the table still has Home below it
     pressBack();
-    expect(store.getState().ui).toMatchObject({ screen: 'home', backStack: [] });
+    expect(store.getState().ui.nav).toEqual({ screens: ['home'], overlays: [] });
     expect(pushes).toBe(2); // Home is a root: the next Back is the browser's own
   });
 
   it('closes the drawer before the menu (top-most first)', () => {
-    store.getState().dispatch({ type: 'navigate', screen: 'table' });
-    store.getState().dispatch({ type: 'openOverlay', overlay: 'menu' });
-    store.getState().dispatch({ type: 'openOverlay', overlay: 'rankings' });
+    store.getState().dispatch({ type: 'go', screen: 'table' });
+    store.getState().dispatch({ type: 'open', overlay: 'menu' });
+    store.getState().dispatch({ type: 'open', overlay: 'rankings' });
     pressBack();
     expect(store.getState().ui.overlays).toEqual(['menu']);
     pressBack();
@@ -81,16 +81,16 @@ describe('Back (§12.1): the top overlay first, never out of the table', () => {
   });
 
   it('a forward move onto a guard entry closes nothing', () => {
-    store.getState().dispatch({ type: 'navigate', screen: 'table' });
-    store.getState().dispatch({ type: 'openOverlay', overlay: 'menu' });
+    store.getState().dispatch({ type: 'go', screen: 'table' });
+    store.getState().dispatch({ type: 'open', overlay: 'menu' });
     window.dispatchEvent(new PopStateEvent('popstate', { state: { pc: 'back-guard' } }));
     expect(store.getState().ui.overlays).toEqual(['menu']);
   });
 
   it('canGoBack: an overlay, or a screen with one below it', () => {
-    expect(canGoBack({ overlays: [], backStack: [] })).toBe(false);
-    expect(canGoBack({ overlays: ['tray'], backStack: [] })).toBe(true);
-    expect(canGoBack({ overlays: [], backStack: ['home'] })).toBe(true);
+    expect(canGoBack({ screens: ['home'], overlays: [] })).toBe(false);
+    expect(canGoBack({ screens: ['home'], overlays: ['tray'] })).toBe(true);
+    expect(canGoBack({ screens: ['home', 'table'], overlays: [] })).toBe(true);
   });
 });
 

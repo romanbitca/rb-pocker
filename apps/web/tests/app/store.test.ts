@@ -21,68 +21,57 @@ import {
 } from '../../src/app/store.ts';
 import { deal, tableWith } from '../engine/helpers.ts';
 
-const onTable = (): UiSlice => reduceUi(initialUi('home'), { type: 'navigate', screen: 'table' });
+const onTable = (): UiSlice => reduceUi(initialUi(false), { type: 'go', screen: 'table' });
 
-describe('screens and Back (§12.1)', () => {
-  it('push, replace and reset; going to a screen in the back stack returns to it', () => {
-    let ui = initialUi('home');
-    ui = reduceUi(ui, { type: 'navigate', screen: 'table' });
-    expect(ui).toMatchObject({ screen: 'table', backStack: ['home'] });
-    ui = reduceUi(ui, { type: 'navigate', screen: 'settings' });
-    expect(ui).toMatchObject({ screen: 'settings', backStack: ['home', 'table'] });
-    ui = reduceUi(ui, { type: 'navigate', screen: 'table' });
-    expect(ui).toMatchObject({ screen: 'table', backStack: ['home'] });
-    ui = reduceUi(ui, { type: 'navigate', screen: 'setup', how: 'replace' });
-    expect(ui).toMatchObject({ screen: 'setup', backStack: ['home'] });
-    ui = reduceUi(ui, { type: 'navigate', screen: 'home', how: 'reset' });
-    expect(ui).toMatchObject({ screen: 'home', backStack: [] });
+describe('navigation in the store (app/navigation.ts, §12.1)', () => {
+  it('the first launch starts on Welcome, later ones on Home; screen and overlays follow nav', () => {
+    expect(initialUi(true)).toMatchObject({ screen: 'welcome', overlays: [] });
+    expect(initialUi(false)).toMatchObject({ screen: 'home', overlays: [] });
+    let ui = reduceUi(initialUi(true), { type: 'go', screen: 'table' });
+    expect(ui.nav).toEqual({ screens: ['home', 'table'], overlays: [] });
+    expect(ui.screen).toBe('table');
+    ui = reduceUi(ui, { type: 'open', overlay: 'menu' });
+    expect(ui.overlays).toBe(ui.nav.overlays);
+    expect(ui.overlays).toEqual(['menu']);
   });
 
   it('Back closes the top-most overlay first, then goes back one screen, then does nothing', () => {
     let ui = onTable();
-    ui = reduceUi(ui, { type: 'openOverlay', overlay: 'menu' });
-    ui = reduceUi(ui, { type: 'openOverlay', overlay: 'rankings' });
+    ui = reduceUi(ui, { type: 'open', overlay: 'menu' });
+    ui = reduceUi(ui, { type: 'open', overlay: 'rankings' });
     ui = reduceUi(ui, { type: 'back' });
     expect(ui.overlays).toEqual(['menu']);
     ui = reduceUi(ui, { type: 'back' });
     expect(ui).toMatchObject({ screen: 'table', overlays: [] });
     ui = reduceUi(ui, { type: 'back' });
-    expect(ui).toMatchObject({ screen: 'home', backStack: [] });
+    expect(ui.nav).toEqual({ screens: ['home'], overlays: [] });
     expect(reduceUi(ui, { type: 'back' })).toBe(ui);
   });
 
   it('Back with the sizing tray open closes the tray, not the table (Stage 3 acceptance 8)', () => {
-    const ui = reduceUi(reduceUi(onTable(), { type: 'openOverlay', overlay: 'tray' }), {
-      type: 'back',
-    });
+    const ui = reduceUi(reduceUi(onTable(), { type: 'open', overlay: 'tray' }), { type: 'back' });
     expect(ui).toMatchObject({ screen: 'table', overlays: [] });
   });
 
   it('Back on the out-of-chips dialog returns Home (§3.1)', () => {
-    const ui = reduceUi(reduceUi(onTable(), { type: 'openOverlay', overlay: 'outOfChips' }), {
+    const ui = reduceUi(reduceUi(onTable(), { type: 'open', overlay: 'outOfChips' }), {
       type: 'back',
     });
-    expect(ui).toMatchObject({ screen: 'home', overlays: [] });
-    const root = reduceUi(
-      reduceUi(initialUi('table'), { type: 'openOverlay', overlay: 'outOfChips' }),
-      { type: 'back' },
-    );
-    expect(root).toMatchObject({ screen: 'home', overlays: [] });
+    expect(ui.nav).toEqual({ screens: ['home'], overlays: [] });
   });
 
-  it('a screen change closes every overlay; opening twice or closing a closed one changes nothing', () => {
-    let ui = reduceUi(onTable(), { type: 'openOverlay', overlay: 'menu' });
-    expect(reduceUi(ui, { type: 'openOverlay', overlay: 'menu' })).toBe(ui);
-    expect(reduceUi(ui, { type: 'closeOverlay', overlay: 'rankings' })).toBe(ui);
-    ui = reduceUi(ui, { type: 'navigate', screen: 'settings' });
-    expect(ui.overlays).toEqual([]);
+  it('a navigation action that changes nothing leaves ui as it was', () => {
+    const ui = reduceUi(onTable(), { type: 'open', overlay: 'menu' });
+    expect(reduceUi(ui, { type: 'open', overlay: 'menu' })).toBe(ui);
+    expect(reduceUi(ui, { type: 'close', overlay: 'rankings' })).toBe(ui);
+    expect(reduceUi(ui, { type: 'go', screen: 'settings' }).overlays).toEqual([]);
   });
 });
 
 describe('gates (Appendix A.8)', () => {
   it('each overlay closes its gate; the tray closes none', () => {
     for (const overlay of Object.keys(OVERLAY_GATE) as Overlay[]) {
-      const ui = reduceUi(onTable(), { type: 'openOverlay', overlay });
+      const ui = reduceUi(onTable(), { type: 'open', overlay });
       const gate = OVERLAY_GATE[overlay];
       expect(ui.gates).toEqual(gate === null ? [] : [gate]);
     }
@@ -92,7 +81,7 @@ describe('gates (Appendix A.8)', () => {
   });
 
   it('offTable: any screen but the table; hidden; explicit holds by owner', () => {
-    expect(initialUi('home').gates).toEqual(['offTable']);
+    expect(initialUi(false).gates).toEqual(['offTable']);
     expect(onTable().gates).toEqual([]);
     expect(closedGates({ ...onTable(), hidden: true })).toEqual(['hidden']);
     let ui = reduceUi(onTable(), { type: 'gate', gate: 'tip', closed: true, owner: 'a' });
@@ -105,8 +94,8 @@ describe('gates (Appendix A.8)', () => {
   });
 
   it('lists closed gates in GATES order and keeps the same array when nothing changed', () => {
-    let ui = reduceUi(initialUi('home'), { type: 'openOverlay', overlay: 'tip' });
-    ui = reduceUi(ui, { type: 'openOverlay', overlay: 'menu' });
+    let ui = reduceUi(initialUi(false), { type: 'open', overlay: 'tip' });
+    ui = reduceUi(ui, { type: 'open', overlay: 'menu' });
     expect(ui.gates).toEqual(GATES.filter((g) => ['offTable', 'menu', 'tip'].includes(g)));
     const same = reduceUi(ui, { type: 'layout', layout: 'wide' });
     expect(same.gates).toBe(ui.gates);
@@ -119,7 +108,7 @@ describe('dispatch', () => {
     const handler = vi.fn<(cmd: GameCommand) => void>();
     store.getState().dispatch({ type: 'play' }); // no controller yet: ignored
     store.setGameHandler(handler);
-    store.getState().dispatch({ type: 'navigate', screen: 'table' });
+    store.getState().dispatch({ type: 'go', screen: 'table' });
     expect(store.getState().ui.screen).toBe('table');
     expect(handler).not.toHaveBeenCalled();
     store.getState().dispatch({ type: 'act', action: { type: 'check' } });
@@ -129,7 +118,7 @@ describe('dispatch', () => {
   it('a UI command that changes nothing leaves the state object as it was', () => {
     const store = createAppStore();
     const before = store.getState();
-    store.getState().dispatch({ type: 'closeOverlay', overlay: 'menu' });
+    store.getState().dispatch({ type: 'close', overlay: 'menu' });
     expect(store.getState()).toBe(before);
   });
 
@@ -162,8 +151,8 @@ describe('selectors', () => {
     expect(selectHandInProgress(withGame({ hand: null }))).toBe(false);
     const store = createAppStore();
     expect(selectTopOverlay(store.getState())).toBeNull();
-    store.getState().dispatch({ type: 'openOverlay', overlay: 'menu' });
-    store.getState().dispatch({ type: 'openOverlay', overlay: 'rankings' });
+    store.getState().dispatch({ type: 'open', overlay: 'menu' });
+    store.getState().dispatch({ type: 'open', overlay: 'rankings' });
     expect(selectTopOverlay(store.getState())).toBe('rankings');
     expect(selectOverlayOpen('menu')(store.getState())).toBe(true);
     expect(selectOverlayOpen('tray')(store.getState())).toBe(false);

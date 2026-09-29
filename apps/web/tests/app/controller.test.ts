@@ -114,7 +114,7 @@ describe('one tap to play (§12.1, Stage 3 acceptance 9)', () => {
     h.dispatch({ type: 'play' });
     const s = h.state();
     expect(s.ui.screen).toBe('table');
-    expect(s.ui.backStack).toEqual(['welcome']);
+    expect(s.ui.nav.screens).toEqual(['home', 'table']); // the Table sits on Home
     expect(s.game.hand?.phase).toBe('betting');
     expect(s.game.hand?.seats[HERO]?.hole).not.toBeNull();
     expect(s.game.table?.slots.map((slot) => slot.stack)).toEqual(new Array(6).fill(2000));
@@ -128,7 +128,7 @@ describe('one tap to play (§12.1, Stage 3 acceptance 9)', () => {
     await toBotTurn(h);
     const hand = h.state().game.hand;
     h.dispatch({ type: 'leaveTable' });
-    expect(h.state().ui).toMatchObject({ screen: 'home', backStack: [] });
+    expect(h.state().ui.nav).toEqual({ screens: ['home'], overlays: [] });
     expect(h.state().ui.gates).toContain('offTable');
     await elapse(30_000);
     expect(h.state().game.hand).toBe(hand);
@@ -228,7 +228,7 @@ describe('gates (Appendix A.8): bots, think timers and advance wait while any ga
     h.dispatch({ type: 'play' });
     await toBotTurn(h);
     const before = inputsOf(h).length;
-    h.dispatch({ type: 'openOverlay', overlay: 'tray' });
+    h.dispatch({ type: 'open', overlay: 'tray' });
     expect(h.state().ui.gates).toEqual([]);
     await elapse(4000);
     expect(inputsOf(h).length).toBeGreaterThan(before);
@@ -269,7 +269,7 @@ describe('stale replies and timers (pitfall 22)', () => {
     const [old] = [...brain.pending.values()];
     if (old === undefined) throw new Error('no request');
     const oldTable = h.state().game.table;
-    h.dispatch({ type: 'newTable' });
+    h.dispatch({ type: 'newTable', confirmed: true });
     // The unfinished hand is finished without animation: answer its bots, not the old job.
     for (let i = 0; i < 200 && h.state().game.table === oldTable; i++) {
       await flush();
@@ -306,7 +306,7 @@ describe('stale replies and timers (pitfall 22)', () => {
         const gate = gates[Math.floor(i / 9) % 3] as Gate;
         if (i % 9 === 2) setGate(h, gate, true);
         if (i % 9 === 5) setGate(h, gate, false);
-        if (i === 150) h.dispatch({ type: 'newTable' });
+        if (i === 150) h.dispatch({ type: 'newTable', confirmed: true });
       },
       onComplete: (hand, inputs) => {
         expect(inputs.every((x) => x.kind !== 'act' || x.seat >= 0)).toBe(true);
@@ -770,12 +770,46 @@ describe('new table mid-hand (§3.1)', () => {
     expect(h.state().game.table).not.toBe(old);
   }
 
+  it('asks first (the newTable dialog, a gate); No keeps the hand, Yes starts the new table', async () => {
+    const h = makeHarness({ settings: { players: 6 } });
+    h.dispatch({ type: 'play' });
+    await toBotTurn(h);
+    const old = h.state().game.table;
+    const n = inputsOf(h).length;
+    h.dispatch({ type: 'newTable', setup: { players: 3 } });
+    expect(h.state().ui.overlays).toEqual(['newTable']);
+    expect(h.state().ui.gates).toEqual(['dialog']);
+    await elapse(30_000);
+    expect(inputsOf(h)).toHaveLength(n); // no bot acts behind the question
+    h.dispatch({ type: 'close', overlay: 'newTable' }); // No
+    await elapse(4000);
+    expect(h.state().game.table).toBe(old);
+    expect(inputsOf(h).length).toBeGreaterThan(n);
+    h.dispatch({ type: 'newTable', setup: { players: 4 } });
+    h.dispatch({ type: 'newTable', confirmed: true }); // Yes: with Setup's values
+    await untilNewTable(h, old);
+    expect(h.state().game.table?.slots).toHaveLength(4);
+    expect(h.state().ui.overlays).toEqual([]);
+    expect(h.state().ui.screen).toBe('table');
+  });
+
+  it('between hands (no hand in play) it does not ask', async () => {
+    const h = makeHarness({ settings: { autoNext: false } });
+    h.dispatch({ type: 'play' });
+    await drive(h, { hands: 1, hero: passive });
+    const old = h.state().game.table;
+    h.dispatch({ type: 'newTable', setup: { players: 2 } });
+    expect(h.state().ui.overlays).toEqual([]);
+    expect(h.state().game.table).not.toBe(old);
+    expect(h.state().game.table?.slots).toHaveLength(2);
+  });
+
   it('finishes the unfinished hand without animation, then deals the new table', async () => {
     const h = makeHarness({ settings: { players: 6 } });
     h.dispatch({ type: 'play' });
     await toBotTurn(h);
     const old = h.controller.snapshot();
-    h.dispatch({ type: 'newTable', setup: { players: 3, startingStack: 1000 } });
+    h.dispatch({ type: 'newTable', setup: { players: 3, startingStack: 1000 }, confirmed: true });
     await untilNewTable(h, old.table);
     const s = h.state();
     expect(s.game.table?.slots.map((x) => x.stack)).toEqual([1000, 1000, 1000]);
@@ -795,7 +829,7 @@ describe('new table mid-hand (§3.1)', () => {
       await toBotTurn(h);
       const n = inputsOf(h).length;
       const old = h.state().game.table;
-      h.dispatch({ type: 'newTable' });
+      h.dispatch({ type: 'newTable', confirmed: true });
       await untilNewTable(h, old);
       const event = h.controller.logs().events.find((e) => e.what === 'hand finished headless');
       const record = (event?.detail as { record: ReplayRecord }).record;

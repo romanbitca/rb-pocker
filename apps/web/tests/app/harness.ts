@@ -225,19 +225,19 @@ export function setGate(h: Harness, gate: Gate, closed: boolean): void {
       h.dispatch({ type: 'visibility', hidden: closed });
       return;
     case 'offTable':
-      h.dispatch({ type: 'navigate', screen: closed ? 'home' : 'table' });
+      h.dispatch({ type: 'go', screen: closed ? 'home' : 'table' });
       return;
     case 'menu':
     case 'feedback':
     case 'quiz':
     case 'tip':
-      h.dispatch({ type: closed ? 'openOverlay' : 'closeOverlay', overlay: gate });
+      h.dispatch({ type: closed ? 'open' : 'close', overlay: gate });
       return;
     case 'sheet':
-      h.dispatch({ type: closed ? 'openOverlay' : 'closeOverlay', overlay: 'rankings' });
+      h.dispatch({ type: closed ? 'open' : 'close', overlay: 'rankings' });
       return;
     case 'dialog':
-      h.dispatch({ type: closed ? 'openOverlay' : 'closeOverlay', overlay: 'confirmNewTable' });
+      h.dispatch({ type: closed ? 'open' : 'close', overlay: 'newTable' });
       return;
   }
 }
