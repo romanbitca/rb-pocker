@@ -67,8 +67,8 @@ Legend: `[ ]` todo · `[~]` in progress (branch exists) · `[x]` merged to `main
 
 ## Stage 4 - Draws, outs, win chance (PLAN §6.2–6.6, §7)
 
-- [ ] 4.1 `feature/draws-and-outs-analysis` - `analysis/handinfo.ts` (draws, outs rule, risky outs R1–R5, nuts/beaters); D.2.
-- [ ] 4.2 `feature/chances-by-the-river` - `analysis/chances.ts`; D.3.
+- [~] 4.1 `feature/draws-and-outs-analysis` - `analysis/handinfo.ts` (draws, outs rule, risky outs R1–R5, nuts/beaters); D.2.
+- [~] 4.2 `feature/chances-by-the-river` - `analysis/chances.ts`; D.3.
 - [ ] 4.3 `feature/win-chance-equity` - `analysis/equity.ts` exact + fixed-n seeded Monte Carlo; C.2–C.3.
 - [ ] 4.4 `feature/preflop-equity-tables` - `scripts/gen-preflop.ts`, `analysis/preflop.ts`, `check-tables` in CI.
 - [ ] 4.5 `feature/equity-worker` - `workers/protocol.ts`, `equity.worker.ts`, `app/workerClient.ts` (jobId, epoch, cancel, stale-drop, timeouts).
@@ -134,7 +134,7 @@ If the human's answer later reveals a problem, the fix becomes a new chunk ahead
 
 ### Waiting on the human
 
-_(nothing yet)_
+- Q (from 4.1, PR #27): by §6.3 rule 3's wording, a card that makes **trips on the board** counts as an out (e.g. Q♠J♦ on 9♣9♥4♦2♠ → 9♠, 9♦ "improve" a board pair to board trips). Everyone shares it. Default: keep the rule as written but mark such outs risky? Owner to confirm; until then the code follows the text.
 
 ### Rebase map for stacked branches (old base..old tip, from git merge-base, 27 Sep 23:25Z)
 
