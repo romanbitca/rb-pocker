@@ -60,7 +60,7 @@ suite('RankingsList live highlight (Stage 3 acceptance 4)', () => {
       seen.add(info.category);
     }
     expect(seen.size).toBeGreaterThanOrEqual(8); // the small-deck samples reach the rare rows
-  });
+  }, 60_000); // 4.3 s on a laptop under V8 coverage: explicit headroom for the 2-vCPU CI runner
 
   it('highlights every one of the ten rows for a hand of that category', () => {
     const hands: [string, string][] = [
