@@ -56,11 +56,11 @@ Legend: `[ ]` todo · `[~]` in progress (branch exists) · `[x]` merged to `main
 ## Stage 3 - Playable table (PLAN §12, §13, §14 minimal, A.8)
 
 - [~] 3.1 `feature/zustand-store-and-table-controller` - store slices, `TableController` (scheduling, `advance` gating, gates, epoch), temporary `SimpleBot` behind the async interface, test hooks `?seed=` / `window.__pc`.
-- [~] 3.2 `feature/local-session-and-settings-storage` - `persist/storage.ts`, minimal `pc.v1.profile` (settings), `pc.v1.session` saved after every step, resume.
-- [~] 3.3 `feature/card-and-seat-components` - SVG cards (no Unicode suits), `Seat` (memo), `layout/seats.ts` ellipse tables, dealer button, bets.
+- [x] 3.2 `feature/local-session-and-settings-storage` - `persist/storage.ts`, minimal `pc.v1.profile` (settings), `pc.v1.session` saved after every step, resume.
+- [x] 3.3 `feature/card-and-seat-components` - SVG cards (no Unicode suits), `Seat` (memo), `layout/seats.ts` ellipse tables, dealer button, bets.
 - [ ] 3.4 `feature/table-screen-layouts` - Table in portrait / landscape / wide, board, pot, hero strip with label + highlight, secure-context feature detection.
 - [~] 3.5 `feature/action-bar-and-sizing-tray` - presets, slider, disabled Fold with tooltip, 56 px / 44 px targets, Android Back closes tray.
-- [~] 3.6 `feature/hand-rankings-panel` - persistent panel on wide screens, edge tab + drawer, live highlight, beats-you / you-beat, focus trap, bot pause while open.
+- [x] 3.6 `feature/hand-rankings-panel` - persistent panel on wide screens, edge tab + drawer, live highlight, beats-you / you-beat, focus trap, bot pause while open.
 - [~] 3.7 `feature/one-tap-play-and-setup-screens` - Welcome, Home (one-tap Play / continue), Setup, Menu, Settings (Game section), out-of-chips dialog, top-up.
 - [ ] 3.8 `test/playable-table-e2e` - acceptance 1–9 (50 hands × viewports, overlap checks, no bot card leak in DOM, resume deep-equal).
 - [ ] 3.9 [H] **Human gate:** play 10 hands on the phone over LAN, confirm §1.5 assumptions (Q1).
