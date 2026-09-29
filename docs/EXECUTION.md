@@ -6,7 +6,7 @@ This is the working checklist for building [PLAN.md](PLAN.md). PLAN.md is the so
 
 Legend: `[ ]` todo · `[~]` in progress (branch exists) · `[x]` merged to `main` · `[H]` waiting on the human
 
-**Current position:** Stages 0–2 ✅. Stage 3: 3.1, 3.2, 3.3, 3.5, 3.6, 3.7 merged; **3.4 table screen in progress (makes the game playable)**, then 3.8 e2e. Stage 4 held: PRs #27 (4.1), #28 (4.2), #29 (4.3 draft, CI green).
+**Current position:** Stages 0–2 ✅. **Stage 3: the game is playable on main** (3.1–3.7 merged, PR #30). 3.8 e2e acceptance in progress; 3.9 waits for the owner. Stage 4 held: PRs #27, #28, #29.
 
 ---
 
@@ -58,12 +58,12 @@ Legend: `[ ]` todo · `[~]` in progress (branch exists) · `[x]` merged to `main
 - [x] 3.1 `feature/zustand-store-and-table-controller` - store slices, `TableController` (scheduling, `advance` gating, gates, epoch), temporary `SimpleBot` behind the async interface, test hooks `?seed=` / `window.__pc`.
 - [x] 3.2 `feature/local-session-and-settings-storage` - `persist/storage.ts`, minimal `pc.v1.profile` (settings), `pc.v1.session` saved after every step, resume.
 - [x] 3.3 `feature/card-and-seat-components` - SVG cards (no Unicode suits), `Seat` (memo), `layout/seats.ts` ellipse tables, dealer button, bets.
-- [~] 3.4 `feature/table-screen-layouts` - Table in portrait / landscape / wide, board, pot, hero strip with label + highlight, secure-context feature detection.
+- [x] 3.4 `feature/table-screen-layouts` - Table in portrait / landscape / wide, board, pot, hero strip with label + highlight, secure-context feature detection.
 - [x] 3.5 `feature/action-bar-and-sizing-tray` - presets, slider, disabled Fold with tooltip, 56 px / 44 px targets, Android Back closes tray.
 - [x] 3.6 `feature/hand-rankings-panel` - persistent panel on wide screens, edge tab + drawer, live highlight, beats-you / you-beat, focus trap, bot pause while open.
 - [x] 3.7 `feature/one-tap-play-and-setup-screens` - Welcome, Home (one-tap Play / continue), Setup, Menu, Settings (Game section), out-of-chips dialog, top-up.
-- [ ] 3.8 `test/playable-table-e2e` - acceptance 1–9 (50 hands × viewports, overlap checks, no bot card leak in DOM, resume deep-equal).
-- [ ] 3.9 [H] **Human gate:** play 10 hands on the phone over LAN, confirm §1.5 assumptions (Q1).
+- [~] 3.8 `test/playable-table-e2e` - acceptance 1–9 (50 hands × viewports, overlap checks, no bot card leak in DOM, resume deep-equal).
+- [H] 3.9 [H] **Human gate:** play 10 hands on the phone over LAN, confirm §1.5 assumptions (Q1).
 
 ## Stage 4 - Draws, outs, win chance (PLAN §6.2–6.6, §7)
 
@@ -134,6 +134,8 @@ If the human's answer later reveals a problem, the fix becomes a new chunk ahead
 
 ### Waiting on the human
 
+- **3.9 — play 10 hands on your phone** (Stage 3 manual gate). On the Mac: `npm run build && npm start` in the repo (Node 24), then on the phone (same Wi-Fi) open `http://<Mac LAN IP>:3000`. Check it feels right one-handed, and confirm the §1.5 assumptions (Q1: "undo" and "levels for both" as planned). Claude can start the server for you on request.
+
 - Q (from 4.1, PR #27): by §6.3 rule 3's wording, a card that makes **trips on the board** counts as an out (e.g. Q♠J♦ on 9♣9♥4♦2♠ → 9♠, 9♦ "improve" a board pair to board trips). Everyone shares it. Default: keep the rule as written but mark such outs risky? Owner to confirm; until then the code follows the text.
 
 ### Rebase map for stacked branches (old base..old tip, from git merge-base, 27 Sep 23:25Z)
@@ -177,4 +179,5 @@ If the human's answer later reveals a problem, the fix becomes a new chunk ahead
 | 29 Sep 21:05–22:00Z | Stage 3 merge train | #15, #17, #19, #22, #24 merged with green CI (Sonnet agent) | 56% → ~80% |
 | 29 Sep 21:36–22:14Z | 3.1 (phase 2) | [PR #25](https://github.com/romanbitca/rb-pocker/pull/25) merged (3e7ae0b): session save/resume deep-equal, view-model selectors (no bot card leaks in 60 hands), one navigation model, rankings `sheet` gate | → 91% |
 | 29 Sep 21:52–22:14Z | 4.3 (early) | [PR #29](https://github.com/romanbitca/rb-pocker/pull/29) draft, CI green: C.2/C.3 exact to 0.01, MC within tolerance, bit-identical | (same window) |
+| 29 Sep 22:15–23:37Z | 3.4 | [PR #30](https://github.com/romanbitca/rb-pocker/pull/30) merged (cb2a974): **the game is playable** — 42 hands via UI in Chromium+WebKit, 0 console errors; one tap → cards in ~0.1–0.2 s; DOM ≤ 600 nodes at 9 players (576); no bot card leaks over 60 hands | new window 0% → 13% |
 | 29 Sep 21:05–21:48Z | 4.1, 4.2 (early) | PRs [#27](https://github.com/romanbitca/rb-pocker/pull/27), [#28](https://github.com/romanbitca/rb-pocker/pull/28) ready, held: all D.2, D.3, C.5 exact; brute-force oracle agreement | (same window) |
