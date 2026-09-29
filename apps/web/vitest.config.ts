@@ -10,6 +10,11 @@ import viteConfig from './vite.config.ts';
  *
  * Tests run in Node by default. Component tests opt into jsdom with a
  * `// @vitest-environment jsdom` comment on their first line.
+ *
+ * Coverage (PLAN "Testing strategy", Rules): `npm run test:coverage` (the CI `check` job) runs the
+ * unit project once with V8 coverage and fails below the thresholds: `src/engine/` ≥ 95% branches,
+ * `src/eval/` ≥ 90% branches. `src/analysis/`, `src/persist/` (≥ 90%) and `src/brain/` (≥ 85%)
+ * join `include` and `thresholds` in the stages that create them.
  */
 const SLOW_TESTS = 'tests/**/*.slow.test.{ts,tsx}';
 
@@ -23,6 +28,16 @@ export default mergeConfig(
   viteConfig,
   defineConfig({
     test: {
+      coverage: {
+        provider: 'v8',
+        include: ['src/engine/**/*.ts', 'src/eval/**/*.ts'],
+        reporter: ['text', 'json-summary'],
+        reportsDirectory: 'coverage',
+        thresholds: {
+          'src/engine/**/*.ts': { branches: 95 },
+          'src/eval/**/*.ts': { branches: 90 },
+        },
+      },
       projects: [
         slowRequested
           ? { extends: true, test: { name: 'slow', include: [SLOW_TESTS] } }

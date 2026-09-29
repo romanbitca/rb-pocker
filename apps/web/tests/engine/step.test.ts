@@ -266,53 +266,7 @@ describe('step: turn order and round end (§3.7, §4.3)', () => {
   });
 });
 
-describe('step: reshuffle (§4.3, §11.3; B40)', () => {
-  const reshuffle = (decisionId: number, undoIndex = 0): EngineInput => ({
-    kind: 'reshuffle',
-    decisionId,
-    undoIndex,
-  });
-
-  it('B40: shuffles only the undealt cards, once per decision', () => {
-    const h = play(deal(tableWith([10000, 10000, 10000], { button: 0 })), call(0));
-    const r = play(h, reshuffle(1));
-    expect(r.deck.slice(0, r.deckPos)).toEqual(h.deck.slice(0, h.deckPos));
-    expect([...r.deck.slice(r.deckPos)].sort((a, b) => a - b)).toEqual(
-      [...h.deck.slice(h.deckPos)].sort((a, b) => a - b),
-    );
-    expect(r.deck.slice(r.deckPos)).not.toEqual(h.deck.slice(h.deckPos));
-    expect(r.seats.map((s) => s.hole)).toEqual(h.seats.map((s) => s.hole));
-    expect(r.board).toEqual(h.board);
-    expect(r.undoneDecisions).toEqual([1]);
-    expect(r.log.at(-1)).toEqual({ e: 'reshuffle', decisionId: 1, undoIndex: 0 });
-    expect(engineError(() => step(r, reshuffle(1, 1))).code).toBe('UNDO_USED');
-    // Deterministic: the same decision and index give the same stub.
-    expect(play(h, reshuffle(1)).deck).toEqual(r.deck);
-    expect(play(h, reshuffle(1, 1)).deck).not.toEqual(r.deck);
-  });
-
-  it('B40: allowed between streets, refused after a reveal, in the showdown or with bad counters', () => {
-    const h = play(deal(tableWith([10000, 10000], { button: 0 })), call(0), check(1));
-    expect(h.phase).toBe('roundComplete');
-    const flop = play(h, reshuffle(0), ADVANCE);
-    expect(flop.board).not.toEqual(play(h, ADVANCE).board);
-
-    const allIn = play(deal(tableWith([10000, 10000], { button: 0 })), raise(0, 10000), call(1));
-    const runout = play(allIn, ADVANCE);
-    expect(runout.revealed).not.toEqual([]);
-    expect(engineError(() => step(runout, reshuffle(0))).code).toBe('BAD_PHASE');
-    let sd = runout;
-    while (sd.phase !== 'showdown') sd = play(sd, ADVANCE);
-    expect(engineError(() => step(sd, reshuffle(5))).code).toBe('BAD_PHASE');
-    for (const [d, u] of [
-      [-1, 0],
-      [0, -1],
-      [1.5, 0],
-    ] as const) {
-      expect(engineError(() => step(h, reshuffle(d, u))).code).toBe('BAD_AMOUNT');
-    }
-  });
-});
+// The reshuffle input (§4.3, §11.3) is Appendix B vector B40, in appendix-b.test.ts.
 
 describe('step: random legal play (property)', () => {
   it(

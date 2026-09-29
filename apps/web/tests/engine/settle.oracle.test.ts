@@ -47,7 +47,7 @@ describe('settleOracle: Appendix B settlement vectors', () => {
   // Blinds 50/100 unless a vector says otherwise; amounts are hand totals per seat. Not here:
   // B1–B10, B21–B24, B26–B33, B35 and B37–B43 test betting, dealing, phases or the evaluator only.
 
-  it('B11: a river bet that is folded to goes back to the bettor', () => {
+  it('agrees with B11: a river bet that is folded to goes back to the bettor', () => {
     // Heads-up: A = seat 0 (button/SB), B = seat 1 (BB). 100 each preflop, flop and turn checked.
     // River: A bets 400, B folds.
     const input = table(0, [live(500), folded(100)]);
@@ -58,7 +58,7 @@ describe('settleOracle: Appendix B settlement vectors', () => {
     expect(result.payouts).toEqual([600, 0]);
   });
 
-  it('B12: all fold to the BB: the BB gets 50 back and wins 100 (net BB +50, SB −50)', () => {
+  it('agrees with B12: all fold to the BB: the BB gets 50 back and wins 100 (net BB +50, SB −50)', () => {
     // Seat 0 button, 1 SB, 2 BB, 3 UTG. UTG, the button and the SB fold.
     const input = table(0, [folded(0), folded(50), live(100), folded(0)]);
     const result = settleOracle(input);
@@ -68,7 +68,7 @@ describe('settleOracle: Appendix B settlement vectors', () => {
     expect(net(input, result)).toEqual([0, -50, 50, 0]);
   });
 
-  it('B13: a flop bet of 500 called all-in for 200: 300 goes back to the bettor', () => {
+  it('agrees with B13: a flop bet of 500 called all-in for 200: 300 goes back to the bettor', () => {
     // Heads-up: A = seat 0 (button/SB), B = seat 1 (BB), 100 each preflop.
     // Flop: A bets 500, B calls all-in for 200. B wins the run-out.
     const input = table(0, [live(600, 1), live(300, 2)]);
@@ -82,7 +82,7 @@ describe('settleOracle: Appendix B settlement vectors', () => {
     expect(settleOracle(table(0, [live(600, 2), live(300, 1)])).payouts).toEqual([900, 0]);
   });
 
-  it('B14: totals 100 / 300 / 600: C gets 300 back; main 300 (A, B, C), side 400 (B, C)', () => {
+  it('agrees with B14: totals 100 / 300 / 600: C gets 300 back; main 300 (A, B, C), side 400 (B, C)', () => {
     // Preflop all-ins: A = seat 0, B = seat 1, C = seat 2 (button). Equal hands here.
     const result = settleOracle(table(2, [live(100, 1), live(300, 1), live(600, 1)]));
 
@@ -93,7 +93,7 @@ describe('settleOracle: Appendix B settlement vectors', () => {
     ]);
   });
 
-  it('B15: folded money stays in: main 450 (B, C); side 100 to C without comparing hands', () => {
+  it('agrees with B15: folded money stays in: main 450 (B, C); side 100 to C without comparing hands', () => {
     // A = seat 0 folded after putting in 200; B = seat 1 all-in for 150; C = seat 2 put in 500.
     // B has the better hand but cannot win the side pot.
     const result = settleOracle(table(0, [folded(200), live(150, 2), live(500, 1)]));
@@ -103,7 +103,7 @@ describe('settleOracle: Appendix B settlement vectors', () => {
     expect(result.payouts).toEqual([0, 450, 400]);
   });
 
-  it('B16: as B14 with A best and B second: A wins 300, B wins 400, C wins 0', () => {
+  it('agrees with B16: as B14 with A best and B second: A wins 300, B wins 400, C wins 0', () => {
     const result = settleOracle(table(2, [live(100, 3), live(300, 2), live(600, 1)]));
 
     expect(result.pots).toEqual([pot(300, [0, 1, 2], [0], [300]), pot(400, [1, 2], [1], [400])]);
@@ -112,7 +112,7 @@ describe('settleOracle: Appendix B settlement vectors', () => {
     expect(result.payouts).toEqual([300, 400, 300]);
   });
 
-  it('B17: a 301-chip pot split two ways: 151 to the first winner after the button', () => {
+  it('agrees with B17: a 301-chip pot split two ways: 151 to the first winner after the button', () => {
     // Blinds 1/2. Seat 0 button, seat 1 SB (posts 1, folds), seat 2 BB. The button raises to 150,
     // the BB calls, equal hands. The first seat left of the button is seat 1, then seat 2.
     const result = settleOracle(table(0, [live(150, 7), folded(1), live(150, 7)]));
@@ -121,7 +121,7 @@ describe('settleOracle: Appendix B settlement vectors', () => {
     expect(result.payouts).toEqual([150, 0, 151]);
   });
 
-  it('B18: a 100-chip pot split three ways: 34 / 33 / 33, and a winning button comes last', () => {
+  it('agrees with B18: a 100-chip pot split three ways: 34 / 33 / 33, and a winning button comes last', () => {
     // Blinds 1/2. Seat 0 button, 1 SB (posts 1, folds), 2 BB, 3 UTG. UTG raises to 33, the
     // button and the BB call; three equal hands. Order: seat 2, seat 3, then the button.
     const result = settleOracle(table(0, [live(33, 5), folded(1), live(33, 5), live(33, 5)]));
@@ -130,19 +130,19 @@ describe('settleOracle: Appendix B settlement vectors', () => {
     expect(result.payouts).toEqual([33, 0, 34, 33]);
   });
 
-  it('B19 (settlement side): when both play the board, the pot is split', () => {
+  it('agrees with B19 (settlement side): when both play the board, the pot is split', () => {
     const result = settleOracle(table(1, [live(300, 4), live(300, 4)]));
 
     expect(result.pots).toEqual([pot(600, [0, 1], [0, 1], [300, 300])]);
   });
 
-  it('B20 (settlement side): the better hand takes the whole pot', () => {
+  it('agrees with B20 (settlement side): the better hand takes the whole pot', () => {
     const result = settleOracle(table(0, [live(300, 5), live(300, 4)]));
 
     expect(result.payouts).toEqual([600, 0]);
   });
 
-  it('B25: a BB all-in for 60 is called for the full 100: the SB gets 40 back, 60 vs 60', () => {
+  it('agrees with B25: a BB all-in for 60 is called for the full 100: the SB gets 40 back, 60 vs 60', () => {
     // Seat 0 button (folds), seat 1 SB (calls to 100), seat 2 BB (60, all-in).
     const bbWins = settleOracle(table(0, [folded(0), live(100, 1), live(60, 2)]));
     expect(bbWins.refunds).toEqual([0, 40, 0]);
@@ -153,7 +153,7 @@ describe('settleOracle: Appendix B settlement vectors', () => {
     expect(sbWins.payouts).toEqual([0, 160, 0]);
   });
 
-  it('B34: the SB folds to a BB all-in for 30: the folded SB gets 20 back, the BB wins 60', () => {
+  it('agrees with B34: the SB folds to a BB all-in for 30: the folded SB gets 20 back, the BB wins 60', () => {
     // Seat 0 button (folds), seat 1 SB (posts 50, folds), seat 2 BB (30, all-in).
     const input = table(0, [folded(0), folded(50), live(30)]);
     const result = settleOracle(input);
@@ -163,7 +163,7 @@ describe('settleOracle: Appendix B settlement vectors', () => {
     expect(net(input, result)).toEqual([0, -30, 30]);
   });
 
-  it('B36: heads-up blinds from stacks of 40 (SB) and 80 (BB): the BB gets 40 back', () => {
+  it('agrees with B36: heads-up blinds from stacks of 40 (SB) and 80 (BB): the BB gets 40 back', () => {
     // Seat 0 button/SB posts 40 (all-in), seat 1 BB posts 80 (all-in). Equal hands here.
     const result = settleOracle(table(0, [live(40, 3), live(80, 3)]));
 
@@ -172,7 +172,7 @@ describe('settleOracle: Appendix B settlement vectors', () => {
     expect(result.payouts).toEqual([40, 80]);
   });
 
-  it('B44: main pot 3 ways and side pot 2 ways, each odd chip to its own first winner', () => {
+  it('agrees with B44: main pot 3 ways and side pot 2 ways, each odd chip to its own first winner', () => {
     // Button seat 4 (folded, 0), so the order starts at seat 0. Seat 0 all-in for 100; seats 1
     // and 3 put in 151; seat 2 folded after 125. Seats 0, 1 and 3 hold equal hands.
     // Main: 4 × 100 = 400, split 3 ways, remainder 1 → seat 0.
