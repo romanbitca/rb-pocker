@@ -13,8 +13,8 @@ import viteConfig from './vite.config.ts';
  *
  * Coverage (PLAN "Testing strategy", Rules): `npm run test:coverage` (the CI `check` job, after
  * `npm test`) runs the unit project with V8 coverage and fails below the thresholds: `src/engine/`
- * ≥ 95% branches, `src/eval/` and `src/persist/` ≥ 90% branches. `src/analysis/` (≥ 90%) and
- * `src/brain/` (≥ 85%) join `include` and `thresholds` in the stages that create them.
+ * ≥ 95% branches, `src/eval/`, `src/persist/` and `src/analysis/` ≥ 90% branches. `src/brain/`
+ * (≥ 85%) joins `include` and `thresholds` in the stage that creates it.
  * The coverage run leaves out `VOLUME_TESTS`: they repeat code paths that the other tests already
  * reach (the coverage numbers are the same without them) or they measure speed, and V8 coverage
  * makes them several times slower (on the CI runner the 100,000-hand run took 273 s with coverage,
@@ -32,6 +32,7 @@ const VOLUME_TESTS = [
   'tests/engine/replay.test.ts', // 10,000 random hands replayed
   'tests/engine/benchmark.test.ts', // timing
   'tests/eval/benchmark.test.ts', // timing
+  'tests/analysis/*.benchmark.test.ts', // timing
 ];
 
 const slowRequested =
@@ -51,13 +52,19 @@ export default mergeConfig(
       ...(process.env.CI === 'true' ? { maxWorkers: '100%' } : {}),
       coverage: {
         provider: 'v8',
-        include: ['src/engine/**/*.ts', 'src/eval/**/*.ts', 'src/persist/**/*.ts'],
+        include: [
+          'src/engine/**/*.ts',
+          'src/eval/**/*.ts',
+          'src/persist/**/*.ts',
+          'src/analysis/**/*.ts',
+        ],
         reporter: [['text', { skipFull: false }], 'json-summary'],
         reportsDirectory: 'coverage',
         thresholds: {
           'src/engine/**/*.ts': { branches: 95 },
           'src/eval/**/*.ts': { branches: 90 },
           'src/persist/**/*.ts': { branches: 90 },
+          'src/analysis/**/*.ts': { branches: 90 },
         },
       },
       css: { include: [/\.css(?:\?.*)?$/] },
