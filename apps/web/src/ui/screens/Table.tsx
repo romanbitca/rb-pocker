@@ -90,11 +90,13 @@ function estimatedBox(): Size {
 
 interface TopBarProps {
   handsExpanded: boolean;
+  /** Wide screens: the button shows and hides the rankings column (else it opens the drawer). */
+  handsColumn: boolean;
   onToggleHands: () => void;
 }
 
 /** ☰ · "Blinds 10/20 · Hand 12" · Hands (§12.3). The mute button arrives with sound (Stage 9). */
-const TopBar = memo(function TopBar({ handsExpanded, onToggleHands }: TopBarProps) {
+const TopBar = memo(function TopBar({ handsExpanded, handsColumn, onToggleHands }: TopBarProps) {
   const info = useAppStore(selectTableInfo);
   const [, setMenuOpen] = useOverlay('menu');
   const text =
@@ -122,7 +124,7 @@ const TopBar = memo(function TopBar({ handsExpanded, onToggleHands }: TopBarProp
       <button
         type="button"
         className={styles.handsButton}
-        aria-label={en.rankings.open}
+        aria-label={handsColumn && handsExpanded ? en.rankings.collapse : en.rankings.open}
         aria-expanded={handsExpanded}
         onClick={(e) => {
           e.currentTarget.focus();
@@ -476,7 +478,11 @@ export function Table() {
       data-layout={layout}
     >
       <h1 className={styles.srOnly}>{en.table.heading}</h1>
-      <TopBar handsExpanded={wide ? !collapsed : drawerOpen} onToggleHands={toggleHands} />
+      <TopBar
+        handsExpanded={wide ? !collapsed : drawerOpen}
+        handsColumn={wide}
+        onToggleHands={toggleHands}
+      />
       <TableArea layout={layout} />
       {landscape ? (
         <aside className={styles.side}>

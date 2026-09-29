@@ -170,4 +170,42 @@ describe('the Table screen', () => {
     fireEvent.click(screen.getByRole('button', { name: en.menu.resume }));
     expect(h.state().ui.overlays).toEqual([]);
   });
+
+  it('wide: the rankings column replaces the drawer; the top-bar Hands button collapses it', () => {
+    renderTable();
+    act(() => h.state().dispatch({ type: 'open', overlay: 'rankings' }));
+    expect(h.state().ui.gates).toEqual(['sheet']);
+    act(() => h.state().dispatch({ type: 'layout', layout: 'wide' }));
+    // An open drawer would keep the sheet gate closed with nothing on screen to close it.
+    expect(h.state().ui.overlays).toEqual([]);
+    expect(h.state().ui.gates).toEqual([]);
+    expect(document.querySelector('[data-layout="wide"]')).not.toBeNull();
+    expect(screen.getByRole('heading', { level: 2, name: en.rankings.title })).toBeTruthy();
+    const [topBarButton] = screen.getAllByRole('button', { name: en.rankings.collapse });
+    fireEvent.click(topBarButton as HTMLElement);
+    expect(h.state().settings.handsPanel).toBe('collapsed');
+    expect(screen.queryByRole('heading', { level: 2, name: en.rankings.title })).toBeNull();
+    // The hand label opens it again.
+    fireEvent.click(document.querySelector('[data-hero-label]') as HTMLElement);
+    expect(h.state().settings.handsPanel).toBe('open');
+  });
+
+  it('landscape: the label heads the right column and gives way to the open tray', async () => {
+    renderTable();
+    act(() => h.state().dispatch({ type: 'layout', layout: 'landscape' }));
+    await playUntil(
+      () =>
+        h.state().game.mode === 'heroTurn' &&
+        slot('right').getAttribute('aria-expanded') !== null &&
+        slot('right').getAttribute('aria-disabled') !== 'true',
+    );
+    expect(document.querySelector('[data-layout="landscape"]')).not.toBeNull();
+    expect(document.querySelector('aside [data-hero-label]')).not.toBeNull();
+    fireEvent.click(slot('right'));
+    expect(document.querySelector('input[type="range"]')).not.toBeNull();
+    expect(document.querySelector('[data-hero-label]')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: en.sizing.close }));
+    expect(h.state().ui.overlays).toEqual([]);
+    expect(document.querySelector('aside [data-hero-label]')).not.toBeNull();
+  }, 20_000);
 });
