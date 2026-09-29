@@ -17,6 +17,8 @@
  *   slot beside the pod when that point is taken (`placeBets`).
  * - The pot sits right above the board instead of at a fixed (50, 34), which leaves room for
  *   the bets of the upper side seats.
+ * - In a short box (the sizing tray open, §12.3) side pods beside the board widen its free column
+ *   (`boardSide`), and a top pod that comes down onto the pot moves the board and the pot down.
  */
 
 export interface Size {
@@ -213,16 +215,40 @@ export function podRects(layout: TableLayout, size: Size, opponents: number): Re
   }));
 }
 
+/** The side column a pod at the box edge needs: 4 + 64 + 4 px (§12.3). */
+export const SIDE_COLUMN = POD_EDGE + POD.w + POD_EDGE;
+
 /**
  * Board card size: §12.3's `min(48px, (tableWidth × 0.6 − 16px) / 5)` (36 px in compact mode),
- * and never wider than the room between the side columns of pods (72 px on each side).
+ * and never wider than the room between the side columns of pods: `side` px on each side, 72 by
+ * default (`boardSide` widens it when a pod beside the board sits further in).
  */
-export function boardCardSize(layout: TableLayout, size: Size): Size {
+export function boardCardSize(layout: TableLayout, size: Size, side = SIDE_COLUMN): Size {
   const max = layout === 'compact' ? 36 : 48;
   const byTable = (size.w * 0.6 - 4 * BOARD_GAP) / 5;
-  const bySides = (size.w - 2 * (POD_EDGE + POD.w + POD_EDGE) - 4 * BOARD_GAP) / 5;
+  const bySides = (size.w - 2 * side - 4 * BOARD_GAP) / 5;
   const w = Math.max(20, Math.floor(Math.min(max, byTable, bySides)));
   return { w, h: Math.round(w * CARD_RATIO) };
+}
+
+/**
+ * The side column the board must leave free: 72 px, or more when a side pod (centre in the outer
+ * 30% of the box) reaches further in at the board's height. Pods at 12% / 88% sit 6 px further in
+ * than the edge ones; in a short box (the sizing tray open on a 375×667 phone) they come down
+ * beside the board. The band is the tallest the board can be, plus a raised core card (9 px).
+ */
+export function boardSide(layout: TableLayout, size: Size, pods: readonly Rect[]): number {
+  const tallest = Math.round((layout === 'compact' ? 36 : 48) * CARD_RATIO);
+  const top = size.h / 2 - tallest / 2 - 9;
+  const bottom = size.h / 2 + tallest / 2;
+  let side = SIDE_COLUMN;
+  for (const p of pods) {
+    const cx = p.x + p.w / 2;
+    if (p.y >= bottom || p.y + p.h <= top) continue;
+    if (cx < size.w * 0.3) side = Math.max(side, p.x + p.w + POD_EDGE);
+    else if (cx > size.w * 0.7) side = Math.max(side, size.w - p.x + POD_EDGE);
+  }
+  return side;
 }
 
 const overlaps = (a: Rect, b: Rect, margin = 0): boolean =>
@@ -331,21 +357,33 @@ export interface TableGeometry {
 /** The whole table's geometry for `opponents` bots in a box of `size`. */
 export function tableGeometry(layout: TableLayout, size: Size, opponents: number): TableGeometry {
   const pods = podRects(layout, size, opponents);
-  const boardCard = boardCardSize(layout, size);
+  const boardCard = boardCardSize(layout, size, boardSide(layout, size, pods));
   const boardW = 5 * boardCard.w + 4 * BOARD_GAP;
-  const board: Rect = {
+  const hero = heroArea(layout, size);
+  let board: Rect = {
     x: Math.round((size.w - boardW) / 2),
     y: Math.round((size.h - boardCard.h) / 2),
     w: boardW,
     h: boardCard.h,
   };
   // Right above the board, clear of a raised core card (6 px up, 3 px outline, §6.1).
-  const pot: Rect = {
+  let pot: Rect = {
     x: Math.round((size.w - POT.w) / 2),
     y: board.y - POT_GAP - POT.h,
     ...POT,
   };
-  const hero = heroArea(layout, size);
+  // In a short box (the sizing tray open) a top pod can come down onto the pot: move the board and
+  // the pot down under it, when that clears every pod and stays above the hero's cards.
+  const down = Math.max(
+    0,
+    ...pods.filter((p) => overlaps(p, pot)).map((p) => p.y + p.h + 2 - pot.y),
+  );
+  if (down > 0) {
+    const lower = (r: Rect): Rect => ({ ...r, y: r.y + down });
+    const [b, t] = [lower(board), lower(pot)];
+    const clear = b.y + b.h + 9 <= hero.y && pods.every((p) => !overlaps(p, b) && !overlaps(p, t));
+    if (clear) [board, pot] = [b, t];
+  }
   return {
     layout,
     size,

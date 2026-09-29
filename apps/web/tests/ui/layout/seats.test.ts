@@ -10,6 +10,7 @@ import {
   seatCentres,
   tableFrame,
   tableGeometry,
+  type FrameOptions,
   type Rect,
   type Size,
 } from '../../../src/ui/layout/seats.ts';
@@ -194,6 +195,43 @@ describe('pods (Stage 3 acceptance 2)', () => {
     const g = tableGeometry('portrait', { w: 347, h: 399 }, 8);
     expect(g.inner).toEqual(['right', 'right', 'right', 'right', 'left', 'left', 'left', 'left']);
   });
+});
+
+describe('pods with the sizing tray open (§12.7: inline, the table row is 104 px shorter)', () => {
+  const TRAY = 104;
+  // Portrait and wide place the tray above Row A (compact overlays it, landscape puts it in the
+  // right column: neither changes the table). Wide as built in Stage 3: no inline coach panel yet.
+  // Acceptance 2 asks that nothing needed for the decision is covered: the board, the pot and the
+  // hero's cards. (Side pods of an 8- or 9-player table may touch each other while sizing at
+  // 375×667: the box is 295 px tall for four 72 px pods a side.)
+  const CASES: { viewport: Size; options?: FrameOptions }[] = [
+    { viewport: { w: 375, h: 667 } },
+    { viewport: { w: 360, h: 740 } },
+    { viewport: { w: 390, h: 844 } },
+    { viewport: { w: 768, h: 1024 } },
+    { viewport: { w: 1280, h: 800 }, options: { coachPanel: 0 } },
+    { viewport: { w: 1024, h: 768 }, options: { coachPanel: 0 } },
+  ];
+  for (const { viewport, options } of CASES) {
+    it(`never cover the board, the pot or the hero strip at ${name(viewport)}`, () => {
+      const frame = tableFrame(viewport, options);
+      const box = { w: frame.box.w, h: frame.box.h - TRAY };
+      for (let opponents = 1; opponents <= 8; opponents++) {
+        const g = tableGeometry(frame.layout, box, opponents);
+        const problems: string[] = [];
+        g.pods.forEach((pod, i) => {
+          if (!inside(pod, box)) problems.push(`pod ${i} outside the table box`);
+          if (rectsOverlap(pod, g.board)) problems.push(`pod ${i} × board`);
+          if (rectsOverlap(pod, g.pot)) problems.push(`pod ${i} × pot`);
+          if (rectsOverlap(pod, g.hero)) problems.push(`pod ${i} × hero strip`);
+        });
+        if (!inside(g.board, box)) problems.push('board outside the table box');
+        if (rectsOverlap(g.pot, g.board)) problems.push('pot × board');
+        expect(problems, `${opponents + 1} players`).toEqual([]);
+        expect(g.boardCard.w, `${opponents + 1} players`).toBeGreaterThanOrEqual(30);
+      }
+    });
+  }
 });
 
 describe('bets (§12.4)', () => {
