@@ -6,7 +6,7 @@ This is the working checklist for building [PLAN.md](PLAN.md). PLAN.md is the so
 
 Legend: `[ ]` todo · `[~]` in progress (branch exists) · `[x]` merged to `main` · `[H]` waiting on the human
 
-**Current position:** ⏸ Paused by the owner (28 Sep 08:05Z). Stages 0–1 ✅. Stage 2: 2.1–2.4 merged; 2.5 = draft [PR #21](https://github.com/romanbitca/rb-pocker/pull/21) (needs full suite + CI + merge); 2.6 not started. Built early, held for stage order: 3.2 (#19), 3.3 (#15), 3.6 (#17) — rebase map below. Next on resume: finish 2.5 → 2.6, then Stage 3 (3.1 controller first).
+**Current position:** ▶ Resumed 29 Sep 19:40Z (day override: this window up to 95%). Stages 0–1 ✅. Stage 2: 2.1–2.4 merged; finishing 2.5 (PR #21) and 2.6. Stage 3 in parallel: rebasing early PRs #15/#17/#19 onto main (held for stage order); building 3.1 controller, 3.5 action bar, 3.7 screens.
 
 ---
 
@@ -55,13 +55,13 @@ Legend: `[ ]` todo · `[~]` in progress (branch exists) · `[x]` merged to `main
 
 ## Stage 3 - Playable table (PLAN §12, §13, §14 minimal, A.8)
 
-- [ ] 3.1 `feature/zustand-store-and-table-controller` - store slices, `TableController` (scheduling, `advance` gating, gates, epoch), temporary `SimpleBot` behind the async interface, test hooks `?seed=` / `window.__pc`.
+- [~] 3.1 `feature/zustand-store-and-table-controller` - store slices, `TableController` (scheduling, `advance` gating, gates, epoch), temporary `SimpleBot` behind the async interface, test hooks `?seed=` / `window.__pc`.
 - [~] 3.2 `feature/local-session-and-settings-storage` - `persist/storage.ts`, minimal `pc.v1.profile` (settings), `pc.v1.session` saved after every step, resume.
 - [~] 3.3 `feature/card-and-seat-components` - SVG cards (no Unicode suits), `Seat` (memo), `layout/seats.ts` ellipse tables, dealer button, bets.
 - [ ] 3.4 `feature/table-screen-layouts` - Table in portrait / landscape / wide, board, pot, hero strip with label + highlight, secure-context feature detection.
-- [ ] 3.5 `feature/action-bar-and-sizing-tray` - presets, slider, disabled Fold with tooltip, 56 px / 44 px targets, Android Back closes tray.
+- [~] 3.5 `feature/action-bar-and-sizing-tray` - presets, slider, disabled Fold with tooltip, 56 px / 44 px targets, Android Back closes tray.
 - [~] 3.6 `feature/hand-rankings-panel` - persistent panel on wide screens, edge tab + drawer, live highlight, beats-you / you-beat, focus trap, bot pause while open.
-- [ ] 3.7 `feature/one-tap-play-and-setup-screens` - Welcome, Home (one-tap Play / continue), Setup, Menu, Settings (Game section), out-of-chips dialog, top-up.
+- [~] 3.7 `feature/one-tap-play-and-setup-screens` - Welcome, Home (one-tap Play / continue), Setup, Menu, Settings (Game section), out-of-chips dialog, top-up.
 - [ ] 3.8 `test/playable-table-e2e` - acceptance 1–9 (50 hands × viewports, overlap checks, no bot card leak in DOM, resume deep-equal).
 - [ ] 3.9 [H] **Human gate:** play 10 hands on the phone over LAN, confirm §1.5 assumptions (Q1).
 
