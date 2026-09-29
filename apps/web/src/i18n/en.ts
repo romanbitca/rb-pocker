@@ -237,6 +237,8 @@ export const en = {
     description:
       "Learn Texas Hold'em against friendly bots, with a coach. Free, offline, no sign-up.",
     tagline: 'Learn poker by playing.',
+    /** The hero's name at the table: always "You" (Appendix F.10). */
+    hero: 'You',
   },
 
   /** Cards (PLAN §12.12). Card names ("King of hearts") come from `core/cards.ts`. */

@@ -22,10 +22,29 @@ function metaCsp(): Plugin {
   };
 }
 
+/** Modes whose builds carry the test hooks (`?seed=`, `window.__pc`); never a production build. */
+const TEST_HOOK_MODES = new Set(['development', 'test', 'e2e']);
+
+/**
+ * Defines `__PC_TEST_HOOKS__` (PLAN "Testing strategy" → Rules): true for the dev server
+ * (`development`), Vitest (`test`) and `vite build --mode e2e`; false for every other mode, so a
+ * normal `vite build` drops main.tsx's test-hook branch and app/testHooks.ts
+ * (tests/app/testHooks.bundle.test.ts checks the built files).
+ */
+function testHooks(): Plugin {
+  return {
+    name: 'rb:test-hooks',
+    config(_config, { mode }) {
+      return { define: { __PC_TEST_HOOKS__: JSON.stringify(TEST_HOOK_MODES.has(mode)) } };
+    },
+  };
+}
+
 export default defineConfig({
   // Relative URLs: the build works from whatever path it is served from (PLAN §15.1).
   base: './',
   plugins: [
+    testHooks(),
     react(),
     // Offline PWA (PLAN §15.1): precache everything, no runtime caching, no third-party URLs.
     VitePWA({

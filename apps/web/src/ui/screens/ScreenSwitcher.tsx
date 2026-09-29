@@ -14,8 +14,12 @@ import type { Nav, Overlay, Screen } from '../../app/navigation.ts';
 export interface ScreenSwitcherProps {
   nav: Nav;
   screens: { readonly [S in Screen]: () => ReactNode };
-  /** The open ones render above the screen, in the order they opened. */
-  overlays: { readonly [O in Overlay]: () => ReactNode };
+  /**
+   * The open ones render above the screen, in the order they opened. Overlays without an entry
+   * here (the rankings drawer, the sizing tray, the coach sheet…) are drawn by their own screen,
+   * which reads `nav.overlays` itself.
+   */
+  overlays: { readonly [O in Overlay]?: () => ReactNode };
 }
 
 export function ScreenSwitcher({ nav, screens, overlays }: ScreenSwitcherProps) {
@@ -42,7 +46,7 @@ export function ScreenSwitcher({ nav, screens, overlays }: ScreenSwitcherProps) 
         {screens[screen]()}
       </div>
       {nav.overlays.map((overlay) => (
-        <Fragment key={overlay}>{overlays[overlay]()}</Fragment>
+        <Fragment key={overlay}>{overlays[overlay]?.()}</Fragment>
       ))}
     </>
   );
