@@ -134,6 +134,7 @@ rb-poker-coach/
 │   │   │   │   ├── controller.ts # TableController: scheduling, gates, grading/feedback, undo snapshot, epoch
 │   │   │   │   ├── workerClient.ts # jobIds, epochs, cancel, stale-reply drop, timeouts
 │   │   │   │   ├── store.ts      # the Zustand store: slices game, equity, coach, ui, settings (§2.5)
+│   │   │   │   ├── navigation.ts # screens and overlays: the pure navigate() reducer; the ui slice holds its Nav (§12.1)
 │   │   │   │   ├── secure.ts     # feature detection for secure-context APIs (§12.14)
 │   │   │   │   └── lifecycle.ts  # visibility, wake lock, SW update gating, history/back handling
 │   │   │   ├── persist/
@@ -142,8 +143,10 @@ rb-poker-coach/
 │   │   │   │   ├── migrations.ts  profile.ts  session.ts  stats.ts  lock.ts  exportImport.ts
 │   │   │   ├── ui/
 │   │   │   │   ├── components/   # Card, Seat (React.memo), Board, Pot, HeroStrip, WinBadge, DrawChips, CoachStrip,
-│   │   │   │   │                 # CoachSheet, ActionBar, SizingTray, FeedbackCard, GradeChip, RankingsPanel, Sheet
-│   │   │   │   ├── screens/      # Welcome, Home, Setup, Table, Stats, Settings, Learn, About, Review, Bench
+│   │   │   │   │                 # CoachSheet, ActionBar, SizingTray, FeedbackCard, GradeChip, RankingsPanel,
+│   │   │   │   │                 # Modal (the sheet and dialog layer: aria-modal, focus trap, Esc)
+│   │   │   │   ├── screens/      # Welcome, Home, Setup, Table, Stats, Settings, Learn, About, Review, Bench; the Menu
+│   │   │   │   │                 # sheet and the §3.1 dialogs; ScreenSwitcher (renders the Nav, §12.1)
 │   │   │   │   ├── layout/seats.ts # seat coordinate tables and the ellipse formula (§12.4)
 │   │   │   │   └── styles/       # tokens.css, global.css, *.module.css
 │   │   │   ├── sound/synth.ts    # Web Audio synthesised sounds (no audio files)
@@ -1349,7 +1352,7 @@ Hidden: #bench
 ```
 
 - ⚠️ **Playing is always one tap away.** From opening the app, one tap on **Play** reaches a dealt hand; no screen, dialog or tip may sit between Play and the first hand. There is no sign-up, login, nickname or email prompt anywhere; the hero is shown as "You".
-- No router library: a `screen` field in the store's `ui` slice. Every screen change and every sheet/dialog opening calls `history.pushState`; on `popstate`, close the top-most overlay first, else go back one screen. Android's back gesture MUST close a sheet, never exit the app. The URL stays `/` (plus `#bench`).
+- No router library: the store's `ui` slice holds a `Nav` (`app/navigation.ts`): the screen stack (the last one is on screen; the first is Welcome or Home) and the open overlays (Menu, the §3.1 dialogs), changed only by the pure `navigate(nav, action)` reducer and rendered by `ui/screens/ScreenSwitcher.tsx`. The Table always sits on Home, so Back from the Table goes Home; Setup's Start replaces Setup with the Table. Every screen change and every sheet/dialog opening calls `history.pushState`; on `popstate`, close the top-most overlay first, else go back one screen (the out-of-chips dialog cannot be closed by Back: it takes the Table with it, §3.1). Android's back gesture MUST close a sheet, never exit the app. The URL stays `/` (plus `#bench`).
 
 | Screen | Contents |
 |---|---|
@@ -1372,7 +1375,7 @@ Setup is optional: **Play** never passes through it (§12.1). It opens from Welc
 2. **Chips:** starting chips 500 · 1,000 · **2,000** · 5,000 · 10,000 · Custom; blinds 5/10 · **10/20** · 25/50 · 50/100 · 100/200 · Custom. Live caption "Each player starts with 2,000 chips = 100 big blinds." + depth label: 10–24 bb "Short: many all-ins, fast games"; 25–59 "Medium"; 60–150 "Normal"; 151–500 "Deep: long hands, bigger decisions". Below 10 bb: "Too few chips for these blinds. Choose smaller blinds." Above 500 bb: "Very deep. Choose bigger blinds." Start disabled until valid. Custom: `inputmode="numeric"`, 16 px font, chips 200–1,000,000, BB 2–100,000 rounded up to even on blur, SB = BB/2 shown read-only; non-digits are stripped; an empty or out-of-range field shows its range under it ("200 to 1,000,000") and keeps Start disabled. Depth labels use `floor(chips / BB)`.
 3. **Bots:** "How good are the bots?" four cards with the §10.1 text: **Easy** · Medium · Hard · Expert (2×2 below 380 px).
 4. **Coach:** "How much help do you want?" four cards: **Beginner** "Full help" · Intermediate "Help on tap" · Advanced "Mistakes only" · Exam "Test yourself".
-5. **More options** (collapsed): bot speed; "Set each bot's level" (per-seat override list); four-colour cards.
+5. **More options** (collapsed): bot speed; "Set each bot's level" (per-seat override list); four-colour cards. Not in Stage 3 (its Setup has questions 1–4 only; speed is in Settings): it arrives with the per-seat levels (Stage 7).
 6. **Start game** (56 px, sticky above the safe area). Footer: "Play money only. Chips have no value. [Privacy]".
 
 ### 12.3 Table: portrait phone (360–430 px wide; the design target)
@@ -3168,6 +3171,7 @@ Keys: every name in the Term column is a key on its own, split at " / " and with
 - Voided hand: "This hand was cancelled because of an internal error. Your chips were returned."
 - New table mid-hand: "Your unfinished hand will be folded. Start a new table?"
 - Other dialogs and toasts: §12.11.
+- Screens, plain words the sections above do not fix (Stage 3): "Back" · Setup "Starting chips", "Blinds", "Custom", "Big blind", "Small blind {sb}", "2 to 100,000" · Settings "Game", "Speed" (Normal · Fast · Instant; "How fast the bots play and the cards move."), "Deal the next hand by itself" ("Off: the next hand waits for your tap."), "Show amounts as" (Chips · Big blinds; "For example 2,000 chips, or 100 big blinds.") · new-table dialog buttons "Start new table" · "Cancel".
 
 ---
 

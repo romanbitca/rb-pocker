@@ -1,0 +1,84 @@
+/* Modal layers (PLAN §12.8 motion, §12.12, §12.13: svh for the sheet's height). */
+
+.layer {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  justify-content: center;
+}
+
+.bottom {
+  align-items: flex-end;
+}
+
+.middle {
+  align-items: center;
+  padding: max(var(--space-4), env(safe-area-inset-top))
+    max(var(--space-4), env(safe-area-inset-right)) max(var(--space-4), env(safe-area-inset-bottom))
+    max(var(--space-4), env(safe-area-inset-left));
+}
+
+.scrim {
+  position: absolute;
+  inset: 0;
+  background: rgb(0 0 0 / 55%);
+  animation: fade var(--duration-sheet) ease-out;
+}
+
+.sheet,
+.dialog {
+  position: relative;
+  display: grid;
+  gap: var(--space-2);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 8px 28px rgb(0 0 0 / 45%);
+}
+
+.sheet:focus,
+.dialog:focus {
+  outline: none;
+}
+
+/* Rises from the bottom, clear of the home indicator. */
+.sheet {
+  width: 100%;
+  max-width: 480px;
+  max-height: 85vh;
+  max-height: 85svh;
+  padding: var(--space-4) max(var(--space-4), env(safe-area-inset-right))
+    max(var(--space-4), env(safe-area-inset-bottom)) max(var(--space-4), env(safe-area-inset-left));
+  border-radius: var(--radius-3) var(--radius-3) 0 0;
+  animation: rise var(--duration-sheet) ease-out;
+}
+
+.dialog {
+  width: 100%;
+  max-width: 400px;
+  max-height: 100%;
+  padding: var(--space-5);
+  border-radius: var(--radius-3);
+  animation: fade var(--duration-sheet) ease-out;
+}
+
+@keyframes rise {
+  from {
+    transform: translateY(100%);
+  }
+}
+
+@keyframes fade {
+  from {
+    opacity: 0;
+  }
+}
+
+/* Movement becomes a short fade (§12.8). */
+@media (prefers-reduced-motion: reduce) {
+  .sheet {
+    animation: fade 120ms ease-out;
+  }
+}
