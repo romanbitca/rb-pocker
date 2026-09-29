@@ -6,7 +6,7 @@ This is the working checklist for building [PLAN.md](PLAN.md). PLAN.md is the so
 
 Legend: `[ ]` todo · `[~]` in progress (branch exists) · `[x]` merged to `main` · `[H]` waiting on the human
 
-**Current position:** Stages 0–2 ✅ complete (CI green). Stage 3: merging ready PRs #15, #17, #19, #22, #24, #25 in order; then controller phase 2 (persistence + view models) and 3.4 table screen, then 3.8 e2e. Stage 4 (4.1/4.2) developed in parallel.
+**Current position:** Stages 0–2 ✅. Stage 3: 3.2, 3.3, 3.5, 3.6, 3.7 merged (CI green). 3.1 controller phase 2 in PR #25; then 3.4 table screen, 3.8 e2e. Stage 4: PRs #27 (4.1), #28 (4.2) ready and held; 4.3 started.
 
 ---
 
@@ -59,9 +59,9 @@ Legend: `[ ]` todo · `[~]` in progress (branch exists) · `[x]` merged to `main
 - [x] 3.2 `feature/local-session-and-settings-storage` - `persist/storage.ts`, minimal `pc.v1.profile` (settings), `pc.v1.session` saved after every step, resume.
 - [x] 3.3 `feature/card-and-seat-components` - SVG cards (no Unicode suits), `Seat` (memo), `layout/seats.ts` ellipse tables, dealer button, bets.
 - [ ] 3.4 `feature/table-screen-layouts` - Table in portrait / landscape / wide, board, pot, hero strip with label + highlight, secure-context feature detection.
-- [~] 3.5 `feature/action-bar-and-sizing-tray` - presets, slider, disabled Fold with tooltip, 56 px / 44 px targets, Android Back closes tray.
+- [x] 3.5 `feature/action-bar-and-sizing-tray` - presets, slider, disabled Fold with tooltip, 56 px / 44 px targets, Android Back closes tray.
 - [x] 3.6 `feature/hand-rankings-panel` - persistent panel on wide screens, edge tab + drawer, live highlight, beats-you / you-beat, focus trap, bot pause while open.
-- [~] 3.7 `feature/one-tap-play-and-setup-screens` - Welcome, Home (one-tap Play / continue), Setup, Menu, Settings (Game section), out-of-chips dialog, top-up.
+- [x] 3.7 `feature/one-tap-play-and-setup-screens` - Welcome, Home (one-tap Play / continue), Setup, Menu, Settings (Game section), out-of-chips dialog, top-up.
 - [ ] 3.8 `test/playable-table-e2e` - acceptance 1–9 (50 hands × viewports, overlap checks, no bot card leak in DOM, resume deep-equal).
 - [ ] 3.9 [H] **Human gate:** play 10 hands on the phone over LAN, confirm §1.5 assumptions (Q1).
 
@@ -173,3 +173,5 @@ If the human's answer later reveals a problem, the fix becomes a new chunk ahead
 | 28 Sep 00:00–00:22Z | 2.5 | [PR #21](https://github.com/romanbitca/rb-pocker/pull/21) draft: observe (non-leak property), replay (10k), engine-level undo reshuffle, B33/B41/B42; targeted tests green, full suite + CI pending. Agent stopped itself at 93% | 89% → 93%; pause until 01:50Z reset |
 | 29 Sep 19:40–21:05Z | 2.5, 2.6 (+ fix) | PRs [#21](https://github.com/romanbitca/rb-pocker/pull/21), [#26](https://github.com/romanbitca/rb-pocker/pull/26) (test timeouts: main was red), [#23](https://github.com/romanbitca/rb-pocker/pull/23) merged. All 44 B vectors in one runner; 100k-hand property (unit, ~52 s) + 10M steps (slow, 325 s); step+invariants 15 µs; coverage engine 99.1%, eval 97.7% (CI thresholds 95/90). observe() non-leak test strengthened (burn cards). **Stage 2 complete** | 10% → 56% (day override) |
 | 29 Sep 19:40–21:00Z | 3.2/3.3/3.6 rebased; 3.1 (phase 1), 3.5, 3.7 | PRs #15/#17/#19 rebased with green CI; [#25](https://github.com/romanbitca/rb-pocker/pull/25) controller (gates, epochs, SimpleBot via observe only, 200 seeded hands, hooks absent from prod), [#24](https://github.com/romanbitca/rb-pocker/pull/24) action bar/tray, [#22](https://github.com/romanbitca/rb-pocker/pull/22) screens | (same window) |
+| 29 Sep 21:05–22:00Z | Stage 3 merge train | #15, #17, #19, #22, #24 merged with green CI (Sonnet agent) | 56% → ~80% |
+| 29 Sep 21:05–21:48Z | 4.1, 4.2 (early) | PRs [#27](https://github.com/romanbitca/rb-pocker/pull/27), [#28](https://github.com/romanbitca/rb-pocker/pull/28) ready, held: all D.2, D.3, C.5 exact; brute-force oracle agreement | (same window) |
