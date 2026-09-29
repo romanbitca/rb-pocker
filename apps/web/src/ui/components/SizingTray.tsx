@@ -114,9 +114,9 @@ export const SizingTray = memo(function SizingTray({
   }, [onClose]);
 
   // [−] / [+]: one step per tap; held down, it repeats (a local input timer, never game flow).
-  const timer = useRef<number | undefined>(undefined);
+  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const stop = useCallback(() => {
-    window.clearTimeout(timer.current);
+    clearTimeout(timer.current);
     timer.current = undefined;
   }, []);
   useEffect(() => stop, [stop]);
@@ -136,7 +136,7 @@ export const SizingTray = memo(function SizingTray({
     stop();
     if (!nudge(delta)) return;
     const repeat = (delay: number) => {
-      timer.current = window.setTimeout(() => {
+      timer.current = setTimeout(() => {
         if (nudge(delta)) repeat(REPEAT_MS);
         else stop();
       }, delay);
