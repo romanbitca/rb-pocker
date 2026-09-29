@@ -2,13 +2,29 @@ import './ui/styles/tokens.css';
 import './ui/styles/global.css';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
+import { startApp } from './app/boot.ts';
+import { en } from './i18n/en.ts';
 import { App } from './ui/App.tsx';
+
+/**
+ * Build constant (vite.config.ts `rb:test-hooks`): true in development, Vitest and E2E builds
+ * (`vite build --mode e2e`), false in production builds.
+ */
+declare const __PC_TEST_HOOKS__: boolean;
 
 const container = document.getElementById('root');
 if (container === null) {
   throw new Error('index.html has no #root element');
 }
 const root = createRoot(container);
+
+function renderApp(): void {
+  root.render(
+    <StrictMode>
+      <App />
+    </StrictMode>,
+  );
+}
 
 // Dev-only previews, one `if` each. `import.meta.env.DEV` is the constant `false` in production
 // builds, so every preview branch and the modules it loads are dropped from the bundle:
@@ -50,10 +66,15 @@ if (import.meta.env.DEV && new URLSearchParams(window.location.search).get('prev
       </StrictMode>,
     );
   });
+} else if (__PC_TEST_HOOKS__) {
+  // The test hooks (`?seed=`, `window.__pc`) exist only in development and E2E builds. In a
+  // production build `__PC_TEST_HOOKS__` is the constant `false`, so this branch and
+  // app/testHooks.ts are left out of the bundle (tests/app/testHooks.bundle.test.ts checks it).
+  void import('./app/testHooks.ts').then((hooks) => {
+    startApp({ heroName: en.app.hero, hooks });
+    renderApp();
+  });
 } else {
-  root.render(
-    <StrictMode>
-      <App />
-    </StrictMode>,
-  );
+  startApp({ heroName: en.app.hero });
+  renderApp();
 }
