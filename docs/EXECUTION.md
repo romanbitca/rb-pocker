@@ -152,6 +152,7 @@ If the human's answer later reveals a problem, the fix becomes a new chunk ahead
 
 - ✅ done in PR #10 — 1.3 (PR #10): PLAN D.1 row 6 best5 order contradicts rows 7 and 22. Decision (orchestrator, 27 Sep): within a rank, order by suit s > h > d > c (selection still prefers hole cards, §5.4). Change row 6 to `7♥ 7♦ 7♣ K♠ 2♦`, state the order rule in §5.4, turn the `it.fails` for row 6 into a normal test.
 - PLAN change-log rows 1.3.x were numbered independently by parallel agents: renumber them in merge order.
+- Add `src/persist` to the coverage `include` + thresholds (≥ 90% branches, Testing strategy "Rules"); measured 95.6% in #19. Do it in 3.4 or 3.8.
 - Later (Stage 9 or a small fix): Workbox `navigateFallbackDenylist: [/^\/api\//]` so a browser with the SW installed shows JSON at `/api/health` (needs a §15.1 edit).
 
 ## Log
