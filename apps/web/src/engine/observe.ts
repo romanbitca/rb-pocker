@@ -32,7 +32,7 @@ function closedLegal(h: HandState, seat: number): LegalActions {
     seat,
     toCall,
     callAmount: Math.min(toCall, s.stack),
-    callIsAllIn: false,
+    callIsAllIn: toCall > 0 && s.stack <= toCall, // the same public facts as `legalActions`
     canFold: false,
     canCheck: false,
     canCall: false,
