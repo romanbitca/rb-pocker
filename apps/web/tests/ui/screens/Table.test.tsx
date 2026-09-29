@@ -208,4 +208,22 @@ describe('the Table screen', () => {
     expect(h.state().ui.overlays).toEqual([]);
     expect(document.querySelector('aside [data-hero-label]')).not.toBeNull();
   }, 20_000);
+
+  it('stays within 600 DOM nodes (§15.3): nine players, the wide rankings column, showdowns', async () => {
+    h.dispose();
+    h = startTableHarness({ settings: { players: 9 } });
+    renderTable();
+    act(() => h.state().dispatch({ type: 'layout', layout: 'wide' }));
+    let most = 0;
+    let shown = 0;
+    const start = hand().handSeq;
+    await playUntil(() => hand().handSeq >= start + 12, {
+      onStep: () => {
+        most = Math.max(most, document.querySelectorAll('*').length);
+        shown = Math.max(shown, h.state().game.hand?.revealed.length ?? 0);
+      },
+    });
+    expect(shown).toBeGreaterThanOrEqual(3);
+    expect(most).toBeLessThanOrEqual(600);
+  }, 30_000);
 });
