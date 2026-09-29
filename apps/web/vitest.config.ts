@@ -19,9 +19,6 @@ import viteConfig from './vite.config.ts';
  * reach (the coverage numbers are the same without them) or they measure speed, and V8 coverage
  * makes them several times slower (on the CI runner the 100,000-hand run took 273 s with coverage,
  * about 55 s without). `npm test` runs them at full strength.
- *
- * On CI every core runs test files: Vitest's default (cores − 1) leaves one of the runner's two
- * cores idle, and the unit tests are CPU-bound property runs.
  */
 const SLOW_TESTS = 'tests/**/*.slow.test.{ts,tsx}';
 
@@ -47,7 +44,6 @@ export default mergeConfig(
   viteConfig,
   defineConfig({
     test: {
-      ...(process.env.CI === 'true' ? { maxWorkers: '100%' } : {}),
       coverage: {
         provider: 'v8',
         include: ['src/engine/**/*.ts', 'src/eval/**/*.ts'],
