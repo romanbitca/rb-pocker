@@ -54,6 +54,7 @@ import { HeroCards, HeroChips, HeroLabel } from '../components/HeroStrip.tsx';
 import { Pot } from '../components/Pot.tsx';
 import { RankingsColumn } from '../components/RankingsColumn.tsx';
 import { RankingsDrawer } from '../components/RankingsDrawer.tsx';
+import { RunoutBars, useLuckLine } from '../components/Runout.tsx';
 import { Seat } from '../components/Seat.tsx';
 import { SizingTray } from '../components/SizingTray.tsx';
 import { ICONS, SpriteIcon } from '../components/SvgSprite.tsx';
@@ -216,11 +217,14 @@ const HeroBet = memo(function HeroBet({ geometry }: { geometry: TableGeometry })
 /** The banner's lines while the hand-end banner is up (mode `handEnd`), else null. */
 function useHandEndLines(): readonly string[] | null {
   const view = useAppStore((s) => (s.game.mode === 'handEnd' ? selectHandEnd(s) : null));
+  // After an all-in: the §7.6 luck line under the result (§12.9).
+  const luck = useLuckLine();
   return useMemo(() => {
     if (view === null) return null;
     const lines = handEndLines(view);
-    return lines.length === 0 ? null : lines;
-  }, [view]);
+    if (lines.length === 0) return null;
+    return luck === null ? lines : [...lines, luck];
+  }, [view, luck]);
 }
 
 /** The banner's box in the table: under the board, clear of the side pods; else above the pot. */
@@ -285,6 +289,7 @@ const TableArea = memo(function TableArea({ layout }: { layout: TableLayout }) {
             <BoardLayer geometry={geometry} />
             <SeatsLayer geometry={geometry} />
             <HeroBet geometry={geometry} />
+            <RunoutBars bets={geometry.bets} hero={heroBetRect(geometry)} />
             {layout === 'landscape' ? (
               <HeroInset rect={geometry.hero} />
             ) : (

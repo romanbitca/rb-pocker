@@ -9,6 +9,14 @@
  * changes the live-opponent count, an all-in reveal (known-hands mode replaces the HUD job), and a
  * resumed hand (the first sync after boot). A bet changes no key. A new job cancels the old one.
  *
+ * All-in (§7.6 TV mode and luck line, chunk 4.7): the engine turns the hands face up in the same
+ * `advance` that deals the next street, so the street's run-out equities (`known`, the TV-mode
+ * bars) are for the new board. One more job, `allIn`, computes them for the board as it was when
+ * the hands turned face up, when the chips were in: the hero's number of the luck line at the
+ * hand end ("You had 62% when the chips went in"). It runs only when the hero is one of the
+ * face-up hands, and it stays wanted after the hand is complete, so a fast hand end does not
+ * cancel it. The two `equityKnown` jobs run side by side in their own slots.
+ *
  * ⚠️ Non-cheating (§2.2, §7.1, pitfall 13): the requests carry the hero's hole cards, the board and
  * the number of live opponents; `equityKnown` carries only the hands of seats in `hand.revealed`
  * (an all-in run-out, where they are public by rule). A folded player's cards are never sent:
@@ -22,23 +30,64 @@ import type { EquityResult, HandAnalysis } from '../analysis/types.ts';
 import type { Card } from '../core/cards.ts';
 import type { HandState } from '../engine/types.ts';
 import type { EquityReply, EquityRequest } from '../workers/protocol.ts';
+import { faceUpSeats } from './runoutViews.ts';
 import type { AppStore, EquitySituation, EquitySlice, EquityStatus, KnownEquity } from './store.ts';
 import { EQUITY_TIMEOUT_MS, type EquityClient, type JobEvent } from './workerClient.ts';
 
 /** The hero's seat (§0.3). */
 const HERO = 0;
 
-type TrackName = 'equity' | 'handInfo' | 'known';
-const TRACKS: readonly TrackName[] = ['equity', 'handInfo', 'known'];
+type TrackName = 'equity' | 'handInfo' | 'known' | 'allIn';
+const TRACKS: readonly TrackName[] = ['equity', 'handInfo', 'known', 'allIn'];
 
 /** A job the current state asks for. */
 interface Want {
   key: string;
   build(jobId: number, epoch: number): EquityRequest;
-  /** equity: the situation; known: the seats and board. */
+  /** equity: the situation; known, allIn: the seats and board. */
   situation?: EquitySituation;
   seats?: number[];
   board: Card[];
+}
+
+/**
+ * The board when the hands of a run-out turned face up (the `reveal` event), before the cards
+ * dealt in that same `advance`; null when the hand has no run-out reveal (yet).
+ */
+export function boardAtReveal(hand: HandState): Card[] | null {
+  const board: Card[] = [];
+  for (const e of hand.log) {
+    if (e.e === 'reveal') return e.reason === 'runout' ? board : null;
+    if (e.e === 'street') board.push(...e.cards);
+  }
+  return null;
+}
+
+/** `equityKnown` for the face-up `seats` on `board`: only revealed hands ever leave. */
+function knownWant(hand: HandState, seats: number[], board: Card[], key: string): Want {
+  return {
+    key,
+    seats,
+    board,
+    build: (jobId, epoch) => ({
+      kind: 'equityKnown',
+      jobId,
+      epoch,
+      hands: seats.map((seat) => {
+        const h = hand.seats[seat]?.hole as [Card, Card];
+        return [h[0], h[1]];
+      }),
+      board,
+    }),
+  };
+}
+
+/** The all-in job: the hero is face up in a run-out; the board as it was at the reveal. */
+function allInWant(hand: HandState, faceUp: number[]): Want | null {
+  if (faceUp.length < 2 || !faceUp.includes(HERO)) return null;
+  const board = boardAtReveal(hand);
+  if (board === null) return null;
+  return knownWant(hand, faceUp, board, `${hand.handSeq}|${faceUp.join(',')}|${board.join(',')}`);
 }
 
 interface Track {
@@ -55,21 +104,19 @@ const idle = (): Track => ({ want: null, jobId: null, state: 'idle' });
 
 /** The jobs the hand asks for; null = none of that kind. */
 function wants(hand: HandState | null): Record<TrackName, Want | null> {
-  const none = { equity: null, handInfo: null, known: null };
-  if (hand === null || hand.phase === 'complete') return none;
+  const none = { equity: null, handInfo: null, known: null, allIn: null };
+  if (hand === null) return none;
   const hero = hand.seats[HERO];
   const hole = hero?.hole ?? null;
   if (hero === undefined || !hero.dealtIn || hole === null) return none;
+  // Face-up hands exist only in a run-out; every seat taken here is in `hand.revealed`.
+  const faceUp = faceUpSeats(hand);
+  // The luck line needs the all-in number at the hand end: it outlives the hand's other jobs.
+  const allIn = allInWant(hand, faceUp);
+  if (hand.phase === 'complete') return { ...none, allIn };
   const heroCards: [Card, Card] = [hole[0], hole[1]];
   const board = [...hand.board];
   const nOpp = hand.seats.filter((s, i) => i !== HERO && s.dealtIn && !s.folded).length;
-  // Face-up hands exist only in a run-out; every seat taken here is in `hand.revealed`.
-  const faceUp = hand.runout
-    ? hand.revealed.filter((seat) => {
-        const s = hand.seats[seat];
-        return s !== undefined && s.dealtIn && !s.folded && s.hole !== null;
-      })
-    : [];
   const knownMode = faceUp.length >= 2;
   const cards = `${hand.handSeq}|${heroCards.join(',')}|${board.join(',')}`;
   const situation: EquitySituation = { handSeq: hand.handSeq, hero: heroCards, board, nOpp };
@@ -99,21 +146,8 @@ function wants(hand: HandState | null): Record<TrackName, Want | null> {
         },
     known: !knownMode
       ? null
-      : {
-          key: `${hand.handSeq}|${faceUp.join(',')}|${board.join(',')}`,
-          seats: faceUp,
-          board,
-          build: (jobId, epoch) => ({
-            kind: 'equityKnown',
-            jobId,
-            epoch,
-            hands: faceUp.map((seat) => {
-              const h = hand.seats[seat]?.hole as [Card, Card];
-              return [h[0], h[1]];
-            }),
-            board,
-          }),
-        },
+      : knownWant(hand, faceUp, board, `${hand.handSeq}|${faceUp.join(',')}|${board.join(',')}`),
+    allIn,
   };
 }
 
@@ -128,12 +162,14 @@ export class EquityJobs {
     equity: idle(),
     handInfo: idle(),
     known: idle(),
+    allIn: idle(),
   };
   private situation: EquitySituation | null = null;
   private result: EquityResult | null = null;
   private previous: EquitySlice['previous'] = null;
   private analysis: HandAnalysis | null = null;
   private known: KnownEquity | null = null;
+  private allIn: KnownEquity | null = null;
 
   constructor(store: AppStore, client: EquityClient) {
     this.store = store;
@@ -158,6 +194,7 @@ export class EquityJobs {
       this.handSeq = handSeq;
       this.previous = null;
       this.known = null;
+      this.allIn = null;
     }
     const w = wants(hand);
     for (const name of TRACKS) this.apply(name, w[name]);
@@ -275,7 +312,7 @@ export class EquityJobs {
     } else if (reply.kind === 'handInfo') {
       this.analysis = reply.analysis;
     } else if (reply.kind === 'equityKnown') {
-      this.known = {
+      const known: KnownEquity = {
         handSeq: this.handSeq ?? 0,
         seats: want.seats ?? [],
         board: want.board,
@@ -283,6 +320,8 @@ export class EquityJobs {
         exact: reply.exact,
         final: reply.final,
       };
+      if (name === 'allIn') this.allIn = known;
+      else this.known = known;
     }
     if (event.final) {
       t.state = 'done';
@@ -320,6 +359,7 @@ export class EquityJobs {
       previous: this.previous,
       analysis: this.analysis,
       known: this.known,
+      allIn: this.allIn,
     };
     const cur = this.store.getState().equity;
     const same = (Object.keys(next) as (keyof EquitySlice)[]).every((k) => cur[k] === next[k]);

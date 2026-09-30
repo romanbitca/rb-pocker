@@ -10,6 +10,7 @@
  * Created with the literal `new Worker(new URL('./equity.worker.ts', import.meta.url),
  * { type: 'module' })` in `spawn.ts` (pitfall 38).
  */
+import { runBench } from './bench.ts';
 import { equityMath } from './equityMath.ts';
 import { createEquityService } from './equityService.ts';
 import type { EquityReply, EquityRequest } from './protocol.ts';
@@ -24,5 +25,7 @@ const scope = self as unknown as WorkerScope;
 const service = createEquityService({
   math: equityMath,
   post: (reply) => scope.postMessage(reply),
+  // The `#bench` screen (§15.4): the worker measures itself.
+  bench: () => runBench(equityMath),
 });
 scope.onmessage = (event) => service.handle(event.data);

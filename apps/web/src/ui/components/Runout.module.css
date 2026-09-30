@@ -1,0 +1,56 @@
+/* All-in TV mode (PLAN §7.6): one equity bar per face-up player, in the free bet slot (56×20). */
+.slot {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+/* The same dark pill as a bet chip, so the text keeps its contrast on the felt. */
+.pill {
+  position: relative;
+  display: block;
+  width: 52px;
+  height: 20px;
+  border-radius: 10px;
+  background: rgb(0 0 0 / 62%);
+  box-shadow: inset 0 0 0 1px rgb(242 245 243 / 22%);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 16px;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.value {
+  display: block;
+}
+
+/* A thin track along the bottom of the pill; the fill scales from the left (transform only). */
+.track {
+  position: absolute;
+  right: 7px;
+  bottom: 3px;
+  left: 7px;
+  height: 3px;
+  overflow: hidden;
+  border-radius: 2px;
+  background: rgb(242 245 243 / 20%);
+}
+
+.fill {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: 2px;
+  background: var(--accent);
+  transform-origin: left center;
+  transition: transform var(--duration-flip) ease-out;
+}
+
+:root[data-motion='reduced'] .fill {
+  transition: none;
+}

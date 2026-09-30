@@ -98,6 +98,11 @@ export interface WorkerLogEntry {
   jobId?: number;
   epoch?: number;
   detail?: string;
+  /**
+   * A reply's `timing` (§15.3 "worker timing logs", Appendix A.6 `JobTiming`): ms since the worker
+   * took the request, and how many of them it spent computing. With `final` for the job's last.
+   */
+  timing?: { ms: number; busyMs: number; final: boolean };
 }
 
 export interface WorkerClientOptions<Req, Rep> {
@@ -128,6 +133,13 @@ const messageOf = (e: unknown): string => (e instanceof Error ? e.message : Stri
 function epochOf(message: WorkerMessage): number | undefined {
   const epoch = (message as { epoch?: unknown }).epoch;
   return typeof epoch === 'number' ? epoch : undefined;
+}
+
+/** A reply's `timing` (Appendix A.6 `JobTiming`), when it has one. */
+function timingOf(message: WorkerMessage): { ms: number; busyMs: number } | undefined {
+  const timing = (message as { timing?: { ms?: unknown; busyMs?: unknown } }).timing;
+  if (typeof timing?.ms !== 'number' || typeof timing.busyMs !== 'number') return undefined;
+  return { ms: timing.ms, busyMs: timing.busyMs };
 }
 
 export class WorkerClient<Req extends WorkerMessage, Rep extends WorkerMessage> {
@@ -243,7 +255,9 @@ export class WorkerClient<Req extends WorkerMessage, Rep extends WorkerMessage> 
 
   /** The last 200 log lines (copies). */
   log(): WorkerLogEntry[] {
-    return this.entries.map((e) => ({ ...e }));
+    return this.entries.map((e) =>
+      e.timing === undefined ? { ...e } : { ...e, timing: { ...e.timing } },
+    );
   }
 
   // -------------------------------------------------------------------------------------------
@@ -309,14 +323,16 @@ export class WorkerClient<Req extends WorkerMessage, Rep extends WorkerMessage> 
       (epoch !== undefined && epoch !== job.epoch) ||
       job.epoch !== this.currentEpoch ||
       this.slots.get(job.slot) !== job.jobId;
+    const final = reply.kind === 'error' || this.options.isFinal(reply);
+    const timing = timingOf(reply);
     this.note({
       what: stale ? 'drop' : 'in',
       kind: reply.kind,
       jobId: reply.jobId,
       ...(epoch !== undefined && { epoch }),
+      ...(timing !== undefined && { timing: { ...timing, final } }),
     });
     if (stale || job === undefined) return;
-    const final = reply.kind === 'error' || this.options.isFinal(reply);
     if (final) {
       this.forget(job);
       this.timeoutStreak = 0; // the worker answers

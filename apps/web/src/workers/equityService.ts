@@ -8,16 +8,22 @@
  *   the runner pauses with `setTimeout(0)` once a time slice (8 ms) of work is done, so a `cancel`
  *   or a newer job is seen within one slice.
  * - A cancelled or superseded job never posts again: it is checked after every pause, and nothing
- *   else can run between that check and the next post. A newer job of the same kind supersedes the
- *   older one (a new request cancels the old one, §7.4), even before its `cancel` arrives.
+ *   else can run between that check and the next post. A newer `equity` job supersedes the older
+ *   one (a new request cancels the old one, §7.4), even before its `cancel` arrives. `equityKnown`
+ *   jobs stop only at their `cancel`: during an all-in run-out two run at once, the street's
+ *   equity bars and the board at the all-in (the luck line, chunk 4.7), in two client slots.
  * - Safety cap (§7.3): a job still running after 3 s (a broken device) posts its last estimate as
  *   final with `truncated: true`, or an `error` when it has none. Results never depend on time
  *   otherwise: n is fixed.
  * - `handInfo` is synchronous (typically < 20 ms, §6). A job that throws posts an `error` reply.
+ * - Timing (§15.3): every reply of these three carries `timing` (`JobTiming`): the wall time since
+ *   the request was taken, and how much of it the worker spent computing (this job and any other
+ *   that ran in between), so a test can model a slower CPU.
+ * - `bench` (§15.4) runs `options.bench` (`workers/bench.ts` in the worker) and answers once.
  */
 import type { EquityResult, HandAnalysis } from '../analysis/types.ts';
 import type { Card } from '../core/cards.ts';
-import type { EquityReply, EquityRequest } from './protocol.ts';
+import type { EquityBenchResult, EquityReply, EquityRequest, JobTiming } from './protocol.ts';
 
 /** A step generator: `null` = a checkpoint (pause here if needed), a value = post it. */
 export type Steps<T> = Iterator<T | null, unknown, undefined>;
@@ -43,6 +49,8 @@ export interface EquityServiceOptions {
   sliceMs?: number;
   /** The safety cap in ms (default 3,000, §7.3). */
   capMs?: number;
+  /** The `#bench` measurements (§15.4); without it a `bench` request gets an `error` reply. */
+  bench?: () => Promise<EquityBenchResult>;
 }
 
 export interface EquityService {
@@ -61,6 +69,9 @@ interface Job {
   kind: StepKind;
   jobId: number;
   epoch: number;
+  /** `now()` and the busy clock when the request was taken (`JobTiming`). */
+  at: number;
+  busyAt: number;
 }
 
 const messageOf = (e: unknown): string => (e instanceof Error ? e.message : String(e));
@@ -73,11 +84,28 @@ export function createEquityService(options: EquityServiceOptions): EquityServic
   const capMs = options.capMs ?? CAP_MS;
   /** Running step jobs by id. */
   const live = new Map<number, Job>();
-  /** The newest job of each step kind: an older one stops at its next checkpoint. */
-  const newest: Record<StepKind, number> = { equity: 0, equityKnown: 0 };
+  /** The newest `equity` job: an older one stops at its next checkpoint. */
+  let newestEquity = 0;
+  /** Computing time so far (every job), and when the slice running now began (JobTiming). */
+  let busy = 0;
+  let workingSince: number | null = null;
+
+  const busyNow = (): number => busy + (workingSince === null ? 0 : now() - workingSince);
+  const work = (): void => {
+    workingSince ??= now();
+  };
+  const rest = (): void => {
+    if (workingSince === null) return;
+    busy += now() - workingSince;
+    workingSince = null;
+  };
+  const timingOf = (at: number, busyAt: number): JobTiming => ({
+    ms: now() - at,
+    busyMs: busyNow() - busyAt,
+  });
 
   const alive = (job: Job): boolean =>
-    live.get(job.jobId) === job && newest[job.kind] === job.jobId;
+    live.get(job.jobId) === job && (job.kind !== 'equity' || newestEquity === job.jobId);
 
   const fail = (jobId: number, epoch: number, e: unknown): void =>
     post({ kind: 'error', jobId, epoch, message: messageOf(e) });
@@ -89,12 +117,13 @@ export function createEquityService(options: EquityServiceOptions): EquityServic
   async function run<T>(
     job: Job,
     steps: Steps<T>,
-    reply: (step: T) => { msg: EquityReply; final: boolean },
-    truncated: (last: T) => EquityReply,
+    reply: (step: T, timing: JobTiming) => { msg: EquityReply; final: boolean },
+    truncated: (last: T, timing: JobTiming) => EquityReply,
   ): Promise<void> {
     const started = now();
     let sliceStart = started;
     let last: T | null = null;
+    work();
     try {
       for (;;) {
         const step = steps.next();
@@ -102,7 +131,7 @@ export function createEquityService(options: EquityServiceOptions): EquityServic
           throw new Error(`${job.kind}: the steps ended without a final result`);
         if (step.value !== null) {
           last = step.value;
-          const { msg, final } = reply(step.value);
+          const { msg, final } = reply(step.value, timingOf(job.at, job.busyAt));
           post(msg);
           if (final) return;
         }
@@ -110,30 +139,41 @@ export function createEquityService(options: EquityServiceOptions): EquityServic
         if (t - started >= capMs) {
           steps.return?.();
           if (last === null) throw new Error(`${job.kind}: no estimate within ${capMs} ms`);
-          post(truncated(last));
+          post(truncated(last, timingOf(job.at, job.busyAt)));
           return;
         }
         if (t - sliceStart >= sliceMs) {
+          rest();
           await pause();
           if (!alive(job)) {
             steps.return?.();
             return;
           }
+          work();
           sliceStart = now();
         }
       }
     } catch (e) {
       if (alive(job)) fail(job.jobId, job.epoch, e);
     } finally {
+      rest();
       if (live.get(job.jobId) === job) live.delete(job.jobId);
     }
   }
 
   function start(job: Job, begin: () => Promise<void>): void {
-    newest[job.kind] = job.jobId;
+    if (job.kind === 'equity') newestEquity = job.jobId;
     live.set(job.jobId, job);
     void begin();
   }
+
+  const jobOf = (kind: StepKind, jobId: number, epoch: number): Job => ({
+    kind,
+    jobId,
+    epoch,
+    at: now(),
+    busyAt: busyNow(),
+  });
 
   return {
     handle(msg: EquityRequest): void {
@@ -142,7 +182,7 @@ export function createEquityService(options: EquityServiceOptions): EquityServic
           live.delete(msg.jobId);
           return;
         case 'equity': {
-          const job: Job = { kind: 'equity', jobId: msg.jobId, epoch: msg.epoch };
+          const job = jobOf('equity', msg.jobId, msg.epoch);
           start(job, async () => {
             let steps: Steps<EquityResult>;
             try {
@@ -155,29 +195,35 @@ export function createEquityService(options: EquityServiceOptions): EquityServic
             await run(
               job,
               steps,
-              (result) => ({
-                msg: { kind: 'equity', jobId: job.jobId, epoch: job.epoch, result },
+              (result, timing) => ({
+                msg: { kind: 'equity', jobId: job.jobId, epoch: job.epoch, result, timing },
                 final: result.final,
               }),
-              (last) => ({
+              (last, timing) => ({
                 kind: 'equity',
                 jobId: job.jobId,
                 epoch: job.epoch,
                 result: { ...last, final: true, truncated: true },
+                timing,
               }),
             );
           });
           return;
         }
         case 'equityKnown': {
-          const job: Job = { kind: 'equityKnown', jobId: msg.jobId, epoch: msg.epoch };
-          const known = (results: EquityResult[], final: boolean): EquityReply => ({
+          const job = jobOf('equityKnown', msg.jobId, msg.epoch);
+          const known = (
+            results: EquityResult[],
+            final: boolean,
+            timing: JobTiming,
+          ): EquityReply => ({
             kind: 'equityKnown',
             jobId: job.jobId,
             epoch: job.epoch,
             perPlayer: results.map((r) => r.equity),
             exact: results.every((r) => r.exact),
             final,
+            timing,
           });
           start(job, async () => {
             let steps: Steps<EquityResult[]>;
@@ -191,27 +237,49 @@ export function createEquityService(options: EquityServiceOptions): EquityServic
             await run(
               job,
               steps,
-              (results) => {
+              (results, timing) => {
                 const final = results.every((r) => r.final);
-                return { msg: known(results, final), final };
+                return { msg: known(results, final, timing), final };
               },
-              (last) => known(last, true),
+              (last, timing) => known(last, true, timing),
             );
           });
           return;
         }
-        case 'handInfo':
+        case 'handInfo': {
+          const at = now();
+          const busyAt = busyNow();
+          work();
           try {
             const analysis = math.handInfo(msg.hero, msg.board);
-            post({ kind: 'handInfo', jobId: msg.jobId, epoch: msg.epoch, analysis });
+            const timing = timingOf(at, busyAt);
+            post({ kind: 'handInfo', jobId: msg.jobId, epoch: msg.epoch, analysis, timing });
           } catch (e) {
             fail(msg.jobId, msg.epoch, e);
+          } finally {
+            rest();
           }
           return;
-        case 'bench':
-          // The #bench screen and its numbers are chunk 4.7 (§15.4).
-          fail(msg.jobId, 0, new Error('bench: not available yet'));
+        }
+        case 'bench': {
+          const bench = options.bench;
+          if (bench === undefined) {
+            fail(msg.jobId, 0, new Error('bench: not available'));
+            return;
+          }
+          const jobId = msg.jobId;
+          void (async () => {
+            let result: EquityBenchResult;
+            try {
+              result = await bench();
+            } catch (e) {
+              fail(jobId, 0, e);
+              return;
+            }
+            post({ kind: 'bench', jobId, result });
+          })();
           return;
+        }
       }
     },
     running(): number[] {
