@@ -77,6 +77,23 @@
   animation: none;
 }
 
+/* Compact mode's 96 px strip (§12.3): a 52 px badge and a tighter price chip, so both fit. */
+[data-compact] .badge {
+  height: 52px;
+}
+[data-compact] .value {
+  font-size: 24px;
+}
+[data-compact] .caption {
+  margin-top: 2px;
+}
+[data-compact] .price {
+  margin-top: 3px;
+  padding: 2px 4px;
+  font-size: 12px;
+  line-height: 1.2;
+}
+
 /* ---- Popover and the big-move line: over the felt (up) or down the landscape column ---- */
 
 .popover,

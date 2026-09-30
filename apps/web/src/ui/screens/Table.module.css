@@ -299,6 +299,11 @@
   align-self: end;
 }
 
+/* Compact (96 px strip): the badge column starts at the top; the badge is 52 px (WinBadge). */
+.compact .heroOdds {
+  padding-top: 0;
+}
+
 /* ---- The coach strip (§12.6): its 48 px place, empty until Stage 5 ---- */
 
 .coach {

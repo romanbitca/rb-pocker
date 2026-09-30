@@ -90,8 +90,11 @@ button.chip[aria-expanded='true'] {
 .up {
   bottom: calc(100% + 12px);
 }
+/* Landscape: down the right-hand column, its right edge on the column's (never off screen). */
 .down {
   top: calc(100% + 12px);
+  right: 0;
+  left: auto;
 }
 
 .draw {

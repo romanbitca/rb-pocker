@@ -325,18 +325,23 @@ const MoveSlot = memo(function MoveSlot({ placement }: { placement: BadgePlaceme
   return <BigMoveLine view={view} placement={placement} />;
 });
 
-/** The badge column: the badge, the price chip under it, the big-move line by it. */
+/**
+ * The badge column: the badge, the price chip under it, the big-move line by it. `compact`: the
+ * 96 px strip of compact mode (§12.3), a 52 px badge.
+ */
 function OddsColumn({
   placement,
   canWin,
+  compact = false,
   className,
 }: {
   placement: BadgePlacement;
   canWin: boolean;
+  compact?: boolean;
   className?: string | undefined;
 }) {
   return (
-    <div className={className} data-hero-odds="">
+    <div className={className} data-hero-odds="" data-compact={compact ? '' : undefined}>
       <BadgeSlot placement={placement} />
       <PriceSlot canWin={canWin} />
       <MoveSlot placement={placement} />
@@ -394,7 +399,12 @@ const HeroStrip = memo(function HeroStrip({
             onOpenRankings={onOpenRankings}
             className={styles.heroLabel}
           />
-          <OddsColumn placement="up" canWin={layout === 'wide'} className={styles.heroOdds} />
+          <OddsColumn
+            placement="up"
+            canWin={layout === 'wide'}
+            compact={layout === 'compact'}
+            className={styles.heroOdds}
+          />
           <DrawsSlot
             max={layout === 'wide' ? 2 : 1}
             placement="up"
