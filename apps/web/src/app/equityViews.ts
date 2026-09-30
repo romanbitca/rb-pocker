@@ -147,25 +147,29 @@ export const BIG_MOVE_POINTS = 8;
 const situationKey = (handSeq: number, board: readonly Card[], nOpp: number): string =>
   `${handSeq}|${board.join(',')}|${nOpp}`;
 
-/** The hand is being played and the hero is in it (dealt in, not folded). */
+/**
+ * The hand is being played (a betting round; not the showdown, where the cards decide) and the
+ * hero is in it (dealt in, not folded).
+ */
 function heroLive(hand: HandState | null): boolean {
-  if (hand === null || hand.phase === 'complete') return false;
+  if (hand === null || (hand.phase !== 'betting' && hand.phase !== 'roundComplete')) return false;
   const hero = hand.seats[HERO];
   return hero !== undefined && hero.dealtIn && hero.hole !== null && !hero.folded;
 }
 
 /**
- * The badge (§7.6, §10.2): hidden when "Show win chance" is off, and at Exam while the hand is
- * played (the hand summary shows it there). Known hands (an all-in run-out) show the hero's own
- * run-out number.
+ * The badge (§7.6, §10.2): hidden when "Show win chance" is off, at Exam while the hand is played
+ * (the hand summary shows it there), and from the showdown on (the result banner speaks then).
+ * Known hands (an all-in run-out) show the hero's own run-out number.
  */
 export function winBadgeOf(
   eq: EquityFields,
   showEquity: boolean,
   coachLevel: AppState['settings']['coachLevel'],
+  showdown = false,
 ): WinBadgeData {
   const off: WinBadgeData = { status: 'off', key: '', result: null, nOpp: 0, known: false };
-  if (!showEquity || coachLevel === 'exam' || eq.status === 'off') return off;
+  if (!showEquity || coachLevel === 'exam' || showdown || eq.status === 'off') return off;
   if (eq.status === 'folded') return { ...off, status: 'folded' };
   if (eq.mode === 'known') {
     const k = eq.known;
@@ -364,16 +368,20 @@ const badgeMemo = memo(
     slice: EquitySlice,
     showEquity: boolean,
     coachLevel: AppState['settings']['coachLevel'],
+    showdown: boolean,
   ): WinBadgeData => {
-    const badge = winBadgeOf(equityFields(slice), showEquity, coachLevel);
+    const badge = winBadgeOf(equityFields(slice), showEquity, coachLevel, showdown);
     // A slice write that changes nothing the badge shows keeps the old object: no render.
     if (lastBadge === null || !sameBadge(lastBadge, badge)) lastBadge = badge;
     return lastBadge;
   },
 );
-/** The win badge. Changes only with the equity slice and two settings. */
-export const selectWinBadge = (s: AppState): WinBadgeData =>
-  badgeMemo(s.equity, s.settings.showEquity, s.settings.coachLevel);
+/** The win badge. Changes only with the equity slice, two settings and the showdown. */
+export const selectWinBadge = (s: AppState): WinBadgeData => {
+  const phase = s.game.hand?.phase;
+  const showdown = phase === 'showdown' || phase === 'complete';
+  return badgeMemo(s.equity, s.settings.showEquity, s.settings.coachLevel, showdown);
+};
 
 const analysisOf = (s: AppState): HandAnalysis | null => equityFields(s.equity).analysis;
 

@@ -88,9 +88,11 @@ export const RankingsList = memo(function RankingsList({
       )}
       data-examples=""
     >
-      <div className={styles.head}>
-        <span className={styles.headOften}>{en.rankings.howOften}</span>
-        {byRiver !== null && (
+      {/* The column headers come with the "By river" column: two numbers need their names; one
+          (how often) does not, and the Table stays within its 600 DOM nodes (§15.3). */}
+      {byRiver !== null && (
+        <div className={styles.head}>
+          <span>{en.rankings.howOften}</span>
           <button
             type="button"
             className={styles.headRiver}
@@ -100,8 +102,8 @@ export const RankingsList = memo(function RankingsList({
           >
             {en.rankings.byRiver}
           </button>
-        )}
-      </div>
+        </div>
+      )}
       {byRiver !== null && info && (
         <p id={infoId} className={styles.headInfo}>
           {en.rankings.byRiverInfo}
