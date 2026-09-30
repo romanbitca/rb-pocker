@@ -27,6 +27,8 @@ import { score7 } from '../eval/evaluate.ts';
 import * as evalTables from '../eval/tables.ts';
 import type { Observation, PublicAction, Street } from '../engine/types.ts';
 import { observedSeatModel } from './opponentStats.ts';
+import { pushPct } from './pushFoldData.ts';
+import { rankPctOfClass } from './rangesData.ts';
 import {
   AF_HIGH,
   AF_LOW,
@@ -95,13 +97,19 @@ export function comboIndex(a: Card, b: Card): number {
 
 // ── Inputs ─────────────────────────────────────────────────────────────────────────────────────
 
-/** The build-time tables the model reads (§8.3–8.4, `scripts/gen-ranges.ts`, `gen-pushfold.ts`). */
+/**
+ * The build-time tables the model reads (§8.3–8.4, `scripts/gen-ranges.ts`, `gen-pushfold.ts`);
+ * `RANGE_TABLES` below by default, a stand-in in tests that need a ranking of their own.
+ */
 export interface RangeTables {
   /** Percent of all combos ranking at least as well as the class (AA ≈ 0.45, the worst 100). */
   rankPctOfClass(cls: number): number;
   /** Percent of all combos pushed with `k` players behind and `effBB` big blinds (clamped). */
   pushPct(k: number, effBB: number): number;
 }
+
+/** The real tables (chunk 5.1): `brain/rangesData.ts` and `brain/pushFoldData.ts`. */
+export const RANGE_TABLES: RangeTables = { rankPctOfClass, pushPct };
 
 export type RangeModel = BrainProfile['rangeModel'];
 
@@ -406,7 +414,7 @@ export function visibleCards(obs: Observation): Uint8Array {
 export function opponentRanges(
   obs: Observation,
   model: RangeModel,
-  tables: RangeTables,
+  tables: RangeTables = RANGE_TABLES,
 ): OpponentRange[] {
   const seen = visibleCards(obs);
   const seats = liveOpponents(obs);
