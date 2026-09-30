@@ -54,6 +54,21 @@ function focusables(root: HTMLElement): HTMLElement[] {
   return [...root.querySelectorAll<HTMLElement>(FOCUSABLE)];
 }
 
+/**
+ * Brings `row` to the middle of `list` by scrolling the list only. Not `scrollIntoView`, and every
+ * `focus()` of the sheet passes `preventScroll`: both also scroll the ancestors, `overflow: hidden`
+ * ones included. While the sheet slides in it sits past the drawer's right edge, and WebKit
+ * scrolled the drawer's root sideways by the sheet's width: the scrim no longer covered the table
+ * and a quick tap on it missed (found by the Stage 3 E2E suite, `rankings.spec.ts`). WebKit did
+ * it even with `preventScroll`, so the root is also `overflow: clip` (not scrollable at all).
+ */
+export function centreRow(list: HTMLElement | null, row: HTMLElement | null): void {
+  if (list === null || row === null) return;
+  const listBox = list.getBoundingClientRect();
+  const rowBox = row.getBoundingClientRect();
+  list.scrollTop += rowBox.top - listBox.top - (list.clientHeight - rowBox.height) / 2;
+}
+
 interface Drag {
   id: number;
   x: number;
@@ -65,6 +80,7 @@ interface Drag {
 function Sheet({ open, onOpenChange, hero, showTips }: RankingsDrawerProps) {
   const titleId = useId();
   const sheetRef = useRef<HTMLDivElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
   const currentRowRef = useRef<HTMLLIElement>(null);
   const drag = useRef<Drag | null>(null);
   const swallowClick = useRef(false);
@@ -82,8 +98,8 @@ function Sheet({ open, onOpenChange, hero, showTips }: RankingsDrawerProps) {
   useEffect(() => {
     if (!open) return;
     const opener = document.activeElement;
-    sheetRef.current?.focus();
-    currentRowRef.current?.scrollIntoView?.({ block: 'center' });
+    sheetRef.current?.focus({ preventScroll: true });
+    centreRow(listRef.current, currentRowRef.current);
     const onKey = (e: globalThis.KeyboardEvent) => {
       if (e.key === 'Escape') {
         e.preventDefault();
@@ -92,7 +108,9 @@ function Sheet({ open, onOpenChange, hero, showTips }: RankingsDrawerProps) {
     };
     const onFocusIn = (e: FocusEvent) => {
       const sheet = sheetRef.current;
-      if (sheet !== null && e.target instanceof Node && !sheet.contains(e.target)) sheet.focus();
+      if (sheet !== null && e.target instanceof Node && !sheet.contains(e.target)) {
+        sheet.focus({ preventScroll: true });
+      }
     };
     document.addEventListener('keydown', onKey);
     document.addEventListener('focusin', onFocusIn);
@@ -209,7 +227,7 @@ function Sheet({ open, onOpenChange, hero, showTips }: RankingsDrawerProps) {
             <SpriteIcon id={ICONS.close} className={styles.closeIcon} />
           </button>
         </header>
-        <div className={styles.scroll}>
+        <div ref={listRef} className={styles.scroll}>
           <RankingsList
             hero={hero}
             cardSize="sm"

@@ -4,7 +4,11 @@
   position: absolute;
   inset: 0;
   z-index: 30;
-  overflow: hidden;
+  /* `clip`, not `hidden`: a `hidden` box can still be scrolled, and WebKit scrolled this one
+     sideways to reveal the sheet it had just focused (even with `preventScroll`) while the sheet
+     slid in past its edge, so the scrim missed the table for the whole slide (found by the
+     Stage 3 E2E suite). Vite's default build target (Safari 16.4+) has `clip`. */
+  overflow: clip;
 }
 
 .scrim {
