@@ -99,10 +99,14 @@ describe('bench (§15.4)', () => {
   it('answers with every number, from the real maths', { timeout: 20_000 }, async () => {
     const r = await runBench(equityMath, { evals: 50_000, pool: 5_000, runs: 1 });
     expect(r.evalsPerSec).toBeGreaterThan(0);
+    // Before the flop the win chance is a table lookup (§7.5): it may round to 0.0 ms.
+    expect(r.eq8PreflopMs).toBeGreaterThanOrEqual(0);
     for (const ms of [r.eq8PreflopMs, r.eq8FlopMs, r.eq1FlopMs]) {
-      expect(ms).toBeGreaterThan(0);
       expect(Number.isFinite(ms)).toBe(true);
     }
+    // On the flop it is a Monte Carlo run through the job runner: it takes time.
+    expect(r.eq8FlopMs).toBeGreaterThan(0);
+    expect(r.eq1FlopMs).toBeGreaterThan(0);
     expect(typeof r.ua).toBe('string');
     expect(Object.keys(r).sort()).toEqual([
       'eq1FlopMs',

@@ -24,8 +24,9 @@ export interface BenchRow {
   ok: boolean | null;
 }
 
-/** "8.4" below 10 ms, whole ms above. */
+/** "< 0.1" (a table lookup), "8.4" below 10 ms, whole ms above. */
 export function formatMs(ms: number): string {
+  if (ms < 0.1) return '< 0.1';
   return ms < 10 ? ms.toFixed(1) : String(Math.round(ms));
 }
 

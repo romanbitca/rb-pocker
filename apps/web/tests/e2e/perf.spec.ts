@@ -194,6 +194,8 @@ test('at 6× CPU: win chance within its budgets, no main-thread task over 50 ms 
     .soft(worst(postFirsts), 'first postflop number at 6×')
     .toBeLessThanOrEqual(BUDGET.firstPostflop);
   expect.soft(worst(postFinals), 'postflop final at 6×').toBeLessThanOrEqual(BUDGET.final);
-  expect.soft(await longTasks(page), 'main-thread tasks over 50 ms at 6×').toEqual([]);
+  const tasks = await longTasks(page);
+  console.info(`main-thread tasks over 50 ms at ${RATE}×: ${JSON.stringify(tasks)}`);
+  expect.soft(tasks, 'main-thread tasks over 50 ms at 6×').toEqual([]);
   expect(errors).toEqual([]);
 });

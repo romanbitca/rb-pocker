@@ -28,6 +28,8 @@ describe('bench rows and text', () => {
     expect(formatMillions(12_345_678)).toBe('12.3');
     expect(formatMs(8.04)).toBe('8.0');
     expect(formatMs(412.6)).toBe('413');
+    expect(formatMs(0)).toBe('< 0.1'); // before the flop: a table lookup
+    expect(formatMs(0.1)).toBe('0.1');
   });
 
   it('compares with the §15.4 targets; the 1-player row and the hint have none', () => {

@@ -115,6 +115,7 @@ describe('equity (§7.2–7.3)', () => {
         jobId: 7,
         epoch: 3,
         result: preflopEquity(two('Ah Kh'), nOpp),
+        timing: { ms: 0, busyMs: 0 }, // chunk 4.7: every reply carries its timing (now() is 0)
       });
       expect(replies[0]).toMatchObject({
         result: { n: PREFLOP_TRIALS, exact: false, final: true, truncated: false },
