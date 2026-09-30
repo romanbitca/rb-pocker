@@ -110,6 +110,8 @@ export interface WorkerClientOptions<Req, Rep> {
   /** Is this reply the job's last one? (`error` replies always are.) */
   isFinal(reply: Rep): boolean;
   cancelMessage(jobId: number): Req;
+  /** A short description of a request for the log's `detail` (never card values). */
+  summary?(message: Req): string | undefined;
   timers: ClientTimers;
   /** Restarts before giving up (§12.14: once). */
   maxRestarts?: number;
@@ -298,11 +300,13 @@ export class WorkerClient<Req extends WorkerMessage, Rep extends WorkerMessage> 
       return false;
     }
     const epoch = epochOf(message);
+    const detail = this.options.summary?.(message);
     this.note({
       what: 'out',
       kind: message.kind,
       jobId: message.jobId,
       ...(epoch !== undefined && { epoch }),
+      ...(detail !== undefined && { detail }),
     });
     return true;
   }
@@ -397,6 +401,23 @@ export function equityReplyIsFinal(reply: EquityReply): boolean {
   }
 }
 
+/**
+ * What an equity request is about, for the log (no card values): "board 3 · 5 opponents",
+ * "board 0 · 2 hands", "board 4". The E2E budget check sorts the worker timings by it (§15.3).
+ */
+export function equitySummary(req: EquityRequest): string | undefined {
+  switch (req.kind) {
+    case 'equity':
+      return `board ${req.board.length} · ${req.nOpp} opponents`;
+    case 'equityKnown':
+      return `board ${req.board.length} · ${req.hands.length} hands`;
+    case 'handInfo':
+      return `board ${req.board.length}`;
+    default:
+      return undefined;
+  }
+}
+
 export function createEquityClient(
   spawn: SpawnWorker<EquityRequest, EquityReply>,
   timers: ClientTimers,
@@ -405,6 +426,7 @@ export function createEquityClient(
     spawn,
     isFinal: equityReplyIsFinal,
     cancelMessage: (jobId) => ({ kind: 'cancel', jobId }),
+    summary: equitySummary,
     timers,
   });
 }

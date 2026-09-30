@@ -10,6 +10,7 @@ import {
   createEquityClient,
   EQUITY_TIMEOUT_MS,
   equityReplyIsFinal,
+  equitySummary,
   fromWorker,
   startEquityWorker,
   type EquityClient,
@@ -346,6 +347,29 @@ describe('the log', () => {
       { what: 'in', kind: 'equity', jobId: id, epoch: 2 },
     ]);
     expect(JSON.stringify(log)).not.toContain('hero');
+  });
+
+  it('keeps what a request is about (no cards) and each reply’s worker timing (§15.3)', () => {
+    const id = equityJob(client, recorder(), 3) as number;
+    fake.current().reply({ ...progress(id, 3, 2_500, 0.4), timing: { ms: 12.5, busyMs: 9 } });
+    fake.current().reply({ ...final(id, 3, 0.41), timing: { ms: 40, busyMs: 31.5 } });
+    const log = client.log();
+    expect(log[0]).toMatchObject({ what: 'out', kind: 'equity', detail: expect.any(String) });
+    expect(log.slice(1).map((e) => e.timing)).toEqual([
+      { ms: 12.5, busyMs: 9, final: false },
+      { ms: 40, busyMs: 31.5, final: true },
+    ]);
+    // The summary names sizes, never cards.
+    expect(
+      equitySummary({ kind: 'equity', jobId: 1, epoch: 1, hero: AH_KH, board: [1, 2, 3], nOpp: 5 }),
+    ).toBe('board 3 · 5 opponents');
+    expect(
+      equitySummary({ kind: 'equityKnown', jobId: 1, epoch: 1, hands: [AH_KH, [0, 1]], board: [] }),
+    ).toBe('board 0 · 2 hands');
+    expect(equitySummary({ kind: 'handInfo', jobId: 1, epoch: 1, hero: AH_KH, board: [9] })).toBe(
+      'board 1',
+    );
+    expect(equitySummary({ kind: 'cancel', jobId: 1 })).toBeUndefined();
   });
 
   it('keeps the last 200 lines', () => {
