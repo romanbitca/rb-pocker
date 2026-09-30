@@ -1,5 +1,5 @@
 import { expect, heading, test as base, waitForServiceWorkerControl } from './fixtures.ts';
-import { collectErrors, playHands, type HandRecord } from './game.ts';
+import { collectErrors, playHands, seedFor, type HandRecord } from './game.ts';
 import { startOwnServer, type OwnServer } from './own-server.ts';
 
 // PLAN §15.1, §15.2, Stage 0 acceptance 4: once loaded, the game works with no network at all.
@@ -27,10 +27,11 @@ test('offline once the service worker controls the page: the app loads and a han
   context,
   server,
   browserName,
-}) => {
+}, testInfo) => {
   test.setTimeout(90_000);
   const errors = collectErrors(page);
-  await page.goto('/');
+  // A fixed seed per project (as in every other spec), so a failing run can be repeated.
+  await page.goto(`/?seed=${seedFor(testInfo)}`);
   await expect(heading(page)).toHaveText('RB Poker Coach');
   await waitForServiceWorkerControl(page);
 
@@ -61,6 +62,13 @@ test('offline once the service worker controls the page: the app loads and a han
   }
   const showdown = played.find((r) => r.hand.result?.endedBy === 'showdown');
   expect(showdown?.players, 'a 6-player hand reached the showdown').toBe(6);
+
+  // The hero can lose every chip on that hand (check or call also calls an all-in). The tap that
+  // ended `playHands` then opened "You're out of chips", which covers the table until the player
+  // reloads, so reload as a player would.
+  const reload = page.getByRole('alertdialog').getByRole('button', { name: /^Reload / });
+  if (await reload.isVisible()) await reload.click();
+  await expect(page.getByRole('alertdialog')).toHaveCount(0);
 
   if ((await page.locator('main[data-layout="wide"]').count()) === 0) {
     await page.locator('[data-table-box] + div button').click();
