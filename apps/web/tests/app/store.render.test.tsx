@@ -8,6 +8,7 @@ import { memo, Profiler } from 'react';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
   appStore,
+  initialEquity,
   selectHand,
   selectMode,
   useAppStore,
@@ -45,7 +46,9 @@ describe('narrow selectors (pitfall 37)', () => {
     );
     const start = { ...renders };
     act(() => {
-      for (let i = 0; i < 50; i++) appStore.setState({ equity: { status: 'off' } });
+      for (let i = 0; i < 50; i++) {
+        appStore.setState({ equity: { ...initialEquity(), status: 'computing' } });
+      }
       appStore.setState((s) => ({ ui: { ...s.ui, toasts: [{ id: 1, kind: 'handVoided' }] } }));
     });
     expect(renders).toEqual(start);

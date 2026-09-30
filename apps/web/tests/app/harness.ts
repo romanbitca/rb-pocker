@@ -33,6 +33,7 @@ import { fixedSeeds } from '../../src/app/testHooks.ts';
 import { simpleBotAction, simpleBotThinkMs } from '../../src/brain/simpleBot.ts';
 import type { step } from '../../src/engine/step.ts';
 import type { SafeStorage } from '../../src/persist/storage.ts';
+import type { EquityClient } from '../../src/app/workerClient.ts';
 import type { HandState, LegalActions, PlayerAction } from '../../src/engine/types.ts';
 
 export const SEED: Seed128 = 'c0ffee00c0ffee00c0ffee00c0ffee00';
@@ -52,6 +53,8 @@ export interface HarnessOptions {
   timers?: Timers;
   /** Chunk 3.2 storage: the controller loads at boot and saves as it plays. */
   storage?: SafeStorage;
+  /** Chunk 4.5: equity.worker's client (a fake worker in tests). */
+  equity?: EquityClient;
 }
 
 export function makeHarness(options: HarnessOptions = {}): Harness {
@@ -69,6 +72,7 @@ export function makeHarness(options: HarnessOptions = {}): Harness {
     ...(options.step !== undefined && { step: options.step }),
     ...(options.timers !== undefined && { timers: options.timers }),
     ...(options.storage !== undefined && { storage: options.storage }),
+    ...(options.equity !== undefined && { equity: options.equity }),
   });
   controller.boot();
   return {

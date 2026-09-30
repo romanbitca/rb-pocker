@@ -4,10 +4,16 @@
  * before the first render.
  */
 import { createSimpleBrain } from './brain.ts';
-import { createTableController, randomSeeds, type TableController } from './controller.ts';
+import {
+  createTableController,
+  randomSeeds,
+  realTimers,
+  type TableController,
+} from './controller.ts';
 import { createSafeStorage } from '../persist/storage.ts';
 import { installLifecycle } from './lifecycle.ts';
 import { appStore } from './store.ts';
+import { startEquityWorker } from './workerClient.ts';
 import type { SafeStorage } from '../persist/storage.ts';
 import type * as TestHooks from './testHooks.ts';
 
@@ -33,6 +39,8 @@ export function startApp(options: StartOptions): TableController {
     seeds: hooks !== undefined && seed !== null ? hooks.fixedSeeds(seed) : randomSeeds(),
     // One storage wrapper per launch over the real localStorage (§14.6).
     storage: options.storage ?? createSafeStorage(),
+    // Warmed at start, never awaited (§12.14); without module workers it reports "unavailable".
+    equity: startEquityWorker(realTimers),
   });
   installLifecycle(win, appStore);
   if (hooks !== undefined) hooks.installTestHooks(win, appStore, controller, seed);
