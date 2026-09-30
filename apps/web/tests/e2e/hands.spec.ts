@@ -1,11 +1,10 @@
 import { expect, test } from './fixtures.ts';
 import {
   ACCEPTANCE_SIZES,
+  CARD_NAMES,
   collectErrors,
   installLeakWatch,
-  installLongTaskObserver,
   leakViolations,
-  longTasks,
   newTable,
   pageMetrics,
   playHands,
@@ -16,11 +15,11 @@ import {
   type HandRecord,
 } from './game.ts';
 
-// PLAN §18 Stage 3, acceptance 1 and 7, and the §15.3 budgets: 50 full hands through the real
-// buttons at each of the five acceptance viewports (both browsers), 25 with nine players and 25
-// heads-up. No console error, no horizontal scroll, never a bot card face up or named before
-// its reveal (checked after every DOM change), the Table under 600 DOM nodes, and (Chromium,
-// the only engine with the Long Tasks API) no main-thread task over 50 ms during play.
+// PLAN §18 Stage 3, acceptance 1 and 7, and the §15.3 DOM budget: 50 full hands through the
+// real buttons at each of the five acceptance viewports (both browsers), 25 with nine players and
+// 25 heads-up. No console error, no horizontal scroll, never a bot card face up or named before
+// its reveal (checked after every DOM change), the Table under 600 DOM nodes. The long-task
+// budget has its own quiet run: perf.spec.ts.
 
 /** The heads-up blinds rule (§3.3, acceptance 1): the button posts the SB and acts first preflop. */
 function checkHeadsUp(record: HandRecord): void {
@@ -54,7 +53,37 @@ test.describe('50 hands', () => {
     await page.clock.install();
     await startTable(page, seed, { players: 9 });
     await installLeakWatch(page);
-    const observing = await installLongTaskObserver(page);
+    // The watch itself works: a card planted face up in a bot's pod and that bot's real card
+    // named on the page are both caught. They go again before play starts.
+    const planted = await page.evaluate((names) => {
+      const hand = window.__pc?.state().game.hand;
+      if (hand === null || hand === undefined) return 'no hand';
+      const seat = hand.seats.findIndex(
+        (s, i) => i > 0 && s.hole !== null && !hand.revealed.includes(i),
+      );
+      const hole = hand.seats[seat]?.hole;
+      const pod = document.querySelector(`[data-seat="${seat}"] > [role="group"]`);
+      if (hole === null || hole === undefined || pod === null) return 'no hidden bot';
+      const face = document.createElement('span');
+      face.setAttribute('role', 'img');
+      face.setAttribute('aria-label', 'Two of clubs');
+      face.id = 'planted-face';
+      const text = document.createElement('p');
+      text.id = 'planted-text';
+      text.textContent = names[hole[1]] ?? '';
+      pod.append(face);
+      document.body.append(text);
+      return `seat ${seat}`;
+    }, CARD_NAMES);
+    expect(planted).toMatch(/^seat \d$/);
+    const caught = await leakViolations(page);
+    expect(caught.some((v) => v.includes('shows "Two of clubs" face up'))).toBe(true);
+    expect(caught.some((v) => v.endsWith(' is named'))).toBe(true);
+    await page.evaluate(() => {
+      document.getElementById('planted-face')?.remove();
+      document.getElementById('planted-text')?.remove();
+      window.__leaks?.splice(0);
+    });
     let maxNodes = 0;
 
     const onHandEnd = async (record: HandRecord): Promise<void> => {
@@ -92,7 +121,6 @@ test.describe('50 hands', () => {
     expect(nine.length + two.length).toBe(50);
 
     expect(await leakViolations(page)).toEqual([]);
-    if (observing) expect(await longTasks(page)).toEqual([]);
     expect(errors).toEqual([]);
     testInfo.annotations.push({ type: 'dom', description: `max ${maxNodes} nodes` });
   });

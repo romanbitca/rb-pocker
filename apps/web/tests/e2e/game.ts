@@ -239,39 +239,129 @@ export interface PlayOptions {
   onHandEnd?: (record: HandRecord) => Promise<void>;
 }
 
+interface Spot {
+  x: number;
+  y: number;
+}
+
+/** Where the flow stands, and where to tap: read in one round trip (see playHands). */
+interface FlowView {
+  point: FlowPoint | null;
+  hand: HandState | null;
+  /** Row A's enabled buttons; `tray` = the button opens the sizing tray. */
+  slots: { slot: string; tray: boolean; at: Spot }[];
+  /** The hand-end banner, or the out-of-chips dialog's Reload button. */
+  tap: Spot | null;
+}
+
+/** In the page: FlowView (the full hand only at a hand end). */
+function readFlowView(): FlowView {
+  // The middle of the part a finger can see: clipped by every ancestor that clips or scrolls
+  // (in landscape a long hand-end banner scrolls in its column, under Row A) and the viewport.
+  const centre = (el: Element): Spot => {
+    const r = el.getBoundingClientRect();
+    let [left, top, right, bottom] = [r.left, r.top, r.right, r.bottom];
+    for (let a = el.parentElement; a !== null; a = a.parentElement) {
+      const style = getComputedStyle(a);
+      if (style.overflowX === 'visible' && style.overflowY === 'visible') continue;
+      const b = a.getBoundingClientRect();
+      [left, top] = [Math.max(left, b.left), Math.max(top, b.top)];
+      [right, bottom] = [Math.min(right, b.right), Math.min(bottom, b.bottom)];
+    }
+    [left, top] = [Math.max(left, 0), Math.max(top, 0)];
+    [right, bottom] = [Math.min(right, innerWidth), Math.min(bottom, innerHeight)];
+    return { x: (left + right) / 2, y: (top + bottom) / 2 };
+  };
+  const s = window.__pc?.state();
+  let point: FlowPoint | null = null;
+  if (s?.ui.overlays.includes('outOfChips') === true) point = 'bust';
+  else if (s?.game.mode === 'heroTurn') point = 'hero';
+  else if (s?.game.mode === 'handEnd') point = 'end';
+  const slots = [...document.querySelectorAll('[data-slot]')]
+    .filter((b) => b.getAttribute('aria-disabled') !== 'true')
+    .map((b) => ({
+      slot: b.getAttribute('data-slot') ?? '',
+      tray: b.hasAttribute('aria-expanded'),
+      at: centre(b),
+    }));
+  const dialogButtons = '[role="dialog"] button, [role="alertdialog"] button';
+  const reload = [...document.querySelectorAll(dialogButtons)].find((b) =>
+    (b.textContent ?? '').startsWith('Reload '),
+  );
+  const banner = document.querySelector('[data-hand-end]');
+  const tap = point === 'bust' ? reload : point === 'end' ? banner : null;
+  return {
+    point,
+    hand: point === 'end' ? (s?.game.hand ?? null) : null,
+    slots: point === 'hero' ? slots : [],
+    tap: tap === null || tap === undefined ? null : centre(tap),
+  };
+}
+
+/** The hero's choice (see heroAct), tapped at the buttons' measured centres. */
+async function heroTap(page: Page, view: FlowView, random: () => number): Promise<void> {
+  const enabled = new Map(view.slots.map((s) => [s.slot, s]));
+  const roll = random();
+  const pick =
+    (roll < 0.12 ? enabled.get('fold') : roll > 0.78 ? enabled.get('right') : undefined) ??
+    enabled.get('middle') ??
+    view.slots[0];
+  if (pick === undefined) return;
+  await page.mouse.click(pick.at.x, pick.at.y);
+  if (!pick.tray) return;
+  // The tray is open (or the tap was ignored): a random preset, then the same button confirms.
+  const presets = await page.evaluate(() => {
+    const id = document.querySelector('[data-slot="right"]')?.getAttribute('aria-controls');
+    const tray = id === null || id === undefined ? null : document.getElementById(id);
+    return [...(tray?.querySelectorAll('button[aria-pressed]:enabled') ?? [])].map((b) => {
+      const r = b.getBoundingClientRect();
+      return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+    });
+  });
+  if (presets.length === 0) return; // the tap was ignored (double-tap guard): the loop goes on
+  const preset = presets[Math.floor(random() * presets.length)];
+  if (preset !== undefined) await page.mouse.click(preset.x, preset.y);
+  await page.mouse.click(pick.at.x, pick.at.y);
+}
+
 /**
- * Plays `hands` full hands through the UI: the hero acts with heroAct, the hand-end banner is
- * tapped to deal the next hand, and "Reload" is tapped when the hero runs out of chips.
+ * Plays `hands` full hands through the UI: the hero taps Row A (as heroAct chooses), the
+ * hand-end banner is tapped to deal the next hand, and "Reload" when the hero is out of chips.
+ * For speed each step reads the state and the buttons' places in one round trip and taps there
+ * with real mouse clicks (Playwright's locator checks cost several round trips per tap, which
+ * made 50 hands take minutes in WebKit on the CI runner). A tap that misses shows up as no
+ * progress: the loop fails after `hands × 200` steps.
  */
 export async function playHands(page: Page, options: PlayOptions): Promise<HandRecord[]> {
   const records: HandRecord[] = [];
-  const banner = page.locator('[data-hand-end]');
-  let steps = 0;
-  while (records.length < options.hands) {
-    if (++steps > options.hands * 200) throw new Error('playHands: no progress');
-    const point = await nextFlowPoint(page, options.fast === true);
-    if (point === 'hero') {
-      await heroAct(page, options.random);
-    } else if (point === 'bust') {
-      await page.getByRole('button', { name: /^Reload / }).click();
-      await expect(page.getByRole('dialog')).toHaveCount(0);
+  for (let steps = 0; records.length < options.hands; steps++) {
+    if (steps > options.hands * 200) throw new Error('playHands: no progress');
+    let view = await page.evaluate(readFlowView);
+    for (let waits = 0; view.point === null; waits++) {
+      if (waits > 400) throw new Error('playHands: no hero turn, hand end or dialog');
+      if (options.fast === true) await page.clock.runFor(1000);
+      else await page.waitForFunction(readFlowPoint, undefined, { polling: 'raf' });
+      view = await page.evaluate(readFlowView);
+    }
+    if (view.point === 'hero') {
+      await heroTap(page, view, options.random);
+    } else if (view.point === 'bust') {
+      if (view.tap === null) throw new Error('out of chips, but no Reload button');
+      await page.mouse.click(view.tap.x, view.tap.y);
     } else {
-      const hand = (await pcState(page)).game.hand;
-      if (hand === null) throw new Error('handEnd without a hand');
+      const hand = view.hand;
+      if (hand === null || view.tap === null) throw new Error('hand end without a banner');
       expect(hand.phase, 'the hand ran to its end').toBe('complete');
-      const record = {
-        handSeq: hand.handSeq,
-        players: hand.seats.filter((s) => s.dealtIn).length,
-        hand,
-      };
-      if (records.at(-1)?.handSeq === hand.handSeq) throw new Error('the same hand ended twice');
-      records.push(record);
-      await options.onHandEnd?.(record);
-      await banner.click();
-      await page.waitForFunction((seq) => {
-        const s = window.__pc?.state();
-        return s !== undefined && (s.game.hand?.handSeq !== seq || s.game.mode !== 'handEnd');
-      }, hand.handSeq);
+      if (records.at(-1)?.handSeq !== hand.handSeq) {
+        const record = {
+          handSeq: hand.handSeq,
+          players: hand.seats.filter((s) => s.dealtIn).length,
+          hand,
+        };
+        records.push(record);
+        await options.onHandEnd?.(record);
+      }
+      await page.mouse.click(view.tap.x, view.tap.y);
     }
   }
   return records;
