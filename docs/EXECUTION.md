@@ -6,7 +6,7 @@ This is the working checklist for building [PLAN.md](PLAN.md). PLAN.md is the so
 
 Legend: `[ ]` todo · `[~]` in progress (branch exists) · `[x]` merged to `main` · `[H]` waiting on the human
 
-**Current position:** ⏸ Paused by the owner (30 Sep ~01:30Z). Stages 0–3 ✅ complete in CI; 3.9 (owner's phone check) pending. Next on resume: Stage 4 — merge held PRs #27 (4.1), #28 (4.2), #29 (4.3), then 4.4 preflop tables, 4.5 equity worker, 4.6 win badge, 4.7 all-in + bench.
+**Current position:** ▶ Resumed 30 Sep 20:41Z (+30 rule). Stages 0–3 ✅. Stage 4: merging #27 (4.1) → #28 (4.2) → #29 (4.3); 4.5 equity worker in progress; then 4.4 preflop tables, 4.6 win badge, 4.7 all-in + bench.
 
 ---
 
@@ -71,7 +71,7 @@ Legend: `[ ]` todo · `[~]` in progress (branch exists) · `[x]` merged to `main
 - [~] 4.2 `feature/chances-by-the-river` - `analysis/chances.ts`; D.3.
 - [~] 4.3 `feature/win-chance-equity` - `analysis/equity.ts` exact + fixed-n seeded Monte Carlo; C.2–C.3.
 - [ ] 4.4 `feature/preflop-equity-tables` - `scripts/gen-preflop.ts`, `analysis/preflop.ts`, `check-tables` in CI.
-- [ ] 4.5 `feature/equity-worker` - `workers/protocol.ts`, `equity.worker.ts`, `app/workerClient.ts` (jobId, epoch, cancel, stale-drop, timeouts).
+- [~] 4.5 `feature/equity-worker` - `workers/protocol.ts`, `equity.worker.ts`, `app/workerClient.ts` (jobId, epoch, cancel, stale-drop, timeouts).
 - [ ] 4.6 `feature/win-badge-and-draw-chips` - badge (skeleton, `~`, hysteresis, popover), price chip, draw chips, By-river column.
 - [ ] 4.7 `feature/all-in-run-out-and-bench` - all-in TV mode, luck line, `#bench` route, throttled latency checks.
 - [ ] 4.8 [H] **Human gate:** `#bench` numbers from one real Android phone.
