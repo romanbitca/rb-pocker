@@ -2,9 +2,7 @@
  * Brain test fixtures: range tables, observation extras, and scripted spots played through the
  * real engine (tests may run the engine; the brain never does) and observed with `observe()`.
  */
-import { preflopEquityOfClass } from '../../src/analysis/preflop.ts';
-import type { RangeTables } from '../../src/brain/ranges.ts';
-import { classCombos } from '../../src/core/cards.ts';
+import { RANGE_TABLES, type RangeTables } from '../../src/brain/ranges.ts';
 import { observe } from '../../src/engine/observe.ts';
 import type {
   BotLevel,
@@ -18,32 +16,8 @@ import type {
 import { deal, rigDeck, tableWith } from '../engine/helpers.ts';
 import { ADVANCE, play } from '../engine/play.ts';
 
-/**
- * Stand-in for the chunk 5.1 tables (`brain/rangesData.ts`, `brain/pushFoldData.ts`) until they
- * are on main: classes ordered by their equity against one random hand (the 4.4 preflop table),
- * as a combo-weighted percentile; `pushPct` a simple decreasing function of `k` and `S`.
- */
-export function standInTables(): RangeTables {
-  const order = Array.from({ length: 169 }, (_, c) => c).sort(
-    (a, b) => preflopEquityOfClass(b, 1).equity - preflopEquityOfClass(a, 1).equity || a - b,
-  );
-  const pct = new Float64Array(169);
-  let acc = 0;
-  for (const cls of order) {
-    acc += classCombos(cls);
-    pct[cls] = (100 * acc) / 1326;
-  }
-  return {
-    rankPctOfClass: (cls) => pct[cls] as number,
-    pushPct: (k, effBB) => {
-      const kk = Math.min(8, Math.max(1, Math.round(k)));
-      const s = Math.min(15, Math.max(1, Math.round(effBB)));
-      return Math.min(100, 300 / (kk + 1) / s);
-    },
-  };
-}
-
-export const TABLES: RangeTables = standInTables();
+/** The real build-time tables (chunk 5.1). */
+export const TABLES: RangeTables = RANGE_TABLES;
 
 export interface ExtrasSpec {
   stats?: (SeatStats | null)[];
