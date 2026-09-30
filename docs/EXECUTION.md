@@ -6,7 +6,7 @@ This is the working checklist for building [PLAN.md](PLAN.md). PLAN.md is the so
 
 Legend: `[ ]` todo · `[~]` in progress (branch exists) · `[x]` merged to `main` · `[H]` waiting on the human
 
-**Current position:** ▶ 1 Oct (owner: 95% per window, stop at 65% weekly). Stages 0–3 ✅. Stage 4: #27 (4.1) merged; merging #28 → #29; #33 offline-test flake fix; 4.4 tables, 4.5 worker (#32), 4.6 badge in progress; then 4.7.
+**Current position:** ▶ 1 Oct (owner: 95% per window, stop at 65% weekly). Stages 0–3 ✅. Stage 4: 4.1–4.3 merged (+ #33 flake fix); 4.4 tables, 4.5 worker (#32), 4.6 badge in progress; then 4.7.
 
 ---
 
@@ -68,8 +68,8 @@ Legend: `[ ]` todo · `[~]` in progress (branch exists) · `[x]` merged to `main
 ## Stage 4 - Draws, outs, win chance (PLAN §6.2–6.6, §7)
 
 - [x] 4.1 `feature/draws-and-outs-analysis` - `analysis/handinfo.ts` (draws, outs rule, risky outs R1–R5, nuts/beaters); D.2.
-- [~] 4.2 `feature/chances-by-the-river` - `analysis/chances.ts`; D.3.
-- [~] 4.3 `feature/win-chance-equity` - `analysis/equity.ts` exact + fixed-n seeded Monte Carlo; C.2–C.3.
+- [x] 4.2 `feature/chances-by-the-river` - `analysis/chances.ts`; D.3.
+- [x] 4.3 `feature/win-chance-equity` - `analysis/equity.ts` exact + fixed-n seeded Monte Carlo; C.2–C.3.
 - [~] 4.4 `feature/preflop-equity-tables` - `scripts/gen-preflop.ts`, `analysis/preflop.ts`, `check-tables` in CI.
 - [~] 4.5 `feature/equity-worker` - `workers/protocol.ts`, `equity.worker.ts`, `app/workerClient.ts` (jobId, epoch, cancel, stale-drop, timeouts).
 - [~] 4.6 `feature/win-badge-and-draw-chips` - badge (skeleton, `~`, hysteresis, popover), price chip, draw chips, By-river column.
@@ -181,4 +181,5 @@ If the human's answer later reveals a problem, the fix becomes a new chunk ahead
 | 29 Sep 21:52–22:14Z | 4.3 (early) | [PR #29](https://github.com/romanbitca/rb-pocker/pull/29) draft, CI green: C.2/C.3 exact to 0.01, MC within tolerance, bit-identical | (same window) |
 | 29 Sep 22:15–23:37Z | 3.4 | [PR #30](https://github.com/romanbitca/rb-pocker/pull/30) merged (cb2a974): **the game is playable** — 42 hands via UI in Chromium+WebKit, 0 console errors; one tap → cards in ~0.1–0.2 s; DOM ≤ 600 nodes at 9 players (576); no bot card leaks over 60 hands | new window 0% → 13% |
 | 29 Sep 23:38–01:17Z | 3.8 | [PR #31](https://github.com/romanbitca/rb-pocker/pull/31) merged (fac265d): every Stage 3 criterion as Playwright tests in Chromium + WebKit (50 hands × 5 viewports, overlaps 2–9 players, drawer, no card leak per DOM change, resume, offline 6-player hand, DOM ≤ 600, no long task > 50 ms). WebKit drawer bug found and fixed. e2e job now ~11 min. **Stage 3 complete** | 13% → 31% |
+| 30 Sep 20:45–22:05Z | 4.1–4.3 merge train | #27 (0915526), #28 (6a147a6), #29 (d16dc67) merged with green CI; #33 fixes a flaky offline e2e (hero busts → dialog covered the Hands tab) | Sonnet; 5h 4% → 32%, weekly 50% → 54% |
 | 29 Sep 21:05–21:48Z | 4.1, 4.2 (early) | PRs [#27](https://github.com/romanbitca/rb-pocker/pull/27), [#28](https://github.com/romanbitca/rb-pocker/pull/28) ready, held: all D.2, D.3, C.5 exact; brute-force oracle agreement | (same window) |
