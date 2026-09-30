@@ -133,7 +133,8 @@ export interface Timers {
   now(): number;
 }
 
-const defaultTimers: Timers = {
+/** The real clock and timers (the only timer calls on the main thread, §0.3; boot gives them to the worker clients too). */
+export const realTimers: Timers = {
   setTimeout: (fn, ms) => globalThis.setTimeout(fn, ms),
   clearTimeout: (handle) => globalThis.clearTimeout(handle as ReturnType<typeof setTimeout>),
   now: () => Date.now(),
@@ -304,7 +305,7 @@ export class TableController {
     this.brain = options.brain;
     this.heroName = options.heroName;
     this.seeds = options.seeds ?? randomSeeds();
-    this.timers = options.timers ?? defaultTimers;
+    this.timers = options.timers ?? realTimers;
     this.stepFn = options.step ?? step;
     this.storage = options.storage ?? null;
     this.now = options.now ?? ((): Date => new Date());
