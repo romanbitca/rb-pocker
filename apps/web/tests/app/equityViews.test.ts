@@ -15,7 +15,7 @@ import {
   byRiverShown,
   drawCards,
   drawChipsOf,
-  equityFields,
+  initialEquity,
   initialGame,
   nutsOf,
   outsPct,
@@ -23,7 +23,6 @@ import {
   selectWinBadge,
   winBadgeOf,
   type AppState,
-  type EquityFields,
   type EquitySlice,
 } from '../../src/app/store.ts';
 import { defaultSettings } from '../../src/persist/schema.ts';
@@ -46,15 +45,19 @@ const result = (equity: number, final = true, extra: Partial<EquityResult> = {})
   ...extra,
 });
 
-const fields = (patch: Partial<EquityFields> = {}): EquityFields => ({
+/** An `equity` slice as the equity jobs write it (chunk 4.5). */
+const fields = (patch: Partial<EquitySlice> = {}): EquitySlice => ({
+  ...initialEquity(),
   status: 'done',
-  mode: 'random',
-  situation: null,
-  result: null,
-  previous: null,
-  analysis: null,
-  known: null,
   ...patch,
+});
+
+/** A situation (§7.4) for the hero's A♥K♥ unless told otherwise. */
+const sit = (handSeq: number, board: Card[], nOpp: number, heroCards = hole('A♥ K♥')) => ({
+  handSeq,
+  hero: heroCards,
+  board,
+  nOpp,
 });
 
 interface HandOptions {
@@ -104,45 +107,22 @@ function analysisOf(holeText: string, boardText: string): HandAnalysis {
 
 // ---------------------------------------------------------------------------------------------
 
-describe('the adapter over the equity slice (chunk 4.5)', () => {
-  it("reads main's { status: 'off' } as nothing to show", () => {
-    expect(equityFields({ status: 'off' })).toEqual(fields({ status: 'off' }));
-  });
-
-  it('reads the 4.5 fields when they are there', () => {
-    const analysis = analysisOf('Ah Kh', 'Qh 7h 2c');
-    const slice = {
-      status: 'computing',
-      mode: 'random',
-      situation: { handSeq: 3, hero: hole('Ah Kh'), board: cards('Qh 7h 2c'), nOpp: 2 },
-      result: result(0.5, false),
-      previous: null,
-      analysis,
-      known: null,
-    } as unknown as EquitySlice;
-    const f = equityFields(slice);
-    expect(f.status).toBe('computing');
-    expect(f.situation?.nOpp).toBe(2);
-    expect(f.analysis).toBe(analysis);
-  });
-});
-
 describe('the badge data (§7.6, §10.2)', () => {
-  const sit = { handSeq: 3, board: cards('Qh 7h 2c'), nOpp: 3 };
+  const s3 = sit(3, cards('Qh 7h 2c'), 3);
 
   it('is off when "Show win chance" is off, at Exam, and with no hand', () => {
-    const f = fields({ status: 'computing', situation: sit, result: result(0.6, false) });
+    const f = fields({ status: 'computing', situation: s3, result: result(0.6, false) });
     expect(winBadgeOf(f, false, 'beginner').status).toBe('off');
     expect(winBadgeOf(f, true, 'exam').status).toBe('off');
     expect(winBadgeOf(fields({ status: 'off' }), true, 'beginner').status).toBe('off');
   });
 
   it('keys the estimate by hand, board and live opponents', () => {
-    const f = fields({ status: 'computing', situation: sit, result: result(0.6, false) });
+    const f = fields({ status: 'computing', situation: s3, result: result(0.6, false) });
     const b = winBadgeOf(f, true, 'advanced');
     expect(b).toMatchObject({ status: 'computing', nOpp: 3, known: false });
-    expect(b.key).toBe(`3|${sit.board.join(',')}|3`);
-    const folded = winBadgeOf(fields({ ...f, situation: { ...sit, nOpp: 2 } }), true, 'beginner');
+    expect(b.key).toBe(`3|${s3.board.join(',')}|3`);
+    const folded = winBadgeOf(fields({ ...f, situation: { ...s3, nOpp: 2 } }), true, 'beginner');
     expect(folded.key).not.toBe(b.key);
   });
 
@@ -154,7 +134,14 @@ describe('the badge data (§7.6, §10.2)', () => {
     const f = fields({
       status: 'done',
       mode: 'known',
-      known: { handSeq: 4, seats: [2, 0], perPlayer: [0.3, 0.7], exact: true, final: true },
+      known: {
+        handSeq: 4,
+        seats: [2, 0],
+        board: [],
+        perPlayer: [0.3, 0.7],
+        exact: true,
+        final: true,
+      },
     });
     const b = winBadgeOf(f, true, 'beginner');
     expect(b.known).toBe(true);
@@ -330,7 +317,7 @@ describe('the big-move line (§7.6)', () => {
   it('a fold that adds 8 points or more names the bot', () => {
     const hand = handOf({ hole: 'A♥ K♥', board: 'Q♥ 7♥ 2♣', log: [fold(1), fold(2)] });
     const f = fields({
-      situation: { handSeq: 7, board: flop, nOpp: 1 },
+      situation: sit(7, flop, 1),
       result: result(0.62),
       previous: { equity: 0.5, nOpp: 2, board: flop },
     });
@@ -344,7 +331,7 @@ describe('the big-move line (§7.6)', () => {
   it(`nothing under ${BIG_MOVE_POINTS} points, before the final, for two folds at once, or on the flop`, () => {
     const hand = handOf({ hole: 'A♥ K♥', board: 'Q♥ 7♥ 2♣', log: [fold(1)] });
     const base = fields({
-      situation: { handSeq: 7, board: flop, nOpp: 1 },
+      situation: sit(7, flop, 1),
       result: result(0.579),
       previous: { equity: 0.5, nOpp: 2, board: flop },
     });
@@ -370,7 +357,7 @@ describe('the big-move line (§7.6)', () => {
   it('a turn card that makes a better hand: EQ_IMPROVED with the new hand name', () => {
     const hand = handOf({ hole: 'A♥ K♥', board: 'Q♥ 7♥ 2♣ 5♥' });
     const f = fields({
-      situation: { handSeq: 7, board: cards('Q♥ 7♥ 2♣ 5♥'), nOpp: 1 },
+      situation: sit(7, cards('Q♥ 7♥ 2♣ 5♥'), 1),
       result: result(0.95),
       previous: { equity: 0.6, nOpp: 1, board: flop },
     });
@@ -385,7 +372,7 @@ describe('the big-move line (§7.6)', () => {
     const drop = (board: string) =>
       bigMoveOf(
         fields({
-          situation: { handSeq: 7, board: cards(board), nOpp: 1 },
+          situation: sit(7, cards(board), 1),
           result: result(0.4),
           previous: { equity: 0.6, nOpp: 1, board: cards('K♠ 8♦ 2♣') },
         }),
@@ -402,7 +389,7 @@ describe('the big-move line (§7.6)', () => {
 
   it('nothing after the hero folded or in known-hands mode', () => {
     const f = fields({
-      situation: { handSeq: 7, board: flop, nOpp: 1 },
+      situation: sit(7, flop, 1),
       result: result(0.62),
       previous: { equity: 0.5, nOpp: 2, board: flop },
     });
@@ -424,24 +411,16 @@ describe('selectors keep their objects (pitfall 37)', () => {
   it('a slice write that changes nothing on the badge returns the same badge object', () => {
     const r = result(0.6, false);
     const slice = (): EquitySlice =>
-      ({
-        status: 'computing',
-        mode: 'random',
-        situation: { handSeq: 1, board: [], nOpp: 2 },
-        result: r,
-        previous: null,
-        analysis: null,
-        known: null,
-      }) as unknown as EquitySlice;
+      fields({ status: 'computing', situation: sit(1, [], 2), result: r });
     const a = selectWinBadge(state(slice()));
     const b = selectWinBadge(state(slice()));
     expect(b).toBe(a);
-    expect(selectWinBadge(state({ status: 'off' }))).not.toBe(a);
+    expect(selectWinBadge(state(initialEquity()))).not.toBe(a);
   });
 
   it('"By river" keeps its object across bot actions (a new hand state, same cards)', () => {
     const hand = handOf({ hole: 'A♥ K♥', board: '' });
-    const eq = { status: 'off' } as EquitySlice;
+    const eq = initialEquity();
     const a = selectByRiver(state(eq, hand));
     const b = selectByRiver(state(eq, { ...hand, log: [fold(1)] }));
     expect(a).toEqual({ handSeq: 7, exactly: null });

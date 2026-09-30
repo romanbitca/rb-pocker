@@ -8,7 +8,8 @@
 import { act, cleanup, render } from '@testing-library/react';
 import { Profiler } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { appStore, type EquitySlice } from '../../../src/app/store.ts';
+import { appStore, initialEquity, type EquitySlice } from '../../../src/app/store.ts';
+import type { Card } from '../../../src/core/cards.ts';
 import type { HandState } from '../../../src/engine/types.ts';
 import type { SeatProps } from '../../../src/ui/components/Seat.tsx';
 import type { WinBadgeProps } from '../../../src/ui/components/WinBadge.tsx';
@@ -43,7 +44,7 @@ afterEach(() => {
   cleanup();
   h?.dispose();
   h = null;
-  appStore.setState({ equity: { status: 'off' } });
+  appStore.setState({ equity: initialEquity() });
 });
 
 /**
@@ -53,9 +54,14 @@ afterEach(() => {
 function progress(hand: HandState, i: number): EquitySlice {
   const nOpp = hand.seats.filter((s, seat) => seat !== 0 && s.dealtIn && !s.folded).length;
   return {
+    ...initialEquity(),
     status: 'computing',
-    mode: 'random',
-    situation: { handSeq: hand.handSeq, hero: hand.seats[0]?.hole, board: [...hand.board], nOpp },
+    situation: {
+      handSeq: hand.handSeq,
+      hero: hand.seats[0]?.hole as [Card, Card],
+      board: [...hand.board],
+      nOpp,
+    },
     result: {
       n: 2_000 * (i + 1),
       win: 0.4 + 0.004 * i,
@@ -65,10 +71,7 @@ function progress(hand: HandState, i: number): EquitySlice {
       final: false,
       truncated: false,
     },
-    previous: null,
-    analysis: null,
-    known: null,
-  } as unknown as EquitySlice;
+  };
 }
 
 describe('pitfall 37: equity progress never re-renders the table', () => {
@@ -100,10 +103,10 @@ describe('pitfall 37: equity progress never re-renders the table', () => {
     expect(badge?.textContent).toBe('~60%win chance');
 
     // Writes that change nothing on screen render nothing at all.
-    act(() => appStore.setState({ equity: { status: 'off' } }));
+    act(() => appStore.setState({ equity: initialEquity() }));
     commits.length = 0;
     for (let i = 0; i < 50; i++) {
-      act(() => appStore.setState({ equity: { status: 'off' } }));
+      act(() => appStore.setState({ equity: initialEquity() }));
     }
     expect(commits).toEqual([]);
     expect(renders.seat).toBe(seatsBefore);

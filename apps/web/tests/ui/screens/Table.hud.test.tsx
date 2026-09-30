@@ -10,7 +10,7 @@ import { act, cleanup, render } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { analyzeHand } from '../../../src/analysis/handinfo.ts';
 import type { HandAnalysis } from '../../../src/analysis/types.ts';
-import { appStore, type EquitySlice } from '../../../src/app/store.ts';
+import { appStore, initialEquity, type EquitySlice } from '../../../src/app/store.ts';
 import { HAND_CATEGORIES } from '../../../src/eval/evaluate.ts';
 import type { HandState } from '../../../src/engine/types.ts';
 import { App } from '../../../src/ui/App.tsx';
@@ -30,7 +30,7 @@ afterEach(() => {
   cleanup();
   h?.dispose();
   h = null;
-  appStore.setState({ equity: { status: 'off' } });
+  appStore.setState({ equity: initialEquity() });
 });
 
 const CHANCES = Object.fromEntries(
@@ -41,9 +41,9 @@ const CHANCES = Object.fromEntries(
 function sliceFor(hand: HandState | null): EquitySlice {
   const hero = hand?.seats[0];
   if (hand === null || hand.phase === 'complete' || hero?.hole == null || !hero.dealtIn) {
-    return { status: 'off' };
+    return initialEquity();
   }
-  if (hero.folded) return { status: 'folded' } as unknown as EquitySlice;
+  if (hero.folded) return { ...initialEquity(), status: 'folded' };
   const nOpp = hand.seats.filter((s, i) => i !== 0 && s.dealtIn && !s.folded).length;
   const analysis: HandAnalysis = {
     ...analyzeHand(hero.hole, hand.board),
@@ -52,8 +52,8 @@ function sliceFor(hand: HandState | null): EquitySlice {
     chances: CHANCES,
   };
   return {
+    ...initialEquity(),
     status: 'done',
-    mode: 'random',
     situation: { handSeq: hand.handSeq, hero: hero.hole, board: [...hand.board], nOpp },
     result: {
       n: 40_000,
@@ -64,10 +64,8 @@ function sliceFor(hand: HandState | null): EquitySlice {
       final: true,
       truncated: false,
     },
-    previous: null,
     analysis,
-    known: null,
-  } as unknown as EquitySlice;
+  };
 }
 
 describe('the Table with the win badge, price chip, draw chips and "By river" (§15.3)', () => {

@@ -5,7 +5,8 @@
  * import `ui` (§2.1), so the shapes are declared here and the UI reaches them through
  * `app/store.ts`, which re-exports this module.
  *
- * Only the equity jobs write the `equity` slice (pitfall 37). Every selector here is memoized on
+ * Only the equity jobs (`app/equityJobs.ts`) write the `equity` slice (pitfall 37), which this
+ * module reads as it is (`EquitySlice`). Every selector here is memoized on
  * the fields it reads and keeps its old object while its view did not change, so a progress
  * message re-renders the badge and nothing else (seats, board and action bar read the `game`
  * slice only).
@@ -16,67 +17,11 @@ import { rankOf, suitOf, type Card } from '../core/cards.ts';
 import type { HandCategory } from '../eval/evaluate.ts';
 import { HAND_CATEGORIES } from '../eval/evaluate.ts';
 import type { HandState, TableState } from '../engine/types.ts';
-import type { AppState, EquitySlice } from './store.ts';
+import type { AppState, EquitySlice, EquityStatus } from './store.ts';
 import { heroInfo } from './tableViews.ts';
 import { describe } from '../eval/describe.ts';
 
 const HERO = 0;
-
-// ---------------------------------------------------------------------------------------------
-// The adapter: the `equity` slice as the badge reads it
-
-/** What the equity jobs report (§7.6, §12.14). */
-export type BadgeStatus = 'off' | 'folded' | 'computing' | 'done' | 'timedOut' | 'unavailable';
-
-/**
- * The fields of the `equity` slice this module reads: the shape the equity jobs of chunk 4.5
- * write (`status`, `mode`, `situation`, `result`, `previous`, `analysis`, `known`).
- */
-export interface EquityFields {
-  readonly status: BadgeStatus;
-  readonly mode: 'random' | 'known';
-  /** The situation `result` is for; null without one (no hand, folded, known hands). */
-  readonly situation: {
-    readonly handSeq: number;
-    readonly board: readonly Card[];
-    readonly nOpp: number;
-  } | null;
-  readonly result: EquityResult | null;
-  /** The last final estimate of this hand before `situation` (the big-move line), or null. */
-  readonly previous: {
-    readonly equity: number;
-    readonly nOpp: number;
-    readonly board: readonly Card[];
-  } | null;
-  readonly analysis: HandAnalysis | null;
-  /** All-in run-out equities of the face-up seats (§7.2 known hands). */
-  readonly known: {
-    readonly handSeq: number;
-    readonly seats: readonly number[];
-    readonly perPlayer: readonly number[];
-    readonly exact: boolean;
-    readonly final: boolean;
-  } | null;
-}
-
-/**
- * ⚠️ Adapter for chunk 4.5 (PR #32): on main the `equity` slice is still `{ status: 'off' }`; the
- * equity jobs add the fields above. Reading them through `Partial` works with both shapes, so the
- * badge, chips and column light up as soon as the jobs write them, with no change here. Once 4.5
- * is merged, read the slice's own type instead of the cast.
- */
-export function equityFields(slice: EquitySlice): EquityFields {
-  const s = slice as Partial<EquityFields>;
-  return {
-    status: s.status ?? 'off',
-    mode: s.mode ?? 'random',
-    situation: s.situation ?? null,
-    result: s.result ?? null,
-    previous: s.previous ?? null,
-    analysis: s.analysis ?? null,
-    known: s.known ?? null,
-  };
-}
 
 // ---------------------------------------------------------------------------------------------
 // The shapes
@@ -84,7 +29,7 @@ export function equityFields(slice: EquitySlice): EquityFields {
 /** The win badge (§7.6). */
 export interface WinBadgeData {
   /** `off`: no badge (no hand, not dealt in, the hand is over, "Show win chance" off, Exam). */
-  readonly status: BadgeStatus;
+  readonly status: EquityStatus;
   /** Hand, board and live opponents of the estimate: a new key starts the hysteresis over. */
   readonly key: string;
   /** The latest estimate for `key` (progress, then final); null before the first one. */
@@ -163,7 +108,7 @@ function heroLive(hand: HandState | null): boolean {
  * Known hands (an all-in run-out) show the hero's own run-out number.
  */
 export function winBadgeOf(
-  eq: EquityFields,
+  eq: EquitySlice,
   showEquity: boolean,
   coachLevel: AppState['settings']['coachLevel'],
   showdown = false,
@@ -340,7 +285,7 @@ export function boardThreats(board: readonly Card[]): ('fullHouse' | 'flush' | '
  * Anything else (the flop's three cards, two folds at once, both a card and a fold) has no line.
  */
 export function bigMoveOf(
-  eq: EquityFields,
+  eq: EquitySlice,
   hand: HandState | null,
   table: TableState | null,
 ): BigMoveData | null {
@@ -407,7 +352,7 @@ const badgeMemo = memo(
     coachLevel: AppState['settings']['coachLevel'],
     showdown: boolean,
   ): WinBadgeData => {
-    const badge = winBadgeOf(equityFields(slice), showEquity, coachLevel, showdown);
+    const badge = winBadgeOf(slice, showEquity, coachLevel, showdown);
     // A slice write that changes nothing the badge shows keeps the old object: no render.
     if (lastBadge === null || !sameBadge(lastBadge, badge)) lastBadge = badge;
     return lastBadge;
@@ -420,7 +365,7 @@ export const selectWinBadge = (s: AppState): WinBadgeData => {
   return badgeMemo(s.equity, s.settings.showEquity, s.settings.coachLevel, showdown);
 };
 
-const analysisOf = (s: AppState): HandAnalysis | null => equityFields(s.equity).analysis;
+const analysisOf = (s: AppState): HandAnalysis | null => s.equity.analysis;
 
 let drawsHand: HandState | null = null;
 const drawsMemo = memo(
@@ -469,7 +414,7 @@ export const selectNuts = (s: AppState): boolean => nutsOf(s.game.hand, analysis
 let lastMove: BigMoveData | null = null;
 const moveMemo = memo(
   (slice: EquitySlice, hand: HandState | null, table: TableState | null): BigMoveData | null => {
-    const move = bigMoveOf(equityFields(slice), hand, table);
+    const move = bigMoveOf(slice, hand, table);
     // Same move, same object: the line's 4 s run once per move.
     if (move !== null && lastMove !== null && move.key === lastMove.key) return lastMove;
     lastMove = move;
