@@ -6,7 +6,7 @@ This is the working checklist for building [PLAN.md](PLAN.md). PLAN.md is the so
 
 Legend: `[ ]` todo · `[~]` in progress (branch exists) · `[x]` merged to `main` · `[H]` waiting on the human
 
-**Current position:** ▶ Resumed 30 Sep 20:41Z (+30 rule). Stages 0–3 ✅. Stage 4: merging #27 (4.1) → #28 (4.2) → #29 (4.3); 4.5 equity worker in progress; then 4.4 preflop tables, 4.6 win badge, 4.7 all-in + bench.
+**Current position:** ▶ 1 Oct (owner: 95% per window, stop at 65% weekly). Stages 0–3 ✅. Stage 4: #27 (4.1) merged; merging #28 → #29; #33 offline-test flake fix; 4.4 tables, 4.5 worker (#32), 4.6 badge in progress; then 4.7.
 
 ---
 
@@ -67,12 +67,12 @@ Legend: `[ ]` todo · `[~]` in progress (branch exists) · `[x]` merged to `main
 
 ## Stage 4 - Draws, outs, win chance (PLAN §6.2–6.6, §7)
 
-- [~] 4.1 `feature/draws-and-outs-analysis` - `analysis/handinfo.ts` (draws, outs rule, risky outs R1–R5, nuts/beaters); D.2.
+- [x] 4.1 `feature/draws-and-outs-analysis` - `analysis/handinfo.ts` (draws, outs rule, risky outs R1–R5, nuts/beaters); D.2.
 - [~] 4.2 `feature/chances-by-the-river` - `analysis/chances.ts`; D.3.
 - [~] 4.3 `feature/win-chance-equity` - `analysis/equity.ts` exact + fixed-n seeded Monte Carlo; C.2–C.3.
-- [ ] 4.4 `feature/preflop-equity-tables` - `scripts/gen-preflop.ts`, `analysis/preflop.ts`, `check-tables` in CI.
+- [~] 4.4 `feature/preflop-equity-tables` - `scripts/gen-preflop.ts`, `analysis/preflop.ts`, `check-tables` in CI.
 - [~] 4.5 `feature/equity-worker` - `workers/protocol.ts`, `equity.worker.ts`, `app/workerClient.ts` (jobId, epoch, cancel, stale-drop, timeouts).
-- [ ] 4.6 `feature/win-badge-and-draw-chips` - badge (skeleton, `~`, hysteresis, popover), price chip, draw chips, By-river column.
+- [~] 4.6 `feature/win-badge-and-draw-chips` - badge (skeleton, `~`, hysteresis, popover), price chip, draw chips, By-river column.
 - [ ] 4.7 `feature/all-in-run-out-and-bench` - all-in TV mode, luck line, `#bench` route, throttled latency checks.
 - [ ] 4.8 [H] **Human gate:** `#bench` numbers from one real Android phone.
 
