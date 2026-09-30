@@ -8,7 +8,7 @@
 import { act, cleanup, render } from '@testing-library/react';
 import { Profiler } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { appStore, type EquitySlice } from '../../../src/app/store.ts';
+import { appStore, initialEquity, type EquitySlice } from '../../../src/app/store.ts';
 import type { SeatProps } from '../../../src/ui/components/Seat.tsx';
 import { Table } from '../../../src/ui/screens/Table.tsx';
 import { passive, playUntil, startTableHarness, type TableHarness } from '../tableHarness.ts';
@@ -52,7 +52,19 @@ describe('pitfall 37: equity progress never re-renders the table', () => {
     commits.length = 0;
     for (let i = 0; i < 50; i++) {
       // A new slice object each time, as a worker progress message would write it.
-      const progress: EquitySlice = { status: 'off' };
+      const progress: EquitySlice = {
+        ...initialEquity(),
+        status: 'computing',
+        result: {
+          n: 2_500 + i,
+          win: 0.5,
+          split: 0.01,
+          equity: 0.51,
+          exact: false,
+          final: false,
+          truncated: false,
+        },
+      };
       act(() => appStore.setState({ equity: progress }));
     }
     expect(renders.seat).toBe(seatsBefore);

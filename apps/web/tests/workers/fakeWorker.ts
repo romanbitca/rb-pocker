@@ -34,6 +34,8 @@ export interface FakeWorker {
 export interface FakeWorkerOptions {
   /** Service mode: run the real job runner with this maths. Default: manual mode. */
   math?: EquityMath;
+  /** Called with every message as it is posted (synchronously, before the worker sees it). */
+  onReceive?: (message: EquityRequest) => void;
   /** Service mode: the runner's options (tests pass a clock and a pause). */
   service?: {
     pause?: () => Promise<void>;
@@ -88,6 +90,7 @@ export function fakeWorker(options: FakeWorkerOptions = {}): FakeWorker {
           const copy = structuredClone(message);
           instance.received.push(copy);
           fake.received.push(copy);
+          options.onReceive?.(copy);
           if (service !== null) {
             const delivered = structuredClone(message);
             void Promise.resolve().then(() => {

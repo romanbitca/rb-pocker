@@ -2,8 +2,8 @@
  * The app's one Zustand store (PLAN §2.5): slices `game`, `equity`, `coach`, `ui` and `settings`.
  *
  * - It holds the reducer's output and UI state only; it never runs game logic. The TableController
- *   (`app/controller.ts`) drives every hand and writes the `game` slice; equity progress will write
- *   only the `equity` slice (Stage 4, pitfall 37).
+ *   (`app/controller.ts`) drives every hand and writes the `game` slice; its equity jobs
+ *   (`app/equityJobs.ts`) write only the `equity` slice (pitfall 37).
  * - The UI may import only this module from `app` (PLAN §2.1), so everything the screens need
  *   comes from here: the state, narrow selectors, hooks and `dispatch`. `dispatch` applies UI
  *   commands (the `NavAction`s of app/navigation.ts, the one navigation model: screens, overlays,
@@ -20,6 +20,8 @@ import { useCallback } from 'react';
 import { useStore } from 'zustand';
 import { useShallow } from 'zustand/react/shallow';
 import { createStore, type StoreApi } from 'zustand/vanilla';
+import type { EquityResult, HandAnalysis } from '../analysis/types.ts';
+import type { Card } from '../core/cards.ts';
 import type { HandState, LegalActions, PlayerAction, TableState } from '../engine/types.ts';
 import { defaultSettings } from '../persist/schema.ts';
 import type { Settings } from '../persist/schema.ts';
@@ -139,9 +141,77 @@ export interface Diagnostics {
   voidedHands: number;
 }
 
-/** Stage 4 fills this slice (the HUD win chance, §7). Only equity progress writes it (pitfall 37). */
+/**
+ * What the win badge shows (§7.6, §12.14):
+ * - 'off': no badge (no hand, the hero is not dealt in, or the hand is over).
+ * - 'folded': the hero folded: "Folded", no number.
+ * - 'computing': a job is running for `situation` (or waits for the page to be visible): the
+ *   skeleton "--%" while there is no estimate, else "~NN%" (hysteresis, §7.6).
+ * - 'done': the final estimate: "NN%" ("~NN%" when `result.truncated`).
+ * - 'timedOut': no final within 4 s, or the job failed: keep the last estimate with "~", or "—"
+ *   when there is none; the next trigger (§7.4) computes again.
+ * - 'unavailable': the worker failed after its restart: "—", popover "Win chance is not
+ *   available right now".
+ */
+export type EquityStatus = 'off' | 'folded' | 'computing' | 'done' | 'timedOut' | 'unavailable';
+
+/** The situation a HUD estimate is for (§7.1, §7.4): only a change of one of these recomputes. */
+export interface EquitySituation {
+  handSeq: number;
+  /** The hero's hole cards, as dealt. */
+  hero: [Card, Card];
+  /** The board, in deal order. */
+  board: Card[];
+  /** Live opponents: dealt in and not folded (all-in players count). */
+  nOpp: number;
+}
+
+/** All-in run-out equities of the face-up hands (§7.2 known hands, §7.6 TV mode). */
+export interface KnownEquity {
+  handSeq: number;
+  /** The face-up seats, in `hand.revealed` order. */
+  seats: number[];
+  /** The board these equities are for; the previous street's values stay until the new ones come. */
+  board: Card[];
+  /** Equity of each seat in `seats`, fractions in [0, 1] adding up to 1. */
+  perPlayer: number[];
+  exact: boolean;
+  final: boolean;
+}
+
+/**
+ * The HUD win chance (§7) and the hand analysis (§6), from `equity.worker`. Only the equity jobs
+ * (`app/equityJobs.ts`) write this slice, and they write nothing else (pitfall 37).
+ */
 export interface EquitySlice {
-  status: 'off';
+  status: EquityStatus;
+  /**
+   * 'random': the hero's equity against unknown random hands (`result`). 'known': an all-in
+   * run-out with the hands face up (`known`, which has the hero's number when the hero is live).
+   */
+  mode: 'random' | 'known';
+  /** The situation `result` is for; null when there is none (no hand, folded, known mode). */
+  situation: EquitySituation | null;
+  /** The latest estimate for `situation`: progress (`final: false`), then the final one; null until the first. */
+  result: EquityResult | null;
+  /** The last final estimate of this hand before `situation` (the §7.6 big-move line), or null. */
+  previous: { equity: number; nOpp: number; board: Card[] } | null;
+  /** §6 for the hero's current cards (draws, outs, risky outs, chances, beaters, nuts); null until it comes, and when folded. */
+  analysis: HandAnalysis | null;
+  /** The run-out equities of this hand, or null. */
+  known: KnownEquity | null;
+}
+
+export function initialEquity(): EquitySlice {
+  return {
+    status: 'off',
+    mode: 'random',
+    situation: null,
+    result: null,
+    previous: null,
+    analysis: null,
+    known: null,
+  };
 }
 
 /** Stage 5 fills this slice (hints and grades, §8). */
@@ -301,7 +371,7 @@ export function createAppStore(): AppStore {
   let gameHandler: ((cmd: GameCommand) => void) | null = null;
   const api = createStore<AppState>()((set) => ({
     game: initialGame(),
-    equity: { status: 'off' },
+    equity: initialEquity(),
     coach: { status: 'off' },
     ui: initialUi(),
     settings: defaultGameSettings(),
@@ -443,6 +513,12 @@ export const selectGates = (s: AppState): Gate[] => s.ui.gates;
 export const selectLayout = (s: AppState): Layout => s.ui.layout;
 export const selectToasts = (s: AppState): Toast[] => s.ui.toasts;
 export const selectSettings = (s: AppState): GameSettings => s.settings;
+/** The whole equity slice (the win badge, §7.6; select narrower fields where you can). */
+export const selectEquity = (s: AppState): EquitySlice => s.equity;
+export const selectEquityStatus = (s: AppState): EquityStatus => s.equity.status;
+export const selectEquityResult = (s: AppState): EquityResult | null => s.equity.result;
+/** The hand analysis (§6): draw chips, out cards, the "By river" column. */
+export const selectHandAnalysis = (s: AppState): HandAnalysis | null => s.equity.analysis;
 export const selectSpeed = (s: AppState): Speed => s.settings.speed;
 
 /** Is `overlay` open? (A boolean, so the component re-renders only when it opens or closes.) */

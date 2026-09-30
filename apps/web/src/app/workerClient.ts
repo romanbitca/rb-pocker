@@ -330,9 +330,11 @@ export class WorkerClient<Req extends WorkerMessage, Rep extends WorkerMessage> 
     this.send(this.options.cancelMessage(job.jobId));
     this.note({ what: 'timeout', kind: job.kind, jobId: job.jobId, epoch: job.epoch });
     this.timeoutStreak++;
-    const broken = this.timeoutStreak >= this.timeoutsToRestart;
+    // The crash first, so the callback already sees the client's new status.
+    if (this.timeoutStreak >= this.timeoutsToRestart) {
+      this.crash(`${this.timeoutStreak} timeouts in a row`);
+    }
     job.onEvent({ type: 'timeout' });
-    if (broken) this.crash(`${this.timeoutStreak} timeouts in a row`);
   }
 
   /** §12.14: terminate, fail the pending jobs, recreate once; after that, `failed`. */

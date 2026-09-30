@@ -50,6 +50,7 @@ import type { Profile, SessionState, Settings } from '../persist/schema.ts';
 import { clearSession, loadSession, saveSession } from '../persist/session.ts';
 import type { SafeStorage } from '../persist/storage.ts';
 import type { BotDecisionRequest, BotProfileRef, BrainClient, BrainReply } from './brain.ts';
+import { EquityJobs } from './equityJobs.ts';
 import {
   updateUi,
   type AppStore,
@@ -60,6 +61,7 @@ import {
   type Toast,
   type UiCommand,
 } from './store.ts';
+import type { EquityClient, WorkerLogEntry } from './workerClient.ts';
 
 export type { ControllerMode, Gate } from './store.ts';
 
@@ -156,6 +158,11 @@ export interface ControllerOptions {
   storage?: SafeStorage;
   /** The wall clock for stored timestamps (default: now). */
   now?: () => Date;
+  /**
+   * `equity.worker`'s client (chunk 4.5): the HUD win chance and the hand analysis go to the
+   * store's `equity` slice. Without it (tests) the slice stays 'off'.
+   */
+  equity?: EquityClient;
 }
 
 /** One line of the controller's in-memory log (Diagnostics; `window.__pc.logs()` in test builds). */
@@ -175,6 +182,8 @@ export interface ControllerLogs {
   brain: ControllerEvent[];
   /** Replay records of the last 5 voided hands (§4.5; Stage 8 stores them under `pc.v1.diag`). */
   voided: ReplayRecord[];
+  /** equity.worker's message log: requests, replies, drops, cancels, timeouts (last 200). */
+  equity: WorkerLogEntry[];
 }
 
 /** What the controller holds, for tests and (chunk 3.2) the session. Arrays are copies. */
@@ -255,6 +264,9 @@ export class TableController {
   private readonly unsubscribe: () => void;
   private readonly storage: SafeStorage | null;
   private readonly now: () => Date;
+  private readonly equityClient: EquityClient | null;
+  /** The win chance and hand-analysis jobs (§7.4); they write only the `equity` slice. */
+  private readonly equityJobs: EquityJobs | null;
   /** The stored profile (settings only in Stage 3); null without storage. */
   private profile: Profile | null = null;
   /** When this table's session began (§14.4); stored in the session. */
@@ -309,6 +321,9 @@ export class TableController {
     this.stepFn = options.step ?? step;
     this.storage = options.storage ?? null;
     this.now = options.now ?? ((): Date => new Date());
+    this.equityClient = options.equity ?? null;
+    this.equityJobs =
+      this.equityClient === null ? null : new EquityJobs(this.store, this.equityClient);
     this.unsubscribe = this.store.subscribe((s, prev) => {
       if (s.ui.gates !== prev.ui.gates) this.onGates();
     });
@@ -394,6 +409,7 @@ export class TableController {
   /** Stops every timer and unhooks from the store. */
   dispose(): void {
     this.bumpEpoch();
+    this.equityJobs?.dispose();
     this.unsubscribe();
     this.store.setGameHandler(null);
     if (this.visibleTimer !== null) this.timers.clearTimeout(this.visibleTimer);
@@ -421,6 +437,7 @@ export class TableController {
       errors: [...this.errors],
       brain: [...this.brainEvents],
       voided: [...this.voided],
+      equity: this.equityClient?.log() ?? [],
     };
   }
 
@@ -973,6 +990,8 @@ export class TableController {
   }
 
   private onGates(): void {
+    // Equity jobs follow the `hidden` gate: all cancelled while hidden (§15.3, acceptance 5).
+    this.equityJobs?.setHidden(this.store.getState().ui.hidden);
     if (this.headless) return;
     if (this.gatesClosed()) {
       this.pauseFlow();
@@ -1237,8 +1256,9 @@ export class TableController {
     return this.legalCache.legal;
   }
 
-  /** Writes the `game` slice when something in it changed. */
+  /** Writes the `game` slice when something in it changed; the equity jobs follow the hand. */
   private publish(): void {
+    this.equityJobs?.sync(this.headless ? null : this.hand, this.epoch);
     const hand = this.hand;
     const legal = this.mode === 'heroTurn' && hand !== null ? this.legalOf(hand) : null;
     const heroBust = this.heroBust();
