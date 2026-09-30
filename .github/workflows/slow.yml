@@ -28,12 +28,12 @@ jobs:
       - name: Slow tests (exhaustive, statistical and large property runs)
         run: npm run test:slow
 
-  # PLAN §7.5: the committed preflop tables are exactly what `npm run gen` makes. Every cell has
+  # PLAN §7.5: the committed tables are exactly what `npm run gen` makes. Every cell has
   # its own fixed seed, so the bytes are the same on every machine and thread count. About 3
-  # minutes on a 10-core laptop; on the 2-vCPU runner expect 15 to 25 minutes.
+  # minutes on a 10-core laptop; on the 2-vCPU runner expect 15 to 25 minutes (the range and push/fold tables add about 1 minute and 8 to 12).
   tables:
     runs-on: ubuntu-24.04 # the same image as the e2e job (see e2e.yml)
-    timeout-minutes: 45
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -41,7 +41,7 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
       - run: npm ci --no-audit --no-fund
-      - name: Regenerate the preflop tables
+      - name: Regenerate the tables (preflop, ranges, push/fold)
         run: npm run gen
       - name: The committed tables are what the generator makes
         run: git diff --exit-code -- apps/web/src/data/generated

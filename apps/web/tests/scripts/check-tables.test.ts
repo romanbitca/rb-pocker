@@ -74,7 +74,8 @@ describe('scripts/check-tables.ts: the committed tables', () => {
     expect(verifyChecksums(GENERATED_DIR)).toEqual([]);
     expect(checkParameters(GENERATED_DIR)).toEqual([]);
     const { files } = parseChecksums(readFileSync(join(GENERATED_DIR, CHECKSUMS_FILE), 'utf8'));
-    expect(Object.keys(files)).toEqual([FINALS_FILE, EQUITY_FILE]);
+    // The range tables (chunk 5.1) share the folder and the checksum file.
+    expect(Object.keys(files)).toEqual([FINALS_FILE, EQUITY_FILE, 'pushfold.ts', 'ranges.ts']);
     expect(files[EQUITY_FILE]).toMatchObject({ generator: GENERATOR, trials: 500_000 });
     expect(files[FINALS_FILE]).toMatchObject({ generator: GENERATOR, seed: null, trials: null });
   });
