@@ -10,8 +10,8 @@
  * message re-renders the badge and nothing else (seats, board and action bar read the `game`
  * slice only).
  */
-import type { DrawKind, EquityResult, HandAnalysis } from '../analysis/types.ts';
-import { drawOuts } from '../analysis/handinfo.ts';
+import type { DrawKind, EquityResult, HandAnalysis, OutCard } from '../analysis/types.ts';
+import { outsChances } from '../analysis/chances.ts';
 import { rankOf, suitOf, type Card } from '../core/cards.ts';
 import type { HandCategory } from '../eval/evaluate.ts';
 import { HAND_CATEGORIES } from '../eval/evaluate.ts';
@@ -203,15 +203,13 @@ export function winBadgeOf(
 }
 
 /**
- * The exact chance of hitting one of `outs` out cards (§6.6, Appendix C.5), 0–100: the next card
- * on the turn (`outs / 46`), by the river on the flop (`1 − C(47 − outs, 2) / C(47, 2)`). Never
- * the rule of 2 and 4 (pitfall 12).
+ * A draw chip's number (§6.6, Appendix C.5), 0–100, exact (`outsChances`, chances.ts): by the
+ * river on the flop (`1 − C(47 − outs, 2) / C(47, 2)`), the next card on the turn (`outs / 46`).
+ * Never the rule of 2 and 4 (pitfall 12).
  */
 export function outsPct(outs: number, boardLength: 3 | 4): number {
-  const unseen = 50 - boardLength;
-  if (boardLength === 4) return (100 * outs) / unseen;
-  const pairs = (n: number): number => (n * (n - 1)) / 2;
-  return (100 * (pairs(unseen) - pairs(unseen - outs))) / pairs(unseen);
+  const { nextCardPct, byRiverPct } = outsChances(outs, boardLength);
+  return (boardLength === 3 ? byRiverPct : nextCardPct) ?? 0;
 }
 
 /**
@@ -220,6 +218,43 @@ export function outsPct(outs: number, boardLength: 3 | 4): number {
  */
 function stale(analysis: HandAnalysis, seen: readonly Card[]): boolean {
   return analysis.outs.some((o) => seen.includes(o.card));
+}
+
+type ChipKind = DrawChipData['kind'];
+
+/**
+ * The out cards that complete one draw (§6.2 implementation notes), picked from the worker's outs
+ * with no evaluation: a flush draw's are the outs of its suit (the suit with 4 cards, one or more
+ * in the hole), a straight draw's the outs whose rank makes a straight (the ranks of `S`: with no
+ * straight made yet, every unseen card of such a rank is an out, and those off the flush suit make
+ * exactly a straight), two overcards' the outs that pair a hole card. The main thread runs no
+ * analysis code (§2.2), and the count must match the worker's own `outs` for the draw.
+ */
+export function drawCards(
+  kind: ChipKind,
+  hole: readonly Card[],
+  board: readonly Card[],
+  outs: readonly OutCard[],
+): OutCard[] {
+  switch (kind) {
+    case 'flush':
+    case 'nutFlush': {
+      const all = [...hole, ...board];
+      const count = (s: number): number => all.filter((c) => suitOf(c) === s).length;
+      const suit = [0, 1, 2, 3].find((s) => count(s) === 4 && hole.some((c) => suitOf(c) === s));
+      return outs.filter((o) => suitOf(o.card) === suit);
+    }
+    case 'oesd':
+    case 'doubleGutshot':
+    case 'gutshot': {
+      const ranks = new Set(outs.filter((o) => o.makes === 'straight').map((o) => rankOf(o.card)));
+      return outs.filter((o) => ranks.has(rankOf(o.card)));
+    }
+    case 'overcards': {
+      const ranks = new Set(hole.map(rankOf));
+      return outs.filter((o) => ranks.has(rankOf(o.card)));
+    }
+  }
 }
 
 /** The draw chips (§6.2, §6.3, §6.6, §10.2): flop and turn only, non-backdoor draws. */
@@ -234,12 +269,14 @@ export function drawChipsOf(
   const hole = hand.seats[HERO]?.hole as [Card, Card];
   if (stale(analysis, [...hole, ...board])) return null;
   const draws: DrawChipData[] = [];
-  for (const d of drawOuts(hole, board, analysis.outs)) {
+  for (const d of analysis.draws) {
     if (d.kind === 'backdoorFlush' || d.kind === 'backdoorStraight' || d.outs === 0) continue;
+    const cards = drawCards(d.kind, hole, board, analysis.outs);
+    if (cards.length !== d.outs) return null; // not this hand's analysis
     draws.push({
       kind: d.kind,
       outs: d.outs,
-      cards: d.cards.map((o) => ({ card: o.card, risky: o.risky.length > 0 })),
+      cards: cards.map((o) => ({ card: o.card, risky: o.risky.length > 0 })),
       pct: outsPct(d.outs, board.length),
       when: board.length === 3 ? 'byRiver' : 'nextCard',
     });

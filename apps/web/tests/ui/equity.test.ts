@@ -87,9 +87,7 @@ describe('the win badge (§7.6)', () => {
 
   it('shows "~62%" while provisional and "62%" when final', () => {
     expect(shownTexts([badge({ result: result(0.6212, false) })])).toEqual(['~62%']);
-    expect(shownTexts([badge({ status: 'done', result: result(0.6212, true) })])).toEqual([
-      '62%',
-    ]);
+    expect(shownTexts([badge({ status: 'done', result: result(0.6212, true) })])).toEqual(['62%']);
   });
 
   it('a truncated final (the 3 s cap) and a timed-out estimate keep the "~"', () => {
@@ -221,7 +219,7 @@ describe('the price chip (§7.6, §0.3)', () => {
     expect(view?.potYouCanWin).toBe('Pot you can win 150');
   });
 
-  it('only at Beginner and Intermediate, on the hero\'s turn, facing a bet (§10.2)', () => {
+  it("only at Beginner and Intermediate, on the hero's turn, facing a bet (§10.2)", () => {
     const facing = input([seat(20, 500), seat(60, 500)], legal(40));
     expect(priceChipView(facing, 'intermediate')).not.toBeNull();
     expect(priceChipView(facing, 'advanced')).toBeNull();
@@ -338,9 +336,7 @@ describe('the HUD words come from docs/PLAN.md (Appendix F.3, F.10, §6.1, §12.
     riskyCaption: `"${D.riskyCaption}"`,
     nuts: `suffix "${en.table.nuts}"`,
     byRiverInfo: en.rankings.byRiverInfo,
-    ...Object.fromEntries(
-      Object.entries(D.name).map(([k, name]) => [`draw ${k}`, `"${name}"`]),
-    ),
+    ...Object.fromEntries(Object.entries(D.name).map(([k, name]) => [`draw ${k}`, `"${name}"`])),
   };
   for (const [name, text] of Object.entries(words)) {
     it(name, () => expect(PLAN).toContain(text));

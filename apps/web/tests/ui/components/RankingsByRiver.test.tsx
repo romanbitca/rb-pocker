@@ -48,7 +48,18 @@ describe('RankingsList "By river" column', () => {
     const { container } = render(
       <RankingsList hero={view('A♥ K♥', '')} cardSize="sm" byRiver={{ handSeq: 1, exactly }} />,
     );
-    expect(cells(container)).toEqual(['—', '<1%', '<1%', '3%', '3%', '5%', '5%', '24%', '44%', '17%']);
+    expect(cells(container)).toEqual([
+      '—',
+      '<1%',
+      '<1%',
+      '3%',
+      '3%',
+      '5%',
+      '5%',
+      '24%',
+      '44%',
+      '17%',
+    ]);
     expect(screen.getByText(en.rankings.howOften)).toBeTruthy();
     const row = container.querySelector('li[data-category="pair"] button') as HTMLElement;
     expect(row.getAttribute('aria-label')).toContain('By river: 44%.');
@@ -69,13 +80,19 @@ describe('RankingsList "By river" column', () => {
 
   it('empty cells while the analysis is on its way', () => {
     const { container } = render(
-      <RankingsList hero={view('A♥ K♥', '')} cardSize="md" byRiver={{ handSeq: 1, exactly: null }} />,
+      <RankingsList
+        hero={view('A♥ K♥', '')}
+        cardSize="md"
+        byRiver={{ handSeq: 1, exactly: null }}
+      />,
     );
     expect(cells(container)).toEqual(new Array<string>(10).fill(''));
   });
 
   it('its header explains it on a tap', () => {
-    render(<RankingsList hero={view('A♥ K♥', '')} cardSize="sm" byRiver={{ handSeq: 1, exactly }} />);
+    render(
+      <RankingsList hero={view('A♥ K♥', '')} cardSize="sm" byRiver={{ handSeq: 1, exactly }} />,
+    );
     const header = screen.getByRole('button', { name: en.rankings.byRiver });
     expect(screen.queryByText(en.rankings.byRiverInfo)).toBeNull();
     fireEvent.click(header);

@@ -62,7 +62,12 @@ describe('WinBadge', () => {
   });
 
   it('value: a button named "Win chance 62%", with the popover on a tap', () => {
-    render(<WinBadge view={viewOf(data({ status: 'done', result: result(0.62, true) }))} placement="up" />);
+    render(
+      <WinBadge
+        view={viewOf(data({ status: 'done', result: result(0.62, true) }))}
+        placement="up"
+      />,
+    );
     const button = screen.getByRole('button', { name: 'Win chance 62%' });
     expect(button.textContent).toBe('62%win chance');
     expect(button.getAttribute('aria-expanded')).toBe('false');
@@ -91,7 +96,10 @@ describe('WinBadge', () => {
     render(
       <div>
         <p>outside</p>
-        <WinBadge view={viewOf(data({ status: 'done', result: result(0.5, true) }))} placement="down" />
+        <WinBadge
+          view={viewOf(data({ status: 'done', result: result(0.5, true) }))}
+          placement="down"
+        />
       </div>,
     );
     const button = screen.getByRole('button', { name: 'Win chance 50%' });
@@ -136,7 +144,9 @@ describe('the badge through a stream of estimates (hysteresis, §7.6)', () => {
       [0.6095, false],
       [0.6149, true],
     ] as const) {
-      rerender(<Live d={data({ result: result(e, final), status: final ? 'done' : 'computing' })} />);
+      rerender(
+        <Live d={data({ result: result(e, final), status: final ? 'done' : 'computing' })} />,
+      );
       read();
     }
     expect(texts).toEqual(['--%', '~62%', '~62%', '~61%', '61%']);

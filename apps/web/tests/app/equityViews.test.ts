@@ -4,6 +4,7 @@
  * exact outs formula (Appendix C.5, never the rule of 2 and 4), the "By river" and nuts rules,
  * the EQ_DANGER threats and the big-move selection, and the selectors' memoization.
  */
+import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 import { analyzeHand } from '../../src/analysis/handinfo.ts';
 import type { EquityResult, HandAnalysis } from '../../src/analysis/types.ts';
@@ -12,6 +13,7 @@ import {
   bigMoveOf,
   boardThreats,
   byRiverShown,
+  drawCards,
   drawChipsOf,
   equityFields,
   initialGame,
@@ -27,6 +29,7 @@ import {
 import { defaultSettings } from '../../src/persist/schema.ts';
 import type { Card } from '../../src/core/cards.ts';
 import type { HandState, LogEvent, TableState } from '../../src/engine/types.ts';
+import { FC_SEED, heroHand } from '../analysis/states.ts';
 import { card, cards, hole } from '../helpers/cards.ts';
 
 // ---------------------------------------------------------------------------------------------
@@ -106,7 +109,7 @@ describe('the adapter over the equity slice (chunk 4.5)', () => {
     expect(equityFields({ status: 'off' })).toEqual(fields({ status: 'off' }));
   });
 
-  it("reads the 4.5 fields when they are there", () => {
+  it('reads the 4.5 fields when they are there', () => {
     const analysis = analysisOf('Ah Kh', 'Qh 7h 2c');
     const slice = {
       status: 'computing',
@@ -239,6 +242,39 @@ describe('the draw chips (§6.2, §6.3, Appendix D.2)', () => {
     expect(drawChipsOf(turn, flop, 'beginner')).toBeNull();
   });
 
+  it('J♠10♠ on Q♠9♦2♠: the straight draw has all 8s and Ks, the 8♠ and K♠ in both draws', () => {
+    const h = hole('J♠ 10♠');
+    const board = cards('Q♠ 9♦ 2♠');
+    const { outs } = analyzeHand(h, board);
+    const sorted = (cs: readonly { card: number }[]) => cs.map((o) => o.card).sort((a, b) => a - b);
+    expect(sorted(drawCards('oesd', h, board, outs))).toEqual(
+      sorted(cards('8♣ 8♦ 8♥ 8♠ K♣ K♦ K♥ K♠').map((c) => ({ card: c }))),
+    );
+    expect(sorted(drawCards('flush', h, board, outs))).toEqual(
+      sorted(cards('3♠ 4♠ 5♠ 6♠ 7♠ 8♠ 9♠ K♠ A♠').map((c) => ({ card: c }))),
+    );
+  });
+
+  for (const boardLength of [3, 4] as const) {
+    it(`picks exactly each draw's outs on 1,000 random ${boardLength === 3 ? 'flops' : 'turns'}`, () => {
+      let chips = 0;
+      fc.assert(
+        fc.property(heroHand(boardLength), ({ hole: h, board }) => {
+          const { draws, outs } = analyzeHand(h, board);
+          for (const d of draws) {
+            if (d.kind === 'backdoorFlush' || d.kind === 'backdoorStraight') continue;
+            const picked = drawCards(d.kind, h, board, outs);
+            expect(picked).toHaveLength(d.outs);
+            for (const o of picked) expect(outs).toContain(o);
+            chips++;
+          }
+        }),
+        { numRuns: 1_000, seed: FC_SEED },
+      );
+      expect(chips).toBeGreaterThan(100);
+    }, 60_000);
+  }
+
   it('Exam shows the names only (§10.2)', () => {
     const hand = handOf({ hole: 'A♥ K♥', board: 'Q♥ 7♥ 2♣' });
     expect(drawChipsOf(hand, analysisOf('A♥ K♥', 'Q♥ 7♥ 2♣'), 'exam')?.namesOnly).toBe(true);
@@ -298,7 +334,11 @@ describe('the big-move line (§7.6)', () => {
       result: result(0.62),
       previous: { equity: 0.5, nOpp: 2, board: flop },
     });
-    expect(bigMoveOf(f, hand, TABLE)).toEqual({ key: `7|${flop.join(',')}|1`, kind: 'fold', name: 'Anna' });
+    expect(bigMoveOf(f, hand, TABLE)).toEqual({
+      key: `7|${flop.join(',')}|1`,
+      kind: 'fold',
+      name: 'Anna',
+    });
   });
 
   it(`nothing under ${BIG_MOVE_POINTS} points, before the final, for two folds at once, or on the flop`, () => {
@@ -311,11 +351,19 @@ describe('the big-move line (§7.6)', () => {
     expect(bigMoveOf(base, hand, TABLE)).toBeNull();
     expect(bigMoveOf({ ...base, result: result(0.7, false) }, hand, TABLE)).toBeNull();
     expect(
-      bigMoveOf({ ...base, result: result(0.7), previous: { equity: 0.5, nOpp: 3, board: flop } }, hand, TABLE),
+      bigMoveOf(
+        { ...base, result: result(0.7), previous: { equity: 0.5, nOpp: 3, board: flop } },
+        hand,
+        TABLE,
+      ),
     ).toBeNull();
     // Preflop → flop: three cards at once, no line.
     expect(
-      bigMoveOf({ ...base, result: result(0.3), previous: { equity: 0.66, nOpp: 1, board: [] } }, hand, TABLE),
+      bigMoveOf(
+        { ...base, result: result(0.3), previous: { equity: 0.66, nOpp: 1, board: [] } },
+        hand,
+        TABLE,
+      ),
     ).toBeNull();
   });
 

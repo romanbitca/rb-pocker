@@ -391,14 +391,11 @@ export const en = {
     /** The chip for the draws that do not fit: "+1". */
     more: (n: number) => `+${n}`,
     moreLabel: 'Show all your draws',
-    /** Over the out cards. */
-    outsTitle: 'Cards that complete it',
     /** On a risky out card, and its caption (§6.4). */
     riskyMark: '!',
     riskyCaption: 'may help them too',
     /** A risky out card's screen-reader name: "Nine of hearts, may help them too". */
     riskyCard: (card: string) => `${card}, may help them too`,
-    close: 'Close',
   },
 
   /** The hand-end banner (PLAN §12.9, §12.11). `x` is an amount already formatted. */
