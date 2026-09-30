@@ -1,6 +1,8 @@
 /**
  * The draw chips (PLAN §6.2–§6.4, §12.3, Appendix F.3): "Flush draw · 9 outs · 35% by river",
- * "(1 risky)" when some outs may help the others too. At most `max` chips; more collapse into
+ * "(1 risky)" when some outs may help the others too. On a phone (`compact`) the full text does
+ * not fit: the chip reads "Flush draw · 35% by river" with a "!" mark for risky outs, and the full
+ * text is its accessible name and its popover's title. At most `max` chips; more collapse into
  * "+1". A tap on any chip opens a popover with every draw and its out cards as mini cards; risky
  * outs carry a "!" mark and the caption "may help them too" (shape and text, never colour alone,
  * pitfall 36). At Exam the chips show the names only and do not open (§10.2).
@@ -24,6 +26,8 @@ export interface DrawChipsProps {
   max: number;
   /** The popover opens over the felt (`up`) or down the landscape column (`down`). */
   placement: 'up' | 'down';
+  /** Phones: the short chip text and a "!" mark (the full text does not fit). */
+  compact?: boolean | undefined;
   className?: string | undefined;
 }
 
@@ -31,6 +35,7 @@ export const DrawChips = memo(function DrawChips({
   chips,
   max,
   placement,
+  compact = false,
   className,
 }: DrawChipsProps) {
   const [open, setOpen] = useState(false);
@@ -51,24 +56,37 @@ export const DrawChips = memo(function DrawChips({
 
   return (
     <div ref={rootRef} className={cx(styles.row, className)} data-draw-chips="">
-      {shown.map((chip) =>
-        interactive ? (
+      {shown.map((chip) => {
+        const face = compact ? (
+          <>
+            {chip.short}
+            {chip.risky > 0 && (
+              <span className={styles.chipMark} aria-hidden="true">
+                {en.draws.riskyMark}
+              </span>
+            )}
+          </>
+        ) : (
+          chip.text
+        );
+        return interactive ? (
           <button
             key={chip.key}
             type="button"
             className={styles.chip}
+            aria-label={compact ? chip.text : undefined}
             aria-expanded={open}
             aria-controls={open ? popoverId : undefined}
             onClick={toggle}
           >
-            {chip.text}
+            {face}
           </button>
         ) : (
           <span key={chip.key} className={styles.chip}>
-            {chip.text}
+            {face}
           </span>
-        ),
-      )}
+        );
+      })}
       {hidden > 0 &&
         (interactive ? (
           <button

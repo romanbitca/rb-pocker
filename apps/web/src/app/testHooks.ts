@@ -17,7 +17,7 @@ import type {
   SeedSource,
   TableController,
 } from './controller.ts';
-import type { AppState, AppStore, Command } from './store.ts';
+import type { AppState, AppStore, Command, EquitySlice } from './store.ts';
 
 /** Present in every build that has the hooks, and in no other (the bundle test looks for it). */
 export const TEST_HOOKS_MARKER = 'rb-pc-test-hooks-v1';
@@ -60,6 +60,11 @@ export interface PcHooks {
   logs(): ControllerLogs;
   /** The controller's hand state and the current hand's inputs. */
   snapshot(): ControllerSnapshot;
+  /**
+   * Writes the `equity` slice as the equity jobs would (E2E and screenshots: the win badge, draw
+   * chips and "By river" column in a chosen state, without the worker).
+   */
+  setEquity(slice: EquitySlice): void;
 }
 
 /** Sets `window.__pc`; returns it. */
@@ -76,6 +81,7 @@ export function installTestHooks(
     dispatch: (cmd) => store.getState().dispatch(cmd),
     logs: () => controller.logs(),
     snapshot: () => controller.snapshot(),
+    setEquity: (slice) => store.setState({ equity: slice }),
   };
   (win as Window & { __pc?: PcHooks }).__pc = hooks;
   return hooks;

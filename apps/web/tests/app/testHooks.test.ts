@@ -76,6 +76,10 @@ describe('window.__pc and startApp', () => {
       expect(s.game.hand?.seed).toBe(deriveSeed(seed, 'hand', s.game.hand?.handSeq as number));
       expect(pc.snapshot().hand).toBe(s.game.hand);
       expect(pc.logs().events.some((e) => e.what === 'hand start')).toBe(true);
+      // The equity slice can be written as the equity jobs would (E2E and screenshots).
+      const slice = { status: 'off' } as const;
+      pc.setEquity(slice);
+      expect(pc.state().equity).toBe(slice);
     } finally {
       controller.dispose();
       window.history.replaceState(null, '', '/');

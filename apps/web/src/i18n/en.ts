@@ -384,6 +384,8 @@ export const en = {
     /** "Flush draw · 9 outs · 35% by river". */
     chip: (name: string, outs: number, pct: string, when: string) =>
       `${name} · ${outs} ${outs === 1 ? 'out' : 'outs'} · ${pct} ${when}`,
+    /** The chip on a phone, where the full text does not fit: "Flush draw · 35% by river". */
+    chipShort: (name: string, pct: string, when: string) => `${name} · ${pct} ${when}`,
     byRiver: 'by river',
     nextCard: 'next card',
     /** After the chip text when some outs are risky: " (1 risky)". */

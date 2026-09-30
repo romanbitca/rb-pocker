@@ -45,6 +45,15 @@ describe('DrawChips', () => {
     expect(buttons[1]?.getAttribute('aria-label')).toBe(en.draws.moreLabel);
   });
 
+  it('on a phone (compact): the short text and a "!" for risky outs; the full text is its name', () => {
+    const chips = chipsFor('A♥ K♥', 'Q♥ 7♥ 2♣');
+    render(<DrawChips chips={chips} max={1} placement="up" compact={true} />);
+    const chip = screen.getByRole('button', {
+      name: 'Nut flush draw · 9 outs · 35% by river (1 risky)',
+    });
+    expect(chip.textContent).toBe('Nut flush draw · 35% by river!');
+  });
+
   it('two chips on a wide screen', () => {
     const chips = chipsFor('9♠ 8♠', '7♦ 6♣ 2♥');
     render(<DrawChips chips={chips} max={2} placement="up" />);

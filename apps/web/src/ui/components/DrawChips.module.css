@@ -44,6 +44,22 @@ button.chip[aria-expanded='true'] {
   border-color: var(--text);
 }
 
+/* The phone chip's "!" for risky outs (the same mark as on the out cards, §6.4). */
+.chipMark {
+  display: inline-grid;
+  place-items: center;
+  width: 14px;
+  height: 14px;
+  margin-left: 6px;
+  border-radius: 50%;
+  background: var(--grade-slightly-off);
+  color: #111;
+  font-size: 11px;
+  font-weight: 900;
+  line-height: 1;
+  vertical-align: -2px;
+}
+
 .more {
   flex: none;
   min-width: 44px;

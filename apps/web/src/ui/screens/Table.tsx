@@ -347,15 +347,25 @@ function OddsColumn({
 const DrawsSlot = memo(function DrawsSlot({
   max,
   placement,
+  compact,
   className,
 }: {
   max: number;
   placement: BadgePlacement;
+  compact: boolean;
   className?: string | undefined;
 }) {
   const data = useAppStore(selectDrawChips);
   const chips = useMemo(() => drawChipViews(data), [data]);
-  return <DrawChips chips={chips} max={max} placement={placement} className={className} />;
+  return (
+    <DrawChips
+      chips={chips}
+      max={max}
+      placement={placement}
+      compact={compact}
+      className={className}
+    />
+  );
 });
 
 // ---------------------------------------------------------------------------------------------
@@ -385,7 +395,12 @@ const HeroStrip = memo(function HeroStrip({
             className={styles.heroLabel}
           />
           <OddsColumn placement="up" canWin={layout === 'wide'} className={styles.heroOdds} />
-          <DrawsSlot max={layout === 'wide' ? 2 : 1} placement="up" className={styles.heroDraws} />
+          <DrawsSlot
+            max={layout === 'wide' ? 2 : 1}
+            placement="up"
+            compact={layout !== 'wide'}
+            className={styles.heroDraws}
+          />
         </>
       )}
     </section>
@@ -406,7 +421,7 @@ const SideHero = memo(function SideHero({ onOpenRankings }: { onOpenRankings: ()
       <HeroLabel hero={hero} nuts={nuts} onOpenRankings={onOpenRankings} />
       <OddsColumn placement="down" canWin={true} className={styles.sideOdds} />
       <HeroChips hero={hero} />
-      <DrawsSlot max={1} placement="down" className={styles.sideDraws} />
+      <DrawsSlot max={1} placement="down" compact={true} className={styles.sideDraws} />
     </section>
   );
 });

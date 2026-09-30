@@ -199,6 +199,8 @@ export interface DrawChipView {
   readonly name: string;
   /** "Flush draw · 9 outs · 35% by river (1 risky)"; the name alone at Exam (§10.2). */
   readonly text: string;
+  /** The phone chip: "Flush draw · 35% by river" (a "!" mark stands for the risky outs). */
+  readonly short: string;
   /** Risky outs among this draw's cards. */
   readonly risky: number;
   /** The out cards (empty at Exam). */
@@ -219,10 +221,12 @@ export function drawChipViews(data: DrawChipsData | null): DrawChipView[] {
   return data.draws.map((d) => {
     const name = en.draws.name[d.kind];
     const risky = d.cards.filter((c) => c.risky).length;
+    const when = d.when === 'byRiver' ? en.draws.byRiver : en.draws.nextCard;
     return {
       key: d.kind,
       name,
       text: data.namesOnly ? name : drawChipText(d),
+      short: data.namesOnly ? name : en.draws.chipShort(name, percentText(d.pct), when),
       risky: data.namesOnly ? 0 : risky,
       cards: data.namesOnly ? [] : d.cards,
     };
