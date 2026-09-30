@@ -11,6 +11,18 @@
       "generator": "gen-preflop@1",
       "seed": "fc4c71be91e69bdef4cc3d3ec54aab3e",
       "trials": 500000
+    },
+    "pushfold.ts": {
+      "sha256": "2be057d26a6bfdf87d59e0c424ee15d8ebd98efcade2c37b7fd6725350b66e1a",
+      "generator": "gen-pushfold@1",
+      "seed": "b3fa9e20b507129b4a198627aa09d24e",
+      "trials": 40000
+    },
+    "ranges.ts": {
+      "sha256": "ece38fce2aacabb2df5a558a470095a458cb550d62a6225bbf1f6f19c962c4c0",
+      "generator": "gen-ranges@1",
+      "seed": "7f0e28a4e1791a3f0d00a20e796c2353",
+      "trials": 200000
     }
   }
 }
