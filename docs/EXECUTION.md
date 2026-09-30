@@ -70,7 +70,7 @@ Legend: `[ ]` todo · `[~]` in progress (branch exists) · `[x]` merged to `main
 - [x] 4.1 `feature/draws-and-outs-analysis` - `analysis/handinfo.ts` (draws, outs rule, risky outs R1–R5, nuts/beaters); D.2.
 - [x] 4.2 `feature/chances-by-the-river` - `analysis/chances.ts`; D.3.
 - [x] 4.3 `feature/win-chance-equity` - `analysis/equity.ts` exact + fixed-n seeded Monte Carlo; C.2–C.3.
-- [~] 4.4 `feature/preflop-equity-tables` - `scripts/gen-preflop.ts`, `analysis/preflop.ts`, `check-tables` in CI.
+- [x] 4.4 `feature/preflop-equity-tables` - `scripts/gen-preflop.ts`, `analysis/preflop.ts`, `check-tables` in CI.
 - [x] 4.5 `feature/equity-worker` - `workers/protocol.ts`, `equity.worker.ts`, `app/workerClient.ts` (jobId, epoch, cancel, stale-drop, timeouts).
 - [x] 4.6 `feature/win-badge-and-draw-chips` - badge (skeleton, `~`, hysteresis, popover), price chip, draw chips, By-river column.
 - [~] 4.7 `feature/all-in-run-out-and-bench` - all-in TV mode, luck line, `#bench` route, throttled latency checks.
@@ -189,4 +189,5 @@ If the human's answer later reveals a problem, the fix becomes a new chunk ahead
 | 30 Sep 20:45–22:05Z | 4.1–4.3 merge train | #27 (0915526), #28 (6a147a6), #29 (d16dc67) merged with green CI; #33 fixes a flaky offline e2e (hero busts → dialog covered the Hands tab) | Sonnet; 5h 4% → 32%, weekly 50% → 54% |
 | 30 Sep 20:45–22:20Z | 4.5 | [PR #32](https://github.com/romanbitca/rb-pocker/pull/32) merged (e33edc3): equity worker + protocol + client; no unrevealed bot card in any posted message (spy, 2–9 players, run-outs); hidden tab cancels all jobs; worker chunk 6.2 KB gzip | 5h 37%, weekly 54% |
 | 30 Sep 21:15–22:40Z | 4.6 | [PR #35](https://github.com/romanbitca/rb-pocker/pull/35) merged (b87dbf6): win badge (skeleton, ~, hysteresis, popover), big-move lines, price chip with capped pot, draw chips with risky outs, By-river column; 0 Seat renders on progress; DOM 594/600 | 5h 50%, weekly 56% |
+| 30 Sep 21:15–23:00Z | 4.4 | [PR #34](https://github.com/romanbitca/rb-pocker/pull/34) merged (a63beb1): 169×8 win/split + 169×10 finals (7.9 KB gzip), check-tables in CI (20 cells ≤ 0.41 pts), preflop HUD + By-river chances now from the tables; worker 14.1 KB gzip | weekly ~57% |
 | 29 Sep 21:05–21:48Z | 4.1, 4.2 (early) | PRs [#27](https://github.com/romanbitca/rb-pocker/pull/27), [#28](https://github.com/romanbitca/rb-pocker/pull/28) ready, held: all D.2, D.3, C.5 exact; brute-force oracle agreement | (same window) |
