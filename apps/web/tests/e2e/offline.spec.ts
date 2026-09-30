@@ -1,4 +1,6 @@
 import { expect, heading, test as base, waitForServiceWorkerControl } from './fixtures.ts';
+import type { HandState } from '../../src/engine/types.ts';
+import { collectErrors, nextFlowPoint, pcState, slot } from './game.ts';
 import { startOwnServer, type OwnServer } from './own-server.ts';
 
 // PLAN §15.1, §15.2, Stage 0 acceptance 4: once loaded, the game works with no network at all.
@@ -21,12 +23,14 @@ const test = base.extend<{ server: OwnServer }>({
   },
 });
 
-test('the shell still loads offline once the service worker controls the page', async ({
+test('offline once the service worker controls the page: the app loads and a hand plays', async ({
   page,
   context,
   server,
   browserName,
 }) => {
+  test.setTimeout(90_000);
+  const errors = collectErrors(page);
   await page.goto('/');
   await expect(heading(page)).toHaveText('RB Poker Coach');
   await waitForServiceWorkerControl(page);
@@ -43,4 +47,37 @@ test('the shell still loads offline once the service worker controls the page', 
   expect(await page.evaluate(() => 'loadedBeforeOffline' in window)).toBe(false); // a new page
   await expect(heading(page)).toHaveText('RB Poker Coach');
   expect(await page.evaluate(() => navigator.serviceWorker.controller !== null)).toBe(true);
+
+  // §15.2 from Stage 3: still offline, one tap on Play and a full 6-player hand to a showdown
+  // (the hero checks or calls; a hand that ends without one is followed by the next), then the
+  // hand rankings. Stats and Learn do not exist before Stages 8 and 9.
+  await page.getByRole('button', { name: 'Play', exact: true }).click();
+  await expect(page.locator('[data-hero-cards] [role="img"]')).toHaveCount(2);
+  await page.evaluate(() =>
+    window.__pc?.dispatch({ type: 'settings', patch: { speed: 'instant', autoNext: false } }),
+  );
+  let hand: HandState | null = null;
+  for (let hands = 0; hands < 10 && hand?.result?.endedBy !== 'showdown'; hands++) {
+    if (hand !== null) await page.locator('[data-hand-end]').click();
+    for (let point = await nextFlowPoint(page); point !== 'end';) {
+      if (point === 'hero') await slot(page, 'middle').click();
+      point = await nextFlowPoint(page);
+    }
+    hand = (await pcState(page)).game.hand;
+  }
+  expect(
+    hand?.seats.filter((s) => s.dealtIn),
+    'six players',
+  ).toHaveLength(6);
+  expect(hand?.result?.endedBy, 'a hand reached the showdown').toBe('showdown');
+  await expect(page.locator('[data-hand-end]')).toBeVisible();
+
+  if ((await page.locator('main[data-layout="wide"]').count()) === 0) {
+    await page.locator('[data-table-box] + div button').click();
+    await expect(page.getByRole('dialog', { name: /Poker hands/ })).toBeVisible();
+  } else {
+    await expect(page.getByRole('complementary', { name: /Poker hands/ })).toBeVisible();
+  }
+  await expect(page.locator('[data-category]')).toHaveCount(10);
+  expect(errors).toEqual([]);
 });

@@ -1,68 +1,90 @@
 import { expect, test } from './fixtures.ts';
+import { collectErrors, nextFlowPoint, pageMetrics, sizeOf, slot } from './game.ts';
 
-// Chunk 3.4 smoke test (PLAN §12.1, §18 Stage 3): a fresh profile, one tap on Play, the hero's
-// cards within 2 s, then one full hand through the real buttons. One phone size per browser here;
-// chunk 3.8 runs the full acceptance suite at every viewport.
+// PLAN §18 Stage 3, acceptance 9 (§12.1 "one tap to play"): with a fresh profile, open the app
+// and tap Play: a dealt hand with the hero's cards face up within 2 s, and no other screen,
+// dialog or tip in between. At every viewport. Then, at one phone size, a full hand at the
+// default Normal speed (every other spec plays at Instant speed).
 
 /** Unicode suit characters U+2660–U+2667 (pitfall 31). */
 const SUITS = /[♠-♧]/u;
 
-test.describe('the table', () => {
-  // eslint-disable-next-line no-empty-pattern -- Playwright reads the fixtures from this pattern
-  test.beforeEach(({}, testInfo) => {
-    test.skip(
-      !testInfo.project.name.endsWith('-phone-390x844'),
-      'smoke test: one phone size per browser (chunk 3.8 covers every size)',
-    );
+test('one tap on Play deals a hand within 2 s, with nothing in between', async ({ page }) => {
+  const errors = collectErrors(page);
+  await page.goto('/');
+  const play = page.getByRole('button', { name: 'Play', exact: true });
+  await expect(play).toBeVisible();
+
+  // Record every screen and overlay the page shows from now on, and any dialog or tip.
+  await page.waitForFunction(() => window.__pc?.state().game.mode !== 'booting');
+  await page.evaluate(() => {
+    const seen: string[] = [];
+    Object.assign(window, { __seen: seen });
+    const note = () => {
+      const s = window.__pc?.state();
+      const what = [
+        `screen ${s?.ui.screen ?? '?'}`,
+        ...(s?.ui.overlays ?? []).map((o) => `overlay ${o}`),
+        ...[...document.querySelectorAll('[role="dialog"], [role="alertdialog"]')].map(
+          (d) => `dialog ${d.getAttribute('aria-label') ?? d.textContent?.slice(0, 30) ?? ''}`,
+        ),
+      ].join(', ');
+      if (seen.at(-1) !== what) seen.push(what);
+    };
+    new MutationObserver(note).observe(document.body, { subtree: true, childList: true });
+    note();
   });
 
-  test('one tap on Play deals within 2 s; a full hand plays to its end', async ({ page }) => {
-    test.setTimeout(120_000);
-    const errors: string[] = [];
-    page.on('console', (message) => {
-      if (message.type() === 'error') errors.push(`console: ${message.text()}`);
-    });
-    page.on('pageerror', (error) => errors.push(`uncaught: ${error.message}`));
+  const tapped = Date.now();
+  await play.click();
+  const hole = page.locator('[data-hero-cards] [role="img"]');
+  await expect(hole.first()).toBeVisible({ timeout: 2000 });
+  await expect(hole).toHaveCount(2);
+  await expect(hole.first()).not.toHaveAttribute('aria-label', 'Hidden card', { timeout: 100 });
+  await expect(hole.last()).not.toHaveAttribute('aria-label', 'Hidden card', { timeout: 100 });
+  expect(Date.now() - tapped, 'dealt within 2 s of the tap').toBeLessThan(2000);
+  await expect(page.locator('[data-hero-name]')).not.toBeEmpty();
 
-    await page.goto('/');
-    const play = page.getByRole('button', { name: 'Play', exact: true });
-    await expect(play).toBeVisible();
-    await play.click();
+  const seen = await page.evaluate(() => (window as unknown as { __seen: string[] }).__seen);
+  expect(seen, 'Welcome, then the Table: nothing in between').toEqual([
+    'screen welcome',
+    'screen table',
+  ]);
+  const state = await page.evaluate(() => window.__pc?.state());
+  expect(state?.game.hand?.seats, 'the first-launch table: you + 5 bots').toHaveLength(6);
+  expect(errors).toEqual([]);
+});
 
-    // Acceptance 9: a dealt hand, the hero's cards face up, within 2 s; nothing in between.
-    const hole = page.locator('[data-hero-cards] [role="img"]');
-    await expect(hole.first()).toBeVisible({ timeout: 2000 });
-    await expect(hole).toHaveCount(2);
-    await expect(hole.first()).not.toHaveAttribute('aria-label', 'Hidden card');
-    await expect(page.getByRole('dialog')).toHaveCount(0);
-    await expect(page.locator('[data-hero-name]')).not.toBeEmpty();
+test('a full hand at Normal speed plays to its end', async ({ page }, testInfo) => {
+  test.skip(sizeOf(testInfo) !== '390x844', 'one phone size per browser');
+  test.setTimeout(60_000);
+  const errors = collectErrors(page);
+  // Normal speed keeps its pauses and animations; the fake clock only skips the waiting.
+  await page.clock.install();
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Play', exact: true }).click();
+  await expect(page.locator('[data-hero-cards] [role="img"]')).toHaveCount(2);
+  expect(await page.evaluate(() => window.__pc?.state().settings.speed)).toBe('normal');
 
-    // Play it through: check or call whenever it is our turn, until the hand-end banner.
-    const banner = page.locator('[data-hand-end]');
-    const middle = page.locator('[data-slot="middle"]');
-    for (let i = 0; i < 400 && (await banner.count()) === 0; i++) {
-      if ((await middle.getAttribute('aria-disabled')) !== 'true') await middle.click();
-      else await page.waitForTimeout(200);
-    }
-    await expect(banner).toBeVisible();
-    await expect(banner).toContainText(/win|folded/);
-    await expect(banner).toContainText('Next hand');
+  for (let point = await nextFlowPoint(page, true); point !== 'end';) {
+    if (point === 'hero') await slot(page, 'middle').click();
+    point = await nextFlowPoint(page, true);
+  }
+  const banner = page.locator('[data-hand-end]');
+  await expect(banner).toBeVisible();
+  await expect(banner).toContainText(/win|folded|split/);
+  await expect(banner).toContainText('Next hand');
 
-    // A calm page: no scrolling, a small DOM (§15.3), no emoji suits.
-    const page_ = await page.evaluate(() => ({
-      scrollX: document.documentElement.scrollWidth - window.innerWidth,
-      scrollY: document.documentElement.scrollHeight - window.innerHeight,
-      nodes: document.querySelectorAll('*').length,
-      text: document.body.textContent,
-    }));
-    expect(page_.scrollX).toBeLessThanOrEqual(0);
-    expect(page_.scrollY).toBeLessThanOrEqual(0);
-    expect(page_.nodes).toBeLessThanOrEqual(600);
-    expect(SUITS.test(page_.text)).toBe(false);
+  // A calm page: no scrolling, a small DOM (§15.3), no emoji suits.
+  const metrics = await pageMetrics(page);
+  expect(metrics.scrollX).toBeLessThanOrEqual(0);
+  expect(metrics.scrollY).toBeLessThanOrEqual(0);
+  expect(metrics.nodes).toBeLessThanOrEqual(600);
+  const text = await page.evaluate(() => document.documentElement.outerHTML);
+  expect(SUITS.test(text)).toBe(false);
 
-    // A tap on the banner moves on: the next hand (or, if we lost every chip, the reload dialog).
-    await banner.click();
-    await expect(banner).toHaveCount(0);
-    expect(errors).toEqual([]);
-  });
+  // A tap on the banner moves on: the next hand.
+  await banner.click();
+  await expect(banner).toHaveCount(0);
+  expect(errors).toEqual([]);
 });

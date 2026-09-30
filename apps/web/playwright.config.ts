@@ -50,6 +50,8 @@ export default defineConfig({
   testDir: 'tests/e2e',
   testMatch: '**/*.spec.ts',
   fullyParallel: true,
+  // The CI runner has 2 vCPUs, where Playwright's default is one worker (half the cores).
+  ...(CI ? { workers: 2 } : {}),
   forbidOnly: CI,
   retries: CI ? 1 : 0,
   reporter: CI
