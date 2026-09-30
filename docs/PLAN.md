@@ -927,13 +927,15 @@ Implementation notes (chunk 4.3, `analysis/equity.ts`):
 - **Seeds.** In `eq|…` the hero cards and the board are both written highest card first (`Kh Ah` on `2c Qh 7h` gives `eq|AhKh|Qh7h2c|3`), so the same cards give the same number whatever order they came in or were dealt (§2.4 has the run-out seed). Ties are counted as integers per tie size and divided at the end, so a result has the same bits on every device.
 - **Exact enumeration** takes the runouts one at a time, scores the hero once, scores each of the 990 possible opponent hands once, then combines disjoint hands; tests force it with `mode: 'exact'` where the app would sample (the flop rows of Appendix C.3, and all boards of Appendix C.2).
 
-Implementation notes (chunk 4.5, `workers/equityService.ts`): the worker takes the generator's steps back to back and pauses with `setTimeout(0)` at a checkpoint once 8 ms of work have passed since the last pause (not after every 2,000 trials: the pauses cost up to 4 ms each once timers nest), so a `cancel` or a newer job is seen within one slice; results never depend on it. After each pause it checks that the job is still wanted; nothing can run between that check and its next post, so a cancelled job never posts again. A newer job of the same kind stops the older one at its next checkpoint, even before the older one's `cancel` arrives. The 3 s cap posts the last estimate as the final reply with `truncated: true` (for a run-out: `final: true, exact: false`), or an `error` reply when there is none yet.
+Implementation notes (chunk 4.5, `workers/equityService.ts`): the worker takes the generator's steps back to back and pauses with `setTimeout(0)` at a checkpoint once 8 ms of work have passed since the last pause (not after every 2,000 trials: the pauses cost up to 4 ms each once timers nest), so a `cancel` or a newer job is seen within one slice; results never depend on it. After each pause it checks that the job is still wanted; nothing can run between that check and its next post, so a cancelled job never posts again. A newer `equity` job stops the older one at its next checkpoint, even before the older one's `cancel` arrives; `equityKnown` jobs stop only at their own `cancel`, because during a run-out two run at once (the street's bars and the board at the all-in, §7.4, chunk 4.7). Every reply carries `timing` (A.6 `JobTiming`): the wall time since the request was taken, and how much of it the worker spent computing, on this job or any other that ran in between (§15.3). The 3 s cap posts the last estimate as the final reply with `truncated: true` (for a run-out: `final: true, exact: false`), or an `error` reply when there is none yet.
 
 ### 7.4 Recompute triggers
 
 New hole cards; each new street; any fold that changes the live-opponent count; an all-in reveal (switch to known-hands mode); resume from storage. A new request cancels the old one. Nothing else (in particular, a bot bet does not change this number; the coach explains what a bet means).
 
 Implementation (chunk 4.5, `app/equityJobs.ts`): the controller hands every state it publishes to the equity jobs, and each job kind has a key: HUD equity (hand, hero cards, board, live opponents), `handInfo` (hand, hero cards, board), run-out (hand, face-up seats, board). A request goes out exactly when its key changes, which is the list above. Known-hands mode starts when `hand.runout` is set and at least two live seats are in `hand.revealed`; the reveal comes in the same `advance` as the next street's cards, so its first equities are for that board. No job while the hero has folded (the badge says "Folded"), after all opponents folded, or once the hand is complete (the badge is off). The `hidden` gate cancels every job at once (§15.3); jobs that did not finish are sent again when it opens. A job cancelled by a new epoch (pitfall 22) is sent again at once; one that timed out or failed waits for the next trigger (§12.14).
+
+All-in board (chunk 4.7): because the reveal and the next street arrive together, one more job, `allIn` (its own client slot), computes the run-out equities of the same face-up hands for the board as it was before that `advance` (the `street` events logged before the `reveal`, `boardAtReveal`): the hero's number "when the chips went in" for the luck line (§7.6), and later the All-in luck stat (§14.4). It runs only when the hero is one of the face-up hands, it stays wanted after the hand is complete (so a hand that ends at once, at Instant speed, does not cancel it), and it lands in the slice's `allIn` (A.8), which a new hand clears. Like every run-out job it carries face-up hands only.
 
 ### 7.5 Build-time preflop tables
 
@@ -956,6 +958,8 @@ Implementation (chunk 4.5, `app/equityJobs.ts`): the controller hands every stat
 - **Big-move line:** when the final value changes by ≥ 8 points between two finals, show one line under the badge for 4 s: EQ_FOLD "{name} folded. One fewer player to beat." · EQ_IMPROVED "The {card} helped you: now {handName}." · EQ_DANGER "The {card} is dangerous: {threat} is now possible." · EQ_BLANK_DROP "The {card} did not help you."
 - **Folded:** the badge shows "Folded", no number.
 - **All-in "TV mode":** every face-up player gets an equity bar that updates each street. At the end: hero lost with ≥ 60% → "You had {E}% when the chips went in. Good decision. Unlucky this time."; hero won with ≤ 35% → "You got lucky. You had {E}%." These run-outs also feed the "All-in luck" stat (§14.4).
+  - Implementation (chunk 4.7, `app/runoutViews.ts`, `ui/components/Runout.tsx`): a bar shows for each face-up live seat (`hand.revealed`) that has a number in `equity.known` for this hand, from the reveal until the hand is complete (then the banner speaks, like the badge). A bot's bar sits in its pod's bet slot and the hero's in the hero's bet slot (`tableGeometry().bets`, `heroBetRect`): nobody bets during a run-out, and those slots already clear the pods, the board and the pot. Each bar is one 52×20 element (nine bars add nine DOM nodes, §15.3): "62%" on a dark pill, the track and the fill are its `::before` and `::after`, the fill scaled with `transform` (§12.8); neutral colours; screen-reader name "Ben: 62% win chance" / "You: 62% win chance". A street's numbers stay until the next street's arrive (exact from the flop on). The hero's bar repeats the badge's number, which shows the hero's run-out equity in known-hands mode.
+  - Luck line: from `equity.allIn` (the board at the reveal, §7.4), only when final, for this hand, with the hero face up. "Lost" = the hero won no pot (payout 0); "won" = the hero alone won the main pot, the pot every face-up hand could win (the equity is against all of them); a split is neither. The thresholds apply to the whole percent the line prints (59.5% prints "60%", so it counts as 60). The line follows the banner's lines (§12.9).
 - Setting "Show win chance" (default on) hides the badge for players who want to practise estimating. Exam level hides it while deciding (§10.2).
 - Implementation notes (chunk 4.6; `app/equityViews.ts` builds the data, `ui/equity.ts` the words, `ui/components/WinBadge.tsx` and `DrawChips.tsx` draw them):
   - **Percentages** are whole numbers that never claim more than is known: a chance above 0 never reads "0%" and one below 100 never "100%" ("<1%", ">99%"). This applies to the badge, its popover, the draw chips and the "By river" cells.
@@ -1814,6 +1818,8 @@ On start, `navigator.locks.request('pc-writer', { ifAvailable: true }, …)` and
 
 Techniques (MUST): one Zustand store with slices; every component subscribes with a narrow selector (`useShallow` when it selects several fields), never to the whole store; equity progress updates only the `equity` slice; seat components wrapped in `React.memo` with stable props; no React context for fast-changing values; animate only transform/opacity with `will-change` only while animating; no `backdrop-filter`, blur, canvas or animated shadows; one SVG sprite; fixed-size cards and pods (no layout shift); workers warmed at start and cancelled when hidden; never Monte Carlo on the main thread; no `setInterval` polling; lazy-load Stats, Learn, Review and Bench with dynamic `import()` (still precached).
 
+Throttled checks (chunk 4.7, `tests/e2e/perf.spec.ts`, the `chromium-perf-390x844` project that runs alone after the others): a 20-hand run on a 9-player table (8 opponents, the heaviest win chance) at Instant speed in real time, with `Emulation.setCPUThrottlingRate` 6 over CDP; at each hero turn the test waits for the final win chance, then taps. ⚠️ CDP's throttling slows the page's main thread only: sent to a worker's own CDP session it answers "Operation is only supported for pages, not workers" (checked with Playwright 1.63's Chromium), so a Web Worker runs at full speed. The worker timing logs close that gap: every reply carries `timing` (A.6 `JobTiming`, ms since the request and how much of it the worker computed), the client's log keeps it with a card-free summary of the request ("board 3 · 8 opponents"), and the test checks each budget against the time a CPU 6× slower would take, `ms + 5 × busyMs` (only the computing stretches; the pauses do not). The long-task observer watches the really throttled main thread; the test's own polling is light (every 100 ms) because it runs there too.
+
 ### 15.4 `#bench` route and device targets
 
 A hidden screen that runs in the workers and reports: evaluator evaluations/s (5M random 7-card hands); time to final HUD equity for 8 opponents preflop-postflop and 1 opponent on the flop; hint latency p50/p95 on 20 fixed spots; user agent.
@@ -1825,6 +1831,12 @@ A hidden screen that runs in the workers and reports: evaluator evaluations/s (5
 | Hint p50 / p95 | ≤ 100 / 300 ms | §8.11 fallback constants |
 
 Phone speeds are UNVERIFIED estimates (desktop prototype 15.8M evals/s; mid-range phone ~3–4× slower). Stage 9 measures a real Galaxy A5x-class phone and an older supported iPhone, in a tab and installed, and records the numbers here.
+
+Implementation (chunk 4.7):
+- **Open it:** add `#bench` to the app's address, e.g. `http://<LAN-IP>:3000/#bench` (or the Coolify URL + `#bench`) in the phone's browser. Typing `#bench` into a running game reloads into it; [Back to the game] reloads without it. main.tsx shows it instead of the game and starts no game (no controller, no `window.__pc`); `app/bench.ts` and `ui/screens/Bench.tsx` are `import()`ed (lazy chunks, precached, so it also works offline).
+- **What it measures** (`workers/bench.ts`, in a fresh `equity.worker` of its own, one `bench` job, A.6): `score7` over 5,000,000 random seven-card hands, cycled from a seeded pool of 250,000 dealt before the clock starts (1.75 MB), after an untimed warm-up pass; the time to the final HUD win chance through a job runner of its own (the game's 8 ms slices and `setTimeout(0)` pauses, so what a player waits), for A♥K♥ against 8 opponents before the flop, against 8 on Q♥ 7♥ 2♣, and against 1 on that flop: one warm-up run, then the median of three; the worker's user agent. Hint latency says "Coming in Stage 5" until `brain.worker` exists.
+- **What it shows:** each number with its target above ("OK" / "Too slow" in words, not colour only; the 1-opponent row has no target), and the whole report as plain text in a read-only box to paste into a PR. [Copy the results] appears only where `navigator.clipboard` exists: on plain http over the LAN it does not (§12.14), and the text is selected by hand.
+- Measured on the dev Mac (Apple M1 Pro, headless Chromium, 1 Oct 2026): evaluator 14.4M/s; 8 opponents before the flop 47 ms (Monte Carlo; the §7.5 table makes it a lookup once wired, chunk 4.4), on the flop 38 ms; 1 opponent on the flop 17 ms.
 
 ---
 
@@ -2637,11 +2649,13 @@ export type EquityRequest =
   | { kind: 'handInfo'; jobId: number; epoch: number; hero: [Card, Card]; board: Card[] }
   | { kind: 'bench'; jobId: number }
   | { kind: 'cancel'; jobId: number };
+export interface JobTiming { ms: number; busyMs: number }  // ms since the worker took the request; busyMs of it computing (any job)
+export interface EquityBenchResult { evalsPerSec: number; eq8PreflopMs: number; eq8FlopMs: number; eq1FlopMs: number; ua: string }
 export type EquityReply =
-  | { kind: 'equity'; jobId: number; epoch: number; result: EquityResult }           // several; last has final: true
-  | { kind: 'equityKnown'; jobId: number; epoch: number; perPlayer: number[]; exact: boolean; final: boolean }
-  | { kind: 'handInfo'; jobId: number; epoch: number; analysis: HandAnalysis }
-  | { kind: 'bench'; jobId: number; result: { evalsPerSec: number; eq8Ms: number; eqFlopMs: number; ua: string } }
+  | { kind: 'equity'; jobId: number; epoch: number; result: EquityResult; timing?: JobTiming }  // several; last has final: true
+  | { kind: 'equityKnown'; jobId: number; epoch: number; perPlayer: number[]; exact: boolean; final: boolean; timing?: JobTiming }
+  | { kind: 'handInfo'; jobId: number; epoch: number; analysis: HandAnalysis; timing?: JobTiming }
+  | { kind: 'bench'; jobId: number; result: EquityBenchResult }
   | { kind: 'error'; jobId: number; epoch: number; message: string };
 
 export type BrainRequest =
@@ -2660,7 +2674,7 @@ export type BrainReply =
 
 The main thread drops any reply whose `epoch` is not current or whose `jobId` is not the latest for its kind (per seat for `botDecision`). Timeouts: equity 4,000 ms (above the worker's own 3 s `truncated` cap, so a truncated reply still lands); bot decision 2,000 ms (then the safest legal action + a diagnostic); grade 1,500 ms (continue without pause; the reply is still accepted later, §11.3 rule 5). The Monte Carlo seed text (§7.3) writes hero cards sorted by `Card` value descending and the board in deal order.
 
-Client rules (chunk 4.5, `app/workerClient.ts`): every job has a slot, its kind ('equity', 'handInfo', 'known'; later 'bot:{seat}'); a new job cancels the one in its slot. A reply is delivered only when it comes from the current worker, for a pending job of the current epoch that is the newest of its slot, with the job's epoch and kind (or `error`); an `error` reply is always the last one. `cancel` and `cancelAll` post `{ kind: 'cancel' }` and forget the job at once. A timeout cancels the job. "Two consecutive timeouts" (§12.14) means two jobs of one worker in a row that timed out with no final reply in between. A restart fails the pending jobs; after the second failure the client is `failed` and sends nothing (`retry()` is the brain's [Try again]). The job timeouts run on the controller's timers (§0.3). `bench` answers `error` (epoch 0) until the `#bench` screen (chunk 4.7).
+Client rules (chunk 4.5, `app/workerClient.ts`): every job has a slot, its kind ('equity', 'handInfo', 'known'; later 'bot:{seat}'); a new job cancels the one in its slot. A reply is delivered only when it comes from the current worker, for a pending job of the current epoch that is the newest of its slot, with the job's epoch and kind (or `error`); an `error` reply is always the last one. `cancel` and `cancelAll` post `{ kind: 'cancel' }` and forget the job at once. A timeout cancels the job. "Two consecutive timeouts" (§12.14) means two jobs of one worker in a row that timed out with no final reply in between. A restart fails the pending jobs; after the second failure the client is `failed` and sends nothing (`retry()` is the brain's [Try again]). The job timeouts run on the controller's timers (§0.3). Chunk 4.7: the log keeps a card-free summary of each request (`detail`, "board 3 · 5 opponents") and each reply's `timing` (the §15.3 worker timing logs, read through `window.__pc.logs().equity` in test builds); the all-in board job has its own slot, `allIn` (§7.4); `bench` answers once with `EquityBenchResult` (§15.4), or `error` (epoch 0) when the measurements fail.
 
 ### A.7 Persistence (`src/persist/schema.ts`)
 
@@ -2808,7 +2822,8 @@ export interface EquitySlice { status: EquityStatus; mode: 'random' | 'known';
   result: EquityResult | null;                              // progress, then the final; null until the first estimate
   previous: { equity: number; nOpp: number; board: Card[] } | null;   // last final of this hand (big-move line)
   analysis: HandAnalysis | null;                            // handInfo for the current cards; null while computing and when folded
-  known: { handSeq: number; seats: number[]; board: Card[]; perPlayer: number[]; exact: boolean; final: boolean } | null }
+  known: { handSeq: number; seats: number[]; board: Card[]; perPlayer: number[]; exact: boolean; final: boolean } | null;
+  allIn: KnownEquity | null }  // chunk 4.7: `known`'s shape, for the board when the hands turned face up (the luck line, §7.6)
 // Selectors: selectEquity, selectEquityStatus, selectEquityResult, selectHandAnalysis.
 ```
 

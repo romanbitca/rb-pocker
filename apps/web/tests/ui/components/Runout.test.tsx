@@ -74,15 +74,14 @@ describe('RunoutBars', () => {
     const bot = table.slots[1]?.name ?? '';
     const heroBar = screen.getByRole('img', { name: 'You: 8% win chance' });
     const botBar = screen.getByRole('img', { name: `${bot}: 92% win chance` });
-    const place = (el: HTMLElement) => {
-      const slot = el.closest<HTMLElement>('[data-runout-seat]');
-      return slot === null ? null : [slot.style.left, slot.style.top, slot.dataset['runoutSeat']];
-    };
-    expect(place(heroBar)).toEqual(['160px', '300px', '0']);
-    expect(place(botBar)).toEqual(['150px', '90px', '1']);
+    // Centred in the 56×20 slot: a 52×20 pill, 2 px in from its left edge.
+    const place = (el: HTMLElement) => [el.style.left, el.style.top, el.dataset['runoutSeat']];
+    expect(place(heroBar)).toEqual(['162px', '300px', '0']);
+    expect(place(botBar)).toEqual(['152px', '90px', '1']);
     expect(heroBar.textContent).toBe('8%');
-    const fill = botBar.querySelector<HTMLElement>('[style*="scaleX"]');
-    expect(fill?.style.transform).toBe('scaleX(0.92)');
+    // One element per bar; the fill is its ::after, scaled by --fill.
+    expect(botBar.children).toHaveLength(0);
+    expect(botBar.style.getPropertyValue('--fill')).toBe('0.92');
   });
 
   it('follows the new street’s numbers and leaves when the hand is complete', () => {

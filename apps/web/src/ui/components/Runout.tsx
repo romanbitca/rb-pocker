@@ -10,7 +10,7 @@
  *
  * `useLuckLine` gives the hand-end banner its §7.6 luck line (ui/handEnd.ts words it).
  */
-import { memo } from 'react';
+import { memo, type CSSProperties } from 'react';
 import {
   selectLuckLine,
   selectRunoutView,
@@ -29,7 +29,13 @@ export interface RunoutBarsProps {
   hero: Rect;
 }
 
-/** One player's bar: "62%" over a thin fill. */
+/** The pill's size: it sits centred in the 56×20 bet slot. */
+const PILL = { w: 52, h: 20 } as const;
+
+/**
+ * One player's bar: "62%" over a thin fill. One element (the track and the fill are its
+ * `::before` and `::after`, the fill scaled by `--fill`), so nine bars add nine DOM nodes (§15.3).
+ */
 export const RunoutBar = memo(function RunoutBar({
   bar,
   place,
@@ -39,20 +45,20 @@ export const RunoutBar = memo(function RunoutBar({
 }) {
   const pct = `${bar.pct}%`;
   const label = bar.seat === 0 ? en.runout.heroBar(pct) : en.runout.bar(bar.name, pct);
+  const style = {
+    left: Math.round(place.x + (place.w - PILL.w) / 2),
+    top: Math.round(place.y + (place.h - PILL.h) / 2),
+    '--fill': bar.pct / 100,
+  } as CSSProperties;
   return (
     <span
-      className={styles.slot}
-      style={{ left: place.x, top: place.y, width: place.w, height: place.h }}
+      className={styles.bar}
+      style={style}
+      role="img"
+      aria-label={label}
       data-runout-seat={bar.seat}
     >
-      <span className={styles.pill} role="img" aria-label={label}>
-        <span className={styles.value} aria-hidden="true">
-          {pct}
-        </span>
-        <span className={styles.track} aria-hidden="true">
-          <span className={styles.fill} style={{ transform: `scaleX(${bar.pct / 100})` }} />
-        </span>
-      </span>
+      {pct}
     </span>
   );
 });

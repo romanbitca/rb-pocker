@@ -351,8 +351,10 @@ describe('the log', () => {
 
   it('keeps what a request is about (no cards) and each reply’s worker timing (§15.3)', () => {
     const id = equityJob(client, recorder(), 3) as number;
-    fake.current().reply({ ...progress(id, 3, 2_500, 0.4), timing: { ms: 12.5, busyMs: 9 } });
-    fake.current().reply({ ...final(id, 3, 0.41), timing: { ms: 40, busyMs: 31.5 } });
+    const timed = (reply: EquityReply, ms: number, busyMs: number): EquityReply =>
+      ({ ...reply, timing: { ms, busyMs } }) as EquityReply;
+    fake.current().reply(timed(progress(id, 3, 2_500, 0.4), 12.5, 9));
+    fake.current().reply(timed(final(id, 3, 0.41), 40, 31.5));
     const log = client.log();
     expect(log[0]).toMatchObject({ what: 'out', kind: 'equity', detail: expect.any(String) });
     expect(log.slice(1).map((e) => e.timing)).toEqual([

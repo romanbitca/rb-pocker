@@ -103,7 +103,8 @@ async function waitForEquity(page: Page): Promise<void> {
       return eq !== undefined && eq.status !== 'computing';
     },
     undefined,
-    { timeout: 15_000 },
+    // A light poll: the test's own work runs on the throttled main thread too.
+    { polling: 100, timeout: 15_000 },
   );
 }
 
@@ -183,16 +184,16 @@ test('at 6× CPU: win chance within its budgets, no main-thread task over 50 ms 
     post.some((j) => j.final !== null),
     'postflop finals measured',
   ).toBe(true);
-  for (const job of pre) {
-    if (job.final !== null)
-      expect(modelled(job.final), job.detail).toBeLessThanOrEqual(BUDGET.preflopFinal);
-  }
-  for (const job of post) {
-    if (job.first !== null)
-      expect(modelled(job.first), job.detail).toBeLessThanOrEqual(BUDGET.firstPostflop);
-    if (job.final !== null)
-      expect(modelled(job.final), job.detail).toBeLessThanOrEqual(BUDGET.final);
-  }
-  expect(await longTasks(page)).toEqual([]);
+  // Soft: one run reports every budget it misses.
+  const worst = (times: number[]): number => Math.max(0, ...times);
+  const preFinals = pre.flatMap((j) => (j.final === null ? [] : [modelled(j.final)]));
+  const postFirsts = post.flatMap((j) => (j.first === null ? [] : [modelled(j.first)]));
+  const postFinals = post.flatMap((j) => (j.final === null ? [] : [modelled(j.final)]));
+  expect.soft(worst(preFinals), 'preflop final at 6×').toBeLessThanOrEqual(BUDGET.preflopFinal);
+  expect
+    .soft(worst(postFirsts), 'first postflop number at 6×')
+    .toBeLessThanOrEqual(BUDGET.firstPostflop);
+  expect.soft(worst(postFinals), 'postflop final at 6×').toBeLessThanOrEqual(BUDGET.final);
+  expect.soft(await longTasks(page), 'main-thread tasks over 50 ms at 6×').toEqual([]);
   expect(errors).toEqual([]);
 });

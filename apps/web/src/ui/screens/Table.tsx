@@ -15,8 +15,9 @@
  *
  * Every part subscribes to the store with its own narrow selector (pitfall 37): a seat re-renders
  * only when its own view changes. Only the HUD slots read the `equity` slice (the win badge, the
- * draw chips, the big-move line, the nuts suffix and the "By river" column), so equity progress
- * re-renders the badge and nothing else. The coach's places (the portrait coach strip, the
+ * draw chips, the big-move line, the nuts suffix and the "By river" column; the all-in TV-mode bars
+ * and the banner's luck line, `components/Runout.tsx`), so equity progress re-renders the badge and
+ * nothing else. The coach's places (the portrait coach strip, the
  * landscape coach rows, the wide inline panel) stay empty until Stage 5.
  */
 import { memo, useCallback, useEffect, useId, useMemo, useRef, type CSSProperties } from 'react';
