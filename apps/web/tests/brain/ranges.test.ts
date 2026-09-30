@@ -103,11 +103,20 @@ describe('preflop prior (§8.6 table)', () => {
       button: 0,
       inputs: [call(3), raise(4, 400), call(5), raise(0, 1500), fold(1), fold(2), raise(3, 4000)],
     });
-    const reads = preflopReads(observeSpot(h, 4));
+    const obs = observeSpot(h, 4);
+    const reads = preflopReads(obs);
     expect(reads[3]?.kind).toBe('fourBet'); // limped, then made the third raise
     expect(reads[4]).toEqual({ kind: 'open', k: 4, pushBB: null }); // iso-raise = first raise
     expect(reads[5]?.kind).toBe('call');
     expect(reads[0]?.kind).toBe('threeBet');
+    const ranges = opponentRanges(obs, 'static', TABLES);
+    expect(rangeOf(ranges, 3)).toMatchObject({ prior: 'fourBet', topPct: 2.5 });
+    expect(rangeOf(ranges, 0)).toMatchObject({ prior: 'threeBet', topPct: 6 });
+    expect(rangeOf(ranges, 5)).toMatchObject({ prior: 'call', topPct: 25 });
+    // Soft edge on a narrow range: AA is in the top 2.5%, 72o is not (0.01).
+    const aa = classOf(card('As'), card('Ad'));
+    expect(weightOfClass(rangeOf(ranges, 3), aa, obs.hole)).toBe(1);
+    expect(weightOfClass(rangeOf(ranges, 3), classOf(card('7c'), card('2d')), obs.hole)).toBe(0.01);
     const limps = preflopReads(
       observeSpot(playSpot({ stacks: HUNDRED_BB, button: 0, inputs: [call(3), call(4)] }), 5),
     );
