@@ -6,7 +6,7 @@ This is the working checklist for building [PLAN.md](PLAN.md). PLAN.md is the so
 
 Legend: `[ ]` todo · `[~]` in progress (branch exists) · `[x]` merged to `main` · `[H]` waiting on the human
 
-**Current position:** Stages 0–3 ✅ complete in CI (3.9 = owner's phone check, doesn't block). Next: Stage 4 — merge held PRs #27 (4.1), #28 (4.2), #29 (4.3), then 4.4 preflop tables, 4.5 equity worker, 4.6 win badge, 4.7 all-in + bench. Paused for the 03:20Z reset (+30 budget spent).
+**Current position:** ⏸ Paused by the owner (30 Sep ~01:30Z). Stages 0–3 ✅ complete in CI; 3.9 (owner's phone check) pending. Next on resume: Stage 4 — merge held PRs #27 (4.1), #28 (4.2), #29 (4.3), then 4.4 preflop tables, 4.5 equity worker, 4.6 win badge, 4.7 all-in + bench.
 
 ---
 
