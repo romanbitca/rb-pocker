@@ -36,6 +36,10 @@ fixed slice of the Claude plan.
   (resets 2026-09-29 22:20Z) may be used up to **95%**, same rules as the overnight override. After
   that reset (it is past midnight for the owner, UTC+3) the +30 rule applies again unless the owner
   says otherwise.
+- **Day override (owner, 2026-09-30 21:11Z = 1 Oct local, "use 95% of today's usage" + "65"):**
+  each 5-hour window may be used up to **95%**, but **stop all work when the weekly all-models limit
+  reaches 65%** (it was 50%). Then pause until the owner writes again (the weekly resets
+  2026-10-02 18:00Z). Rule of thumb: ~7 five-hour points ≈ 1 weekly point.
 - **Order (owner, 2026-09-27): strict plan order.** Every acceptance criterion of a stage passes in
   CI before the next stage is merged. Development of the next stage MAY overlap (parallel branches),
   but merges happen in stage order and never onto a red `main`. Human gates `[H]` still don't block.
