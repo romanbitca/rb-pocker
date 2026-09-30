@@ -370,6 +370,7 @@ A small local ESLint rule, `rb/web-module-boundaries` in `eslint.config.js` (its
 - The engine stays on the main thread: one `step()` costs microseconds, and keeping the only copy of hidden information there makes the non-cheating boundary physical.
 - Two workers, not one: HUD equity jobs can take ~400 ms on slow phones; a bot decision or a grade must not wait behind them. Each worker builds its evaluator tables at start-up (3 × 8,192 entries, < 5 ms).
 - Workers are module workers, created literally as `new Worker(new URL('./equity.worker.ts', import.meta.url), { type: 'module' })` (Safari/iOS 15+, Chrome 80+, Firefox 114+). No Comlink: we need cancellation and progressive replies; the hand-written protocol (Appendix A.6) is about 60 lines.
+- Implementation (chunk 4.5): `workers/spawn.ts` holds that literal constructor (pitfall 38); `workers/equity.worker.ts` connects `self` to `workers/equityService.ts`, the job runner, which reaches the maths only through its `EquityMath` interface (`workers/equityMath.ts`: `equitySteps`, `runoutSteps`, `analyzeHand` + `chancesByRiver`). On the main thread `app/workerClient.ts` is the protocol client (job ids, epochs, cancel, stale drops, timeouts, restarts, a message log) and `app/equityJobs.ts`, owned by the controller, decides which jobs to send (§7.4) and writes the `equity` slice (A.8). `boot.ts` starts the worker at launch and never waits for it.
 
 ### 2.3 One hand, end to end
 
@@ -799,7 +800,7 @@ function randInt(rng: Rng, n: number): number {           // 1 ≤ n ≤ 2^32
 
 ## 6. Hand-strength indicator
 
-This covers "I should see if I have a full house, pairs and similar". The label and highlight are computed synchronously on the main thread with `describe()` (microseconds), so they appear in the same frame as a card. Draws, outs, risky outs, "best possible hand" and chances come from the `handInfo` job in `equity.worker` (typically < 20 ms).
+This covers "I should see if I have a full house, pairs and similar". The label and highlight are computed synchronously on the main thread with `describe()` (microseconds), so they appear in the same frame as a card. Draws, outs, risky outs, "best possible hand" and chances come from the `handInfo` job in `equity.worker` (typically < 20 ms). Preflop its `chances` stays null until the build-time `finals` table exists (chunk 4.4, §6.6): enumerating the boards there would take far longer.
 
 ### 6.1 Label, sub-label and highlight
 
@@ -922,9 +923,13 @@ Implementation notes (chunk 4.3, `analysis/equity.ts`):
 - **Seeds.** In `eq|…` the hero cards and the board are both written highest card first (`Kh Ah` on `2c Qh 7h` gives `eq|AhKh|Qh7h2c|3`), so the same cards give the same number whatever order they came in or were dealt (§2.4 has the run-out seed). Ties are counted as integers per tie size and divided at the end, so a result has the same bits on every device.
 - **Exact enumeration** takes the runouts one at a time, scores the hero once, scores each of the 990 possible opponent hands once, then combines disjoint hands; tests force it with `mode: 'exact'` where the app would sample (the flop rows of Appendix C.3, and all boards of Appendix C.2).
 
+Implementation notes (chunk 4.5, `workers/equityService.ts`): the worker takes the generator's steps back to back and pauses with `setTimeout(0)` at a checkpoint once 8 ms of work have passed since the last pause (not after every 2,000 trials: the pauses cost up to 4 ms each once timers nest), so a `cancel` or a newer job is seen within one slice; results never depend on it. After each pause it checks that the job is still wanted; nothing can run between that check and its next post, so a cancelled job never posts again. A newer job of the same kind stops the older one at its next checkpoint, even before the older one's `cancel` arrives. The 3 s cap posts the last estimate as the final reply with `truncated: true` (for a run-out: `final: true, exact: false`), or an `error` reply when there is none yet.
+
 ### 7.4 Recompute triggers
 
 New hole cards; each new street; any fold that changes the live-opponent count; an all-in reveal (switch to known-hands mode); resume from storage. A new request cancels the old one. Nothing else (in particular, a bot bet does not change this number; the coach explains what a bet means).
+
+Implementation (chunk 4.5, `app/equityJobs.ts`): the controller hands every state it publishes to the equity jobs, and each job kind has a key: HUD equity (hand, hero cards, board, live opponents), `handInfo` (hand, hero cards, board), run-out (hand, face-up seats, board). A request goes out exactly when its key changes, which is the list above. Known-hands mode starts when `hand.runout` is set and at least two live seats are in `hand.revealed`; the reveal comes in the same `advance` as the next street's cards, so its first equities are for that board. No job while the hero has folded (the badge says "Folded"), after all opponents folded, or once the hand is complete (the badge is off). The `hidden` gate cancels every job at once (§15.3); jobs that did not finish are sent again when it opens. A job cancelled by a new epoch (pitfall 22) is sent again at once; one that timed out or failed waits for the next trigger (§12.14).
 
 ### 7.5 Build-time preflop tables
 
@@ -2274,6 +2279,7 @@ The human answered on 23 Sep 2026. Answered rows show the decision; open rows ke
 | R12 | Coolify not connected in time for release | Medium | Medium | Everything runs locally and in Docker from Stage 0; the Coolify steps are a 4-item checklist (§17.6); only Stage 9 needs it | 9 |
 | R13 | React's size hurts first load on slow phones | Low | Medium | 150 KB initial-JS gate, lazy screens, Lighthouse ≥ 90 nightly (§15.3) | 0, 9 |
 | R14 | Short wide screens: with the inline coach panel at its full 30vh, a 1366×600 or 900×560 window leaves a table box under 210 px, and pods overlap the board (the §12.4 geometry is only proven for the Stage 3 viewports and 1024×768) | Medium | Medium | The Table screen caps the coach panel so the table box keeps ≥ 320 px (Stage 3 has no coach panel yet); `tests/ui/layout/seats.test.ts` gets the short sizes once the panel exists | 3, 5 |
+| R15 | The §0.3 timer test was narrowed in chunk 4.5 (a test change, so it is recorded here): `tests/app/timers.test.ts` no longer scans `src/workers/` (a worker runs on its own thread and only pauses with the §7.3 `setTimeout(0)`) and ignores calls on injected timers (`this.timers.setTimeout`, the controller's `Timers` that the worker clients get). It still fails on any bare or `globalThis`/`window`/`self` timer call outside `app/controller.ts` | Low | Low | The scan's own unit test pins both sides of the rule; the controller stays the only main-thread file that calls the timer functions | 4 |
 
 ### UNVERIFIED items and how we close them
 
@@ -2330,6 +2336,7 @@ The human answered on 23 Sep 2026. Answered rows show the decision; open rows ke
 | 1.3.27 | 30 Sep 2026 | Draws and outs (chunk 4.1, `analysis/handinfo.ts`): §6.2 implementation notes record how the table is read where it is silent (a draw's `outs` = the §6.3 outs that complete it, backdoor 0; "uses a hole card" = better than the board's own straight; open-ended with the Ace low and high; overcards only with a High-card hand; nut flush = highest card not on the board; backdoor straight's hole rank not on the board; `\|S\| ≤ 2` before the river); §6.3 says categories are the 10 display categories and how rule 2 is checked; R4 names the top two cards and counts a straight flush; A.5 lists the `handinfo.ts` functions. D.2 passes unchanged, and a brute-force oracle agrees on 5,000 random flops and turns |
 | 1.3.28 | 30 Sep 2026 | Chances by the river (chunk 4.2, `analysis/chances.ts`): §6.6 implementation notes name the functions (`finalCounts`, `chancesByRiver`, `outsChances`), fix the units (percent, 0–100), define `boardShared` (the category the board's own cards make, a pair or better) and `byRiverPct` on the turn (= the next card), and record the timings. Every D.3 value and the C.5 table reproduce unchanged; an independent enumeration with the naive evaluator agrees on random flops, turns and rivers |
 | 1.3.29 | 30 Sep 2026 | Win chance (chunk 4.3, `analysis/equity.ts`): the §7.3 implementation notes record the generator shape for the worker (null checkpoints, results at the marks and at the end), the units (fractions in [0, 1], `equity === win + split`), what "opponent combos × runouts" counts (unordered sets of disjoint hands, so only HU turn, HU river and two opponents on the river are exact; every flop and preflop request is Monte Carlo) and that `eq\|` seeds write the hero cards and the board highest card first. §2.4 gains the seed of the all-in run-out Monte Carlo (`run\|…`), which §7.2 needed but did not name. `analysis/types.ts` (A.5) is byte-identical to the one in the 4.1 PR, so the two merge cleanly. |
+| 1.3.30 | 1 Oct 2026 | Equity worker (chunk 4.5). §2.2 names the files (`workers/spawn.ts` with the literal constructor, `equity.worker.ts`, the job runner `equityService.ts` behind an `EquityMath` interface, `equityMath.ts`; `app/workerClient.ts`, `app/equityJobs.ts`). §7.3: the worker pauses with `setTimeout(0)` after 8 ms slices of work instead of after every 2,000 trials, a newer job of a kind stops the older one, and the 3 s cap posts the last estimate as final (`truncated`) or an `error`. §7.4: the job keys that make "a request exactly on each trigger" true, known-hands mode from `hand.runout` + two face-up live seats, no job when folded or complete, the `hidden` gate cancels all and re-sends unfinished jobs, timeouts wait for the next trigger. §6: preflop `chances` is null until the `finals` table (4.4). A.6: the client's delivery rules, "two consecutive timeouts", `bench` answers `error` until 4.7. A.8: the `equity` slice, its statuses and selectors, `ControllerOptions.equity`, `logs().equity`. A.5: `brain/types.ts` gains the brain types the protocol carries (types only). §0.3: the worker clients' timeouts use the controller's timers; R15 records the narrowed timer test |
 
 ---
 
@@ -2640,6 +2647,8 @@ export type BrainReply =
 
 The main thread drops any reply whose `epoch` is not current or whose `jobId` is not the latest for its kind (per seat for `botDecision`). Timeouts: equity 4,000 ms (above the worker's own 3 s `truncated` cap, so a truncated reply still lands); bot decision 2,000 ms (then the safest legal action + a diagnostic); grade 1,500 ms (continue without pause; the reply is still accepted later, §11.3 rule 5). The Monte Carlo seed text (§7.3) writes hero cards sorted by `Card` value descending and the board in deal order.
 
+Client rules (chunk 4.5, `app/workerClient.ts`): every job has a slot, its kind ('equity', 'handInfo', 'known'; later 'bot:{seat}'); a new job cancels the one in its slot. A reply is delivered only when it comes from the current worker, for a pending job of the current epoch that is the newest of its slot, with the job's epoch and kind (or `error`); an `error` reply is always the last one. `cancel` and `cancelAll` post `{ kind: 'cancel' }` and forget the job at once. A timeout cancels the job. "Two consecutive timeouts" (§12.14) means two jobs of one worker in a row that timed out with no final reply in between. A restart fails the pending jobs; after the second failure the client is `failed` and sends nothing (`retry()` is the brain's [Try again]). The job timeouts run on the controller's timers (§0.3). `bench` answers `error` (epoch 0) until the `#bench` screen (chunk 4.7).
+
 ### A.7 Persistence (`src/persist/schema.ts`)
 
 ```ts
@@ -2777,6 +2786,17 @@ export function useOverlay(overlay: Overlay): [open: boolean, setOpen: (open: bo
 // now) and becomes { table: next, hand: null } at hand end; settings are saved 250 ms after a change and at once on hidden,
 // pagehide and a new table; seatLevels.length === players always.
 // Back (§12.1, app/lifecycle.ts): one guard history entry while historyDepth(nav) > 0; `popstate` → { type: 'back' }.
+// Equity (chunk 4.5): ControllerOptions.equity is equity.worker's client (boot starts it); logs().equity is its message log.
+export type EquityStatus = 'off' | 'folded' | 'computing' | 'done' | 'timedOut' | 'unavailable';
+  // off: no badge · folded: "Folded" · computing: skeleton, or "~NN%" once `result` exists · done: "NN%" ("~" when truncated)
+  // · timedOut: last value with "~", or "—" · unavailable: "—", "Win chance is not available right now" (§7.6, §12.14)
+export interface EquitySlice { status: EquityStatus; mode: 'random' | 'known';
+  situation: { handSeq: number; hero: [Card, Card]; board: Card[]; nOpp: number } | null;  // what `result` is for
+  result: EquityResult | null;                              // progress, then the final; null until the first estimate
+  previous: { equity: number; nOpp: number; board: Card[] } | null;   // last final of this hand (big-move line)
+  analysis: HandAnalysis | null;                            // handInfo for the current cards; null while computing and when folded
+  known: { handSeq: number; seats: number[]; board: Card[]; perPlayer: number[]; exact: boolean; final: boolean } | null }
+// Selectors: selectEquity, selectEquityStatus, selectEquityResult, selectHandAnalysis.
 ```
 
 ---

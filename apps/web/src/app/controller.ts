@@ -1258,33 +1258,33 @@ export class TableController {
 
   /** Writes the `game` slice when something in it changed; the equity jobs follow the hand. */
   private publish(): void {
-    this.equityJobs?.sync(this.headless ? null : this.hand, this.epoch);
     const hand = this.hand;
     const legal = this.mode === 'heroTurn' && hand !== null ? this.legalOf(hand) : null;
     const heroBust = this.heroBust();
     const g = this.store.getState().game;
     if (
-      g.mode === this.mode &&
-      g.table === this.table &&
-      g.hand === hand &&
-      g.next === this.next &&
-      g.legal === legal &&
-      g.heroBust === heroBust &&
-      g.diag === this.diag
+      g.mode !== this.mode ||
+      g.table !== this.table ||
+      g.hand !== hand ||
+      g.next !== this.next ||
+      g.legal !== legal ||
+      g.heroBust !== heroBust ||
+      g.diag !== this.diag
     ) {
-      return;
+      this.store.setState({
+        game: {
+          mode: this.mode,
+          table: this.table,
+          hand,
+          next: this.next,
+          legal,
+          heroBust,
+          diag: this.diag,
+        },
+      });
     }
-    this.store.setState({
-      game: {
-        mode: this.mode,
-        table: this.table,
-        hand,
-        next: this.next,
-        legal,
-        heroBust,
-        diag: this.diag,
-      },
-    });
+    // After the game slice, so the equity slice never describes a hand the store does not have.
+    this.equityJobs?.sync(this.headless ? null : hand, this.epoch);
   }
 
   private ui(cmd: UiCommand): void {

@@ -16,6 +16,7 @@ import {
 import type { Card } from '../../src/core/cards.ts';
 import { deriveSeed } from '../../src/core/rng.ts';
 import type { HandState, LegalActions, PlayerAction } from '../../src/engine/types.ts';
+import { equityMath } from '../../src/workers/equityMath.ts';
 import type { EquityMath } from '../../src/workers/equityService.ts';
 import type { EquityRequest } from '../../src/workers/protocol.ts';
 import { fakeWorker, type FakeWorker } from '../workers/fakeWorker.ts';
@@ -81,6 +82,8 @@ interface Rig {
 function rig(
   options: {
     manual?: boolean;
+    /** The maths in service mode (default: `fastMath`). */
+    math?: EquityMath;
     players?: number;
     seed?: string;
     onReceive?: (msg: EquityRequest, h: Harness) => void;
@@ -88,7 +91,10 @@ function rig(
 ): Rig {
   let harness: Harness | null = null;
   const fake = fakeWorker({
-    ...(options.manual !== true && { math: fastMath, service: { now: () => 0 } }),
+    ...(options.manual !== true && {
+      math: options.math ?? fastMath,
+      service: { now: () => 0 },
+    }),
     onReceive: (msg) => {
       if (harness !== null) options.onReceive?.(msg, harness);
     },
@@ -192,6 +198,29 @@ describe('what goes to equity.worker (§7.4)', () => {
     expect(requestsOf(fake, 'equity').some((m) => m.nOpp < 5)).toBe(true);
     expect(requestsOf(fake, 'equity').some((m) => m.board.length > 0)).toBe(true);
   });
+});
+
+describe('determinism (§2.4, acceptance 2)', () => {
+  it('the same hands give bit-identical win chances and analyses (real maths)', async () => {
+    const play = async (): Promise<string[]> => {
+      const slices: string[] = [];
+      const { h } = rig({ math: equityMath, players: 3, seed: deriveSeed(SEED, 'same') });
+      const unsubscribe = h.store.subscribe((s, prev) => {
+        if (s.equity !== prev.equity) slices.push(JSON.stringify(s.equity));
+      });
+      h.dispatch({ type: 'play' });
+      await drive(h, { hands: 3, hero: passive });
+      unsubscribe();
+      h.controller.dispose(); // it would play on while the second run moves the clock
+      return slices;
+    };
+    const first = await play();
+    const second = await play();
+    expect(first.length).toBeGreaterThan(10);
+    expect(second).toEqual(first);
+    const finals = first.map((s) => JSON.parse(s) as AppState['equity']);
+    expect(finals.some((e) => e.result?.final === true && e.analysis !== null)).toBe(true);
+  }, 30_000);
 });
 
 describe('the non-cheating rule (§2.2, pitfall 13; acceptance 4)', () => {

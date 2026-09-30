@@ -10,6 +10,8 @@ import {
   createEquityClient,
   EQUITY_TIMEOUT_MS,
   equityReplyIsFinal,
+  fromWorker,
+  startEquityWorker,
   type EquityClient,
   type JobEvent,
 } from '../../src/app/workerClient.ts';
@@ -349,5 +351,36 @@ describe('the log', () => {
   it('keeps the last 200 lines', () => {
     for (let i = 0; i < 150; i++) equityJob(client, recorder()); // each: cancel + equity
     expect(client.log()).toHaveLength(200);
+  });
+});
+
+describe('the real worker', () => {
+  it('fromWorker routes message, error and messageerror events (and handles the error)', () => {
+    const worker = {
+      onmessage: null as ((e: { data: unknown }) => void) | null,
+      onerror: null as ((e: { message: string; preventDefault(): void }) => void) | null,
+      onmessageerror: null as (() => void) | null,
+      postMessage: vi.fn(),
+      terminate: vi.fn(),
+    };
+    const events = { message: vi.fn(), error: vi.fn() };
+    const port = fromWorker<EquityRequest, EquityReply>(() => worker as unknown as Worker)(events);
+    expect(port).toBe(worker);
+    worker.onmessage?.({ data: { kind: 'handInfo', jobId: 1 } });
+    expect(events.message).toHaveBeenCalledWith({ kind: 'handInfo', jobId: 1 });
+    const preventDefault = vi.fn();
+    worker.onerror?.({ message: 'Script error', preventDefault });
+    expect(preventDefault).toHaveBeenCalled();
+    worker.onerror?.({ message: '', preventDefault });
+    worker.onmessageerror?.();
+    expect(events.error.mock.calls).toEqual([['Script error'], ['worker error'], ['messageerror']]);
+  });
+
+  it('without module workers (Node, jsdom, old browsers) the client fails after one retry', () => {
+    expect(typeof globalThis.Worker).toBe('undefined');
+    const c = startEquityWorker(realTimers);
+    expect(c.status).toBe('failed');
+    expect(c.restartCount).toBe(1);
+    expect(c.log().map((e) => e.what)).toEqual(['crash', 'restart', 'crash', 'failed']);
   });
 });
