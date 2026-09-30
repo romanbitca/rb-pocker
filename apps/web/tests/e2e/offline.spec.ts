@@ -1,6 +1,5 @@
 import { expect, heading, test as base, waitForServiceWorkerControl } from './fixtures.ts';
-import type { HandState } from '../../src/engine/types.ts';
-import { collectErrors, nextFlowPoint, pcState, slot } from './game.ts';
+import { collectErrors, playHands, type HandRecord } from './game.ts';
 import { startOwnServer, type OwnServer } from './own-server.ts';
 
 // PLAN §15.1, §15.2, Stage 0 acceptance 4: once loaded, the game works with no network at all.
@@ -56,21 +55,12 @@ test('offline once the service worker controls the page: the app loads and a han
   await page.evaluate(() =>
     window.__pc?.dispatch({ type: 'settings', patch: { speed: 'instant', autoNext: false } }),
   );
-  let hand: HandState | null = null;
-  for (let hands = 0; hands < 10 && hand?.result?.endedBy !== 'showdown'; hands++) {
-    if (hand !== null) await page.locator('[data-hand-end]').click();
-    for (let point = await nextFlowPoint(page); point !== 'end';) {
-      if (point === 'hero') await slot(page, 'middle').click();
-      point = await nextFlowPoint(page);
-    }
-    hand = (await pcState(page)).game.hand;
+  const played: HandRecord[] = [];
+  while (played.length < 10 && !played.some((r) => r.hand.result?.endedBy === 'showdown')) {
+    played.push(...(await playHands(page, { hands: 1, random: () => 0.5 }))); // check or call
   }
-  expect(
-    hand?.seats.filter((s) => s.dealtIn),
-    'six players',
-  ).toHaveLength(6);
-  expect(hand?.result?.endedBy, 'a hand reached the showdown').toBe('showdown');
-  await expect(page.locator('[data-hand-end]')).toBeVisible();
+  const showdown = played.find((r) => r.hand.result?.endedBy === 'showdown');
+  expect(showdown?.players, 'a 6-player hand reached the showdown').toBe(6);
 
   if ((await page.locator('main[data-layout="wide"]').count()) === 0) {
     await page.locator('[data-table-box] + div button').click();

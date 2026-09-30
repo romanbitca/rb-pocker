@@ -7,6 +7,7 @@ import {
   nextFlowPoint,
   openApp,
   pcState,
+  playHands,
   seedFor,
   sizeOf,
   slot,
@@ -137,11 +138,14 @@ test.describe('table layout', () => {
       problems.push(...podProblems(m, `${players} players, first decision`));
 
       // Check or call to the end of the hand; measure again with the result on show.
-      for (let point = await nextFlowPoint(page, true); point !== 'end';) {
-        if (point === 'hero') await slot(page, 'middle').click();
-        point = await nextFlowPoint(page, true);
-      }
-      problems.push(...podProblems(await measure(page), `${players} players, hand end`));
+      await playHands(page, {
+        hands: 1,
+        random: () => 0.5, // check or call
+        fast: true,
+        onHandEnd: async () => {
+          problems.push(...podProblems(await measure(page), `${players} players, hand end`));
+        },
+      });
     }
     expect(problems).toEqual([]);
   });
