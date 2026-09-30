@@ -48,8 +48,8 @@ export function exampleCards(row: RankingRow): { card: Card; dim: boolean }[] {
   }));
 }
 
-/** The screen-reader label of a row (§13.4). */
-export function rowLabel(row: number, status: RowStatus): string {
+/** The screen-reader label of a row (§13.4), with its "By river" cell when there is one. */
+export function rowLabel(row: number, status: RowStatus, byRiver: string | null = null): string {
   const data = RANKINGS[row] as RankingRow;
   const R = en.rankings;
   const example = data.cards
@@ -61,6 +61,7 @@ export function rowLabel(row: number, status: RowStatus): string {
   if (status === 'beatsYou') parts.push(R.rowBeatsYou);
   if (status === 'youBeat') parts.push(R.rowYouBeat);
   parts.push(R.rowHowOften(formatRarity(data.rarity), formatOneIn(data.oneIn)));
+  if (byRiver !== null && byRiver !== '') parts.push(R.rowByRiver(byRiver));
   return parts.join(' ');
 }
 

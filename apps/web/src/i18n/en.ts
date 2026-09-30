@@ -322,8 +322,83 @@ export const en = {
     /** The hero's hand label is a button: it opens the hand rankings (§12.3). */
     labelHint: 'Tap to see all poker hands',
     folded: 'You folded',
+    /** After the sub-label when no hand can beat the hero's (§6.5). */
+    nuts: ' · Best possible hand',
     allIn: 'All-in',
     yourBet: (chips: string) => `Your bet ${chips}`,
+  },
+
+  /**
+   * The win badge, its popover, the price chip and the big-move lines (PLAN §7.6, §12.14,
+   * Appendix F.3, F.10). Percentages arrive formatted ("62%").
+   */
+  badge: {
+    caption: 'win chance',
+    folded: 'Folded',
+    /** Before the first estimate (never "0%" while computing). */
+    skeleton: '--%',
+    /** No number: the job timed out with no estimate, or the worker failed (§12.14). */
+    none: '—',
+    /** Provisional estimates: "~62%". */
+    approx: (pct: string) => `~${pct}`,
+    /** Screen-reader names of the badge. */
+    label: (pct: string) => `Win chance ${pct}`,
+    labelApprox: (pct: string) => `Win chance about ${pct}`,
+    labelComputing: 'Win chance: working it out',
+    labelFolded: 'Win chance: you folded',
+    labelNone: 'Win chance not available',
+    /** The popover: "Wins 60% · splits 4% · vs 3 players (any cards) · 40,000 deals". */
+    stats: (win: string, tie: string, players: number, deals: string) =>
+      `Wins ${win} · splits ${tie} · vs ${players} ${players === 1 ? 'player' : 'players'} (any cards) · ${deals} deals`,
+    howLink: 'How is this calculated?',
+    how: (pct: string) =>
+      `We play out the rest of the hand thousands of times, dealing the other players random cards. You won in ${pct} of them. We never look at the bots' real cards.`,
+    unavailable: 'Win chance is not available right now',
+    /** The price chip under the badge when facing a bet: "Call 40 · need 20%" (§0.3 `need`). */
+    price: (toCall: string, need: string) => `Call ${toCall} · need ${need}`,
+    /** Between the price chip's two parts (they sit on two lines under the badge). */
+    priceSeparator: ' · ',
+    /** The big-move lines (§7.6); `card` is drawn as a small card. */
+    move: {
+      fold: (name: string) => `${name} folded. One fewer player to beat.`,
+      improved: (card: string, hand: string) => `The ${card} helped you: now ${hand}.`,
+      danger: (card: string, threat: string) =>
+        `The ${card} is dangerous: ${threat} is now possible.`,
+      blank: (card: string) => `The ${card} did not help you.`,
+      threat: { flush: 'a flush', straight: 'a straight', fullHouse: 'a full house' },
+    },
+  },
+
+  /** Draw chips and their out cards (PLAN §6.2–§6.4, §6.6, Appendix F.3). */
+  draws: {
+    name: {
+      flush: 'Flush draw',
+      nutFlush: 'Nut flush draw',
+      oesd: 'Open-ended straight draw',
+      doubleGutshot: 'Double gutshot',
+      gutshot: 'Gutshot straight draw',
+      overcards: 'Two overcards',
+      backdoorFlush: 'Backdoor flush draw',
+      backdoorStraight: 'Backdoor straight draw',
+    },
+    /** "Flush draw · 9 outs · 35% by river". */
+    chip: (name: string, outs: number, pct: string, when: string) =>
+      `${name} · ${outs} ${outs === 1 ? 'out' : 'outs'} · ${pct} ${when}`,
+    byRiver: 'by river',
+    nextCard: 'next card',
+    /** After the chip text when some outs are risky: " (1 risky)". */
+    risky: (n: number) => ` (${n} risky)`,
+    /** The chip for the draws that do not fit: "+1". */
+    more: (n: number) => `+${n}`,
+    moreLabel: 'Show all your draws',
+    /** Over the out cards. */
+    outsTitle: 'Cards that complete it',
+    /** On a risky out card, and its caption (§6.4). */
+    riskyMark: '!',
+    riskyCaption: 'may help them too',
+    /** A risky out card's screen-reader name: "Nine of hearts, may help them too". */
+    riskyCard: (card: string) => `${card}, may help them too`,
+    close: 'Close',
   },
 
   /** The hand-end banner (PLAN §12.9, §12.11). `x` is an amount already formatted. */
@@ -390,6 +465,11 @@ export const en = {
     youFolded: 'You folded',
     /** "How often" (7-card odds), e.g. "2.6%" over "1 in 39". */
     howOften: 'How often',
+    /** The hero's chance to finish with exactly each hand (§6.6); "—" for none. */
+    byRiver: 'By river',
+    byRiverInfo: 'Your chance to finish with exactly this hand, if you stay to the end.',
+    byRiverNone: '—',
+    rowByRiver: (pct: string) => `By river: ${pct}.`,
     percent: (value: string) => `${value}%`,
     oneIn: (n: string) => `1 in ${n}`,
     /** Tie-break footer, always shown (§13.2). */

@@ -9,7 +9,7 @@
  *
  * The label is a button: it opens the hand rankings at the highlighted row (§12.3). Safari does not
  * focus a tapped button, so it focuses itself first and the drawer can return focus to it (§13.1).
- * The win badge (Stage 4) and the draw chips (Stage 4) join the strip later.
+ * The win badge and the draw chips (`WinBadge.tsx`, `DrawChips.tsx`) sit beside and under it.
  */
 import { memo, useId } from 'react';
 import type { HeroView } from '../../app/store.ts';
@@ -82,6 +82,8 @@ export const HeroChips = memo(function HeroChips({ hero }: { hero: HeroView }) {
 
 export interface HeroLabelProps {
   hero: HeroView;
+  /** No hand can beat the hero's (§6.5): " · Best possible hand" after the sub-label. */
+  nuts?: boolean | undefined;
   /** Opens the hand rankings (the drawer, or the wide column). */
   onOpenRankings: () => void;
   className?: string | undefined;
@@ -90,11 +92,16 @@ export interface HeroLabelProps {
 /** `describe()`'s label and sub-label; "You folded" once the hero has folded. */
 export const HeroLabel = memo(function HeroLabel({
   hero,
+  nuts = false,
   onOpenRankings,
   className,
 }: HeroLabelProps) {
   const hintId = useId();
-  const sub = hero.folded ? en.table.folded : hero.subLabel;
+  const sub = hero.folded
+    ? en.table.folded
+    : hero.subLabel !== null && nuts
+      ? hero.subLabel + en.table.nuts
+      : hero.subLabel;
   return (
     <span className={cx(styles.labelBox, className)}>
       <button

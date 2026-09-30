@@ -247,21 +247,28 @@
   justify-content: center;
 }
 
-/* ---- The hero strip (§12.3): ~112 px (96 px compact); the cards reach up into the felt ---- */
+/* ---- The hero strip (§12.3): ~112 px (96 px compact); the cards reach up into the felt ----
+   Cards and "You · 2,340" | label and sub-label | the win badge with the price chip under it;
+   the draw chips on a 24 px row along the bottom, under the cards and the label. The strip sits
+   above the Hands tab (6), so the badge's popover and big-move line cover the felt, not the tab. */
 
 .hero {
   grid-area: hero;
   position: relative;
-  z-index: 4;
+  z-index: 7;
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-areas:
+    'left label odds'
+    'draws draws odds';
+  grid-template-columns: auto minmax(0, 1fr) 76px;
+  grid-template-rows: minmax(0, 1fr) 24px;
   align-items: start;
   column-gap: 8px;
   justify-self: center;
   width: 100%;
   max-width: 600px;
   height: var(--hero-strip);
-  padding: 0 max(12px, env(safe-area-inset-right)) 0 max(12px, env(safe-area-inset-left));
+  padding: 0 max(12px, env(safe-area-inset-right)) 2px max(12px, env(safe-area-inset-left));
 }
 .wide .hero {
   max-width: 720px;
@@ -269,14 +276,27 @@
 
 .heroLeft {
   display: flex;
+  grid-area: left;
   flex-direction: column;
   align-items: flex-start;
-  gap: 4px;
+  gap: 2px;
   margin-top: calc(-1 * var(--hero-overlap));
 }
 
 .heroLabel {
+  grid-area: label;
   padding-top: 6px;
+}
+
+.heroOdds {
+  position: relative;
+  grid-area: odds;
+  padding-top: 6px;
+}
+
+.heroDraws {
+  grid-area: draws;
+  align-self: end;
 }
 
 /* ---- The coach strip (§12.6): its 48 px place, empty until Stage 5 ---- */
@@ -324,11 +344,32 @@
   max-width: none;
 }
 
+/* The label beside the badge (price chip under it), then "You · 2,340" and the draw chips. */
 .sideHero {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
+  display: grid;
+  grid-template-areas:
+    'label odds'
+    'chips odds'
+    'draws draws';
+  grid-template-columns: minmax(0, 1fr) 76px;
+  align-items: start;
+  gap: 2px 8px;
   min-width: 0;
+}
+.sideHero > :first-child {
+  grid-area: label;
+}
+.sideHero > :nth-child(3) {
+  grid-area: chips;
+  padding-left: 8px;
+}
+.sideOdds {
+  position: relative;
+  grid-area: odds;
+}
+.sideDraws {
+  grid-area: draws;
+  margin-top: 6px;
 }
 
 .sideMiddle {

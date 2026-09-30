@@ -26,6 +26,10 @@ const ROYAL_FLUSH = 9;
 const STRAIGHT_CODE = 4;
 
 type Draw = HandAnalysis['draws'][number];
+/** A draw with the out cards that complete it (backdoor draws: none). */
+export interface DrawWithCards extends Draw {
+  cards: OutCard[];
+}
 type Beaters = NonNullable<HandAnalysis['beaters']>;
 
 /** Display-category level of a score: the score category, royal flush = 9 (§5.2). */
@@ -236,13 +240,15 @@ function holdsNutCard(h: Hand, suit: number): boolean {
  * §6.2 draws, flop and turn only, each using at least one hole card; `outs` = how many of the
  * §6.3 outs complete that draw (a card can complete two draws; the hand's total is the union,
  * `outs.length`). Backdoor draws (flop only) complete only with two cards: `outs` 0.
- * Order: flush, straight, overcards, backdoor flush, backdoor straight.
+ * Order: flush, straight, overcards, backdoor flush, backdoor straight. `cards` = those outs
+ * (the draw chips show them, §6.3).
  */
-function drawsOf(h: Hand, outs: readonly OutCard[]): Draw[] {
+function drawsOf(h: Hand, outs: readonly OutCard[]): DrawWithCards[] {
   if (!drawStreet(h)) return [];
-  const draws: Draw[] = [];
+  const draws: DrawWithCards[] = [];
   const add = (kind: DrawKind, completes: (c: Card) => boolean): void => {
-    draws.push({ kind, outs: outs.filter((o) => completes(o.card)).length });
+    const cards = outs.filter((o) => completes(o.card));
+    draws.push({ kind, outs: cards.length, cards });
   };
 
   if (h.level < FLUSH) {
@@ -275,7 +281,7 @@ function drawsOf(h: Hand, outs: readonly OutCard[]): Draw[] {
     if (h.level < FLUSH) {
       for (let suit = 0; suit < 4; suit++) {
         if (countSuit(h.cards, suit) === 3 && countSuit(h.hole, suit) > 0) {
-          draws.push({ kind: 'backdoorFlush', outs: 0 });
+          draws.push({ kind: 'backdoorFlush', outs: 0, cards: [] });
         }
       }
     }
@@ -287,7 +293,7 @@ function drawsOf(h: Hand, outs: readonly OutCard[]): Draw[] {
       for (let high = 3; high <= 12; high++) {
         const w = windowMask(high);
         if (popcount(present & w) >= 3 && (holeOnly & w) !== 0) {
-          draws.push({ kind: 'backdoorStraight', outs: 0 });
+          draws.push({ kind: 'backdoorStraight', outs: 0, cards: [] });
           break;
         }
       }
@@ -326,7 +332,24 @@ export function findOuts(hole: readonly Card[], board: readonly Card[]): OutCard
 /** Draws (§6.2) on the flop and turn; `[]` preflop and on the river. */
 export function findDraws(hole: readonly Card[], board: readonly Card[]): Draw[] {
   const h = readHand('findDraws', hole, board);
-  return drawStreet(h) ? drawsOf(h, outsOf(h)) : [];
+  return drawStreet(h) ? drawsOf(h, outsOf(h)).map(countOnly) : [];
+}
+
+const countOnly = ({ kind, outs }: DrawWithCards): Draw => ({ kind, outs });
+
+/**
+ * The draws of `findDraws` with their out cards, taken from `outs` (the §6.3 outs of this hand,
+ * e.g. `HandAnalysis.outs` from the worker): no card is evaluated again, so the main thread can
+ * run it for the draw chips (§6.3 "Tapping a draw chip shows the out cards"). A draw's `outs`
+ * counts the given outs that complete it, the same rule as `findDraws`.
+ */
+export function drawOuts(
+  hole: readonly Card[],
+  board: readonly Card[],
+  outs: readonly OutCard[],
+): DrawWithCards[] {
+  const h = readHand('drawOuts', hole, board);
+  return drawStreet(h) ? drawsOf(h, outs) : [];
 }
 
 /**
@@ -350,5 +373,6 @@ export function analyzeHand(
   const h = readHand('analyzeHand', hole, board);
   const outs = drawStreet(h) ? outsOf(h) : [];
   const beaters = h.board.length === 0 ? null : beatersOf(h);
-  return { draws: drawsOf(h, outs), outs, beaters, nuts: beaters !== null && beaters.count === 0 };
+  const draws = drawsOf(h, outs).map(countOnly);
+  return { draws, outs, beaters, nuts: beaters !== null && beaters.count === 0 };
 }

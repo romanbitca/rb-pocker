@@ -14,32 +14,40 @@
  * measured table box (minus the Hands edge tab's 28 px gutter in portrait and landscape).
  *
  * Every part subscribes to the store with its own narrow selector (pitfall 37): a seat re-renders
- * only when its own view changes, and nothing here reads the `equity` slice. The coach's places
- * (the portrait coach strip, the landscape coach rows, the wide inline panel) stay empty until
- * Stage 5.
+ * only when its own view changes. Only the HUD slots read the `equity` slice (the win badge, the
+ * draw chips, the big-move line, the nuts suffix and the "By river" column), so equity progress
+ * re-renders the badge and nothing else. The coach's places (the portrait coach strip, the
+ * landscape coach rows, the wide inline panel) stay empty until Stage 5.
  */
 import { memo, useCallback, useEffect, useId, useMemo, useRef, type CSSProperties } from 'react';
 import {
   selectActionBarInput,
+  selectBigMove,
   selectBoardView,
+  selectByRiver,
+  selectDrawChips,
   selectHandEnd,
   selectHeroHandView,
   selectHeroView,
   selectLayout,
+  selectNuts,
   selectOverlayOpen,
   selectPotView,
   selectSeatViews,
   selectTableInfo,
+  selectWinBadge,
   useAppStore,
   useDispatch,
   useOverlay,
   type ActionBarInputData,
+  type AppState,
 } from '../../app/store.ts';
 import type { PlayerAction } from '../../engine/types.ts';
 import { en } from '../../i18n/en.ts';
 import { actionBarView, useSizing } from '../actionBar.ts';
 import { ActionBar } from '../components/ActionBar.tsx';
 import { Board } from '../components/Board.tsx';
+import { DrawChips } from '../components/DrawChips.tsx';
 import { HandEndBanner } from '../components/HandEndBanner.tsx';
 import { HandsTab } from '../components/HandsTab.tsx';
 import { HeroCards, HeroChips, HeroLabel } from '../components/HeroStrip.tsx';
@@ -49,6 +57,8 @@ import { RankingsDrawer } from '../components/RankingsDrawer.tsx';
 import { Seat } from '../components/Seat.tsx';
 import { SizingTray } from '../components/SizingTray.tsx';
 import { ICONS, SpriteIcon } from '../components/SvgSprite.tsx';
+import { BigMoveLine, PriceChip, WinBadge, type BadgePlacement } from '../components/WinBadge.tsx';
+import { bigMoveView, drawChipViews, priceChipView, useBadgeView } from '../equity.ts';
 import { betChips, formatChips } from '../format.ts';
 import { handEndLines } from '../handEnd.ts';
 import { useElementSize, useMediaQuery } from '../hooks.ts';
@@ -289,6 +299,66 @@ const TableArea = memo(function TableArea({ layout }: { layout: TableLayout }) {
 });
 
 // ---------------------------------------------------------------------------------------------
+// The HUD: win badge, price chip, big-move line, draw chips (§7.6, §12.3). Each slot subscribes
+// on its own: equity progress re-renders the badge only; a bet re-renders the price chip only.
+
+const selectCoachLevel = (s: AppState): AppState['settings']['coachLevel'] => s.settings.coachLevel;
+
+const BadgeSlot = memo(function BadgeSlot({ placement }: { placement: BadgePlacement }) {
+  const data = useAppStore(selectWinBadge);
+  const view = useBadgeView(data);
+  return view === null ? null : <WinBadge key={data.key} view={view} placement={placement} />;
+});
+
+const PriceSlot = memo(function PriceSlot({ canWin }: { canWin: boolean }) {
+  const input = useAppStore(selectActionBarInput);
+  const level = useAppStore(selectCoachLevel);
+  const view = useMemo(() => priceChipView(input, level), [input, level]);
+  if (view === null) return null;
+  // Phones: "Pot you can win" is under the Call button already (§12.7), right below.
+  return <PriceChip view={canWin ? view : { ...view, potYouCanWin: null }} />;
+});
+
+const MoveSlot = memo(function MoveSlot({ placement }: { placement: BadgePlacement }) {
+  const move = useAppStore(selectBigMove);
+  const view = useMemo(() => bigMoveView(move), [move]);
+  return <BigMoveLine view={view} placement={placement} />;
+});
+
+/** The badge column: the badge, the price chip under it, the big-move line by it. */
+function OddsColumn({
+  placement,
+  canWin,
+  className,
+}: {
+  placement: BadgePlacement;
+  canWin: boolean;
+  className?: string | undefined;
+}) {
+  return (
+    <div className={className} data-hero-odds="">
+      <BadgeSlot placement={placement} />
+      <PriceSlot canWin={canWin} />
+      <MoveSlot placement={placement} />
+    </div>
+  );
+}
+
+const DrawsSlot = memo(function DrawsSlot({
+  max,
+  placement,
+  className,
+}: {
+  max: number;
+  placement: BadgePlacement;
+  className?: string | undefined;
+}) {
+  const data = useAppStore(selectDrawChips);
+  const chips = useMemo(() => drawChipViews(data), [data]);
+  return <DrawChips chips={chips} max={max} placement={placement} className={className} />;
+});
+
+// ---------------------------------------------------------------------------------------------
 // The hero strip (portrait, compact, wide) and the landscape column's head
 
 const HeroStrip = memo(function HeroStrip({
@@ -299,6 +369,7 @@ const HeroStrip = memo(function HeroStrip({
   onOpenRankings: () => void;
 }) {
   const hero = useAppStore(selectHeroView);
+  const nuts = useAppStore(selectNuts);
   return (
     <section className={styles.hero} aria-label={en.table.yourHand}>
       {hero !== null && (
@@ -307,22 +378,35 @@ const HeroStrip = memo(function HeroStrip({
             <HeroCards key={hero.handSeq} hero={hero} size={layout === 'compact' ? 'xl' : 'xxl'} />
             <HeroChips hero={hero} />
           </div>
-          <HeroLabel hero={hero} onOpenRankings={onOpenRankings} className={styles.heroLabel} />
+          <HeroLabel
+            hero={hero}
+            nuts={nuts}
+            onOpenRankings={onOpenRankings}
+            className={styles.heroLabel}
+          />
+          <OddsColumn placement="up" canWin={layout === 'wide'} className={styles.heroOdds} />
+          <DrawsSlot max={layout === 'wide' ? 2 : 1} placement="up" className={styles.heroDraws} />
         </>
       )}
     </section>
   );
 });
 
-/** Landscape: the label and chips head the right column; hidden while the tray is open. */
+/**
+ * Landscape: the label with the badge beside it, then the chips and the draw chips, heading the
+ * right column (§12.5); hidden while the tray is open.
+ */
 const SideHero = memo(function SideHero({ onOpenRankings }: { onOpenRankings: () => void }) {
   const hero = useAppStore(selectHeroView);
+  const nuts = useAppStore(selectNuts);
   const trayOpen = useAppStore(selectOverlayOpen('tray'));
   if (hero === null || trayOpen) return null;
   return (
     <section className={styles.sideHero} aria-label={en.table.yourHand}>
-      <HeroLabel hero={hero} onOpenRankings={onOpenRankings} />
+      <HeroLabel hero={hero} nuts={nuts} onOpenRankings={onOpenRankings} />
+      <OddsColumn placement="down" canWin={true} className={styles.sideOdds} />
       <HeroChips hero={hero} />
+      <DrawsSlot max={1} placement="down" className={styles.sideDraws} />
     </section>
   );
 });
@@ -418,10 +502,11 @@ const ActionArea = memo(function ActionArea({ layout }: { layout: TableLayout })
 const DrawerHost = memo(function DrawerHost() {
   const [open, setOpen] = useOverlay('rankings');
   const hero = useAppStore(selectHeroHandView);
+  const byRiver = useAppStore(selectByRiver);
   const onOpenChange = useCallback((next: boolean) => setOpen(next), [setOpen]);
   return (
     <div className={styles.drawerHost}>
-      <RankingsDrawer open={open} onOpenChange={onOpenChange} hero={hero} />
+      <RankingsDrawer open={open} onOpenChange={onOpenChange} hero={hero} byRiver={byRiver} />
     </div>
   );
 });
@@ -434,9 +519,15 @@ const RankingsPanel = memo(function RankingsPanel({
   onCollapsedChange: (collapsed: boolean) => void;
 }) {
   const hero = useAppStore(selectHeroHandView);
+  const byRiver = useAppStore(selectByRiver);
   return (
     <div className={styles.rankings}>
-      <RankingsColumn hero={hero} collapsed={collapsed} onCollapsedChange={onCollapsedChange} />
+      <RankingsColumn
+        hero={hero}
+        collapsed={collapsed}
+        onCollapsedChange={onCollapsedChange}
+        byRiver={byRiver}
+      />
     </div>
   );
 });

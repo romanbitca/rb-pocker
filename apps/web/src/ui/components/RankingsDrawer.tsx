@@ -25,7 +25,7 @@ import {
   type PointerEvent,
 } from 'react';
 import { en } from '../../i18n/en.ts';
-import type { HeroHandView } from '../views.ts';
+import type { ByRiverView, HeroHandView } from '../views.ts';
 import styles from './RankingsDrawer.module.css';
 import { RankingsList } from './RankingsList.tsx';
 import { ICONS, SpriteIcon } from './SvgSprite.tsx';
@@ -38,6 +38,8 @@ export interface RankingsDrawerProps {
   onOpenChange: (open: boolean, reason: RankingsCloseReason) => void;
   hero: HeroHandView | null;
   showTips?: boolean | undefined;
+  /** The "By river" column (§13.2); null or absent = none. */
+  byRiver?: ByRiverView | null | undefined;
 }
 
 /** The sheet stays mounted this long after closing, for the 200 ms slide-out (§12.8). */
@@ -77,7 +79,7 @@ interface Drag {
   active: boolean;
 }
 
-function Sheet({ open, onOpenChange, hero, showTips }: RankingsDrawerProps) {
+function Sheet({ open, onOpenChange, hero, showTips, byRiver }: RankingsDrawerProps) {
   const titleId = useId();
   const sheetRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
@@ -233,6 +235,7 @@ function Sheet({ open, onOpenChange, hero, showTips }: RankingsDrawerProps) {
             cardSize="sm"
             showTips={showTips}
             currentRowRef={currentRowRef}
+            byRiver={byRiver}
           />
         </div>
       </div>
