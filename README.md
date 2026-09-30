@@ -53,6 +53,7 @@ Run these before you push. CI runs them too.
 | `npm run test:slow` | The long tests (CI runs them once a week) |
 | `npm run e2e` | Playwright in Chromium and WebKit at six screen sizes, against the E2E build (`npm run build:e2e`: the production build plus the test hooks `?seed=` and `window.__pc`). It builds first when that build is missing, is a production build, or is older than the code. Before the first run: `npx playwright install chromium webkit` |
 | `npm run size` | Bundle sizes against the budget (after `npm run build`) |
+| `npm run gen:check` | The generated preflop tables in `src/data/generated/`: checksums, and 20 cells sampled again (a few seconds). `npm run gen` rebuilds them (about 3 minutes on 8 cores); never edit those files by hand |
 | `npm run check:html -w @rb/web` | The built `index.html` has no inline script and carries the CSP (after `npm run build`) |
 
 ## Test on your phone

@@ -5,6 +5,8 @@
  * requests. (The maths itself is tested in tests/analysis.)
  */
 import { describe, expect, it } from 'vitest';
+import { chancesByRiver } from '../../src/analysis/chances.ts';
+import { preflopChances, preflopEquity, PREFLOP_TRIALS } from '../../src/analysis/preflop.ts';
 import { parseCards, type Card } from '../../src/core/cards.ts';
 import { handInfo, equityMath } from '../../src/workers/equityMath.ts';
 import { createEquityService } from '../../src/workers/equityService.ts';
@@ -39,17 +41,25 @@ describe('handInfo (§6)', () => {
     expect(a.nuts).toBe(false);
   });
 
-  it('preflop: no outs, no beaters; the chances wait for the finals table (chunk 4.4)', () => {
+  it('preflop: no outs or beaters, and the chances by the river come from the finals table', () => {
     const a = handInfo(two('2c 2d'), []);
     expect(a).toEqual({
       draws: [],
       outs: [],
       nextCardPct: null,
       byRiverPct: null,
-      chances: null,
+      chances: preflopChances(two('2c 2d')),
       beaters: null,
       nuts: false,
     });
+    // D.3: 2♣2♦ preflop. The same numbers, to the last bit, as enumerating every board.
+    const pair = a.chances;
+    expect(pair?.pair.exactly).toBeCloseTo(35.98, 2);
+    expect(pair?.twoPair.exactly).toBeCloseTo(39.67, 2);
+    expect(pair?.fullHouse.exactly).toBeCloseTo(8.55, 2);
+    expect(pair).toEqual(chancesByRiver(two('2c 2d'), []));
+    // Every category is there, so the By-river column can fill all ten cells.
+    expect(Object.keys(pair ?? {})).toHaveLength(10);
   });
 
   it('on the river the chances are the made hand, and the nuts show', () => {
@@ -75,9 +85,101 @@ describe('handInfo (§6)', () => {
     expect(reply.analysis.chances?.straight.exactly).toBeCloseTo(17.95, 2); // D.3
     expect(reply.analysis.outs).toHaveLength(10); // D.2
   });
+
+  it('answers a preflop request through the worker with the chances filled in', () => {
+    const replies = run({ kind: 'handInfo', jobId: 4, epoch: 1, hero: two('Ah Kh'), board: [] });
+    expect(replies).toHaveLength(1);
+    const [reply] = replies;
+    if (reply?.kind !== 'handInfo') throw new Error('no handInfo reply');
+    expect(reply.analysis.chances).not.toBeNull();
+    expect(reply.analysis.chances?.flush.exactly).toBeCloseTo(6.53, 2); // D.3: A♥K♥ preflop
+    expect(reply.analysis.chances?.royalFlush.exactly).toBeCloseTo(0.05, 2);
+    expect(reply.analysis.chances?.highCard.atLeast).toBeCloseTo(100, 9);
+  });
 });
 
 describe('equity (§7.2–7.3)', () => {
+  it('preflop is a table lookup: one final reply, at once, with the table numbers (§7.5)', () => {
+    for (let nOpp = 1; nOpp <= 8; nOpp++) {
+      const replies = run({
+        kind: 'equity',
+        jobId: 7,
+        epoch: 3,
+        hero: two('Ah Kh'),
+        board: [],
+        nOpp,
+      });
+      expect(replies).toHaveLength(1); // no progress at 2,500 and 10,000: nothing is sampled here
+      expect(replies[0]).toEqual({
+        kind: 'equity',
+        jobId: 7,
+        epoch: 3,
+        result: preflopEquity(two('Ah Kh'), nOpp),
+      });
+      expect(replies[0]).toMatchObject({
+        result: { n: PREFLOP_TRIALS, exact: false, final: true, truncated: false },
+      });
+    }
+  });
+
+  it('preflop numbers are the Appendix C.3 values against random hands (within 0.5 points)', () => {
+    const cases: [string, number, number][] = [
+      ['As Ah', 1, 85.24],
+      ['As Kh', 3, 38.55],
+      ['2c 2d', 8, 12.51],
+      ['7c 2d', 5, 8.61],
+    ];
+    for (const [cards, nOpp, percent] of cases) {
+      const [reply] = run({
+        kind: 'equity',
+        jobId: 1,
+        epoch: 1,
+        hero: two(cards),
+        board: [],
+        nOpp,
+      });
+      if (reply?.kind !== 'equity') throw new Error('no equity reply');
+      expect(Math.abs(reply.result.equity * 100 - percent)).toBeLessThanOrEqual(0.5);
+      expect(reply.result.equity).toBe(reply.result.win + reply.result.split);
+    }
+  });
+
+  it('a bad preflop request is an error reply, like any other street', () => {
+    for (const nOpp of [0, 9]) {
+      const [reply] = run({
+        kind: 'equity',
+        jobId: 5,
+        epoch: 1,
+        hero: two('Ah Kh'),
+        board: [],
+        nOpp,
+      });
+      expect(reply).toMatchObject({ kind: 'error', jobId: 5, epoch: 1 });
+    }
+    const [same] = run({
+      kind: 'equity',
+      jobId: 6,
+      epoch: 1,
+      hero: two('Ah Ah'),
+      board: [],
+      nOpp: 2,
+    });
+    expect(same).toMatchObject({ kind: 'error', jobId: 6 });
+  });
+
+  it('after the flop nothing changed: Monte Carlo and exact enumeration as before', () => {
+    const [first] = run({
+      kind: 'equity',
+      jobId: 1,
+      epoch: 1,
+      hero: two('Ah Kh'),
+      board: parseCards('Qh 7h 2c'),
+      nOpp: 1,
+    });
+    // Heads-up on the flop is 1,081 × 990 = 1,070,190 deals: above the exact limit, so sampled.
+    expect(first).toMatchObject({ result: { n: 2_500, exact: false, final: false } });
+  });
+
   it('Monte Carlo sends progress at 2,500 and 10,000, then the final', () => {
     const replies = run({
       kind: 'equity',

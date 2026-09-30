@@ -10,6 +10,8 @@
     "build:e2e": "vite build --mode e2e",
     "check:html": "node scripts/check-html.ts dist/index.html",
     "e2e": "playwright test",
+    "gen": "node scripts/gen-preflop.ts",
+    "gen:check": "node scripts/check-tables.ts",
     "gen:icons": "node scripts/gen-icons.ts",
     "size": "node scripts/size-budget.ts",
     "test": "vitest run --project unit",

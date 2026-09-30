@@ -148,3 +148,33 @@ export function className(idx: number): string {
   if (row === col) return rowRank + rowRank;
   return row < col ? `${rowRank}${colRank}s` : `${colRank}${rowRank}o`;
 }
+
+/** Hole-card combinations in a class (PLAN §7.5): a pair 6, suited 4, offsuit 12; 1,326 in all. */
+export function classCombos(idx: number): 6 | 4 | 12 {
+  if (!Number.isInteger(idx) || idx < 0 || idx > 168) {
+    throw new RangeError(`Not a class index: ${String(idx)}`);
+  }
+  const row = Math.floor(idx / 13);
+  const col = idx % 13;
+  return row === col ? 6 : row < col ? 4 : 12;
+}
+
+/**
+ * The inverse of `classOf`: two cards of the class, the same two every time (the higher card
+ * first). A pair is spades and hearts, a suited class both spades, an offsuit class the higher
+ * card in spades and the lower in hearts: 0 → [As, Ah], 1 → [As, Ks], 13 → [As, Kh]. Used by the
+ * build-time tables, which are made once per class (PLAN §7.5): suits are symmetric, so one hand
+ * stands for all of its combos.
+ */
+export function classCards(idx: number): [Card, Card] {
+  if (!Number.isInteger(idx) || idx < 0 || idx > 168) {
+    throw new RangeError(`Not a class index: ${String(idx)}`);
+  }
+  const row = Math.floor(idx / 13);
+  const col = idx % 13;
+  const SPADES = 3;
+  const HEARTS = 2;
+  if (row === col) return [makeCard(12 - row, SPADES), makeCard(12 - row, HEARTS)];
+  if (row < col) return [makeCard(12 - row, SPADES), makeCard(12 - col, SPADES)];
+  return [makeCard(12 - col, SPADES), makeCard(12 - row, HEARTS)];
+}

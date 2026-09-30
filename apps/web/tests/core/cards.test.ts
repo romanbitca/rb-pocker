@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   cardAriaLabel,
+  classCards,
+  classCombos,
   classOf,
   className,
   formatCard,
@@ -151,6 +153,7 @@ describe('starting-hand classes (PLAN §7.5 grid)', () => {
     for (let idx = 0; idx < 169; idx++) {
       const name = className(idx);
       names.add(name);
+      expect(classCombos(idx)).toBe(combos[idx]);
       const row = Math.floor(idx / 13);
       const col = idx % 13;
       if (row === col) {
@@ -182,7 +185,25 @@ describe('starting-hand classes (PLAN §7.5 grid)', () => {
     expect(() => classOf(-1, 5)).toThrow(RangeError);
     expect(() => className(169)).toThrow(RangeError);
     expect(() => className(-1)).toThrow(RangeError);
+    expect(() => classCombos(169)).toThrow(RangeError);
+    expect(() => classCombos(0.5)).toThrow(RangeError);
+    expect(() => classCards(169)).toThrow(RangeError);
+    expect(() => classCards(-1)).toThrow(RangeError);
+    expect(() => classCards(1.5)).toThrow(RangeError);
     const suit: Suit = 3;
     expect(suitOf(makeCard(0, suit))).toBe(3);
+  });
+
+  it('classCards is the inverse of classOf: a real two-card hand of every class', () => {
+    expect(formatCards(classCards(0))).toBe('As Ah');
+    expect(formatCards(classCards(1))).toBe('As Ks');
+    expect(formatCards(classCards(13))).toBe('As Kh');
+    expect(formatCards(classCards(168))).toBe('2s 2h');
+    for (let idx = 0; idx < 169; idx++) {
+      const [a, b] = classCards(idx);
+      expect(a).not.toBe(b);
+      expect(classOf(a, b)).toBe(idx);
+      expect(rankOf(a)).toBeGreaterThanOrEqual(rankOf(b)); // the higher card first
+    }
   });
 });

@@ -36,6 +36,11 @@ jobs:
       # coverage; see apps/web/vitest.config.ts); fails below src/engine 95% / src/eval 90% branches.
       - name: Coverage thresholds
         run: npm run test:coverage
+      # PLAN §7.5: the generated preflop tables match their checksums, the finals agree with the
+      # published 7-card counts, and 20 equity cells sampled again (200,000 trials) are within
+      # 0.5 points of the committed ones. Takes seconds.
+      - name: Generated tables (checksums, 20 cells re-sampled)
+        run: npm run gen:check
       - run: npm run build
       - name: Size budget (§15.3)
         run: npm run size
