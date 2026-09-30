@@ -1,10 +1,11 @@
 /**
- * Small DOM hooks for the Table screen: a media query and an element's size. Both degrade where
- * the API is missing (jsdom, old engines): `matchMedia` → false, `ResizeObserver` → window
- * `resize` events.
+ * Small DOM hooks for the Table screen: a media query and an element's size (both degrade where
+ * the API is missing, as in jsdom: `matchMedia` → false, `ResizeObserver` → window `resize`
+ * events), a popover's dismissal, and a line that shows for a few seconds.
  */
 import {
   useCallback,
+  useEffect,
   useLayoutEffect,
   useState,
   useSyncExternalStore,
@@ -54,4 +55,46 @@ export function useElementSize(ref: RefObject<HTMLElement | null>, fallback: Siz
     return () => window.removeEventListener('resize', measure);
   }, [ref]);
   return measured ?? fallback;
+}
+
+/**
+ * Closes a popover on Escape or on a press outside `root`. The listeners exist only while it is
+ * open. (A popover is not a sheet: it closes no gate and never pauses the game.)
+ */
+export function useDismiss(
+  open: boolean,
+  root: RefObject<HTMLElement | null>,
+  close: () => void,
+): void {
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: PointerEvent): void => {
+      const el = root.current;
+      if (el !== null && e.target instanceof Node && el.contains(e.target)) return;
+      close();
+    };
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape') close();
+    };
+    document.addEventListener('pointerdown', onDown, true);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('pointerdown', onDown, true);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [open, root, close]);
+}
+
+/**
+ * True for `ms` after `key` first shows, then false until a new key comes (the big-move line's
+ * 4 s, §7.6). A local display timer: it never touches the game (§0.3).
+ */
+export function useFresh(key: string | null, ms: number): boolean {
+  const [expired, setExpired] = useState<string | null>(null);
+  useEffect(() => {
+    if (key === null) return;
+    const id = setTimeout(() => setExpired(key), ms);
+    return () => clearTimeout(id);
+  }, [key, ms]);
+  return key !== null && expired !== key;
 }

@@ -39,6 +39,8 @@ export { useShallow };
 export type { Nav, NavAction, Overlay, Screen };
 // The view-model selectors (ui/views.ts shapes): the UI imports them from here (§2.1).
 export * from './tableViews.ts';
+// The HUD numbers (win badge, draw chips, big-move line, "By river"): the same, for Stage 4.
+export * from './equityViews.ts';
 // Secure-context feature detection (§12.14, pitfall 43): the UI reads it from here too (§2.1).
 export { missingFeatures, secureFeatures, type SecureFeatures } from './secure.ts';
 

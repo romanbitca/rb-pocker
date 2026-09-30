@@ -2,15 +2,18 @@
  * The ten hand-ranking rows and the tie-break footer (PLAN §13.2–§13.4): shared by the phone drawer,
  * the wide-screen column (and later the Learn page).
  *
- * Each row: rank number, name, 5 mini cards (kickers at 45%), a one-line tip, and how often it
- * happens (7-card odds). Live highlight (§13.3): the hero's row gets `aria-current="true"`, an
+ * Each row: rank number, name, 5 mini cards (kickers at 45%), a one-line tip, how often it
+ * happens (7-card odds) and, while the hero plays a hand, "By river": the hero's own chance to
+ * finish with exactly this hand (§6.6; its header explains it on a tap). Live highlight (§13.3):
+ * the hero's row gets `aria-current="true"`, an
  * accent background, a "You" badge and a second line with the hero's actual best five; rows above
  * say "beats you", rows below "you beat"; after a fold the row turns grey with "You folded".
  * Tapping a row shows its details (Appendix F.7).
  */
-import { memo, useState, type Ref } from 'react';
+import { memo, useId, useState, type Ref } from 'react';
 import { RANKINGS } from '../../data/rankings.ts';
 import { en } from '../../i18n/en.ts';
+import { byRiverCell } from '../equity.ts';
 import {
   exampleCards,
   formatOneIn,
@@ -21,7 +24,7 @@ import {
   youLine,
   type RowStatus,
 } from '../rankings.ts';
-import type { HeroHandView } from '../views.ts';
+import type { ByRiverView, HeroHandView } from '../views.ts';
 import { Card } from './Card.tsx';
 import styles from './RankingsList.module.css';
 
@@ -33,6 +36,8 @@ export interface RankingsListProps {
   showTips?: boolean | undefined;
   /** Receives the highlighted row, so the drawer can scroll it into view. */
   currentRowRef?: Ref<HTMLLIElement> | undefined;
+  /** The "By river" column (§13.2); null or absent = no column. */
+  byRiver?: ByRiverView | null | undefined;
 }
 
 const join = (...names: (string | false | null | undefined)[]): string =>
@@ -66,18 +71,50 @@ export const RankingsList = memo(function RankingsList({
   cardSize,
   showTips = true,
   currentRowRef,
+  byRiver = null,
 }: RankingsListProps) {
   const [openRow, setOpenRow] = useState<number | null>(null);
+  const [info, setInfo] = useState(false);
+  const infoId = useId();
   const pulses = useImprovementPulse(hero);
   return (
     // `data-examples`: the rows name example cards (not dealt ones); the E2E bot-card watch
     // (tests/e2e/game.ts, Stage 3 acceptance 7) skips this subtree.
-    <div className={join(styles.list, cardSize === 'md' && styles.wide)} data-examples="">
+    <div
+      className={join(
+        styles.list,
+        cardSize === 'md' && styles.wide,
+        byRiver !== null && styles.withRiver,
+      )}
+      data-examples=""
+    >
+      {/* The column headers come with the "By river" column: two numbers need their names; one
+          (how often) does not, and the Table stays within its 600 DOM nodes (§15.3). */}
+      {byRiver !== null && (
+        <div className={styles.head}>
+          <span>{en.rankings.howOften}</span>
+          <button
+            type="button"
+            className={styles.headRiver}
+            aria-expanded={info}
+            aria-controls={info ? infoId : undefined}
+            onClick={() => setInfo(!info)}
+          >
+            {en.rankings.byRiver}
+          </button>
+        </div>
+      )}
+      {byRiver !== null && info && (
+        <p id={infoId} className={styles.headInfo}>
+          {en.rankings.byRiverInfo}
+        </p>
+      )}
       <ol className={styles.rows}>
         {RANKINGS.map((row, i) => {
           const status = rowStatus(i, hero);
           const mine = status === 'you' || status === 'folded';
           const expanded = openRow === i;
+          const river = byRiver === null ? null : byRiverCell(byRiver.exactly, row.key);
           return (
             <li
               key={row.key}
@@ -91,7 +128,7 @@ export const RankingsList = memo(function RankingsList({
                 type="button"
                 className={styles.rowButton}
                 aria-expanded={expanded}
-                aria-label={rowLabel(i, status)}
+                aria-label={rowLabel(i, status, river)}
                 onClick={() => setOpenRow(expanded ? null : i)}
               >
                 <span className={styles.rank}>{i + 1}</span>
@@ -106,6 +143,11 @@ export const RankingsList = memo(function RankingsList({
                   ))}
                 </span>
                 <span className={styles.oneIn}>{formatOneIn(row.oneIn)}</span>
+                {river !== null && (
+                  <span className={styles.river} data-by-river="">
+                    {river}
+                  </span>
+                )}
                 {showTips && <span className={styles.tip}>{row.tip}</span>}
               </button>
               {mine && hero !== null && (

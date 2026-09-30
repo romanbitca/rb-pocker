@@ -1,0 +1,232 @@
+/* The win badge (PLAN §7.6, §12.3): 76×60, the number 28 px bold with tabular digits, neutral in
+   colour (it never says call or fold). Animations use opacity only (§12.8). */
+.root {
+  position: relative;
+}
+
+.badge {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  width: 76px;
+  height: 60px;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--control-border);
+  border-radius: var(--radius-2);
+  background: var(--control-bg);
+  color: var(--text);
+  font: inherit;
+  line-height: 1;
+  text-align: center;
+}
+
+.button {
+  cursor: pointer;
+}
+.button:active {
+  background: var(--control-bg-pressed);
+}
+.button[aria-expanded='true'] {
+  border-color: var(--text);
+}
+
+.value {
+  font-size: 28px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.5px;
+  white-space: nowrap;
+}
+/* "Folded" in the number's place. */
+.word {
+  color: var(--muted);
+  font-size: 16px;
+  letter-spacing: 0;
+}
+
+.caption {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* "--%" before the first estimate: a slow shimmer, static under reduced motion (§7.6, §12.8). */
+.skeleton {
+  color: var(--muted);
+  animation: shimmer 1.2s ease-in-out infinite alternate;
+}
+@keyframes shimmer {
+  from {
+    opacity: 0.35;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  :root:not([data-motion='full']) .skeleton {
+    animation: none;
+  }
+}
+:root[data-motion='reduced'] .skeleton {
+  animation: none;
+}
+
+/* Compact mode's 96 px strip (§12.3): a 52 px badge and a tighter price chip, so both fit. */
+[data-compact] .badge {
+  height: 52px;
+}
+[data-compact] .value {
+  font-size: 24px;
+}
+[data-compact] .caption {
+  margin-top: 2px;
+}
+[data-compact] .price {
+  margin-top: 3px;
+  padding: 2px 4px;
+  font-size: 12px;
+  line-height: 1.2;
+}
+
+/* ---- Popover and the big-move line: over the felt (up) or down the landscape column ---- */
+
+.popover,
+.move {
+  position: absolute;
+  right: 0;
+  z-index: 40;
+  margin: 0;
+  border-radius: var(--radius-2);
+  color: var(--text);
+  text-align: left;
+}
+.up {
+  bottom: calc(100% + 8px);
+}
+.down {
+  top: calc(100% + 8px);
+}
+
+.popover {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: min(280px, calc(100vw - 32px));
+  padding: 12px;
+  border: 1px solid var(--control-border);
+  background: var(--surface);
+  box-shadow: 0 4px 16px rgb(0 0 0 / 45%);
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.line,
+.how {
+  margin: 0;
+}
+.how {
+  color: var(--muted);
+}
+
+/* "How is this calculated?": a text link with a 44 px tall hit area (§12.12). */
+.link {
+  align-self: flex-start;
+  min-height: 44px;
+  margin: -8px 0 -8px -4px;
+  padding: 0 4px;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+/* The price chip (§7.6): under the badge, "Call 40" over "need 20%", neutral. */
+.price {
+  width: 76px;
+  margin: 4px 0 0;
+  padding: 3px 4px;
+  border-radius: var(--radius-1);
+  background: rgb(242 245 243 / 8%);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.25;
+  text-align: center;
+  white-space: pre-line;
+}
+.price::first-line {
+  color: var(--muted);
+  font-weight: 600;
+}
+.canWin {
+  display: block;
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+  white-space: normal;
+}
+
+/* The big-move line (§7.6): a small callout by the badge, 4 s. */
+.move {
+  width: max-content;
+  max-width: min(240px, calc(100vw - 32px));
+  padding: 8px 10px;
+  border: 1px solid var(--control-border);
+  background: var(--surface);
+  box-shadow: 0 4px 16px rgb(0 0 0 / 45%);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.35;
+  pointer-events: none;
+  animation: fade-in 200ms ease-out;
+}
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+/* A card inside a sentence: rank and suit shape on a white chip. */
+.inlineCard {
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+  margin: 0 1px;
+  padding: 0 3px;
+  border-radius: 3px;
+  background: var(--card-face);
+  color: var(--suit-colour);
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.25;
+  vertical-align: baseline;
+}
+.inlineSuit {
+  width: 0.8em;
+  height: 0.8em;
+  fill: currentColor;
+}
+.suit0 {
+  --suit-colour: var(--suit-clubs);
+}
+.suit1 {
+  --suit-colour: var(--suit-diamonds);
+}
+.suit2 {
+  --suit-colour: var(--suit-hearts);
+}
+.suit3 {
+  --suit-colour: var(--suit-spades);
+}

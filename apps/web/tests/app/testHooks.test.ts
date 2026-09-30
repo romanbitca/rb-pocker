@@ -7,6 +7,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { deriveSeed } from '../../src/core/rng.ts';
 import { startApp } from '../../src/app/boot.ts';
+import { initialEquity } from '../../src/app/store.ts';
 import * as hooks from '../../src/app/testHooks.ts';
 import {
   fixedSeeds,
@@ -76,6 +77,10 @@ describe('window.__pc and startApp', () => {
       expect(s.game.hand?.seed).toBe(deriveSeed(seed, 'hand', s.game.hand?.handSeq as number));
       expect(pc.snapshot().hand).toBe(s.game.hand);
       expect(pc.logs().events.some((e) => e.what === 'hand start')).toBe(true);
+      // The equity slice can be written as the equity jobs would (E2E and screenshots).
+      const slice = initialEquity();
+      pc.setEquity(slice);
+      expect(pc.state().equity).toBe(slice);
     } finally {
       controller.dispose();
       window.history.replaceState(null, '', '/');

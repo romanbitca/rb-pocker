@@ -6,7 +6,7 @@
  */
 import { memo, useEffect, useId, useRef } from 'react';
 import { en } from '../../i18n/en.ts';
-import type { HeroHandView } from '../views.ts';
+import type { ByRiverView, HeroHandView } from '../views.ts';
 import styles from './RankingsColumn.module.css';
 import { RankingsList } from './RankingsList.tsx';
 import { ICONS, SpriteIcon } from './SvgSprite.tsx';
@@ -16,6 +16,8 @@ export interface RankingsColumnProps {
   collapsed: boolean;
   onCollapsedChange: (collapsed: boolean) => void;
   showTips?: boolean | undefined;
+  /** The "By river" column (§13.2); null or absent = none. */
+  byRiver?: ByRiverView | null | undefined;
 }
 
 export const RankingsColumn = memo(function RankingsColumn({
@@ -23,6 +25,7 @@ export const RankingsColumn = memo(function RankingsColumn({
   collapsed,
   onCollapsedChange,
   showTips,
+  byRiver,
 }: RankingsColumnProps) {
   const titleId = useId();
   const currentRowRef = useRef<HTMLLIElement>(null);
@@ -67,7 +70,13 @@ export const RankingsColumn = memo(function RankingsColumn({
         </button>
       </header>
       <div className={styles.scroll}>
-        <RankingsList hero={hero} cardSize="md" showTips={showTips} currentRowRef={currentRowRef} />
+        <RankingsList
+          hero={hero}
+          cardSize="md"
+          showTips={showTips}
+          currentRowRef={currentRowRef}
+          byRiver={byRiver}
+        />
       </div>
     </aside>
   );

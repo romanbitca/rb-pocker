@@ -85,3 +85,12 @@ export interface HeroHandView {
   /** The hero folded this hand: grey highlight and "You folded". */
   readonly folded: boolean;
 }
+
+/**
+ * The rankings panel's "By river" column (PLAN §6.6, §13.2): the hero's chance to finish with
+ * exactly each hand, in percent; `exactly: null` while the hand analysis is on its way.
+ */
+export interface ByRiverView {
+  readonly handSeq: number;
+  readonly exactly: Readonly<Record<HandCategory, number>> | null;
+}

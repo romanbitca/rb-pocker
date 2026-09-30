@@ -49,12 +49,22 @@ export interface CardProps {
   dim?: boolean | undefined;
   /** Outlined: one of the hero's own cards on the rankings "You" line (§13.3). */
   used?: boolean | undefined;
+  /** A screen-reader name instead of "King of hearts" (e.g. a risky out, §6.4). */
+  label?: string | undefined;
   className?: string | undefined;
 }
 
 const join = (...names: (string | false | undefined)[]): string => names.filter(Boolean).join(' ');
 
-export const Card = memo(function Card({ card, size, highlight, dim, used, className }: CardProps) {
+export const Card = memo(function Card({
+  card,
+  size,
+  highlight,
+  dim,
+  used,
+  label,
+  className,
+}: CardProps) {
   const sizeClass = styles[size];
   if (card === null) {
     return (
@@ -71,7 +81,7 @@ export const Card = memo(function Card({ card, size, highlight, dim, used, class
   return (
     <span
       role="img"
-      aria-label={cardAriaLabel(card)}
+      aria-label={label ?? cardAriaLabel(card)}
       className={join(
         styles.card,
         sizeClass,
