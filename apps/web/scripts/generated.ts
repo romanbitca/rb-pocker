@@ -143,11 +143,13 @@ export function binaryModule(
   name: string,
   bytes: Uint8Array,
 ): string {
+  const constants = Object.entries(numbers).map(
+    ([key, value]) => `export const ${key} = ${value};`,
+  );
   return [
     ...header.map((line) => (line === '' ? '//' : `// ${line}`)),
     '',
-    ...Object.entries(numbers).map(([key, value]) => `export const ${key} = ${value};`),
-    '',
+    ...(constants.length === 0 ? [] : [...constants, '']),
     `export const ${name} =`,
     `  '${Buffer.from(bytes).toString('base64')}';`,
     '',

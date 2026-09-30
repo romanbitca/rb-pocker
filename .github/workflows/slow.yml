@@ -28,6 +28,24 @@ jobs:
       - name: Slow tests (exhaustive, statistical and large property runs)
         run: npm run test:slow
 
+  # PLAN §7.5: the committed preflop tables are exactly what `npm run gen` makes. Every cell has
+  # its own fixed seed, so the bytes are the same on every machine and thread count. About 3
+  # minutes on a 10-core laptop; on the 2-vCPU runner expect 15 to 25 minutes.
+  tables:
+    runs-on: ubuntu-24.04 # the same image as the e2e job (see e2e.yml)
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - name: Regenerate the preflop tables
+        run: npm run gen
+      - name: The committed tables are what the generator makes
+        run: git diff --exit-code -- apps/web/src/data/generated
+
   # The Coolify deploy (§17.6), once the repository variable DEPLOY_URL is set
   # (Settings → Secrets and variables → Actions → Variables).
   check-deploy:

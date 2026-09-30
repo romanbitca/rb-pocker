@@ -77,13 +77,13 @@ interface Reply {
  * results in the order of `jobs`. Jobs are handed out one at a time to whichever thread is free,
  * so put the slow ones first. `onDone` is called after every finished job with the running count.
  */
-export function runJobs(
+export async function runJobs(
   jobs: readonly Job[],
   threads: number,
   onDone?: (done: number) => void,
 ): Promise<JobResult[]> {
   if (!Number.isInteger(threads) || threads < 1) {
-    return Promise.reject(new RangeError(`threads must be a positive integer, got ${threads}`));
+    throw new RangeError(`threads must be a positive integer, got ${threads}`);
   }
   const results: JobResult[] = new Array<JobResult>(jobs.length);
   if (threads === 1 || jobs.length <= 1) {
@@ -91,7 +91,7 @@ export function runJobs(
       results[i] = runJob(job);
       onDone?.(i + 1);
     });
-    return Promise.resolve(results);
+    return results;
   }
   return new Promise((resolve, reject) => {
     const workers: Worker[] = [];

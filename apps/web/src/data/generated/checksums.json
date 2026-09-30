@@ -1,0 +1,16 @@
+{
+  "files": {
+    "finals.ts": {
+      "sha256": "5eddf47ca785a862513f55f8c2e9ec4b91957a2a07e1c1a17154b38d8b340886",
+      "generator": "gen-preflop@1",
+      "seed": null,
+      "trials": null
+    },
+    "preflop-equity.ts": {
+      "sha256": "a561e569b7b57934d7624ca00b46b0e6c83c8ad12d82d8e011a8be6fec55287b",
+      "generator": "gen-preflop@1",
+      "seed": "fc4c71be91e69bdef4cc3d3ec54aab3e",
+      "trials": 500000
+    }
+  }
+}

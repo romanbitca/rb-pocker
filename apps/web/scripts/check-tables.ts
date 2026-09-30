@@ -1,7 +1,7 @@
 /**
  * The CI check of the generated tables (PLAN §7.5, "Testing strategy" → Data): `npm run gen:check`
- * (root, or `-w @rb/web`), or from apps/web `node scripts/check-tables.ts [generatedDir]`. Exits 1
- * with one line per problem.
+ * (root, or `-w @rb/web`), or from apps/web `node scripts/check-tables.ts [generatedDir] [--cells N]`
+ * (N cells instead of 20, for a quick look). Exits 1 with one line per problem.
  *
  * 1. Every module in `src/data/generated/` matches its SHA-256 in `checksums.json`, and nothing is
  *    missing or unlisted: nobody edited a generated file by hand.
@@ -11,7 +11,9 @@
  *    counted once per suit combination (6 / 4 / 12), reproduce the published 7-card category
  *    counts of Appendix C.1, times 21: every 7-card hand is a hole pair plus a board in
  *    C(7,2) = 21 ways, so this is an exact check of all 169 rows against an outside source.
- * 4. 20 cells of the equity table, chosen at random with a fixed seed (every opponent count at
+ * 4. Three rows of the finals table are counted again from scratch, exactly (the aggregate check
+ *    cannot see two rows swapped).
+ * 5. 20 cells of the equity table, chosen at random with a fixed seed (every opponent count at
  *    least once), are sampled again with 200,000 trials and a seed of this script's own. `win`,
  *    `split` and `equity` must each be within 0.5 points of the committed cell. Two independent
  *    estimates differ by up to 0.13 points (one standard deviation), so 0.5 is 3.8 sigma, and 0.3
@@ -21,7 +23,8 @@
  */
 import { readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import { classCombos } from '../src/core/cards.ts';
+import { parseArgs } from 'node:util';
+import { className, classCombos } from '../src/core/cards.ts';
 import { deriveSeed, randInt, rngFromSeed, ZERO_SEED, type Seed128 } from '../src/core/rng.ts';
 import {
   decodeEquityTable,
@@ -48,12 +51,22 @@ import {
   readNumberExport,
   verifyChecksums,
 } from './generated.ts';
-import { defaultThreads, runJobs, type McJob, type McResult } from './table-jobs.ts';
+import {
+  defaultThreads,
+  runJobs,
+  type FinalsJob,
+  type FinalsResult,
+  type McJob,
+  type McResult,
+} from './table-jobs.ts';
 
 /** Cells re-sampled, trials per re-sampled cell, and the allowed difference in percentage points. */
 export const CHECK_CELLS = 20;
 export const CHECK_TRIALS = 200_000;
 export const TOLERANCE_POINTS = 0.5;
+
+/** Finals rows counted again from scratch: exact, about 70 ms each. */
+export const FINALS_CHECKS = 3;
 
 /** The seed of the re-sampling: not the table seed, so the two estimates are independent. */
 export const CHECK_SEED: Seed128 = deriveSeed(ZERO_SEED, 'check-tables');
@@ -205,6 +218,42 @@ export async function resample(
   });
 }
 
+/** `count` distinct classes, chosen at random from the seed. */
+export function pickClasses(count: number = FINALS_CHECKS, seed: Seed128 = CHECK_SEED): number[] {
+  if (!Number.isInteger(count) || count < 1 || count > PREFLOP_CLASSES) {
+    throw new RangeError(`pickClasses: bad count ${count}`);
+  }
+  const rng = rngFromSeed(deriveSeed(seed, 'finals'));
+  const classes = new Set<number>();
+  while (classes.size < count) classes.add(randInt(rng, PREFLOP_CLASSES));
+  return [...classes];
+}
+
+/**
+ * Counts the boards of each class again, exactly, and compares them with the committed rows. The
+ * Appendix C.1 check sees only the totals over all classes: this one sees a single row (two rows
+ * of equal weight swapped, say).
+ */
+export async function recount(
+  words: Uint32Array,
+  classes: readonly number[],
+  threads: number = defaultThreads(),
+): Promise<string[]> {
+  const jobs: FinalsJob[] = classes.map((cls) => ({ kind: 'finals', cls }));
+  const results = await runJobs(jobs, Math.max(1, Math.min(threads, jobs.length)));
+  const problems: string[] = [];
+  classes.forEach((cls, i) => {
+    const counted = (results[i] as FinalsResult).counts;
+    const row = words.subarray(cls * FINAL_CATEGORIES, (cls + 1) * FINAL_CATEGORIES);
+    if (counted.some((n, k) => n !== row[k])) {
+      problems.push(
+        `finals: ${className(cls)} counted again is [${counted.join(', ')}], the table has [${row.join(', ')}]`,
+      );
+    }
+  });
+  return problems;
+}
+
 export interface CheckOptions {
   readonly dir?: string;
   readonly cells?: number;
@@ -219,7 +268,7 @@ export interface CheckResult {
   readonly lines: string[];
 }
 
-/** All four checks. A failed checksum stops the run: damaged files are not worth sampling. */
+/** All the checks. A failed checksum stops the run: damaged files are not worth sampling. */
 export async function checkTables(options: CheckOptions = {}): Promise<CheckResult> {
   const dir = options.dir ?? GENERATED_DIR;
   const lines: string[] = [];
@@ -236,6 +285,9 @@ export async function checkTables(options: CheckOptions = {}): Promise<CheckResu
     `finals: ${PREFLOP_CLASSES} rows add up to ${FINALS_BOARDS} boards; all classes together ` +
       `equal Appendix C.1 x ${HOLE_CHOICES}`,
   );
+  const classes = pickClasses();
+  problems.push(...(await recount(finals, classes, options.threads)));
+  lines.push(`finals: ${classes.map(className).join(', ')} counted again exactly, same rows`);
 
   const words = decodeEquityTable(read(EQUITY_FILE, 'PREFLOP_EQUITY_B64'));
   const cells = pickCells(options.cells ?? CHECK_CELLS);
@@ -264,8 +316,16 @@ export async function checkTables(options: CheckOptions = {}): Promise<CheckResu
 
 if (import.meta.main) {
   try {
-    const dir = process.argv[2] === undefined ? GENERATED_DIR : resolve(process.argv[2]);
-    const { problems, lines } = await checkTables({ dir });
+    const { values, positionals } = parseArgs({
+      options: { cells: { type: 'string' } },
+      allowPositionals: true,
+      strict: true,
+    });
+    const cells = values.cells === undefined ? CHECK_CELLS : Number(values.cells);
+    if (!Number.isSafeInteger(cells) || cells < 1)
+      throw new Error('--cells needs a positive integer');
+    const dir = positionals[0] === undefined ? GENERATED_DIR : resolve(positionals[0]);
+    const { problems, lines } = await checkTables({ dir, cells });
     for (const line of lines) console.log(line);
     if (problems.length > 0) {
       for (const problem of problems) console.error(`check-tables: ${problem}`);
