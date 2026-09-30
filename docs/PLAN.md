@@ -1014,17 +1014,17 @@ hint(obs, eRandom) → Decision
 | Feature | Definition |
 |---|---|
 | `pot`, `toCall`, `need` | §0.3; `toCall = min(currentBet − streetBet, stack)`; `need = toCall / (winPot + toCall)` with the §0.3 capped `winPot`; `need = 0` when `toCall == 0`. Every `EV(call)` formula in §8.3–8.9 uses `winPot` in place of `pot` |
-| `effStack`, `effBB` | `min(hero stack, largest live opponent stack)`; ÷ bb |
-| `spr` | effective stack ÷ pot, both at the start of the current street |
-| `k` | Preflop: dealt-in, unfolded players still to act after the hero, blinds included |
-| `position` | `IP` if the hero acts last among active players after the flop, else `OOP` |
+| `effStack`, `effBB` | `min(hero chips, largest live opponent's chips)`, chips = stack + street bet (what the seat had when the street began, so a shove or a posted blind still counts); ÷ bb |
+| `spr` | effective stack ÷ pot, both at the start of the current street (preflop: the posted blinds) |
+| `k` | Preflop: dealt-in, unfolded players still to act after the hero, blinds included (all-in players cannot act and do not count); 0 after the flop |
+| `position` | `IP` if the hero acts last among active players (not folded, not all-in) after the flop, else `OOP` |
 | `nOpp` | Live opponents |
 | `eRandom` | Coach only. HUD equity (§7): the controller sends the hint job at once (in parallel with the equity job) and passes the final HUD value only if it already has it (preflop table, cache after undo/resume); otherwise `null` and `brain.worker` computes it with the identical deterministic function, so the numbers match (C9). Grades always receive the final value. **Bots never compute it**: in `decide()` for a bot profile, `Decision.eRandom = eRange` (with `rangeModel: 'random'` they are the same number) |
 | `eRange` | Equity vs estimated opponent ranges (§8.6): 4,000 weighted Monte Carlo trials; exact on the river heads-up |
 | `p` | Per-opponent strength `eRange^(1/nOpp)` (buckets behave the same in multiway pots) |
 | `bucket` | Monster `p ≥ 0.85`; Strong 0.65–0.85; Medium 0.45–0.65; Draw `p < 0.45` and ≥ 8 outs before the river; Air otherwise (Loki thresholds) |
 | `texture` | `W = [2 of one suit: +1] + [≥ 3 of one suit: +2] + min(#adjacent sorted board ranks with gap ≤ 2, 2) − [board paired: 1]`. Dry `W ≤ 1`, Wet `W == 2`, Very wet `W ≥ 3` |
-| `facing` | `none`, `limpers`, `open`, `3bet`, `4bet+`, `bet`, `raise`, `allin` |
+| `facing` | `none`, `limpers`, `open`, `3bet`, `4bet+`, `bet`, `raise`, `allin`: `allin` when the street's last bet or raise was all-in and there is something to call; else by the street's bets and raises (preflop 0 → `limpers` if anyone called, else `none`; 1 `open`, 2 `3bet`, 3+ `4bet+`; after the flop 0 `none`, 1 `bet`, 2+ `raise`) |
 | `wasPreflopAggressor` | Hero made the last full preflop raise |
 | `handInfo`, `draws`, `outs`, `rankPct` | §6, §8.3 |
 
@@ -1081,16 +1081,16 @@ Sources: 9-max RFI charts (UTG 9–12% … BTN 44–48%), 6-max RFI (UTG ~17% �
 ### 8.6 Opponent ranges
 
 - Each live opponent has 1,326 combo weights (blocked combos 0). Ranges are **rebuilt from the public history on every call** (stateless, safe with undo; cost ≤ 4 streets × 1,081 evaluations).
-- **Preflop prior** from that player's first voluntary action, using the `rankPct` order × `loosenessEstimate` (cap 100%). Soft edge: weight 1 up to `X`, linearly down to 0.01 at `1.25·X`.
+- **Preflop prior** from that player's **last preflop raise** if it raised, else its first voluntary action (an opener who later 4-bets reads as a 4-bettor; a limper who re-raises as a 3-bettor), using the `rankPct` order × `loosenessEstimate` (cap 100%). Soft edge: weight 1 up to `X`, linearly down to 0.01 at `1.25·X`, and 0.01 beyond (the floor below: no hand is ever impossible).
 
-| First voluntary action | Top X% |
+| Last raise, else first voluntary action | Top X% |
 |---|---|
-| Open raise from a spot with `k` behind | `openPct(k) × looseness` |
+| Open raise (the first raise, limpers or not) from a spot with `k` behind | `openPct(k) × looseness` |
 | Limp or call a limp | 50 |
 | Call a raise | 25, top 4% down-weighted to 0.3 (they would have 3-bet) |
 | 3-bet | 6 |
 | 4-bet or more | 2.5 |
-| All-in ≤ 15 bb | `pushPct(k, S)` |
+| All-in raise to ≤ 15 bb (before the 3-bet/4-bet rows) | `pushPct(k, S)`, `S` = raise-to ÷ bb |
 | BB checks its option / no action yet | 100 (BB check: top 15% down-weighted to 0.3) |
 
 - **Postflop re-weighting** (Loki rule, verified from Billings et al. 1998): after each action, `w *= clamp((EHS − μ + σ) / (2σ), 0.01, 1)`. `EHS` proxy = `HS` (percentile of the combo's current hand value among all unblocked combos on this board) + draw bonus (flush draw +0.15, OESD +0.12, gutshot +0.06 on the flop; halved on the turn). The 0.01 floor means no hand ever becomes impossible.
@@ -1101,8 +1101,9 @@ Sources: 9-max RFI charts (UTG 9–12% … BTN 44–48%), 6-max RFI (UTG ~17% �
 | Call | 0.40 | 0.20 |
 | Check | no ramp; combos with EHS > 0.8 × 0.6 (occasional slow-play) | — |
 
-  Observed aggression: AF > 3 → μ − 0.08; AF < 1 → μ + 0.08.
+  Observed aggression: AF > 3 → μ − 0.08; AF < 1 → μ + 0.08 (the bet/raise μ only).
 - **Sampling:** per opponent, a `Float32Array(1326)` cumulative distribution; draw by binary search. If the combo collides with cards already drawn this trial, redraw; after 20 collisions fall back to a uniform draw among free cards. (Exact and faster than rejection sampling on narrow ranges.)
+- **Implementation notes (chunk 5.2, `brain/ranges.ts`).** `k` = players after the raiser in preflop order who can still act (not folded, not all-in). Every "×" above is the seat's looseness (all rows, the push row included); the trap bands (top 4%, top 15%) are not scaled. Looseness and the AF shift need seat statistics, so only `rangeModel: 'reweight+stats'` uses them (the coach); `static` and `reweight` use looseness 1 and no shift (generic priors, §9.2). `B` = the chips the action puts in (`amountIn`), `pot` = the pot before it (`potBefore`). The HS population = every combo that uses no card of that street's board and none the observer knows (its hole cards, face-up hands): 1,081 on the flop; ties count half, `HS = (below + (equal − 1) / 2) / (N − 1)`. A double gutshot takes the OESD bonus (8 outs); bonuses add up (flush draw + OESD = 0.27); no flush-draw bonus with a made flush, no straight-draw bonus with a made straight, and a straight card must use a hole card (as §6.2). After every action the weights are scaled so the largest is 1, with a `1e-12` numerical floor so hundreds of 0.01 factors never underflow to 0. A face-up live hand (`revealedHoles`) is its range exactly. The tables arrive through a `RangeTables` interface (`rankPctOfClass`, `pushPct`; default `RANGE_TABLES` from chunk 5.1).
 
 ### 8.7 Bet sizing (coach defaults; bots use their level's size set, §9.2)
 
@@ -1254,6 +1255,7 @@ VPIP/PFR targets follow common player-type definitions (TAG ~22/18 with AF ~2.5;
 
 - Track per seat: VPIP, PFR, 3-bet %, fold to 3-bet, c-bet %, fold to c-bet, AF, WTSD. Shrink toward a prior with `k = 20` opportunities: `est = (x + k·prior) / (n + k)`. Prior = the personality target if its label is visible, else the population average of the level's list.
 - `loosenessEstimate(seat) = clamp(estVPIP / 0.22, 0.5, 3.0)`.
+- Definitions (chunk 5.2, `brain/opponentStats.ts`): VPIP/PFR opportunities = hands with a preflop decision (no walk, no all-in by posting); 3-bet = first preflop action facing exactly one raise not its own; fold to 3-bet = the opener's next action facing the second raise; c-bet = the last full preflop raiser's first flop action when nobody has bet the flop; fold to c-bet = first action facing that c-bet with no raise after it; WTSD = revealed at the showdown or run-out, of hands where it saw the flop; AF = postflop (bets + raises) / calls. AF shrinks in frequency space: `f = (agg + k·AF0/(1 + AF0)) / (agg + passive + k)`, `AF = f / (1 − f)` (n = 0 gives `AF0`). The prior's VPIP, PFR and AF are the §9.1 targets (the level list's mean when the label is hidden).
 - Seat statistics update only at hand end, so every observation inside a hand sees the same statistics (keeps `observationKey` and the coach's numbers stable during a hand). The controller owns them: `brain/opponentStats.ts` exports the pure `updateSeatStats(stats, log: LogEvent[], seat)`; the result is stored in `SessionState.seatStats` (so a resumed hand has the same `observationKey` and the same hint), seat 0 is also written to `profile.heroModel`, and a replaced bot's entry resets to `null`. A new table starts with `null` for every bot seat.
 - The hero's own counters persist on the device (`profile.heroModel`), so Expert bots adapt across sessions.
 - **Expert exploits** (active at n ≥ 30): hero fold-to-c-bet > 60% → c-bet heads-up flops at 1/3 with any two cards; hero VPIP > 40% → value-bet Medium hands and halve bluffs; hero AF > 3.5 → stickiness + 0.2 and `defenseFactor = 1.0`.
@@ -2362,6 +2364,7 @@ The human answered on 23 Sep 2026. Answered rows show the decision; open rows ke
 | 1.3.31 | 1 Oct 2026 | Win badge, price chip, draw chips and "By river" (chunk 4.6). **§7.6** implementation notes: percentages never read "0%" or "100%" unless exact ("<1%", ">99%"); the skeleton and hysteresis start over with each situation; the badge is off from the showdown on; the popover is a disclosure (no gate); the price chip's two lines and where "Pot you can win" shows; the big-move selection rules (which line, when none) and its 4 s callout. **§0.3 Time:** display timers are local UI timers too. **§12.3:** the draw chips' row along the bottom of the strip, one chip and "+N" on phones, two on wide screens. **§13.2:** when the "By river" column shows, and its header row comes with it. **F.10:** the badge's screen-reader names, "Show all your draws", "{card}, may help them too", "By river: {x}%.". **§6.2:** the chips' out cards are picked on the main thread from the worker's `HandAnalysis.outs` with no evaluation (`drawCards`, checked against every draw's `outs` on 2,000 random flops and turns), so the main bundle carries no analysis code; the chip numbers are `outsChances` (§6.6). The views read chunk 4.5's `equity` slice as it is. §15.3: nine players on a wide screen with the HUD on peak at 594 DOM nodes in the jsdom guard |
 | 1.3.32 | 1 Oct 2026 | Preflop tables (chunk 4.4). §7.5 implementation notes: one sampler (`equity()`), seeds, the measured generation time (**181 s on 8 threads of an M1 Pro, not "~1 min on 8 cores"**: the `preflop-equity` row now says ~3 min), `finals` stored as exact counts (the `finals` row: ~11 s of CPU), the byte-plane layout and sizes (~7.9 KB gzip for both modules), and what `check-tables` checks (checksums, the recorded generator / seed / trials, the finals against Appendix C.1 × 21 and 3 rows recounted, 20 re-sampled cells). **C.2 is hand against hand, so the table's oracle is C.3** (vs random hands); a test also uses the exact identity "the combo-weighted average of one opponent count is 1 / (nOpp + 1)". Wired into `workers/equityMath.ts`: preflop `equity` is the table, preflop `handInfo.chances` is filled (`equity.worker` 14.1 KB gzip). §17.5: `check-tables` (`npm run gen:check`) is in the `check` job, and a weekly `tables` job regenerates both tables and compares them with the committed files. §0.1: `.gitattributes`, `generated.ts`, `table-jobs.ts`, `data/preflopLayout.ts` |
 | 1.3.33 | 1 Oct 2026 | Range and push/fold tables (chunk 5.1). §7.5: the `ranges` and `pushfold` rows and implementation notes (sizes 4.3 KB and 0.9 KB gzip, times, what `check-range-tables` checks). §8.3: `rankPct` is the share of combos that rank at least as well (AA 0.45), because the literal "0 = AA" makes "72o in the bottom 1%" impossible at any weight (32o is always below it); the weight is tuned from 0.5 to 0.25, the plan's own remedy; `eqVsRange` uses the exact top X% with the edge class in part. §8.4: the model pinned down (blinds, dead money, who calls, rounds, what `callPct` means) with its convergence; **3 of the 5 acceptance spots miss** (risk R16, bands not edited, known failures). §0.1 and §17.5: the new scripts, `data/rangesLayout.ts`, `brain/rangesData.ts`, `brain/pushFoldData.ts`; `gen` and the weekly `tables` job cover all three tables |
+| 1.3.34 | 1 Oct 2026 | Opponent range model (chunk 5.2: `brain/tunables.ts`, `opponentStats.ts`, `ranges.ts`, `features.ts`). Readings chosen where the text was open, consistent with Appendix E (E9, E13, E16 checked): **§8.6** the prior reads a seat's **last preflop raise** before its first voluntary action (otherwise an opener who 4-bets keeps the open range, which contradicts §8.3's 2.5% 4-bet range); the soft edge stays at 0.01 beyond `1.25·X` ("no hand ever becomes impossible"); the first raise after limpers is an open raise; any all-in raise to ≤ 15 bb is a push; the AF shift moves only the bet/raise μ; HS population, draw-bonus details and a `1e-12` underflow floor in the new implementation notes. **§8.2** `effStack` counts chips at the street's start (stack + street bet; E13's shove and E7's blinds need it), preflop SPR uses the blinds, `k` and `position` skip all-in players, `facing` spelled out. **§9.5** stat definitions and AF shrinkage in frequency space. `Features`, `Facing`, `Position` join `brain/types.ts`. |
 
 ---
 
