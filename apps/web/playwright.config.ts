@@ -86,6 +86,8 @@ export default defineConfig({
       name: 'chromium-perf-390x844',
       testMatch: PERF,
       dependencies: PROJECTS.map((p) => p.name),
+      // Its tests one after another, never side by side: each one measures wall time.
+      fullyParallel: false,
       use: PROJECTS.find((p) => p.name === 'chromium-phone-390x844')?.use ?? {},
     },
   ],

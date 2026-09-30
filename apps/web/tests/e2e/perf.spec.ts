@@ -39,11 +39,11 @@ test('no main-thread task over 50 ms during 25 hands with 6 players', async ({
 //
 // ⚠️ CDP's `Emulation.setCPUThrottlingRate` slows the page's main thread only: sent to a worker's
 // own CDP session it answers "Operation is only supported for pages, not workers" (checked with
-// Playwright 1.63's Chromium). So the main thread runs truly 6× slower here, and the worker's
-// numbers come from its timing logs (every reply's `timing`, Appendix A.6 `JobTiming`): a CPU 6×
-// slower stretches only the computing, so a reply at `ms` with `busyMs` of it spent computing
-// would come at `ms + 5 × busyMs`. That model is what the budgets are checked against; the real
-// (unthrottled) worker times are reported next to it.
+// Playwright 1.63's Chromium). So the long-task test runs the main thread truly 6× slower, and the
+// worker's numbers come from its timing logs (every reply's `timing`, Appendix A.6 `JobTiming`): a
+// CPU 6× slower stretches only the computing, so a reply at `ms` with `busyMs` of it spent
+// computing would come at `ms + 5 × busyMs`. That model is what the budgets are checked against;
+// the real (unthrottled) worker times are reported next to it.
 
 /** The CPU slow-down (§15.3). */
 const RATE = 6;
@@ -145,20 +145,20 @@ function report(testInfo: TestInfo, jobs: Job[]): string {
   return text;
 }
 
-test('at 6× CPU: win chance within its budgets, no main-thread task over 50 ms in 20 hands (Stage 4, 3)', async ({
-  page,
-}, testInfo) => {
-  test.setTimeout(600_000);
-  const errors = collectErrors(page);
-  const seed = seedFor(testInfo);
+/**
+ * 20 hands on a 9-player table (eight opponents is the heaviest win chance, §15.4) at Instant speed,
+ * in real time (a fake clock would fire the 4 s equity timeout while the worker, on the real clock,
+ * computes). At each hero turn it waits for the final win chance, then taps. Returns the equity
+ * jobs of the worker message log.
+ */
+async function play20(page: Page, seed: string, throttle: boolean): Promise<Job[]> {
   await openApp(page, seed);
-  const cdp = await page.context().newCDPSession(page);
-  await cdp.send('Emulation.setCPUThrottlingRate', { rate: RATE });
-  // Nine players: eight opponents is the heaviest win chance (§15.4). Real time: a fake clock
-  // would fire the 4 s equity timeout while the worker (on the real clock) computes.
+  if (throttle) {
+    const cdp = await page.context().newCDPSession(page);
+    await cdp.send('Emulation.setCPUThrottlingRate', { rate: RATE });
+  }
   await newTable(page, { players: 9, speed: 'instant' });
   expect(await installLongTaskObserver(page), 'the Long Tasks API').toBe(true);
-
   const jobs = new Map<number, Job>();
   const hands = await playHands(page, {
     hands: 20,
@@ -171,8 +171,21 @@ test('at 6× CPU: win chance within its budgets, no main-thread task over 50 ms 
   });
   await collectJobs(page, jobs);
   expect(hands).toHaveLength(20);
+  return [...jobs.values()];
+}
 
-  const all = [...jobs.values()];
+// The two halves of acceptance 3 are two tests. With the CDP throttle on, CI's 2-vCPU runner
+// measured the worker 3 to 16 times slower than the same run on the dev Mac (the throttled main
+// thread, Playwright and the server share the runner), and the 6× model would count that a second
+// time. So the worker is measured with the main thread at full speed and modelled 6× slower, and
+// the long tasks are measured with the throttle on.
+
+test('win chance within its budgets at 6× CPU, from the worker timing logs (Stage 4, 3)', async ({
+  page,
+}, testInfo) => {
+  test.setTimeout(600_000);
+  const errors = collectErrors(page);
+  const all = await play20(page, seedFor(testInfo), false);
   console.info(report(testInfo, all));
   const pre = all.filter((j) => boardOf(j) === 0);
   const post = all.filter((j) => boardOf(j) >= 3);
@@ -194,8 +207,17 @@ test('at 6× CPU: win chance within its budgets, no main-thread task over 50 ms 
     .soft(worst(postFirsts), 'first postflop number at 6×')
     .toBeLessThanOrEqual(BUDGET.firstPostflop);
   expect.soft(worst(postFinals), 'postflop final at 6×').toBeLessThanOrEqual(BUDGET.final);
+  expect(errors).toEqual([]);
+});
+
+test('no main-thread task over 50 ms at 6× CPU in 20 hands (Stage 4, 3)', async ({
+  page,
+}, testInfo) => {
+  test.setTimeout(600_000);
+  const errors = collectErrors(page);
+  await play20(page, seedFor(testInfo), true);
   const tasks = await longTasks(page);
   console.info(`main-thread tasks over 50 ms at ${RATE}×: ${JSON.stringify(tasks)}`);
-  expect.soft(tasks, 'main-thread tasks over 50 ms at 6×').toEqual([]);
+  expect(tasks).toEqual([]);
   expect(errors).toEqual([]);
 });
