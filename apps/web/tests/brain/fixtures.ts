@@ -2,7 +2,8 @@
  * Brain test fixtures: range tables, observation extras, and scripted spots played through the
  * real engine (tests may run the engine; the brain never does) and observed with `observe()`.
  */
-import { RANGE_TABLES, type RangeTables } from '../../src/brain/ranges.ts';
+import { RANGE_TABLES, type RangeModel, type RangeTables } from '../../src/brain/ranges.ts';
+import type { BrainProfile } from '../../src/brain/types.ts';
 import { observe } from '../../src/engine/observe.ts';
 import type {
   BotLevel,
@@ -49,7 +50,8 @@ export interface SpotSpec {
 /** Plays the spot: deals with rigged cards, then each input (dealing streets as needed). */
 export function playSpot(spec: SpotSpec): HandState {
   const bb = spec.bb ?? 100;
-  let h = deal(tableWith(spec.stacks, { button: spec.button, bb, sb: bb / 2 }));
+  const startingStack = Math.max(200, 100 * bb);
+  let h = deal(tableWith(spec.stacks, { button: spec.button, bb, sb: bb / 2, startingStack }));
   if (spec.holes !== undefined || spec.board !== undefined) {
     h = rigDeck(h, { holes: spec.holes ?? {}, board: spec.board ?? '' });
   }
@@ -65,3 +67,35 @@ export function playSpot(spec: SpotSpec): HandState {
 export function observeSpot(h: HandState, seat: number, spec: ExtrasSpec = {}): Observation {
   return observe(h, seat, extrasFor(h.seats.length, spec));
 }
+
+/** A profile for feature tests: only `id`, `rangeModel` and `mcTrials` matter to `features()`. */
+export function testProfile(
+  rangeModel: RangeModel,
+  mcTrials: number,
+  id = 'test/bot',
+): BrainProfile {
+  return {
+    id,
+    looseness: 1,
+    pfrRatio: 0.82,
+    aggressionBias: 0,
+    bluffFreq: 0,
+    bluff3betFreq: 0,
+    stickiness: 1,
+    slowplayFreq: 0,
+    equityNoiseSD: 0,
+    mcTrials,
+    rangeModel,
+    positionAwareness: 1,
+    sizing: 'texture',
+    temperature: 0,
+    defenseFactor: 1,
+    preflopJitter: 0,
+    exploit: false,
+    deterministic: true,
+    neverLimp: true,
+  };
+}
+
+/** The coach's range settings (Appendix A.5 `COACH`: 'reweight+stats', 4,000 trials). */
+export const COACH_LIKE: BrainProfile = testProfile('reweight+stats', 4000, 'coach');
