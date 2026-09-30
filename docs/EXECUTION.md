@@ -6,7 +6,7 @@ This is the working checklist for building [PLAN.md](PLAN.md). PLAN.md is the so
 
 Legend: `[ ]` todo · `[~]` in progress (branch exists) · `[x]` merged to `main` · `[H]` waiting on the human
 
-**Current position:** ▶ 1 Oct (owner: 95% per window, stop at 65% weekly). Stages 0–3 ✅. Stage 4: 4.1–4.3, 4.5 merged; 4.4 tables, 4.6 badge, 4.7 all-in + bench in progress.
+**Current position:** ▶ 1 Oct (owner: 95% per window, stop at 65% weekly). Stages 0–3 ✅. Stage 4: 4.1–4.3, 4.5, 4.6 merged; 4.4 tables and 4.7 all-in + bench in progress. Stage 5 started early: 5.1 tables.
 
 ---
 
@@ -72,13 +72,13 @@ Legend: `[ ]` todo · `[~]` in progress (branch exists) · `[x]` merged to `main
 - [x] 4.3 `feature/win-chance-equity` - `analysis/equity.ts` exact + fixed-n seeded Monte Carlo; C.2–C.3.
 - [~] 4.4 `feature/preflop-equity-tables` - `scripts/gen-preflop.ts`, `analysis/preflop.ts`, `check-tables` in CI.
 - [x] 4.5 `feature/equity-worker` - `workers/protocol.ts`, `equity.worker.ts`, `app/workerClient.ts` (jobId, epoch, cancel, stale-drop, timeouts).
-- [~] 4.6 `feature/win-badge-and-draw-chips` - badge (skeleton, `~`, hysteresis, popover), price chip, draw chips, By-river column.
+- [x] 4.6 `feature/win-badge-and-draw-chips` - badge (skeleton, `~`, hysteresis, popover), price chip, draw chips, By-river column.
 - [~] 4.7 `feature/all-in-run-out-and-bench` - all-in TV mode, luck line, `#bench` route, throttled latency checks.
 - [ ] 4.8 [H] **Human gate:** `#bench` numbers from one real Android phone.
 
 ## Stage 5 - Coach hints and Easy/Medium bots: public MVP (PLAN §8, §9, §10)
 
-- [ ] 5.1 `feature/range-and-push-fold-tables` - `gen-ranges.ts`, `gen-pushfold.ts`, range + push/fold acceptance.
+- [~] 5.1 `feature/range-and-push-fold-tables` - `gen-ranges.ts`, `gen-pushfold.ts`, range + push/fold acceptance.
 - [ ] 5.2 `feature/opponent-range-model` - `brain/features.ts`, `ranges.ts`, full §8.6 model, `opponentStats.ts`, `tunables.ts`.
 - [ ] 5.3 `feature/preflop-and-push-fold-policy` - `preflopPolicy.ts`, `pushfold.ts`.
 - [ ] 5.4 `feature/postflop-policy-and-bet-sizing` - `postflopPolicy.ts`, `sizing.ts`.
@@ -150,6 +150,11 @@ If the human's answer later reveals a problem, the fix becomes a new chunk ahead
 | #15 | feature/card-and-seat-components | e84ece6..bb2a8f6 |
 | #17 | feature/hand-rankings-panel | bb2a8f6..7624866 |
 
+### Budgets to watch in Stage 5 (from 4.6, 1 Oct)
+
+- Table screen DOM: 594 of 600 nodes at 9 players with everything shown — the coach strip (5.9) must find nodes (e.g. collapse/merge elements) or the budget must be renegotiated in PLAN §15.3 with a reason.
+- Main JS: 132.6 KB gzip (target 130, gate 150). Brain tables must live in the brain worker chunk; coach UI should lazy-load its sheet.
+
 ### Pending fixes (apply at merge time)
 
 - ✅ done in PR #10 — 1.3 (PR #10): PLAN D.1 row 6 best5 order contradicts rows 7 and 22. Decision (orchestrator, 27 Sep): within a rank, order by suit s > h > d > c (selection still prefers hole cards, §5.4). Change row 6 to `7♥ 7♦ 7♣ K♠ 2♦`, state the order rule in §5.4, turn the `it.fails` for row 6 into a normal test.
@@ -183,4 +188,5 @@ If the human's answer later reveals a problem, the fix becomes a new chunk ahead
 | 29 Sep 23:38–01:17Z | 3.8 | [PR #31](https://github.com/romanbitca/rb-pocker/pull/31) merged (fac265d): every Stage 3 criterion as Playwright tests in Chromium + WebKit (50 hands × 5 viewports, overlaps 2–9 players, drawer, no card leak per DOM change, resume, offline 6-player hand, DOM ≤ 600, no long task > 50 ms). WebKit drawer bug found and fixed. e2e job now ~11 min. **Stage 3 complete** | 13% → 31% |
 | 30 Sep 20:45–22:05Z | 4.1–4.3 merge train | #27 (0915526), #28 (6a147a6), #29 (d16dc67) merged with green CI; #33 fixes a flaky offline e2e (hero busts → dialog covered the Hands tab) | Sonnet; 5h 4% → 32%, weekly 50% → 54% |
 | 30 Sep 20:45–22:20Z | 4.5 | [PR #32](https://github.com/romanbitca/rb-pocker/pull/32) merged (e33edc3): equity worker + protocol + client; no unrevealed bot card in any posted message (spy, 2–9 players, run-outs); hidden tab cancels all jobs; worker chunk 6.2 KB gzip | 5h 37%, weekly 54% |
+| 30 Sep 21:15–22:40Z | 4.6 | [PR #35](https://github.com/romanbitca/rb-pocker/pull/35) merged (b87dbf6): win badge (skeleton, ~, hysteresis, popover), big-move lines, price chip with capped pot, draw chips with risky outs, By-river column; 0 Seat renders on progress; DOM 594/600 | 5h 50%, weekly 56% |
 | 29 Sep 21:05–21:48Z | 4.1, 4.2 (early) | PRs [#27](https://github.com/romanbitca/rb-pocker/pull/27), [#28](https://github.com/romanbitca/rb-pocker/pull/28) ready, held: all D.2, D.3, C.5 exact; brute-force oracle agreement | (same window) |
