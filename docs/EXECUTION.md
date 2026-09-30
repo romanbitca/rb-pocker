@@ -150,6 +150,10 @@ If the human's answer later reveals a problem, the fix becomes a new chunk ahead
 | #15 | feature/card-and-seat-components | e84ece6..bb2a8f6 |
 | #17 | feature/hand-rankings-panel | bb2a8f6..7624866 |
 
+### Decisions pending (Claude, before Stage 5 completes)
+
+- **§8.4 push/fold acceptance bands** (from 5.1, PR #37): the fictitious-play model gives CO 27.2% (band 28–38), 6-max UTG 15.1% (18–26), 9-handed UTG @12 bb 8.8% (10–15); SB and BTN pass. Suspicion: the bands assume antes (this game has none, §1.6). Plan: check published no-ante Nash push/fold charts (e.g. HRC), then either fix the model (multiway-aware caller) or restate the bands with a named source (risk R16). Tests are `it.fails` until then.
+
 ### Budgets to watch in Stage 5 (from 4.6, 1 Oct)
 
 - Table screen DOM: 594 of 600 nodes at 9 players with everything shown — the coach strip (5.9) must find nodes (e.g. collapse/merge elements) or the budget must be renegotiated in PLAN §15.3 with a reason.
@@ -190,4 +194,5 @@ If the human's answer later reveals a problem, the fix becomes a new chunk ahead
 | 30 Sep 20:45–22:20Z | 4.5 | [PR #32](https://github.com/romanbitca/rb-pocker/pull/32) merged (e33edc3): equity worker + protocol + client; no unrevealed bot card in any posted message (spy, 2–9 players, run-outs); hidden tab cancels all jobs; worker chunk 6.2 KB gzip | 5h 37%, weekly 54% |
 | 30 Sep 21:15–22:40Z | 4.6 | [PR #35](https://github.com/romanbitca/rb-pocker/pull/35) merged (b87dbf6): win badge (skeleton, ~, hysteresis, popover), big-move lines, price chip with capped pot, draw chips with risky outs, By-river column; 0 Seat renders on progress; DOM 594/600 | 5h 50%, weekly 56% |
 | 30 Sep 21:15–23:00Z | 4.4 | [PR #34](https://github.com/romanbitca/rb-pocker/pull/34) merged (a63beb1): 169×8 win/split + 169×10 finals (7.9 KB gzip), check-tables in CI (20 cells ≤ 0.41 pts), preflop HUD + By-river chances now from the tables; worker 14.1 KB gzip | weekly ~57% |
+| 30 Sep 22:42–23:40Z | 5.1 (early) | [PR #37](https://github.com/romanbitca/rb-pocker/pull/37) draft, CI green, held: rankPct/eqVsRange + pushfold tables (5.3 KB + 1.0 KB gzip); §8.3 range acceptance ✅ (after 2 recorded fixes); §8.4 push/fold 2/5 ❌ → decision pending | weekly ~60% |
 | 29 Sep 21:05–21:48Z | 4.1, 4.2 (early) | PRs [#27](https://github.com/romanbitca/rb-pocker/pull/27), [#28](https://github.com/romanbitca/rb-pocker/pull/28) ready, held: all D.2, D.3, C.5 exact; brute-force oracle agreement | (same window) |
