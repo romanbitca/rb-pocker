@@ -46,10 +46,29 @@ const DEVICE = {
   },
 } as const;
 
+/** The long-task spec (tests/e2e/perf.spec.ts): only in the perf project. */
+const PERF = '**/perf.spec.ts';
+
+/** Chromium and WebKit at each viewport: 12 projects. */
+const PROJECTS = (['chromium', 'webkit'] as const).flatMap((browserName) =>
+  VIEWPORTS.map(({ kind, width, height }) => ({
+    name: `${browserName}-${kind}-${width}x${height}`,
+    testIgnore: PERF,
+    use: {
+      ...DEVICE[browserName][kind],
+      browserName,
+      viewport: { width, height },
+      screen: { width, height },
+    },
+  })),
+);
+
 export default defineConfig({
   testDir: 'tests/e2e',
   testMatch: '**/*.spec.ts',
   fullyParallel: true,
+  // The CI runner has 2 vCPUs, where Playwright's default is one worker (half the cores).
+  ...(CI ? { workers: 2 } : {}),
   forbidOnly: CI,
   retries: CI ? 1 : 0,
   reporter: CI
@@ -60,17 +79,16 @@ export default defineConfig({
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
   },
-  projects: (['chromium', 'webkit'] as const).flatMap((browserName) =>
-    VIEWPORTS.map(({ kind, width, height }) => ({
-      name: `${browserName}-${kind}-${width}x${height}`,
-      use: {
-        ...DEVICE[browserName][kind],
-        browserName,
-        viewport: { width, height },
-        screen: { width, height },
-      },
-    })),
-  ),
+  projects: [
+    ...PROJECTS,
+    // §15.3 long tasks are wall time, so they are measured alone: after every other project.
+    {
+      name: 'chromium-perf-390x844',
+      testMatch: PERF,
+      dependencies: PROJECTS.map((p) => p.name),
+      use: PROJECTS.find((p) => p.name === 'chromium-phone-390x844')?.use ?? {},
+    },
+  ],
   // The root `npm start` (apps/web has no start script): the Nest server serving apps/web/dist.
   webServer: {
     command: 'npm start',

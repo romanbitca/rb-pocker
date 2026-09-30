@@ -7,6 +7,7 @@ import { en } from '../../../src/i18n/en.ts';
 import { HandsTab } from '../../../src/ui/components/HandsTab.tsx';
 import { RankingsColumn } from '../../../src/ui/components/RankingsColumn.tsx';
 import {
+  centreRow,
   RankingsDrawer,
   type RankingsCloseReason,
 } from '../../../src/ui/components/RankingsDrawer.tsx';
@@ -258,6 +259,44 @@ suite('RankingsColumn (wide screens, §13.1)', () => {
     fireEvent.click(rail);
     expect(container.querySelectorAll('li[data-category]')).toHaveLength(10);
     expect(smallTapTargets(container)).toEqual([]);
+  });
+});
+
+// Found by the Stage 3 E2E suite (tests/e2e/rankings.spec.ts, WebKit): `scrollIntoView` and a
+// plain `focus()` also scroll the drawer's `overflow: hidden` root while the sheet slides in
+// past its edge, which pushed the scrim off the table.
+suite('RankingsDrawer scrolling on open', () => {
+  it('scrolls only the list: no scrollIntoView, focus without scrolling', () => {
+    const scrollIntoView = vi.fn();
+    const saved = Element.prototype.scrollIntoView;
+    Element.prototype.scrollIntoView = scrollIntoView;
+    const focus = vi.spyOn(HTMLElement.prototype, 'focus');
+    try {
+      render(<Table />);
+      openByTab();
+      expect(dialog()).not.toBeNull();
+      expect(scrollIntoView).not.toHaveBeenCalled();
+      const sheetFocus = focus.mock.calls.filter((_, i) => focus.mock.contexts[i] === dialog());
+      expect(sheetFocus).toEqual([[{ preventScroll: true }]]);
+    } finally {
+      Element.prototype.scrollIntoView = saved;
+      focus.mockRestore();
+    }
+  });
+
+  it('centreRow puts the row in the middle of the list', () => {
+    const list = document.createElement('div');
+    const row = document.createElement('li');
+    let top = 50;
+    Object.defineProperty(list, 'scrollTop', { get: () => top, set: (v: number) => (top = v) });
+    Object.defineProperty(list, 'clientHeight', { value: 400 });
+    list.getBoundingClientRect = () => ({ top: 100, height: 400 }) as DOMRect;
+    row.getBoundingClientRect = () => ({ top: 900, height: 60 }) as DOMRect;
+    centreRow(list, row);
+    // The row's top moves from 800 px below the list's top to (400 − 60) / 2 = 170 px below it.
+    expect(top).toBe(50 + 800 - 170);
+    centreRow(null, row); // nothing to scroll: no error
+    expect(top).toBe(680);
   });
 });
 

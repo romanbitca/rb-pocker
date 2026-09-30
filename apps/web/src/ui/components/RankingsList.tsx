@@ -70,7 +70,9 @@ export const RankingsList = memo(function RankingsList({
   const [openRow, setOpenRow] = useState<number | null>(null);
   const pulses = useImprovementPulse(hero);
   return (
-    <div className={join(styles.list, cardSize === 'md' && styles.wide)}>
+    // `data-examples`: the rows name example cards (not dealt ones); the E2E bot-card watch
+    // (tests/e2e/game.ts, Stage 3 acceptance 7) skips this subtree.
+    <div className={join(styles.list, cardSize === 'md' && styles.wide)} data-examples="">
       <ol className={styles.rows}>
         {RANKINGS.map((row, i) => {
           const status = rowStatus(i, hero);

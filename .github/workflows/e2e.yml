@@ -25,10 +25,12 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
       - run: npm ci --no-audit --no-fund
-      - run: npm run build
+      # The E2E build: the production build plus the test hooks (`?seed=`, `window.__pc`) that the
+      # Stage 3 acceptance suite needs (PLAN §17.5).
+      - run: npm run build:e2e
       - name: Install Chromium and WebKit
         run: npx playwright install --with-deps chromium webkit
-      # Finds the build up to date, then runs playwright; its webServer starts the root `npm start`.
+      # Finds the E2E build up to date, then runs playwright; its webServer starts `npm start`.
       - run: npm run e2e
       - name: Upload the Playwright report
         if: failure()

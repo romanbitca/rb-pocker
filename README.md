@@ -51,7 +51,7 @@ Run these before you push. CI runs them too.
 | `npm run format:check` | Prettier formatting (`npm run format` fixes it) |
 | `npm test` | Unit, component and server tests |
 | `npm run test:slow` | The long tests (CI runs them once a week) |
-| `npm run e2e` | Playwright in Chromium and WebKit at six screen sizes, against the production build. It builds first when the build is missing or older than the code. Before the first run: `npx playwright install chromium webkit` |
+| `npm run e2e` | Playwright in Chromium and WebKit at six screen sizes, against the E2E build (`npm run build:e2e`: the production build plus the test hooks `?seed=` and `window.__pc`). It builds first when that build is missing, is a production build, or is older than the code. Before the first run: `npx playwright install chromium webkit` |
 | `npm run size` | Bundle sizes against the budget (after `npm run build`) |
 | `npm run check:html -w @rb/web` | The built `index.html` has no inline script and carries the CSP (after `npm run build`) |
 
