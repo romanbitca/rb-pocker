@@ -9,6 +9,7 @@ import {
   orderProblem,
   PUSH_FOLD_BYTES,
   PUSH_FOLD_SPOTS,
+  PUSH_FOLD_TOLERANCE_POINTS,
   pushFoldAcceptance,
   RANGE_CLASSES,
   RANGE_KNOTS,
@@ -154,20 +155,22 @@ describe('acceptance functions', () => {
     expect(rangeAcceptance(at({ ...good, '76s': 41 }))).toHaveLength(1);
   });
 
-  it('push/fold acceptance carries the five published spots of the plan', () => {
-    expect(PUSH_FOLD_SPOTS.map((s) => [s.k, s.S, s.min, s.max])).toEqual([
-      [1, 10, 55, 70],
-      [2, 10, 35, 45],
-      [3, 10, 28, 38],
-      [5, 10, 18, 26],
-      [8, 12, 10, 15],
+  it('push/fold acceptance carries the five published no-ante spots of the plan, ± 3 points', () => {
+    expect(PUSH_FOLD_SPOTS.map((s) => [s.k, s.S, s.published])).toEqual([
+      [1, 10, 58.4],
+      [2, 10, 33.0],
+      [3, 10, 25.8],
+      [5, 10, 16.3],
+      [8, 12, 7.5],
     ]);
-    const middle = (k: number, S: number): number => {
-      const spot = PUSH_FOLD_SPOTS.find((s) => s.k === k && s.S === S);
-      return spot === undefined ? 0 : (spot.min + spot.max) / 2;
-    };
-    expect(pushFoldAcceptance(middle)).toEqual([]);
+    for (const s of PUSH_FOLD_SPOTS) {
+      expect(s.min).toBeCloseTo(s.published - PUSH_FOLD_TOLERANCE_POINTS, 9);
+      expect(s.max).toBeCloseTo(s.published + PUSH_FOLD_TOLERANCE_POINTS, 9);
+    }
+    const published = (k: number, S: number): number =>
+      PUSH_FOLD_SPOTS.find((s) => s.k === k && s.S === S)?.published ?? 0;
+    expect(pushFoldAcceptance(published)).toEqual([]);
     expect(pushFoldAcceptance(() => 0)).toHaveLength(5);
-    expect(pushFoldAcceptance((k, S) => (k === 3 ? 27.99 : middle(k, S)))).toHaveLength(1);
+    expect(pushFoldAcceptance((k, S) => (k === 3 ? 22.79 : published(k, S)))).toHaveLength(1);
   });
 });

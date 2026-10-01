@@ -3,8 +3,9 @@
  * (`npm run gen:pushfold`). Writes `src/data/generated/pushfold.ts` and its entry in
  * `checksums.json`; commit both. ⚠️ Never edit them by hand.
  *
- * Fictitious play over the 169 classes (`pushfold-solver.ts`) for every `k` = 1..8 players behind
- * and `S` = 1..15 big blinds, no antes, 300 rounds: `pushPct[k][S]` is the share of all combos
+ * Fictitious play over the 169 classes (`pushfold-solver.ts`: positional callers, the pusher's
+ * cards removed) for every `k` = 1..8 players behind and `S` = 1..15 big blinds, no antes,
+ * 3,000 rounds (`ITERATIONS`): `pushPct[k][S]` is the share of all combos
  * the pusher shoves, `callPct[S]` the share the big blind calls a small-blind shove with (the
  * `k = 1` game). The game needs the equity of every class against every class: 14,196 pairs,
  * each the mean over the rival's free combos (`PairJob`), sampled with a fixed seed and dealt
@@ -32,7 +33,7 @@ import { runRangeJobs, type PairJob, type Shares } from './range-jobs.ts';
 import { ITERATIONS, solvePushFold, type Matchups } from './pushfold-solver.ts';
 
 /** Bumped whenever the method or the layout changes: `check-tables` then demands a regeneration. */
-export const GENERATOR = 'gen-pushfold@1';
+export const GENERATOR = 'gen-pushfold@2';
 
 /** Monte Carlo trials behind every class-against-class equity (spread over the rival's combos). */
 export const PAIR_TRIALS = 40_000;
@@ -148,6 +149,7 @@ function pushFoldModule(bytes: Uint8Array, trials: number, iterations: number): 
       'rewrites this file and `npm run gen:check` fails when it changes (PLAN section 7.5).',
       '',
       'Push/fold ranges (PLAN 8.4): fictitious play over the 169 starting-hand classes, no antes,',
+      'positional callers (the blinds call at their own price), the cards of the pusher removed,',
       `${iterations} rounds, for k = 1..8 players behind and S = 1..15 big blinds. The class against`,
       `class equities: ${trials} trials per pair, table seed ${TABLE_SEED}.`,
       '',
