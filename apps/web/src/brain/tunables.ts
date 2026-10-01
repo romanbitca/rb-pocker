@@ -218,3 +218,54 @@ export const EV_OPEN_PER_LIMPER_BB = 1;
 export const CLOSE_SPOT_POT = 0.03;
 /** …and Clear when they are more than this share apart. */
 export const CLEAR_SPOT_POT = 0.1;
+
+// --- 5.3 preflop / push-fold ---
+
+/** Open size in big blinds; the small blind (3+ handed) opens bigger; +1 bb per limper (§8.3). */
+export const OPEN_SIZE_BB = 2.5;
+export const OPEN_SIZE_SB_BB = 3;
+export const OPEN_SIZE_PER_LIMPER_BB = 1;
+/** 3-bet to 3 × the open in position, 4 × out of position, + 1 × the open per caller (§8.3). */
+export const THREE_BET_SIZE_IP = 3;
+export const THREE_BET_SIZE_OOP = 4;
+export const THREE_BET_SIZE_PER_CALLER = 1;
+/** 4-bet to 2.3 × the 3-bet (§8.3). */
+export const FOUR_BET_SIZE = 2.3;
+/** Shove instead when the raise-to would be at least this share of the hero's chips (§8.3). */
+export const SHOVE_INSTEAD_SHARE = 0.35;
+
+/** Isolate limpers with the top 0.7 × openPct(k); the big blind only below 15% (heads-up 30%). */
+export const ISOLATE_FACTOR = 0.7;
+export const BB_ISOLATE_PCT = 15;
+export const BB_ISOLATE_PCT_HEADS_UP = 30;
+
+/** A raiser's range is clamped to 3..100% (§8.3 step 1). */
+export const VILLAIN_RANGE_MIN_PCT = 3;
+/** Facing a 3-bet the 3-bettor holds max(3, 0.25 × the opener's range); facing a 4-bet+ 2.5%. */
+export const THREE_BET_RANGE_SHARE = 0.25;
+export const FOUR_BET_RANGE_PCT = 2.5;
+/** Weighted Monte Carlo trials of E when callers are already in (§8.3 step 2). */
+export const PREFLOP_MULTIWAY_TRIALS = 1500;
+
+/** Realisation R (§8.3 step 3, HEURISTIC): in position, out of position, gapped offsuit factor. */
+export const PREFLOP_R_IP = 0.95;
+export const PREFLOP_R_OOP = 0.8;
+export const PREFLOP_R_GAPPED_OFFSUIT = 0.9;
+/** "Offsuit unpaired hands with a rank gap ≥ 3" (K9o, KTo, A5o; not KJo). */
+export const PREFLOP_GAP_MIN = 3;
+/** Set-mining implied odds of a pocket pair: 0.118 × 0.4 × effStackAfterCall (§8.3 step 4). */
+export const SET_HIT_CHANCE = 0.118;
+export const SET_PAYOFF_SHARE = 0.4;
+/** The SET_MINING reason names a call with a pocket pair up to 99 (rank index 7; twos = 0). */
+export const SET_MINING_MAX_PAIR_RANK = 7;
+
+/** Re-raise for value: 3-bet or 4-bet with E ≥ 0.58; all-in against a 4-bet+ with E ≥ 0.50. */
+export const RERAISE_VALUE_EQUITY = 0.58;
+export const ALLIN_VS_FOUR_BET_EQUITY = 0.5;
+/** Calling a raise needs rankPct ≤ min(50, 1.5 × V) (or the big blind); a 3-bet 1.5 × V. */
+export const CALL_RANGE_FACTOR = 1.5;
+export const CALL_RANGE_CAP_PCT = 50;
+
+/** §8.4: push or fold when effBB ≤ 12; with limpers shove only the top 0.8 × pushPct. */
+export const PUSH_FOLD_MAX_BB = 12;
+export const PUSH_LIMPERS_FACTOR = 0.8;
