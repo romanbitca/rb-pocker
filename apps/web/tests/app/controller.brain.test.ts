@@ -477,7 +477,7 @@ describe('the worker is killed, silent or gone (§12.14: the hand always finishe
     expect(h.state().game.hand?.phase).toBe('betting');
   });
 
-  it('a silent worker: after 2 s the bot takes the safest action; two timeouts in a row recreate it', async () => {
+  it('a silent worker: on timeout the bot takes the safest action; two timeouts in a row recreate it', async () => {
     const brain = manualBrain();
     const h = makeHarness({ brain: brain.client, settings: { players: 6 } });
     h.dispatch({ type: 'play' });
@@ -486,7 +486,7 @@ describe('the worker is killed, silent or gone (§12.14: the hand always finishe
     const [first] = [...brain.pending.values()];
     if (first === undefined) throw new Error('no request');
     const before = inputsOf(h).length;
-    await elapse(TIMING.botTimeoutMs - 1);
+    await elapse(TIMING.botFirstTimeoutMs - 1);
     expect(inputsOf(h)).toHaveLength(before);
     expect(brain.fake.instances).toHaveLength(1);
     await elapse(1);
@@ -504,7 +504,7 @@ describe('the worker is killed, silent or gone (§12.14: the hand always finishe
     await flush();
     const second = [...brain.pending.values()].find((p) => p.req.jobId !== first.req.jobId);
     if (second === undefined) throw new Error('no second request');
-    await elapse(TIMING.botTimeoutMs);
+    await elapse(TIMING.botFirstTimeoutMs);
     expect(brain.fake.instances).toHaveLength(2);
     expect(brain.fake.instances[0]?.terminated).toBe(true);
     expect(h.state().game.diag.botFallbacks).toBe(2);
@@ -517,6 +517,36 @@ describe('the worker is killed, silent or gone (§12.14: the hand always finishe
     expect(h.state().game.diag.botFallbacks).toBe(2);
   }, 30_000);
 
+  it('the first decision of a session waits up to 3 s for a worker still starting; once it has answered, 2 s', async () => {
+    expect(TIMING.botFirstTimeoutMs).toBe(3000);
+    expect(TIMING.botTimeoutMs).toBe(2000);
+    const brain = manualBrain();
+    const h = makeHarness({ brain: brain.client });
+    h.dispatch({ type: 'play' });
+    await toBotTurn(h);
+    await flush();
+    const [first] = [...brain.pending.values()];
+    if (first === undefined) throw new Error('no request');
+    const before = inputsOf(h).length;
+    await elapse(TIMING.botTimeoutMs); // 2 s: the worker is still starting; the bot waits
+    expect(inputsOf(h)).toHaveLength(before);
+    expect(brain.cancelled).not.toContain(first.req.jobId);
+    brain.answer(first.req.jobId); // the worker is up and answers
+    await untilInputs(h, before + 1);
+    expect(h.state().game.diag.botFallbacks).toBe(0);
+
+    // From now on a silent worker costs the bot 2 s.
+    await toBotTurn(h);
+    await flush();
+    const next = [...brain.pending.values()].find((p) => p.req.jobId !== first.req.jobId);
+    if (next === undefined) throw new Error('no second request');
+    await elapse(TIMING.botTimeoutMs - 1);
+    expect(brain.cancelled).not.toContain(next.req.jobId);
+    await elapse(1);
+    expect(brain.cancelled).toContain(next.req.jobId);
+    expect(h.state().game.diag.botFallbacks).toBe(1);
+  });
+
   it('a reply that comes after the timeout is dropped: the bot keeps the safest action', async () => {
     const brain = manualBrain();
     const h = makeHarness({ brain: brain.client });
@@ -526,7 +556,7 @@ describe('the worker is killed, silent or gone (§12.14: the hand always finishe
     const [job] = [...brain.pending.values()];
     if (job === undefined) throw new Error('no request');
     const before = inputsOf(h).length;
-    await elapse(TIMING.botTimeoutMs);
+    await elapse(TIMING.botFirstTimeoutMs);
     await untilInputs(h, before + 1);
     expect(inputsOf(h)[before]).toEqual({
       kind: 'act',

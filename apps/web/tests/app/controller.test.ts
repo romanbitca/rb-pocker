@@ -525,7 +525,7 @@ describe('errors (§4.5)', () => {
     expect(h.state().game.diag).toEqual({ engineErrors: 1, botFallbacks: 1, voidedHands: 0 });
   });
 
-  it('a brain error or a reply later than 2 s gives the safest legal action', async () => {
+  it('a brain error or a reply later than the timeout gives the safest legal action', async () => {
     const brain = manualBrain();
     const h = makeHarness({ brain: brain.client });
     h.dispatch({ type: 'play' });
@@ -534,7 +534,8 @@ describe('errors (§4.5)', () => {
     const [job] = [...brain.pending.values()];
     if (job === undefined) throw new Error('no request');
     const before = inputsOf(h).length;
-    await elapse(TIMING.botTimeoutMs - 1);
+    // The very first decision of a session gets 3 s: the worker may still be starting (§12.14).
+    await elapse(TIMING.botFirstTimeoutMs - 1);
     expect(inputsOf(h)).toHaveLength(before);
     await elapse(1);
     expect(brain.cancelled).toContain(job.req.jobId);

@@ -98,6 +98,11 @@ export const TIMING = {
   resumeAfterVisibleMs: 300,
   /** A bot decision that takes longer gets the safest legal action (Appendix A.6). */
   botTimeoutMs: BOT_TIMEOUT_MS,
+  /**
+   * The same for decisions until the brain worker has answered once: it may still be starting
+   * (§12.14: "max 3 s" until `brain.worker` is ready).
+   */
+  botFirstTimeoutMs: 3000,
   /** How long a toast stays (§12.11). */
   toastMs: 4000,
   /** Settings changes are saved 250 ms after the last one (§14.2), and at once when hidden. */
@@ -330,6 +335,8 @@ export class TableController {
   private flow: FlowTimer | null = null;
   private job: BotJob | null = null;
   private headlessJob: HeadlessJob | null = null;
+  /** `brain.worker` has answered at least once, so it is running (the first decision waits 3 s). */
+  private brainWarm = false;
   private timerSeq = 0;
   private toastSeq = 0;
   private newTableSeq = 0;
@@ -780,9 +787,12 @@ export class TableController {
     const jobId = this.brain.request({
       slot: `bot:${seat}`,
       epoch,
-      timeoutMs: TIMING.botTimeoutMs,
+      timeoutMs: this.brainWarm ? TIMING.botTimeoutMs : TIMING.botFirstTimeoutMs,
       build: (id): BrainRequest => ({ kind: 'botDecision', jobId: id, epoch, obs, profile, seed }),
-      onEvent,
+      onEvent: (event) => {
+        if (event.type === 'reply') this.brainWarm = true;
+        onEvent(event);
+      },
     });
     this.brainLog('request', { jobId, seat, handSeq: h.handSeq, logLength: h.log.length });
     return jobId;
