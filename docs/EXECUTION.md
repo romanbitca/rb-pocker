@@ -6,7 +6,7 @@ This is the working checklist for building [PLAN.md](PLAN.md). PLAN.md is the so
 
 Legend: `[ ]` todo · `[~]` in progress (branch exists) · `[x]` merged to `main` · `[H]` waiting on the human
 
-**Current position:** ▶ 1 Oct (owner: 95% per window, stop at 65% weekly). Stages 0–3 ✅. Stage 4: 4.1–4.6 merged; 4.7 all-in + bench in CI. Stage 5 started early: 5.1 tables, 5.2 range model (held until Stage 4 completes).
+**Current position:** ▶ 1 Oct (owner: 95% per window, stop at 65% weekly). Stages 0–3 ✅. Stage 4: 4.1–4.6 merged; 4.7 (PR #36) built — apply the perf-check decision below, then merge → Stage 4 code complete. Stage 5 held: #37 (5.1), #38 (5.2).
 
 ---
 
@@ -149,6 +149,10 @@ If the human's answer later reveals a problem, the fix becomes a new chunk ahead
 | #19 | feature/local-session-and-settings-storage | ba91ca9..f54cce4 |
 | #15 | feature/card-and-seat-components | e84ece6..bb2a8f6 |
 | #17 | feature/hand-rankings-panel | bb2a8f6..7624866 |
+
+### Decisions made
+
+- **4.7 acceptance 3 (perf at 6× throttle) in CI** (orchestrator, 1 Oct 00:30Z): CDP cannot throttle workers, and on the shared 2-vCPU runner the modelled 6× worker time is noise (final 539–748 ms in CI vs 270 ms locally). Decision: the two perf checks run **report-only** in the PR e2e job (numbers printed in the job summary), are **enforced locally** (`npm run e2e:perf` or equivalent, run before merging perf-sensitive PRs), and on a **real phone via `#bench`** (4.8 [H]). PLAN Testing strategy already says latency budgets are checked "per stage on a real phone"; write this into §17.5 + risk register.
 
 ### Decisions pending (Claude, before Stage 5 completes)
 
