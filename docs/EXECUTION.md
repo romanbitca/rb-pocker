@@ -6,7 +6,7 @@ This is the working checklist for building [PLAN.md](PLAN.md). PLAN.md is the so
 
 Legend: `[ ]` todo · `[~]` in progress (branch exists) · `[x]` merged to `main` · `[H]` waiting on the human
 
-**Current position:** ▶ 1 Oct (owner: up to 80% weekly). Stages 0–4 ✅ code complete in CI (4.8 = owner's #bench on Android). Merging #37 (5.1), #38 (5.2); building 5.3, 5.4, 5.5, 5.8 in parallel.
+**Current position:** ▶ Stages 0–4 ✅ (4.8 = owner's #bench). Stage 5: 5.1 (#37), 5.2 (#38) merged. Ready: #40 (5.5 guardrails + EV), #42 (5.8 brain worker). Drafts needing rebase onto main + CI: #41 (5.3, rebase --onto origin/main 944f4e7), #39 (5.4). Next after those: 5.6 explanations, 5.7 profiles + decide/hint, 5.9 coach UI, 5.10 levels, 5.11 self-play.
 
 ---
 
@@ -78,8 +78,8 @@ Legend: `[ ]` todo · `[~]` in progress (branch exists) · `[x]` merged to `main
 
 ## Stage 5 - Coach hints and Easy/Medium bots: public MVP (PLAN §8, §9, §10)
 
-- [~] 5.1 `feature/range-and-push-fold-tables` - `gen-ranges.ts`, `gen-pushfold.ts`, range + push/fold acceptance.
-- [~] 5.2 `feature/opponent-range-model` - `brain/features.ts`, `ranges.ts`, full §8.6 model, `opponentStats.ts`, `tunables.ts`.
+- [x] 5.1 `feature/range-and-push-fold-tables` - `gen-ranges.ts`, `gen-pushfold.ts`, range + push/fold acceptance.
+- [x] 5.2 `feature/opponent-range-model` - `brain/features.ts`, `ranges.ts`, full §8.6 model, `opponentStats.ts`, `tunables.ts`.
 - [~] 5.3 `feature/preflop-and-push-fold-policy` - `preflopPolicy.ts`, `pushfold.ts`.
 - [~] 5.4 `feature/postflop-policy-and-bet-sizing` - `postflopPolicy.ts`, `sizing.ts`.
 - [~] 5.5 `feature/coach-guardrails-and-ev-model` - `guardrails.ts`, `ev.ts`; each guardrail has a test that fails without it.
@@ -158,7 +158,7 @@ If the human's answer later reveals a problem, the fix becomes a new chunk ahead
 
 ### Decisions pending (Claude, before Stage 5 completes)
 
-- **§8.4 push/fold acceptance bands** (from 5.1, PR #37): the fictitious-play model gives CO 27.2% (band 28–38), 6-max UTG 15.1% (18–26), 9-handed UTG @12 bb 8.8% (10–15); SB and BTN pass. Suspicion: the bands assume antes (this game has none, §1.6). Plan: check published no-ante Nash push/fold charts (e.g. HRC), then either fix the model (multiway-aware caller) or restate the bands with a named source (risk R16). Tests are `it.fails` until then.
+- ✅ resolved in 5.3 (PR #41): bands came from 12.5%-ante charts; restated from PokerCoaching.com no-ante charts (± 3 pts), model fixed (blinds call at own price, pusher's cards removed, 3,000 rounds); R16 closed. — **§8.4 push/fold acceptance bands** (from 5.1, PR #37): the fictitious-play model gives CO 27.2% (band 28–38), 6-max UTG 15.1% (18–26), 9-handed UTG @12 bb 8.8% (10–15); SB and BTN pass. Suspicion: the bands assume antes (this game has none, §1.6). Plan: check published no-ante Nash push/fold charts (e.g. HRC), then either fix the model (multiway-aware caller) or restate the bands with a named source (risk R16). Tests are `it.fails` until then.
 
 ### Budgets to watch in Stage 5 (from 4.6, 1 Oct)
 
@@ -203,4 +203,5 @@ If the human's answer later reveals a problem, the fix becomes a new chunk ahead
 | 30 Sep 22:42–23:40Z | 5.1 (early) | [PR #37](https://github.com/romanbitca/rb-pocker/pull/37) draft, CI green, held: rankPct/eqVsRange + pushfold tables (5.3 KB + 1.0 KB gzip); §8.3 range acceptance ✅ (after 2 recorded fixes); §8.4 push/fold 2/5 ❌ → decision pending | weekly ~60% |
 | 30 Sep 23:18–00:00Z | 5.2 (early) | [PR #38](https://github.com/romanbitca/rb-pocker/pull/38) draft, CI green, stacked on #37: full §8.6 range model (priors, re-weighting, looseness), features, opponent stats, tunables; non-cheating re-deal test; brain coverage 99.5–100%; E9/E13/E16 range checks ✅ | 5h 86%, weekly 61% |
 | 1 Oct 20:40–21:00Z | 4.7 | [PR #36](https://github.com/romanbitca/rb-pocker/pull/36) merged (27473f4): all-in TV mode + luck line, `#bench`; perf checks report-only in CI, enforced locally (risk R17). **Stage 4 code complete** | weekly 68% → 71% |
+| 1 Oct 20:40–21:55Z | 5.1, 5.2 merged; 5.3, 5.5, 5.8 built | #37 (db1d249), #38 (d5848b7) merged. Ready/held: [#40](https://github.com/romanbitca/rb-pocker/pull/40) guardrails + EV, [#42](https://github.com/romanbitca/rb-pocker/pull/42) brain worker (no HandState/hidden cards in any message; hands finish if the worker dies), [#41](https://github.com/romanbitca/rb-pocker/pull/41) preflop + push/fold (E1–E8, E18 ✅; R16 closed with sources). 5.4 [#39](https://github.com/romanbitca/rb-pocker/pull/39) in progress | weekly 68% → ~79% |
 | 29 Sep 21:05–21:48Z | 4.1, 4.2 (early) | PRs [#27](https://github.com/romanbitca/rb-pocker/pull/27), [#28](https://github.com/romanbitca/rb-pocker/pull/28) ready, held: all D.2, D.3, C.5 exact; brute-force oracle agreement | (same window) |
