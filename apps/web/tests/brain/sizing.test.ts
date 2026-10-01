@@ -11,7 +11,7 @@ import {
   raiseTarget,
   sizeIntent,
   sizingTexture,
-  snapToLegal,
+  snapRaiseTo,
   textureBetFraction,
 } from '../../src/brain/sizing.ts';
 import type { PolicyIntent } from '../../src/brain/types.ts';
@@ -123,35 +123,35 @@ describe('the all-in row and snapping (§8.7)', () => {
 
   it('rounds to a multiple of the small blind, then clamps to the legal bounds', () => {
     const legal = synthLegal(0, 9700, 0, 0, 100);
-    expect(snapToLegal(233.3, legal, 50, 0)).toEqual({
+    expect(snapRaiseTo(233.3, legal, 50, 0)).toEqual({
       action: { type: 'bet', to: 250 },
       kind: 'bet',
     });
-    expect(snapToLegal(224.9, legal, 50, 0).action).toEqual({ type: 'bet', to: 200 });
-    expect(snapToLegal(60, legal, 50, 0).action).toEqual({ type: 'bet', to: 100 }); // the min bet
-    expect(snapToLegal(20000, legal, 50, 0)).toEqual({
+    expect(snapRaiseTo(224.9, legal, 50, 0).action).toEqual({ type: 'bet', to: 200 });
+    expect(snapRaiseTo(60, legal, 50, 0).action).toEqual({ type: 'bet', to: 100 }); // the min bet
+    expect(snapRaiseTo(20000, legal, 50, 0)).toEqual({
       action: { type: 'bet', to: 9700 },
       kind: 'allin',
     });
   });
 
   it('at or below the call amount the action becomes a call (a check when nothing is to call)', () => {
-    expect(snapToLegal(10, synthLegal(0, 9700, 0, 0, 100), 50, 0).action).toEqual({
+    expect(snapRaiseTo(10, synthLegal(0, 9700, 0, 0, 100), 50, 0).action).toEqual({
       type: 'check',
     });
     const facing = synthLegal(200, 9700, 0, 200, 100);
-    expect(snapToLegal(220, facing, 50, 0).action).toEqual({ type: 'call' });
-    expect(snapToLegal(260, facing, 50, 0).action).toEqual({ type: 'raise', to: 400 }); // min raise
-    expect(snapToLegal(Number.NaN, facing, 50, 0).action).toEqual({ type: 'call' });
+    expect(snapRaiseTo(220, facing, 50, 0).action).toEqual({ type: 'call' });
+    expect(snapRaiseTo(260, facing, 50, 0).action).toEqual({ type: 'raise', to: 400 }); // min raise
+    expect(snapRaiseTo(Number.NaN, facing, 50, 0).action).toEqual({ type: 'call' });
     // No raise is legal (the call is all-in): call.
-    expect(snapToLegal(900, synthLegal(500, 300, 0, 500, 100), 50, 0).action).toEqual({
+    expect(snapRaiseTo(900, synthLegal(500, 300, 0, 500, 100), 50, 0).action).toEqual({
       type: 'call',
     });
   });
 
   it('an odd all-in amount stays legal; allInAction is the legal maximum', () => {
     const legal = synthLegal(200, 1234, 0, 200, 100);
-    expect(snapToLegal(5000, legal, 50, 0)).toEqual({
+    expect(snapRaiseTo(5000, legal, 50, 0)).toEqual({
       action: { type: 'raise', to: 1234 },
       kind: 'allin',
     });

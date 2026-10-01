@@ -267,17 +267,15 @@ export function withEquity(f: Features, e: number): Features {
 
 // ── §9.4 step 4 defence (bots) ─────────────────────────────────────────────────────────────────
 
-/** Minimum defence frequency against a bet that puts `amountIn` into `potBefore` (§8.9). */
-export function mdf(potBefore: number, amountIn: number): number {
-  return potBefore + amountIn > 0 ? potBefore / (potBefore + amountIn) : 1;
-}
-
-/** MDF against the last bet or raise of the current street; 1 when there is none. */
+/**
+ * The minimum defence frequency against the current street's last bet or raise: `pot / (pot +
+ * inv)` (§8.9) with that action's `potBefore` and `amountIn`; 1 when there is none.
+ */
 export function mdfFacing(obs: Observation): number {
   for (let i = obs.history.length - 1; i >= 0; i--) {
     const a = obs.history[i] as Observation['history'][number];
     if (a.street !== obs.street) break;
-    if (a.type === 'bet' || a.type === 'raise') return mdf(a.potBefore, a.amountIn);
+    if (a.type === 'bet' || a.type === 'raise') return a.potBefore / (a.potBefore + a.amountIn);
   }
   return 1;
 }

@@ -189,7 +189,7 @@ export function allInAction(legal: LegalActions): SizedAction {
  * as it does when no bet or raise is legal; otherwise clamp to the legal bounds. The legal maximum
  * is the hero's all-in (`kind` 'allin').
  */
-export function snapToLegal(
+export function snapRaiseTo(
   to: number,
   legal: LegalActions,
   sb: number,
@@ -229,5 +229,5 @@ export function sizeIntent(
   if (isTextureSet(sizing) && allInByRule(to, f, spot.heroStreetBet, spot.currentBet)) {
     return allInAction(legal);
   }
-  return snapToLegal(to, legal, spot.sb, spot.heroStreetBet);
+  return snapRaiseTo(to, legal, spot.sb, spot.heroStreetBet);
 }
