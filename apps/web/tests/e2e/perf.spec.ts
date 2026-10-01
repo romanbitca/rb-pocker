@@ -49,8 +49,8 @@ test('no main-thread task over 50 ms during 25 hands with 6 players', async ({
 // "6×" is 6× the dev Mac (Apple M1 Pro), the machine the budgets were checked on (PLAN §15.3,
 // R16). CDP's rate is relative to the machine it runs on, and CI's 2-vCPU runner is about 2.5×
 // slower: at a plain 6× it is a far slower "phone" (there the budgets passed only on a retry). So
-// each test times a fixed loop on the main thread first, before any throttle, and uses
-// r = 6 × REF_LOOP_MS ÷ that time (at least 1): 6 on the dev Mac, about 2.5 on CI.
+// each test first reads this machine's `#bench` evaluator speed, before the game starts, and uses
+// r = 6 × that speed ÷ REF_EVALS_PER_SEC (at least 1): 6 on the dev Mac, about 2.4 on CI.
 //
 // The halves are two tests. With the CDP throttle on, CI measured the worker 3–16× slower than the
 // dev Mac (the throttled main thread, Playwright and the server share the runner's two CPUs), and
@@ -59,8 +59,8 @@ test('no main-thread task over 50 ms during 25 hands with 6 players', async ({
 
 /** The CPU slow-down, relative to the dev Mac (§15.3). */
 const RATE = 6;
-/** The dev Mac's time for `loopMs` (Chromium, best of five; 37.2–37.5 ms in five samples). */
-const REF_LOOP_MS = 37.4;
+/** The dev Mac's `#bench` evaluator speed in this project (Chromium as a Pixel 7: 15.6–15.7M/s). */
+const REF_EVALS_PER_SEC = 15_600_000;
 const BUDGET = { preflopFinal: 50, firstPostflop: 150, final: 600 } as const;
 
 interface Timing {
@@ -85,30 +85,31 @@ interface LogLine {
   timing?: Timing;
 }
 
-/** Ms this machine's main thread takes for a fixed loop (the best of five). No throttle yet. */
-function loopMs(page: Page): Promise<number> {
-  return page.evaluate(() => {
-    let best = Number.POSITIVE_INFINITY;
-    let x = 0x9e3779b9 | 0;
-    for (let run = 0; run < 5; run++) {
-      const t = performance.now();
-      for (let i = 0; i < 20_000_000; i++) {
-        x ^= x << 13;
-        x ^= x >>> 17;
-        x ^= x << 5;
-      }
-      best = Math.min(best, performance.now() - t);
-    }
-    return x === 0 ? Number.NaN : best; // x is never 0: it keeps the loop from being dropped
-  });
+/**
+ * This machine's `#bench` evaluator speed (§15.4: 5M hands in `equity.worker`), from a page of its
+ * own that closes before the game starts. The evaluator is the workload's hot path: a plain loop
+ * is no measure (CI ran an integer loop as fast as the dev Mac, the evaluator 2.5× slower).
+ */
+async function benchEvalsPerSec(page: Page): Promise<number> {
+  const bench = await page.context().newPage();
+  try {
+    await bench.goto('/#bench');
+    await bench.locator('[data-bench="done"]').waitFor({ timeout: 120_000 });
+    const text = await bench.getByLabel('The results as text').inputValue();
+    return Number(/Hand evaluator: ([\d.]+) million/.exec(text)?.[1]) * 1_000_000;
+  } finally {
+    await bench.close();
+  }
 }
 
 /** The rate that makes this machine as slow as the dev Mac at 6× (see the note above). */
 async function calibratedRate(page: Page): Promise<number> {
-  const ms = await loopMs(page);
-  const rate = Math.max(1, (RATE * REF_LOOP_MS) / ms);
+  const perSec = await benchEvalsPerSec(page);
+  expect(perSec, 'the #bench evaluator speed').toBeGreaterThan(0);
+  const rate = Math.max(1, (RATE * perSec) / REF_EVALS_PER_SEC);
+  const m = (x: number): string => `${(x / 1_000_000).toFixed(1)}M/s`;
   console.info(
-    `speed loop ${ms.toFixed(1)} ms (dev Mac ${REF_LOOP_MS} ms): rate ${rate.toFixed(2)}×`,
+    `#bench evaluator ${m(perSec)} (dev Mac ${m(REF_EVALS_PER_SEC)}): rate ${rate.toFixed(2)}×`,
   );
   return rate;
 }
@@ -218,8 +219,8 @@ test('win chance within its budgets at 6× CPU, from the worker timing logs (Sta
   test.setTimeout(600_000);
   const errors = collectErrors(page);
   const seed = seedFor(testInfo);
+  const rate = await calibratedRate(page); // before the game starts: it measures alone
   await openApp(page, seed);
-  const rate = await calibratedRate(page);
   const all = await play20(page, seed, 1); // the main thread at full speed (see the note above)
   console.info(report(testInfo, all, rate));
   const pre = all.filter((j) => boardOf(j) === 0);
@@ -252,8 +253,8 @@ test('no main-thread task over 50 ms at 6× CPU in 20 hands (Stage 4, 3)', async
   test.setTimeout(600_000);
   const errors = collectErrors(page);
   const seed = seedFor(testInfo);
+  const rate = await calibratedRate(page); // before the game starts: it measures alone
   await openApp(page, seed);
-  const rate = await calibratedRate(page);
   await play20(page, seed, rate);
   const tasks = await longTasks(page);
   console.info(`main-thread tasks over 50 ms at ${rate.toFixed(2)}×: ${JSON.stringify(tasks)}`);
