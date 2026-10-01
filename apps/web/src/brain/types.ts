@@ -179,3 +179,37 @@ export interface GradeResult {
   leak: LeakId | null;
   trace: Reason[];
 }
+
+// --- 5.5 guardrails / EV ---
+
+/**
+ * The §8.8 guardrails. Rule 4 has two halves, each its own rule so that each can be tested alone:
+ * `allInPriceGood` (always call) and `allInPriceBad` (never call). `legalAmount` is rule 5.
+ */
+export type GuardrailId =
+  | 'checkFree'
+  | 'tooStrongToFold'
+  | 'riverNoChance'
+  | 'allInPriceGood'
+  | 'allInPriceBad'
+  | 'legalAmount';
+
+/** What the guardrails did to a proposed action (§8.8). */
+export interface GuardrailResult {
+  /** The corrected action: legal whenever every rule is on. */
+  action: PlayerAction;
+  /** The rules that changed the action, in the order they fired ([] when it stood). */
+  fired: GuardrailId[];
+  /**
+   * One GUARDRAIL reason per fired rule 1–4, data `{ rule, detail }` with `detail` the rule's id
+   * (Appendix F.1 `{detail}`); rule 5 only snaps an amount and explains nothing.
+   */
+  trace: Reason[];
+}
+
+/** One §8.9 candidate: its key, the legal action and its EV in chips relative to folding. */
+export interface EvCandidate {
+  key: CandidateKey;
+  action: PlayerAction;
+  ev: number;
+}

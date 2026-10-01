@@ -192,3 +192,29 @@ export const STATS_PRIOR_WEIGHT = 20;
 export const LOOSENESS_BASE_VPIP = 0.22;
 export const LOOSENESS_MIN = 0.5;
 export const LOOSENESS_MAX = 3;
+
+// --- 5.5 guardrails / EV ---
+
+/** §8.8 rule 2: never fold with a per-opponent strength `p` at or above this. */
+export const GUARD_NEVER_FOLD_P = 0.95;
+/** §8.8 rule 3: never call a river bet with `eRange` below this. */
+export const GUARD_RIVER_MIN_EQUITY = 0.03;
+/** §8.8 rule 4: facing an all-in, always call when `eRange ≥ need + GUARD_ALLIN_CALL_MARGIN`. */
+export const GUARD_ALLIN_CALL_MARGIN = 0.15;
+/** §8.8 rule 4: facing an all-in, never call when `eRange < need − GUARD_ALLIN_FOLD_MARGIN`. */
+export const GUARD_ALLIN_FOLD_MARGIN = 0.25;
+
+/** §8.9: each opponent continues with `c = clamp(MDF × stickiness, CONTINUE_MIN, CONTINUE_MAX)`. */
+export const CONTINUE_MIN = 0.15;
+export const CONTINUE_MAX = 0.95;
+/** §8.9 candidates: postflop bets as fractions of the pot (all-in is added separately). */
+export const EV_BET_FRACTIONS: readonly number[] = [1 / 3, 1 / 2, 2 / 3, 3 / 4, 1];
+/** §8.9 candidates: raises to these multiples of the bet (plus the minimum and all-in). */
+export const EV_RAISE_MULTIPLES: readonly number[] = [2.5, 3, 4];
+/** §8.9 candidates: preflop opens to these many big blinds, plus one per limper (and all-in). */
+export const EV_OPEN_BB: readonly number[] = [2.5, 3, 4];
+export const EV_OPEN_PER_LIMPER_BB = 1;
+/** §8.9: a spot is Close when the top two candidate EVs are within this share of the pot… */
+export const CLOSE_SPOT_POT = 0.03;
+/** …and Clear when they are more than this share apart. */
+export const CLEAR_SPOT_POT = 0.1;
