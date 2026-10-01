@@ -6,7 +6,7 @@ This is the working checklist for building [PLAN.md](PLAN.md). PLAN.md is the so
 
 Legend: `[ ]` todo · `[~]` in progress (branch exists) · `[x]` merged to `main` · `[H]` waiting on the human
 
-**Current position:** ▶ Stages 0–4 ✅ (4.8 = owner's #bench). Stage 5: 5.1 (#37), 5.2 (#38) merged. Ready: #40 (5.5 guardrails + EV), #42 (5.8 brain worker). Drafts needing rebase onto main + CI: #41 (5.3, rebase --onto origin/main 944f4e7), #39 (5.4). Next after those: 5.6 explanations, 5.7 profiles + decide/hint, 5.9 coach UI, 5.10 levels, 5.11 self-play.
+**Current position:** ⏸ Paused at the owner's 80% weekly cap (1 Oct 22:00Z; weekly resets 2 Oct 18:00Z). Stages 0–4 ✅ (4.8 = owner's #bench). Stage 5: 5.1, 5.2 merged. Open PRs, all based on main now: [#40](https://github.com/romanbitca/rb-pocker/pull/40) 5.5 guardrails + EV (ready), [#42](https://github.com/romanbitca/rb-pocker/pull/42) 5.8 brain worker (ready, CI green), [#41](https://github.com/romanbitca/rb-pocker/pull/41) 5.3 preflop + push/fold (draft), [#43](https://github.com/romanbitca/rb-pocker/pull/43) 5.4 postflop + sizing (draft; replaces auto-closed #39). #40, #41, #43 still contain pre-squash 5.1/5.2 commits: rebase each with `git rebase --onto origin/main <old base> <branch>` (old base ed58953, or 944f4e7 for #41), CI, then merge. Next chunks: 5.6, 5.7, 5.9, 5.10, 5.11.
 
 ---
 
