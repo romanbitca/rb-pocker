@@ -26,6 +26,32 @@ function renderApp(): void {
   );
 }
 
+/**
+ * The hidden speed test (PLAN §15.4): the page opened at `#bench` shows it instead of the game,
+ * and starts no game. Both modules are `import()`ed, so they stay out of the initial bundle (the
+ * service worker still precaches them, §15.3). Typing `#bench` into the address bar, or leaving
+ * it, changes only the hash: the page reloads, so each side starts clean.
+ */
+const BENCH_HASH = '#bench';
+const benchPage = window.location.hash === BENCH_HASH;
+window.addEventListener('hashchange', () => {
+  if ((window.location.hash === BENCH_HASH) !== benchPage) window.location.reload();
+});
+
+function renderBench(): void {
+  void Promise.all([import('./app/bench.ts'), import('./ui/screens/Bench.tsx')]).then(
+    ([{ runBench }, { Bench }]) => {
+      const run = () => runBench();
+      const back = () => {
+        window.history.replaceState(null, '', window.location.pathname + window.location.search);
+        window.location.reload();
+      };
+      // No StrictMode: its second mount in development would start a second run.
+      root.render(<Bench run={run} onBack={back} />);
+    },
+  );
+}
+
 // Dev-only previews, one `if` each. `import.meta.env.DEV` is the constant `false` in production
 // builds, so every preview branch and the modules it loads are dropped from the bundle:
 // - `/?preview=ui`: the cards, seats and rankings panel (tests/ui/dev/bundle.test.ts checks the
@@ -66,6 +92,8 @@ if (import.meta.env.DEV && new URLSearchParams(window.location.search).get('prev
       </StrictMode>,
     );
   });
+} else if (benchPage) {
+  renderBench();
 } else if (__PC_TEST_HOOKS__) {
   // The test hooks (`?seed=`, `window.__pc`) exist only in development and E2E builds. In a
   // production build `__PC_TEST_HOOKS__` is the constant `false`, so this branch and

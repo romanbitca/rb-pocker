@@ -7,7 +7,7 @@ import type { HandEndView } from '../../src/app/store.ts';
 import { parseCards } from '../../src/core/cards.ts';
 import { en } from '../../src/i18n/en.ts';
 import { toastText } from '../../src/ui/components/Notices.tsx';
-import { handEndLines, joinNames } from '../../src/ui/handEnd.ts';
+import { handEndLines, joinNames, luckLine } from '../../src/ui/handEnd.ts';
 
 const PLAN = Object.values(
   import.meta.glob<string>('../../../../docs/PLAN.md', {
@@ -153,6 +153,17 @@ describe('toastText (§12.11)', () => {
       expect(PLAN).toContain(toastText({ id: 1, kind }));
     }
     expect(PLAN).toContain(en.storage.banner);
+  });
+});
+
+describe('the luck line after an all-in (§7.6)', () => {
+  it('is the PLAN sentence with the whole percent', () => {
+    expect(luckLine({ handSeq: 3, kind: 'unlucky', pct: 72 })).toBe(
+      'You had 72% when the chips went in. Good decision. Unlucky this time.',
+    );
+    expect(luckLine({ handSeq: 3, kind: 'lucky', pct: 30 })).toBe('You got lucky. You had 30%.');
+    expect(PLAN).toContain(`"${en.runout.unlucky('{E}%')}"`);
+    expect(PLAN).toContain(`"${en.runout.lucky('{E}%')}"`);
   });
 });
 

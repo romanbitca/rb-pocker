@@ -1,7 +1,8 @@
 /**
  * The job runner of equity.worker (PLAN §7.3, Appendix A.6; Stage 4 acceptance 2): progress and
- * final replies, cancel, a newer job superseding an older one, the 3 s safety cap, errors.
- * Fake maths and a hand-driven pause, so every interleaving is exact.
+ * final replies, cancel, a newer equity job superseding an older one (and two equityKnown jobs
+ * side by side), the 3 s safety cap, errors, the timing every reply carries (§15.3) and the
+ * `bench` reply (§15.4). Fake maths and a hand-driven pause, so every interleaving is exact.
  */
 import { describe, expect, it } from 'vitest';
 import type { EquityResult, HandAnalysis } from '../../src/analysis/types.ts';
@@ -10,7 +11,7 @@ import {
   type EquityMath,
   type EquityService,
 } from '../../src/workers/equityService.ts';
-import type { EquityReply, EquityRequest } from '../../src/workers/protocol.ts';
+import type { EquityBenchResult, EquityReply, EquityRequest } from '../../src/workers/protocol.ts';
 
 const HERO: [number, number] = [50, 46];
 
@@ -198,6 +199,51 @@ describe('equity jobs', () => {
     expect(r.pauses()).toBe(0);
   });
 
+  it('every reply carries its timing: wall time since the request, and the busy time in it', async () => {
+    // A clock the maths moves: each step "computes" for 2 ms, each pause waits 5 ms.
+    const clock = { t: 100 };
+    const posted: EquityReply[] = [];
+    const service = createEquityService({
+      math: {
+        *equitySteps() {
+          clock.t += 2;
+          yield null; // a checkpoint: pause
+          clock.t += 2;
+          yield result(2_500, false);
+          clock.t += 2;
+          yield result(40_000, true);
+        },
+        runoutSteps: () => {
+          throw new Error('not used');
+        },
+        handInfo: () => {
+          clock.t += 3;
+          return ANALYSIS;
+        },
+      },
+      post: (reply) => posted.push(reply),
+      pause: () => {
+        clock.t += 5;
+        return Promise.resolve();
+      },
+      now: () => clock.t,
+      sliceMs: 0,
+    });
+    service.handle(equity(1));
+    service.handle({ kind: 'handInfo', jobId: 2, epoch: 1, hero: HERO, board: [] });
+    for (let i = 0; i < 10; i++) await Promise.resolve();
+    const timing = (jobId: number) =>
+      posted.filter((p) => p.jobId === jobId).map((p) => ('timing' in p ? p.timing : null));
+    // handInfo ran while job 1 was paused: 3 ms, all of it busy.
+    expect(timing(2)).toEqual([{ ms: 3, busyMs: 3 }]);
+    // Job 1: 2 ms of work, a 5 ms pause, handInfo's 3 ms, 2 ms of work → the 2,500 mark at 12 ms,
+    // 7 of them busy (its own 4 and handInfo's 3); another pause and 2 ms → the final at 19 ms.
+    expect(timing(1)).toEqual([
+      { ms: 12, busyMs: 7 },
+      { ms: 19, busyMs: 9 },
+    ]);
+  });
+
   it('the cap without any estimate posts an error', () => {
     const r = rig({}, 0);
     r.service.handle(equity(1));
@@ -255,6 +301,7 @@ describe('equityKnown, handInfo and bench', () => {
     await runToEnd(r);
     const e2500 = result(2_500, false).equity;
     const eFinal = result(20_000, true).equity;
+    const timing = { ms: 0, busyMs: 0 }; // the rig's clock stands still
     expect(r.posted).toEqual([
       {
         kind: 'equityKnown',
@@ -263,6 +310,7 @@ describe('equityKnown, handInfo and bench', () => {
         perPlayer: [e2500, e2500],
         exact: false,
         final: false,
+        timing,
       },
       {
         kind: 'equityKnown',
@@ -271,8 +319,50 @@ describe('equityKnown, handInfo and bench', () => {
         perPlayer: [eFinal, eFinal],
         exact: false,
         final: true,
+        timing,
       },
     ]);
+  });
+
+  it('two equityKnown jobs run side by side: no supersession, each stops at its own cancel', async () => {
+    // During a run-out the street's bars and the board at the all-in are computed at once
+    // (chunk 4.7): a newer equityKnown job must not stop the older one.
+    const r = rig({
+      runoutSteps: function* (hands, board) {
+        const e = board.length / 10;
+        yield null;
+        yield [result(2_500, false), result(2_500, false)];
+        yield null;
+        yield hands.map(() => ({ ...result(990, true), equity: e }));
+      },
+    });
+    const known = (jobId: number, board: number[]): EquityRequest => ({
+      kind: 'equityKnown',
+      jobId,
+      epoch: 1,
+      hands: [HERO, [0, 1]],
+      board,
+    });
+    r.service.handle(known(1, [8, 9, 10, 11]));
+    r.service.handle(known(2, [8, 9, 10]));
+    await runToEnd(r);
+    const finals = r.posted.filter((p) => p.kind === 'equityKnown' && p.final);
+    expect(finals.map((p) => [p.jobId, p.kind === 'equityKnown' && p.perPlayer[0]])).toEqual([
+      [1, 0.4],
+      [2, 0.3],
+    ]);
+    // A cancel still stops one of them at once.
+    const c = rig({
+      runoutSteps: function* () {
+        yield null;
+        yield [result(990, true), result(990, true)];
+      },
+    });
+    c.service.handle(known(3, [8, 9, 10]));
+    c.service.handle(known(4, [8, 9, 10, 11]));
+    c.service.handle({ kind: 'cancel', jobId: 3 });
+    await runToEnd(c);
+    expect(c.posted.map((p) => p.jobId)).toEqual([4]);
   });
 
   it('equityKnown truncated by the cap is posted as final', async () => {
@@ -308,7 +398,15 @@ describe('equityKnown, handInfo and bench', () => {
   it('handInfo answers once, at once; a throw is an error reply', () => {
     const r = rig();
     r.service.handle({ kind: 'handInfo', jobId: 9, epoch: 3, hero: HERO, board: [] });
-    expect(r.posted).toEqual([{ kind: 'handInfo', jobId: 9, epoch: 3, analysis: ANALYSIS }]);
+    expect(r.posted).toEqual([
+      {
+        kind: 'handInfo',
+        jobId: 9,
+        epoch: 3,
+        analysis: ANALYSIS,
+        timing: { ms: 0, busyMs: 0 },
+      },
+    ]);
     const bad = rig({
       handInfo: () => {
         throw new RangeError('analyzeHand: need 2 hole cards, got 1');
@@ -320,11 +418,56 @@ describe('equityKnown, handInfo and bench', () => {
     ]);
   });
 
-  it('bench answers with an error until the #bench screen exists (chunk 4.7)', () => {
+  it('bench runs the measurements and answers once (§15.4)', async () => {
+    const bench: EquityBenchResult = {
+      evalsPerSec: 12_345_678,
+      eq8PreflopMs: 41.5,
+      eq8FlopMs: 52,
+      eq1FlopMs: 7.5,
+      ua: 'test-agent',
+    };
+    const posted: EquityReply[] = [];
+    let calls = 0;
+    const service = createEquityService({
+      math: {
+        equitySteps: () => steps({ next: 0, returned: false }),
+        runoutSteps: () => {
+          throw new Error('not used');
+        },
+        handInfo: () => ANALYSIS,
+      },
+      post: (reply) => posted.push(reply),
+      bench: () => {
+        calls++;
+        return Promise.resolve(bench);
+      },
+    });
+    service.handle({ kind: 'bench', jobId: 7 });
+    for (let i = 0; i < 5; i++) await Promise.resolve();
+    expect(calls).toBe(1);
+    expect(posted).toEqual([{ kind: 'bench', jobId: 7, result: bench }]);
+    // A failed measurement is an error reply (epoch 0: bench jobs have none).
+    const failing = createEquityService({
+      math: {
+        equitySteps: () => steps({ next: 0, returned: false }),
+        runoutSteps: () => {
+          throw new Error('not used');
+        },
+        handInfo: () => ANALYSIS,
+      },
+      post: (reply) => posted.push(reply),
+      bench: () => Promise.reject(new Error('out of memory')),
+    });
+    failing.handle({ kind: 'bench', jobId: 8 });
+    for (let i = 0; i < 5; i++) await Promise.resolve();
+    expect(posted.at(-1)).toEqual({ kind: 'error', jobId: 8, epoch: 0, message: 'out of memory' });
+  });
+
+  it('bench without the measurements (a runner made without them) answers with an error', () => {
     const r = rig();
     r.service.handle({ kind: 'bench', jobId: 1 });
     expect(r.posted).toEqual([
-      { kind: 'error', jobId: 1, epoch: 0, message: 'bench: not available yet' },
+      { kind: 'error', jobId: 1, epoch: 0, message: 'bench: not available' },
     ]);
   });
 });

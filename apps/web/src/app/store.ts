@@ -43,6 +43,8 @@ export * from './tableViews.ts';
 export * from './equityViews.ts';
 // Secure-context feature detection (§12.14, pitfall 43): the UI reads it from here too (§2.1).
 export { missingFeatures, secureFeatures, type SecureFeatures } from './secure.ts';
+// All-in TV mode and the luck line (§7.6, chunk 4.7): the same, for the table.
+export * from './runoutViews.ts';
 
 // ---------------------------------------------------------------------------------------------
 // Appendix A.8 (the controller's modes and gates; `app/controller.ts` re-exports them)
@@ -202,6 +204,12 @@ export interface EquitySlice {
   analysis: HandAnalysis | null;
   /** The run-out equities of this hand, or null. */
   known: KnownEquity | null;
+  /**
+   * The run-out equities for the board as it was when the hands turned face up, the chips all in
+   * (chunk 4.7): the hero's number in the §7.6 luck line, and later the All-in luck stat (§14.4).
+   * Only when the hero is one of the face-up hands; it stays after the hand is complete.
+   */
+  allIn: KnownEquity | null;
 }
 
 export function initialEquity(): EquitySlice {
@@ -213,6 +221,7 @@ export function initialEquity(): EquitySlice {
     previous: null,
     analysis: null,
     known: null,
+    allIn: null,
   };
 }
 

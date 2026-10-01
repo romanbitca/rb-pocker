@@ -17,6 +17,10 @@
  *   truncated reply still lands); bot decision 2,000 ms; grade 1,500 ms.
  * - The Monte Carlo seed text (§7.3) writes hero cards sorted by `Card` value descending and the
  *   board in deal order.
+ * - Timing (§15.3 "worker timing logs", chunk 4.7): `equity`, `equityKnown` and `handInfo` replies
+ *   carry `timing`, how long the job has taken in the worker so far. The client's message log
+ *   keeps it (`window.__pc.logs().equity` in test builds).
+ * - `bench` (§15.4, the `#bench` screen): the worker measures itself and answers once.
  */
 import type { EquityResult, HandAnalysis } from '../analysis/types.ts';
 import type { BrainProfile, Decision, GradeResult } from '../brain/types.ts';
@@ -38,9 +42,38 @@ export type EquityRequest =
   | { kind: 'bench'; jobId: number }
   | { kind: 'cancel'; jobId: number };
 
+/**
+ * How long a job has taken in the worker when a reply is posted (§15.3 "worker timing logs").
+ * Chrome's CPU throttling (CDP `Emulation.setCPUThrottlingRate`) slows the page's main thread
+ * only, never a worker, so the E2E budget check models a CPU `r` times slower as
+ * `ms + (r − 1) × busyMs`: only the computing stretches, the waiting does not.
+ */
+export interface JobTiming {
+  /** Wall time since the worker took the request off its queue, in ms. */
+  ms: number;
+  /** How much of `ms` the worker spent computing, on this job or on others in between. */
+  busyMs: number;
+}
+
+/** The `#bench` numbers of `equity.worker` (§15.4). Times are in ms. */
+export interface EquityBenchResult {
+  /** Evaluations per second over 5,000,000 random seven-card hands. */
+  evalsPerSec: number;
+  /**
+   * Time to the final HUD win chance through the worker's own job runner (time slices and pauses
+   * included, as in the game), the median of three runs after a warm-up: A♥K♥ against 8
+   * opponents before the flop, the same on Q♥ 7♥ 2♣, and against 1 opponent on that flop.
+   */
+  eq8PreflopMs: number;
+  eq8FlopMs: number;
+  eq1FlopMs: number;
+  /** The worker's `navigator.userAgent`. */
+  ua: string;
+}
+
 export type EquityReply =
   /** Several; the last has `result.final: true`. */
-  | { kind: 'equity'; jobId: number; epoch: number; result: EquityResult }
+  | { kind: 'equity'; jobId: number; epoch: number; result: EquityResult; timing?: JobTiming }
   | {
       kind: 'equityKnown';
       jobId: number;
@@ -48,13 +81,16 @@ export type EquityReply =
       perPlayer: number[];
       exact: boolean;
       final: boolean;
+      timing?: JobTiming;
     }
-  | { kind: 'handInfo'; jobId: number; epoch: number; analysis: HandAnalysis }
   | {
-      kind: 'bench';
+      kind: 'handInfo';
       jobId: number;
-      result: { evalsPerSec: number; eq8Ms: number; eqFlopMs: number; ua: string };
+      epoch: number;
+      analysis: HandAnalysis;
+      timing?: JobTiming;
     }
+  | { kind: 'bench'; jobId: number; result: EquityBenchResult }
   | { kind: 'error'; jobId: number; epoch: number; message: string };
 
 export type BrainRequest =

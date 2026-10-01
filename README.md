@@ -52,6 +52,7 @@ Run these before you push. CI runs them too.
 | `npm test` | Unit, component and server tests |
 | `npm run test:slow` | The long tests (CI runs them once a week) |
 | `npm run e2e` | Playwright in Chromium and WebKit at six screen sizes, against the E2E build (`npm run build:e2e`: the production build plus the test hooks `?seed=` and `window.__pc`). It builds first when that build is missing, is a production build, or is older than the code. Before the first run: `npx playwright install chromium webkit` |
+| `npm run e2e:perf` | The speed checks, in Chromium only: the two of Stage 4 (win chance and long tasks, both with the CPU 6× slower; PLAN §15.3), 20 hands each, and the Stage 3 long-task test (25 hands, no slow-down), which fails in CI too. **Here the two Stage 4 checks fail when a budget is missed.** Run it before you merge a change that can slow the game (the hand loop, the win chance, the workers), when the machine is quiet. In CI the two Stage 4 checks only report their numbers (job summary of the `e2e` run and of the weekly `slow` run), because the shared runner is too noisy for a speed budget. The real check is `#bench` on a phone (below). Builds first like `npm run e2e`; `npm run e2e:perf -w @rb/web` does not. `PERF_REPORT_ONLY=1` makes the two Stage 4 checks report only |
 | `npm run size` | Bundle sizes against the budget (after `npm run build`) |
 | `npm run gen:check` | The generated preflop tables in `src/data/generated/`: checksums, and 20 cells sampled again (a few seconds). `npm run gen` rebuilds them (about 3 minutes on 8 cores); never edit those files by hand |
 | `npm run check:html -w @rb/web` | The built `index.html` has no inline script and carries the CSP (after `npm run build`) |
@@ -77,6 +78,10 @@ What you can test this way:
   Browsers allow these only on an `https://` address or on `localhost`, and
   `http://192.168.x.x` is neither. The app notices this and leaves them out; it does not break.
 - To test install and offline mode on the phone, use the Coolify `https://` address (next section).
+- **Speed check:** add `#bench` to the address (`http://192.168.1.20:3000/#bench`). The screen runs
+  in the background, then shows how fast the phone computes the win chance, each number next to its
+  target. Copy the text box into the PR. This is where the speed budgets are really checked
+  (stage 4 ends with this check on one real Android phone).
 - Optional, before Coolify exists: `cloudflared tunnel --url http://localhost:3000` (install it
   with `brew install cloudflared`, no account needed) gives a temporary `https://….trycloudflare.com`
   address for a quick look. It changes on every run, so it is never used to accept a stage.

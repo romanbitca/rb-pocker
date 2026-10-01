@@ -1,0 +1,50 @@
+/*
+ * All-in TV mode (PLAN §7.6): one equity bar per face-up player, centred in the free bet slot
+ * (56×20). One element: "62%" on a dark pill (a bet chip's look, so the text keeps its contrast on
+ * the felt), with a thin track (::before) and the fill (::after) along its bottom edge. The fill
+ * scales with `transform` only (§12.8), by `--fill` (0..1).
+ */
+.bar {
+  position: absolute;
+  display: block;
+  width: 52px;
+  height: 20px;
+  padding-top: 1px;
+  border-radius: 10px;
+  background: rgb(0 0 0 / 62%);
+  box-shadow: inset 0 0 0 1px rgb(242 245 243 / 22%);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 14px;
+  text-align: center;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.bar::before,
+.bar::after {
+  content: '';
+  position: absolute;
+  bottom: 3px;
+  left: 7px;
+  width: 38px;
+  height: 3px;
+  border-radius: 2px;
+}
+
+.bar::before {
+  background: rgb(242 245 243 / 20%);
+}
+
+.bar::after {
+  background: var(--accent);
+  transform: scaleX(var(--fill, 0));
+  transform-origin: left center;
+  transition: transform var(--duration-flip) ease-out;
+}
+
+:root[data-motion='reduced'] .bar::after {
+  transition: none;
+}

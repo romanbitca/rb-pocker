@@ -237,6 +237,8 @@ export interface PlayOptions {
   fast?: boolean;
   /** Called at every hand end, before the banner is tapped. */
   onHandEnd?: (record: HandRecord) => Promise<void>;
+  /** Called at every hero turn, before the tap (e.g. to wait for the final win chance). */
+  beforeHeroAct?: () => Promise<void>;
 }
 
 interface Spot {
@@ -344,6 +346,11 @@ export async function playHands(page: Page, options: PlayOptions): Promise<HandR
       view = await page.evaluate(readFlowView);
     }
     if (view.point === 'hero') {
+      if (options.beforeHeroAct !== undefined) {
+        await options.beforeHeroAct();
+        view = await page.evaluate(readFlowView); // the same turn; read the buttons again
+        if (view.point !== 'hero') continue;
+      }
       await heroTap(page, view, options.random);
     } else if (view.point === 'bust') {
       if (view.tap === null) throw new Error('out of chips, but no Reload button');

@@ -492,4 +492,54 @@ export const en = {
     yourCards: 'Your cards',
     listSeparator: ', ',
   },
+
+  /**
+   * All-in "TV mode" (PLAN §7.6): every face-up player's equity bar, and the luck line at the hand
+   * end (§12.9). Percentages arrive formatted ("62%").
+   */
+  runout: {
+    /** The bar's screen-reader name: "Ben: 62% win chance". */
+    bar: (name: string, pct: string) => `${name}: ${pct} win chance`,
+    heroBar: (pct: string) => `You: ${pct} win chance`,
+    /** The hero lost with 60% or more when the chips went in. */
+    unlucky: (pct: string) =>
+      `You had ${pct} when the chips went in. Good decision. Unlucky this time.`,
+    /** The hero won with 35% or less. */
+    lucky: (pct: string) => `You got lucky. You had ${pct}.`,
+  },
+
+  /**
+   * The hidden `#bench` screen (PLAN §15.4): how fast this device runs the game maths. Targets are
+   * the §15.4 ones for a Galaxy A5x-class phone.
+   */
+  bench: {
+    title: 'Speed test',
+    intro: 'This test measures how fast this device runs the game maths. It takes a few seconds.',
+    running: 'Measuring…',
+    failed: (reason: string) => `The test did not finish: ${reason}`,
+    evaluator: 'Hand evaluator',
+    eq8Preflop: 'Win chance against 8 players, before the flop',
+    eq8Flop: 'Win chance against 8 players, on the flop',
+    eq1Flop: 'Win chance against 1 player, on the flop',
+    hint: 'Coach hint',
+    hintValue: 'Coming in Stage 5',
+    device: 'Device',
+    /** "12.3 million hands per second". */
+    evalsPerSec: (millions: string) => `${millions} million hands per second`,
+    ms: (ms: string) => `${ms} ms`,
+    /** Targets (§15.4). */
+    targetEvaluator: 'Target: 2 million or more',
+    targetEquity: 'Target: 400 ms or less',
+    noTarget: 'No target',
+    ok: 'OK',
+    slow: 'Too slow',
+    again: 'Run again',
+    copy: 'Copy the results',
+    copied: 'Copied',
+    /** Above the plain-text copy of the results (it can be selected on a plain-http page). */
+    textLabel: 'The results as text',
+    back: 'Back to the game',
+    /** The plain-text report's first line. */
+    reportTitle: 'RB Poker Coach speed test',
+  },
 } as const;

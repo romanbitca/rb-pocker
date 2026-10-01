@@ -10,8 +10,11 @@
  *   "Ben: Two Pair — loses to your Flush".
  *
  * Only hands the engine revealed reach `HandEndView.shown`, so nothing here can name a hidden card.
+ *
+ * After an all-in the §7.6 luck line follows (`luckLine`, from the store's `LuckLineData`): "You
+ * had 72% when the chips went in. Good decision. Unlucky this time." / "You got lucky. You had 30%."
  */
-import type { HandEndView } from '../app/store.ts';
+import type { HandEndView, LuckLineData } from '../app/store.ts';
 import type { HandCategory } from '../eval/evaluate.ts';
 import { en } from '../i18n/en.ts';
 import { formatChips } from './format.ts';
@@ -69,4 +72,10 @@ export function handEndLines(view: HandEndView): string[] {
     }
   }
   return lines;
+}
+
+/** The §7.6 luck line after an all-in run-out. */
+export function luckLine(luck: LuckLineData): string {
+  const pct = `${luck.pct}%`;
+  return luck.kind === 'unlucky' ? en.runout.unlucky(pct) : en.runout.lucky(pct);
 }

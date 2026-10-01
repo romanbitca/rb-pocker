@@ -15,8 +15,9 @@
  *
  * Every part subscribes to the store with its own narrow selector (pitfall 37): a seat re-renders
  * only when its own view changes. Only the HUD slots read the `equity` slice (the win badge, the
- * draw chips, the big-move line, the nuts suffix and the "By river" column), so equity progress
- * re-renders the badge and nothing else. The coach's places (the portrait coach strip, the
+ * draw chips, the big-move line, the nuts suffix and the "By river" column; the all-in TV-mode bars
+ * and the banner's luck line, `components/Runout.tsx`), so equity progress re-renders the badge and
+ * nothing else. The coach's places (the portrait coach strip, the
  * landscape coach rows, the wide inline panel) stay empty until Stage 5.
  */
 import { memo, useCallback, useEffect, useId, useMemo, useRef, type CSSProperties } from 'react';
@@ -54,6 +55,7 @@ import { HeroCards, HeroChips, HeroLabel } from '../components/HeroStrip.tsx';
 import { Pot } from '../components/Pot.tsx';
 import { RankingsColumn } from '../components/RankingsColumn.tsx';
 import { RankingsDrawer } from '../components/RankingsDrawer.tsx';
+import { RunoutBars, useLuckLine } from '../components/Runout.tsx';
 import { Seat } from '../components/Seat.tsx';
 import { SizingTray } from '../components/SizingTray.tsx';
 import { ICONS, SpriteIcon } from '../components/SvgSprite.tsx';
@@ -216,11 +218,14 @@ const HeroBet = memo(function HeroBet({ geometry }: { geometry: TableGeometry })
 /** The banner's lines while the hand-end banner is up (mode `handEnd`), else null. */
 function useHandEndLines(): readonly string[] | null {
   const view = useAppStore((s) => (s.game.mode === 'handEnd' ? selectHandEnd(s) : null));
+  // After an all-in: the §7.6 luck line under the result (§12.9).
+  const luck = useLuckLine();
   return useMemo(() => {
     if (view === null) return null;
     const lines = handEndLines(view);
-    return lines.length === 0 ? null : lines;
-  }, [view]);
+    if (lines.length === 0) return null;
+    return luck === null ? lines : [...lines, luck];
+  }, [view, luck]);
 }
 
 /** The banner's box in the table: under the board, clear of the side pods; else above the pot. */
@@ -285,6 +290,7 @@ const TableArea = memo(function TableArea({ layout }: { layout: TableLayout }) {
             <BoardLayer geometry={geometry} />
             <SeatsLayer geometry={geometry} />
             <HeroBet geometry={geometry} />
+            <RunoutBars bets={geometry.bets} hero={heroBetRect(geometry)} />
             {layout === 'landscape' ? (
               <HeroInset rect={geometry.hero} />
             ) : (

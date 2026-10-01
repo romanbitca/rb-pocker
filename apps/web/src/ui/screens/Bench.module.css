@@ -1,0 +1,83 @@
+/* The hidden #bench screen (PLAN §15.4): one row per number, its target under it. */
+
+.status:empty {
+  display: none;
+}
+
+.running {
+  margin: 0;
+  font-weight: 700;
+}
+
+.rows {
+  display: grid;
+  gap: var(--space-3);
+  margin: 0;
+}
+
+.row {
+  display: grid;
+  gap: var(--space-1);
+  padding: var(--space-3);
+  border-radius: var(--radius-2);
+  background: var(--surface);
+}
+
+.label {
+  color: var(--muted);
+  font-size: 0.875rem;
+  font-weight: 700;
+}
+
+.value {
+  margin: 0;
+  font-size: 1.125rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The user agent: long, so it may break anywhere. */
+.device {
+  margin: 0;
+  font-size: 0.875rem;
+  overflow-wrap: anywhere;
+}
+
+.target {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+
+/* The mark is a word, not a colour only (§12.12). */
+.ok {
+  color: var(--grade-best);
+  font-weight: 700;
+}
+
+.slow {
+  color: var(--grade-mistake);
+  font-weight: 700;
+}
+
+.textLabel {
+  font-weight: 700;
+}
+
+/* 16 px: iOS zooms into smaller inputs on focus (pitfall 30). */
+.text {
+  width: 100%;
+  min-height: 160px;
+  padding: var(--space-2);
+  border: 1px solid var(--control-border);
+  border-radius: var(--radius-2);
+  background: var(--control-bg);
+  color: var(--text);
+  font:
+    16px/1.4 ui-monospace,
+    'SFMono-Regular',
+    Menlo,
+    Consolas,
+    monospace;
+  resize: vertical;
+}

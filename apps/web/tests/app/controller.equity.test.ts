@@ -7,6 +7,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { EquityResult, HandAnalysis } from '../../src/analysis/types.ts';
 import { HERO, realTimers } from '../../src/app/controller.ts';
+import { boardAtReveal } from '../../src/app/equityJobs.ts';
 import type { AppState } from '../../src/app/store.ts';
 import {
   createEquityClient,
@@ -86,6 +87,9 @@ function rig(
     math?: EquityMath;
     players?: number;
     seed?: string;
+    speed?: 'normal' | 'fast' | 'instant';
+    /** The job runner's pause and slice (default: no time passes, so it never pauses). */
+    service?: { pause?: () => Promise<void>; sliceMs?: number };
     onReceive?: (msg: EquityRequest, h: Harness) => void;
   } = {},
 ): Rig {
@@ -93,7 +97,7 @@ function rig(
   const fake = fakeWorker({
     ...(options.manual !== true && {
       math: options.math ?? fastMath,
-      service: { now: () => 0 },
+      service: { now: () => 0, ...options.service },
     }),
     onReceive: (msg) => {
       if (harness !== null) options.onReceive?.(msg, harness);
@@ -103,7 +107,10 @@ function rig(
   harness = makeHarness({
     equity: client,
     ...(options.seed !== undefined && { seed: options.seed }),
-    ...(options.players !== undefined && { settings: { players: options.players } }),
+    settings: {
+      ...(options.players !== undefined && { players: options.players }),
+      ...(options.speed !== undefined && { speed: options.speed }),
+    },
   });
   return { h: harness, fake, client };
 }
@@ -291,6 +298,97 @@ describe('the non-cheating rule (§2.2, pitfall 13; acceptance 4)', () => {
     for (const e of done) {
       expect(e.known?.seats).toHaveLength(2);
       expect(e.known?.perPlayer).toEqual([0.5, 0.5]);
+    }
+  }, 20_000);
+});
+
+describe('all-in: the board at the reveal (§7.6 luck line, chunk 4.7)', () => {
+  const sameCards = (a: readonly Card[], b: readonly Card[]): boolean =>
+    a.length === b.length && a.every((c, i) => c === b[i]);
+
+  it('boardAtReveal is the board before the cards dealt with the reveal', () => {
+    const hand = {
+      log: [
+        { e: 'street', street: 'flop', cards: [1, 2, 3] },
+        { e: 'reveal', seats: [0, 1], reason: 'runout' },
+        { e: 'street', street: 'turn', cards: [4] },
+        { e: 'street', street: 'river', cards: [5] },
+      ],
+    } as unknown as HandState;
+    expect(boardAtReveal(hand)).toEqual([1, 2, 3]);
+    const preflop = { log: [{ e: 'reveal', seats: [0, 1], reason: 'runout' }] };
+    expect(boardAtReveal(preflop as unknown as HandState)).toEqual([]);
+    const showdown = { log: [{ e: 'reveal', seats: [0, 1], reason: 'showdown' }] };
+    expect(boardAtReveal(showdown as unknown as HandState)).toBeNull();
+    expect(boardAtReveal({ log: [] } as unknown as HandState)).toBeNull();
+  });
+
+  it('a run-out the hero is in also asks for the board at the reveal; the slice keeps its equities', async () => {
+    const byHand = new Map<number, AppState['equity']['allIn']>();
+    const { h, fake } = rig({ players: 2, seed: deriveSeed(SEED, 'known') });
+    h.store.subscribe((s) => {
+      // For one store write at a new hand the slice still holds the last hand's numbers (the
+      // game slice is written first): `handSeq` says which hand they belong to.
+      const allIn = s.equity.allIn;
+      if (allIn !== null && allIn.handSeq === s.game.hand?.handSeq)
+        byHand.set(allIn.handSeq, allIn);
+    });
+    h.dispatch({ type: 'play' });
+    const hands = await drive(h, { hands: 10, hero: jam });
+    await elapse(100);
+    const runouts = hands.filter((hand) => hand.runout && hand.revealed.includes(HERO));
+    expect(runouts.length).toBeGreaterThan(0);
+    const known = requestsOf(fake, 'equityKnown');
+    for (const hand of runouts) {
+      const board = boardAtReveal(hand) as Card[];
+      const holes = hand.revealed.map((seat) => hand.seats[seat]?.hole);
+      // Face-up hands only, on the board as it was when they turned face up.
+      expect(
+        known.some(
+          (m) => sameCards(m.board, board) && JSON.stringify(m.hands) === JSON.stringify(holes),
+        ),
+      ).toBe(true);
+      const allIn = byHand.get(hand.handSeq);
+      expect(allIn).toMatchObject({ handSeq: hand.handSeq, seats: hand.revealed, final: true });
+      expect(allIn?.board).toEqual(board);
+    }
+    // Hands without a run-out never get one.
+    for (const hand of hands.filter((x) => !x.runout)) expect(byHand.has(hand.handSeq)).toBe(false);
+  }, 20_000);
+
+  it('a slow all-in job is not cancelled at the hand end: its number still lands', async () => {
+    // At Instant speed the run-out is over at once; the all-in board (preflop, 0 cards) takes
+    // three 50 ms pauses, the streets none.
+    const slowMath: EquityMath = {
+      ...fastMath,
+      *runoutSteps(hands, board) {
+        if (board.length === 0) for (let i = 0; i < 3; i++) yield null;
+        yield hands.map(() => res(990, 1 / hands.length, true));
+      },
+    };
+    const landed: { phase: string; handSeq: number }[] = [];
+    const { h } = rig({
+      players: 2,
+      seed: deriveSeed(SEED, 'known'),
+      speed: 'instant',
+      math: slowMath,
+      service: { sliceMs: 0, pause: () => new Promise((r) => setTimeout(r, 50)) },
+    });
+    h.store.subscribe((s, prev) => {
+      const hand = s.game.hand;
+      if (hand !== null && s.equity.allIn?.final === true && prev.equity.allIn !== s.equity.allIn) {
+        landed.push({ phase: hand.phase, handSeq: hand.handSeq });
+      }
+    });
+    h.dispatch({ type: 'play' });
+    const hands = await drive(h, { hands: 10, hero: jam });
+    await elapse(500);
+    const preflopAllIns = hands.filter(
+      (hand) => hand.runout && hand.revealed.includes(HERO) && boardAtReveal(hand)?.length === 0,
+    );
+    expect(preflopAllIns.length).toBeGreaterThan(0);
+    for (const hand of preflopAllIns) {
+      expect(landed).toContainEqual({ phase: 'complete', handSeq: hand.handSeq });
     }
   }, 20_000);
 });

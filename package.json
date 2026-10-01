@@ -21,6 +21,7 @@
     "test:coverage": "npm run test:coverage -w @rb/web",
     "test:slow": "npm run test:slow -w @rb/web -w @rb/server",
     "e2e": "node scripts/build-if-needed.mjs && npm run e2e -w @rb/web --",
+    "e2e:perf": "node scripts/build-if-needed.mjs && npm run e2e:perf -w @rb/web --",
     "gen": "npm run gen -w @rb/web",
     "gen:check": "npm run gen:check -w @rb/web",
     "typecheck": "npm run typecheck -w @rb/web -w @rb/server",
