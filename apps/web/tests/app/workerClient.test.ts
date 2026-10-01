@@ -7,16 +7,29 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { EquityResult } from '../../src/analysis/types.ts';
 import { realTimers } from '../../src/app/controller.ts';
 import {
+  BOT_TIMEOUT_MS,
+  brainReplyIsFinal,
+  createBrainClient,
   createEquityClient,
   EQUITY_TIMEOUT_MS,
   equityReplyIsFinal,
   equitySummary,
   fromWorker,
+  startBrainWorker,
   startEquityWorker,
+  type BrainClient,
   type EquityClient,
   type JobEvent,
 } from '../../src/app/workerClient.ts';
-import type { EquityReply, EquityRequest } from '../../src/workers/protocol.ts';
+import type { Decision } from '../../src/brain/types.ts';
+import type { Observation } from '../../src/engine/types.ts';
+import type {
+  BrainReply,
+  BrainRequest,
+  EquityReply,
+  EquityRequest,
+} from '../../src/workers/protocol.ts';
+import { fakeBrainWorker, type FakeBrainWorker } from '../workers/fakeBrainWorker.ts';
 import { fakeWorker, type FakeWorker } from '../workers/fakeWorker.ts';
 
 beforeEach(() => {
@@ -408,5 +421,194 @@ describe('the real worker', () => {
     expect(c.status).toBe('failed');
     expect(c.restartCount).toBe(1);
     expect(c.log().map((e) => e.what)).toEqual(['crash', 'restart', 'crash', 'failed']);
+  });
+});
+
+describe('the brain client (chunk 5.8)', () => {
+  // `decide` reads the observation only, so the jobs below carry a stub of the right type.
+  const OBS = { seat: 3 } as unknown as Observation;
+  let brainFake: FakeBrainWorker;
+  let brain: BrainClient;
+
+  beforeEach(() => {
+    brainFake = fakeBrainWorker();
+    brain = createBrainClient(brainFake.spawn, realTimers);
+  });
+
+  type BrainRecorded = {
+    events: JobEvent<BrainReply>[];
+    onEvent: (event: JobEvent<BrainReply>) => void;
+  };
+
+  function brainRecorder(): BrainRecorded {
+    const events: JobEvent<BrainReply>[] = [];
+    return { events, onEvent: (event) => events.push(event) };
+  }
+
+  /** A `botDecision` job for `seat`, in its slot `bot:<seat>`. */
+  function botJob(rec: BrainRecorded, seat = 3, epoch = 1): number | null {
+    return brain.request({
+      slot: `bot:${seat}`,
+      epoch,
+      timeoutMs: BOT_TIMEOUT_MS,
+      build: (jobId): BrainRequest => ({
+        kind: 'botDecision',
+        jobId,
+        epoch,
+        obs: { ...OBS, seat },
+        profile: { id: 'station/easy' },
+        seed: '0123456789abcdef0123456789abcdef',
+      }),
+      onEvent: rec.onEvent,
+    });
+  }
+
+  const CHECK: Decision = {
+    action: { type: 'check' },
+    kind: 'check',
+    ev: {},
+    eRandom: 0,
+    eRange: 0,
+    need: 0,
+    bucket: null,
+    strength: 'marginal',
+    confidence: 'clear',
+    alt: null,
+    trace: [],
+  };
+
+  const decision = (jobId: number, epoch = 1): BrainReply => ({
+    kind: 'botDecision',
+    jobId,
+    epoch,
+    decision: CHECK,
+    thinkMs: 600,
+  });
+
+  it('posts the botDecision as the controller built it, with the client’s job id and the epoch', () => {
+    expect(botJob(brainRecorder(), 3, 4)).toBe(1);
+    expect(brainFake.current().received).toEqual([
+      {
+        kind: 'botDecision',
+        jobId: 1,
+        epoch: 4,
+        obs: { seat: 3 },
+        profile: { id: 'station/easy' },
+        seed: '0123456789abcdef0123456789abcdef',
+      },
+    ]);
+    expect(brain.log()[0]).toMatchObject({ what: 'out', kind: 'botDecision', jobId: 1, epoch: 4 });
+  });
+
+  it('every brain reply is the only reply of its job', () => {
+    expect(brainReplyIsFinal()).toBe(true);
+    const rec = brainRecorder();
+    const id = botJob(rec) as number;
+    brainFake.current().reply(decision(id));
+    brainFake.current().reply(decision(id)); // a second one is dropped
+    expect(rec.events).toHaveLength(1);
+    expect(rec.events[0]).toMatchObject({ type: 'reply', final: true });
+    expect(brain.pending()).toEqual([]);
+    const failing = brainRecorder();
+    const failId = botJob(failing, 2) as number;
+    brainFake.current().reply({ kind: 'error', jobId: failId, epoch: 1, message: 'bad' });
+    expect(failing.events).toEqual([
+      {
+        type: 'reply',
+        reply: { kind: 'error', jobId: failId, epoch: 1, message: 'bad' },
+        final: true,
+      },
+    ]);
+  });
+
+  it('keeps one job per seat: a new job for a seat cancels its old one, other seats go on', () => {
+    const a = brainRecorder();
+    const b = brainRecorder();
+    const aId = botJob(a, 2) as number;
+    const bId = botJob(b, 3) as number;
+    expect(brain.pending()).toEqual([aId, bId]);
+    const a2 = brainRecorder();
+    const a2Id = botJob(a2, 2) as number;
+    expect(brain.pending()).toEqual([bId, a2Id]);
+    expect(brainFake.current().received.at(-2)).toEqual({ kind: 'cancel', jobId: aId });
+    brainFake.current().reply(decision(aId));
+    brainFake.current().reply(decision(bId));
+    brainFake.current().reply(decision(a2Id));
+    expect(a.events).toEqual([]);
+    expect(b.events).toHaveLength(1);
+    expect(a2.events).toHaveLength(1);
+  });
+
+  it('drops the reply of a job from an older epoch', () => {
+    const rec = brainRecorder();
+    const id = botJob(rec, 3, 1) as number;
+    expect(botJob(brainRecorder(), 4, 2)).not.toBeNull(); // epoch 2: the epoch-1 job is cancelled
+    brainFake.current().reply(decision(id, 1));
+    expect(rec.events).toEqual([]);
+    expect(brain.log().filter((e) => e.what === 'drop')).toHaveLength(1);
+  });
+
+  it('gives a bot decision 2,000 ms, then `timeout` and a cancel for the worker', () => {
+    expect(BOT_TIMEOUT_MS).toBe(2000);
+    const rec = brainRecorder();
+    const id = botJob(rec) as number;
+    vi.advanceTimersByTime(BOT_TIMEOUT_MS - 1);
+    expect(rec.events).toEqual([]);
+    vi.advanceTimersByTime(1);
+    expect(rec.events).toEqual([{ type: 'timeout' }]);
+    expect(brainFake.current().received.at(-1)).toEqual({ kind: 'cancel', jobId: id });
+    brainFake.current().reply(decision(id)); // too late
+    expect(rec.events).toHaveLength(1);
+  });
+
+  it('two timeouts in a row recreate the worker; the next job goes to the new one', () => {
+    botJob(brainRecorder(), 2);
+    vi.advanceTimersByTime(BOT_TIMEOUT_MS);
+    const pending = brainRecorder();
+    botJob(pending, 3);
+    vi.advanceTimersByTime(BOT_TIMEOUT_MS);
+    expect(brainFake.instances).toHaveLength(2);
+    expect(brainFake.instances[0]?.terminated).toBe(true);
+    expect(brain.status).toBe('ready');
+    const rec = brainRecorder();
+    const id = botJob(rec, 4) as number;
+    expect(brainFake.instances[1]?.received).toMatchObject([{ kind: 'botDecision', jobId: id }]);
+    brainFake.current().reply(decision(id));
+    expect(rec.events).toHaveLength(1);
+  });
+
+  it('a crash fails the pending job and restarts; a second crash fails the client for good', () => {
+    const rec = brainRecorder();
+    botJob(rec);
+    brainFake.current().crash('killed');
+    expect(rec.events).toEqual([{ type: 'failed', reason: 'killed' }]);
+    expect(brainFake.instances).toHaveLength(2);
+    brainFake.current().crash('killed again');
+    expect(brain.status).toBe('failed');
+    expect(botJob(brainRecorder())).toBeNull();
+    brain.retry();
+    expect(brain.status).toBe('ready');
+    expect(botJob(brainRecorder())).not.toBeNull();
+  });
+
+  it('without module workers (Node) the app’s brain client has failed, and sends nothing', () => {
+    const c = startBrainWorker(realTimers);
+    expect(c.status).toBe('failed');
+    expect(
+      c.request({
+        slot: 'bot:3',
+        epoch: 1,
+        timeoutMs: BOT_TIMEOUT_MS,
+        build: (jobId): BrainRequest => ({
+          kind: 'botDecision',
+          jobId,
+          epoch: 1,
+          obs: OBS,
+          profile: { id: 'x/easy' },
+          seed: '0'.repeat(32),
+        }),
+        onEvent: () => {},
+      }),
+    ).toBeNull();
   });
 });

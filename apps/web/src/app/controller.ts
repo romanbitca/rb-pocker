@@ -916,7 +916,10 @@ export class TableController {
           const seat = h.toAct as number;
           const legal = legalActions(h) as LegalActions;
           const action = seat === HERO ? safestAction(legal) : await this.decideNow(h, seat, legal);
-          if (epoch !== this.epoch || this.hand !== h) return;
+          if (epoch !== this.epoch || this.hand !== h) {
+            this.trace('headless finish dropped', { epoch });
+            return;
+          }
           input = { kind: 'act', seat, action };
         } else {
           input = { kind: 'advance' };

@@ -15,6 +15,7 @@ import { randInt, rngFromSeed, type Rng, type Seed128 } from '../../src/core/rng
 import {
   createTableController,
   realTimers,
+  type SeedSource,
   type TableController,
   type Timers,
 } from '../../src/app/controller.ts';
@@ -57,6 +58,8 @@ export interface Harness {
 
 export interface HarnessOptions {
   seed?: Seed128;
+  /** Table and hand seeds of your own (default: `fixedSeeds(seed)`). */
+  seeds?: SeedSource;
   settings?: Partial<GameSettings>;
   /** The bots' brain (default: `testBrain`, on the controller's timers). */
   brain?: BrainClient;
@@ -79,7 +82,7 @@ export function makeHarness(options: HarnessOptions = {}): Harness {
     store,
     brain: options.brain ?? testBrain(options.timers ?? realTimers),
     heroName: 'You',
-    seeds: fixedSeeds(options.seed ?? SEED),
+    seeds: options.seeds ?? fixedSeeds(options.seed ?? SEED),
     ...(options.step !== undefined && { step: options.step }),
     ...(options.timers !== undefined && { timers: options.timers }),
     ...(options.storage !== undefined && { storage: options.storage }),
