@@ -19,6 +19,9 @@
  *    estimates differ by up to 0.13 points (one standard deviation), so 0.5 is 3.8 sigma, and 0.3
  *    would fail about one run in three by chance (§7.5).
  *
+ * 6. The range tables (`ranges.ts`, `pushfold.ts`) are checked by `check-range-tables.ts`, which runs at
+ *    the end of this script: parameters, soundness, the §8.3 and §8.4 acceptance, 20 re-sampled cells.
+ *
  * The seeds are fixed, so a run is deterministic: it passes or fails the same way every time.
  */
 import { readFileSync } from 'node:fs';
@@ -35,6 +38,7 @@ import {
   PREFLOP_CLASSES,
   PREFLOP_MAX_OPPONENTS,
 } from '../src/data/preflopLayout.ts';
+import { checkRangeTables } from './check-range-tables.ts';
 import {
   cellSeed,
   EQUITY_FILE,
@@ -311,6 +315,14 @@ export async function checkTables(options: CheckOptions = {}): Promise<CheckResu
     `equity: ${checks.length} cells re-sampled with ${options.trials ?? CHECK_TRIALS} trials in ${seconds} s, ` +
       `worst difference ${worst.toFixed(2)} points (limit ${TOLERANCE_POINTS})`,
   );
+  const ranges = await checkRangeTables({
+    dir,
+    ...(options.cells === undefined ? {} : { cells: options.cells }),
+    ...(options.trials === undefined ? {} : { trials: options.trials }),
+    ...(options.threads === undefined ? {} : { threads: options.threads }),
+  });
+  problems.push(...ranges.problems);
+  lines.push(...ranges.lines);
   return { problems, lines };
 }
 
