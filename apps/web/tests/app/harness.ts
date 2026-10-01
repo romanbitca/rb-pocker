@@ -133,20 +133,20 @@ export function spyBrain(
   onRequest?: (req: BotDecisionMsg) => void,
   timers: Timers = realTimers,
 ): SpyBrain {
-  const spy: SpyBrain = { client: null as never, fake: null as never, requests: [], cancelled: [] };
-  spy.fake = fakeBrainWorker({
+  const requests: BotDecisionMsg[] = [];
+  const cancelled: number[] = [];
+  const fake = fakeBrainWorker({
     service: { decide: standInDecide },
     onReceive: (msg) => {
       if (msg.kind === 'botDecision') {
-        spy.requests.push(msg);
+        requests.push(msg);
         onRequest?.(msg);
       } else if (msg.kind === 'cancel') {
-        spy.cancelled.push(msg.jobId);
+        cancelled.push(msg.jobId);
       }
     },
   });
-  spy.client = createBrainClient(spy.fake.spawn, timers);
-  return spy;
+  return { client: createBrainClient(fake.spawn, timers), fake, requests, cancelled };
 }
 
 /** A brain that answers with `choose`'s action (default: the stand-in's) and a fixed think time. */
@@ -191,38 +191,39 @@ export interface ManualBrain {
 
 /** A brain that answers only when the test says so. */
 export function manualBrain(timers: Timers = realTimers): ManualBrain {
-  const brain: ManualBrain = {
-    client: null as never,
-    fake: null as never,
-    pending: new Map(),
-    cancelled: [],
-    answer(jobId, reply) {
-      const job = brain.pending.get(jobId);
-      if (job === undefined) throw new Error(`no pending job ${jobId}`);
-      brain.pending.delete(jobId);
-      const { obs, seed, epoch } = job.req;
-      const decision = standInDecide(obs);
-      job.instance.reply({
-        kind: 'botDecision',
-        jobId,
-        epoch,
-        decision,
-        thinkMs: thinkMs(obs, decision, seed),
-        ...reply,
-      } as BrainReply);
-    },
-    answerAll() {
-      for (const jobId of [...brain.pending.keys()]) brain.answer(jobId);
-    },
-  };
-  brain.fake = fakeBrainWorker({
+  const pending: ManualBrain['pending'] = new Map();
+  const cancelled: number[] = [];
+  const fake = fakeBrainWorker({
     onReceive: (msg, instance) => {
-      if (msg.kind === 'botDecision') brain.pending.set(msg.jobId, { req: msg, instance });
-      else if (msg.kind === 'cancel') brain.cancelled.push(msg.jobId);
+      if (msg.kind === 'botDecision') pending.set(msg.jobId, { req: msg, instance });
+      else if (msg.kind === 'cancel') cancelled.push(msg.jobId);
     },
   });
-  brain.client = createBrainClient(brain.fake.spawn, timers);
-  return brain;
+  function answer(jobId: number, reply?: Partial<BrainReply>): void {
+    const job = pending.get(jobId);
+    if (job === undefined) throw new Error(`no pending job ${jobId}`);
+    pending.delete(jobId);
+    const { obs, seed, epoch } = job.req;
+    const decision = standInDecide(obs);
+    job.instance.reply({
+      kind: 'botDecision',
+      jobId,
+      epoch,
+      decision,
+      thinkMs: thinkMs(obs, decision, seed),
+      ...reply,
+    } as BrainReply);
+  }
+  return {
+    client: createBrainClient(fake.spawn, timers),
+    fake,
+    pending,
+    cancelled,
+    answer,
+    answerAll() {
+      for (const jobId of [...pending.keys()]) answer(jobId);
+    },
+  };
 }
 
 /** A seeded scripted hero: folds sometimes, calls or checks often, bets and raises random sizes. */
