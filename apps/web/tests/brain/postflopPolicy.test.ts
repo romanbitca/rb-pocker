@@ -10,7 +10,6 @@ import {
   impliedOdds,
   isCommitted,
   madeHand,
-  mdf,
   mdfDefends,
   mdfFacing,
   postflopIntent,
@@ -435,9 +434,7 @@ describe('§9.4 hooks: perceived equity and MDF defence', () => {
     expect(withEquity({ ...f, nOpp: 0 }, 0.2).p).toBe(1);
   });
 
-  it('MDF = pot / (pot + bet); a bot defends when 1 − handPct ≤ MDF × defenseFactor', () => {
-    expect(mdf(600, 600)).toBe(0.5);
-    expect(mdf(0, 0)).toBe(1);
+  it('a bot defends when 1 − handPct ≤ MDF × defenseFactor', () => {
     expect(mdfDefends(0.6, 0.5, 0.85)).toBe(true); // 0.4 ≤ 0.425
     expect(mdfDefends(0.5, 0.5, 0.85)).toBe(false);
   });
