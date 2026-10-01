@@ -6,7 +6,7 @@ This is the working checklist for building [PLAN.md](PLAN.md). PLAN.md is the so
 
 Legend: `[ ]` todo · `[~]` in progress (branch exists) · `[x]` merged to `main` · `[H]` waiting on the human
 
-**Current position:** ▶ 1 Oct (owner: 95% per window, stop at 65% weekly). Stages 0–3 ✅. Stage 4: 4.1–4.6 merged; 4.7 (PR #36) built — apply the perf-check decision below, then merge → Stage 4 code complete. Stage 5 held: #37 (5.1), #38 (5.2).
+**Current position:** ⏸ Paused by the owner (1 Oct ~06:55Z). Stages 0–3 ✅. Stage 4: 4.1–4.6 merged; 4.7 (PR #36, draft) built — next: apply the perf-check decision ("Decisions made"), merge → Stage 4 code complete. Then merge Stage 5 PRs #37 (5.1) and #38 (5.2, stacked on #37). 4.8 [H]: owner runs `#bench` on an Android phone.
 
 ---
 
