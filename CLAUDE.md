@@ -40,6 +40,10 @@ fixed slice of the Claude plan.
   each 5-hour window may be used up to **95%**, but **stop all work when the weekly all-models limit
   reaches 65%** (it was 50%). Then pause until the owner writes again (the weekly resets
   2026-10-02 18:00Z). Rule of thumb: ~7 five-hour points ≈ 1 weekly point.
+- **Weekly override (owner, 2026-10-01 20:36Z, "/loop now next. You are allowed to spend until 80%
+  of weekly usage"):** each 5-hour window up to **95%**, and **stop all work when the weekly
+  all-models limit reaches 80%** (it was 68%). Then pause until the owner writes again (weekly
+  resets 2026-10-02 18:00Z).
 - **Order (owner, 2026-09-27): strict plan order.** Every acceptance criterion of a stage passes in
   CI before the next stage is merged. Development of the next stage MAY overlap (parallel branches),
   but merges happen in stage order and never onto a red `main`. Human gates `[H]` still don't block.

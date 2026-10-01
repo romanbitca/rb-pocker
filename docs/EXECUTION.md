@@ -6,7 +6,7 @@ This is the working checklist for building [PLAN.md](PLAN.md). PLAN.md is the so
 
 Legend: `[ ]` todo · `[~]` in progress (branch exists) · `[x]` merged to `main` · `[H]` waiting on the human
 
-**Current position:** ⏸ Paused by the owner (1 Oct ~06:55Z). Stages 0–3 ✅. Stage 4: 4.1–4.6 merged; 4.7 (PR #36, draft) built — next: apply the perf-check decision ("Decisions made"), merge → Stage 4 code complete. Then merge Stage 5 PRs #37 (5.1) and #38 (5.2, stacked on #37). 4.8 [H]: owner runs `#bench` on an Android phone.
+**Current position:** ▶ 1 Oct 20:36Z (owner: up to 80% weekly). Finishing 4.7 (#36) → merging #37, #38; Stage 5 in parallel: 5.3 preflop + push/fold policy, 5.4 postflop + sizing, 5.5 guardrails + EV, 5.8 brain worker.
 
 ---
 
@@ -80,12 +80,12 @@ Legend: `[ ]` todo · `[~]` in progress (branch exists) · `[x]` merged to `main
 
 - [~] 5.1 `feature/range-and-push-fold-tables` - `gen-ranges.ts`, `gen-pushfold.ts`, range + push/fold acceptance.
 - [~] 5.2 `feature/opponent-range-model` - `brain/features.ts`, `ranges.ts`, full §8.6 model, `opponentStats.ts`, `tunables.ts`.
-- [ ] 5.3 `feature/preflop-and-push-fold-policy` - `preflopPolicy.ts`, `pushfold.ts`.
-- [ ] 5.4 `feature/postflop-policy-and-bet-sizing` - `postflopPolicy.ts`, `sizing.ts`.
-- [ ] 5.5 `feature/coach-guardrails-and-ev-model` - `guardrails.ts`, `ev.ts`; each guardrail has a test that fails without it.
+- [~] 5.3 `feature/preflop-and-push-fold-policy` - `preflopPolicy.ts`, `pushfold.ts`.
+- [~] 5.4 `feature/postflop-policy-and-bet-sizing` - `postflopPolicy.ts`, `sizing.ts`.
+- [~] 5.5 `feature/coach-guardrails-and-ev-model` - `guardrails.ts`, `ev.ts`; each guardrail has a test that fails without it.
 - [ ] 5.6 `feature/coach-explanations` - `explain.ts`, `i18n/en.ts` templates, `check-copy.ts`.
 - [ ] 5.7 `feature/bot-personalities-easy-medium` - `profiles.ts`, `decide.ts`, `hint`, think time, non-cheating property test, Appendix E golden spots.
-- [ ] 5.8 `feature/brain-worker` - `brain.worker.ts` replaces `SimpleBot` (moved to `scripts/bots/`).
+- [~] 5.8 `feature/brain-worker` - `brain.worker.ts` replaces `SimpleBot` (moved to `scripts/bots/`).
 - [ ] 5.9 `feature/coach-strip-and-sheet` - Beginner/Intermediate UI, recommended ring, "Use coach size", RANGE_ADJUST, glossary popovers.
 - [ ] 5.10 `feature/bot-and-coach-level-selectors` - level cards, personality labels, bot card.
 - [ ] 5.11 `test/self-play-calibration` - `scripts/selfplay.ts` + baselines; acceptance 5–6.
