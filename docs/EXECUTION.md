@@ -6,7 +6,7 @@ This is the working checklist for building [PLAN.md](PLAN.md). PLAN.md is the so
 
 Legend: `[ ]` todo · `[~]` in progress (branch exists) · `[x]` merged to `main` · `[H]` waiting on the human
 
-**Current position:** ▶ 1 Oct 20:36Z (owner: up to 80% weekly). Finishing 4.7 (#36) → merging #37, #38; Stage 5 in parallel: 5.3 preflop + push/fold policy, 5.4 postflop + sizing, 5.5 guardrails + EV, 5.8 brain worker.
+**Current position:** ▶ 1 Oct (owner: up to 80% weekly). Stages 0–4 ✅ code complete in CI (4.8 = owner's #bench on Android). Merging #37 (5.1), #38 (5.2); building 5.3, 5.4, 5.5, 5.8 in parallel.
 
 ---
 
@@ -73,8 +73,8 @@ Legend: `[ ]` todo · `[~]` in progress (branch exists) · `[x]` merged to `main
 - [x] 4.4 `feature/preflop-equity-tables` - `scripts/gen-preflop.ts`, `analysis/preflop.ts`, `check-tables` in CI.
 - [x] 4.5 `feature/equity-worker` - `workers/protocol.ts`, `equity.worker.ts`, `app/workerClient.ts` (jobId, epoch, cancel, stale-drop, timeouts).
 - [x] 4.6 `feature/win-badge-and-draw-chips` - badge (skeleton, `~`, hysteresis, popover), price chip, draw chips, By-river column.
-- [~] 4.7 `feature/all-in-run-out-and-bench` - all-in TV mode, luck line, `#bench` route, throttled latency checks.
-- [ ] 4.8 [H] **Human gate:** `#bench` numbers from one real Android phone.
+- [x] 4.7 `feature/all-in-run-out-and-bench` - all-in TV mode, luck line, `#bench` route, throttled latency checks.
+- [H] 4.8 [H] **Human gate:** `#bench` numbers from one real Android phone.
 
 ## Stage 5 - Coach hints and Easy/Medium bots: public MVP (PLAN §8, §9, §10)
 
@@ -133,6 +133,8 @@ needs to do in "Waiting on the human" below, sends a notification, and continues
 If the human's answer later reveals a problem, the fix becomes a new chunk ahead of the current one.
 
 ### Waiting on the human
+
+- **4.8 — `#bench` on an Android phone**: with the server running, open `http://<Mac LAN IP>:3000/#bench` in Chrome on the phone, wait a few seconds, copy the "results as text" box and paste it into the chat (or into PR #36).
 
 - **3.9 — play 10 hands on your phone** (Stage 3 manual gate). On the Mac: `npm run build && npm start` in the repo (Node 24), then on the phone (same Wi-Fi) open `http://<Mac LAN IP>:3000`. Check it feels right one-handed, and confirm the §1.5 assumptions (Q1: "undo" and "levels for both" as planned). Claude can start the server for you on request.
 
@@ -200,4 +202,5 @@ If the human's answer later reveals a problem, the fix becomes a new chunk ahead
 | 30 Sep 21:15–23:00Z | 4.4 | [PR #34](https://github.com/romanbitca/rb-pocker/pull/34) merged (a63beb1): 169×8 win/split + 169×10 finals (7.9 KB gzip), check-tables in CI (20 cells ≤ 0.41 pts), preflop HUD + By-river chances now from the tables; worker 14.1 KB gzip | weekly ~57% |
 | 30 Sep 22:42–23:40Z | 5.1 (early) | [PR #37](https://github.com/romanbitca/rb-pocker/pull/37) draft, CI green, held: rankPct/eqVsRange + pushfold tables (5.3 KB + 1.0 KB gzip); §8.3 range acceptance ✅ (after 2 recorded fixes); §8.4 push/fold 2/5 ❌ → decision pending | weekly ~60% |
 | 30 Sep 23:18–00:00Z | 5.2 (early) | [PR #38](https://github.com/romanbitca/rb-pocker/pull/38) draft, CI green, stacked on #37: full §8.6 range model (priors, re-weighting, looseness), features, opponent stats, tunables; non-cheating re-deal test; brain coverage 99.5–100%; E9/E13/E16 range checks ✅ | 5h 86%, weekly 61% |
+| 1 Oct 20:40–21:00Z | 4.7 | [PR #36](https://github.com/romanbitca/rb-pocker/pull/36) merged (27473f4): all-in TV mode + luck line, `#bench`; perf checks report-only in CI, enforced locally (risk R17). **Stage 4 code complete** | weekly 68% → 71% |
 | 29 Sep 21:05–21:48Z | 4.1, 4.2 (early) | PRs [#27](https://github.com/romanbitca/rb-pocker/pull/27), [#28](https://github.com/romanbitca/rb-pocker/pull/28) ready, held: all D.2, D.3, C.5 exact; brute-force oracle agreement | (same window) |
