@@ -269,3 +269,56 @@ export const CALL_RANGE_CAP_PCT = 50;
 /** §8.4: push or fold when effBB ≤ 12; with limpers shove only the top 0.8 × pushPct. */
 export const PUSH_FOLD_MAX_BB = 12;
 export const PUSH_LIMPERS_FACTOR = 0.8;
+
+// --- 5.4 postflop / sizing ---
+// §8.5 postflop policy
+
+/** Realisation `R` (§8.5 step 2): river and in position 1; out of position flop 0.85, turn 0.92. */
+export const REALISATION_FULL = 1;
+export const REALISATION_OOP_FLOP = 0.85;
+export const REALISATION_OOP_TURN = 0.92;
+/** Subtracted from `R` in a multiway pot (every street, the river included). */
+export const REALISATION_MULTIWAY = 0.05;
+/** Implied odds: `P_hit × IMPLIED_SHARE × min(stackBehind, winPot + toCall)`. */
+export const IMPLIED_SHARE = 0.5;
+/** SPR bands of the commitment rule (§8.5 step 6): ≤ 3, (3, 6], above 6. */
+export const SPR_COMMIT_ALL_IN = 3;
+export const SPR_COMMIT = 6;
+/** Heads-up, SPR ≤ 3: "top pair or better" is read as `p ≥` this. */
+export const COMMIT_P_HEADS_UP = 0.6;
+/** SPR > 6: a one-pair hand bets for value on at most this many streets. */
+export const ONE_PAIR_VALUE_STREETS = 2;
+/** River thin value in position (Medium): `p ≥` this. */
+export const RIVER_THIN_VALUE_P = 0.6;
+
+// §8.7 bet sizing (fractions of the pot; raises as multiples of the bet faced)
+
+export const SIZE_DRY = 1 / 3;
+/** Turn value bet on a Dry board (also the river value bet of a Strong hand on a Dry board). */
+export const SIZE_DRY_LATE_VALUE = 1 / 2;
+export const SIZE_WET = 2 / 3;
+export const SIZE_VERY_WET = 3 / 4;
+export const SIZE_RIVER_MONSTER = 3 / 4;
+/** River Monster with `spr ≤ RIVER_POT_SPR`: a full pot. */
+export const SIZE_RIVER_MONSTER_LOW_SPR = 1;
+export const RIVER_POT_SPR = 1.5;
+export const SIZE_THIN_VALUE = 1 / 3;
+export const SIZE_RIVER_BLUFF = 2 / 3;
+/** §8.5 step 5 semi-bluff: 1/2 pot on a Dry board, 2/3 on Wet or Very wet. */
+export const SIZE_SEMI_BLUFF_DRY = 1 / 2;
+export const SIZE_SEMI_BLUFF_WET = 2 / 3;
+export const SIZE_CBET = 1 / 3;
+/** Raise vs a bet: to = this × the bet faced (in position / out of position). */
+export const RAISE_MULT_IP = 3;
+export const RAISE_MULT_OOP = 3.5;
+/** All-in when a bet would leave less than this share of the pot (after a call) behind. */
+export const ALL_IN_BEHIND_SHARE = 0.25;
+/** All-in for any bet or raise when `spr ≤` this. */
+export const ALL_IN_SPR = 1;
+
+// §9.2 bot size sets: Easy 'half' (1/2 pot), Medium 'two' (1/2 and pot)
+
+export const SIZE_HALF = 1 / 2;
+export const SIZE_POT = 1;
+/** 'two': a §8.7 bet fraction at least this big becomes a pot-size bet, a smaller one 1/2 pot. */
+export const TWO_SIZES_POT_FROM = 3 / 4;

@@ -4,8 +4,9 @@
  * `Decision` and `GradeResult`. Stage 5 adds the functions (`profileFor`, `COACH`, `decide`,
  * `hint`, `grade`) in their own files. `Features` (§8.2) is what `features.ts` hands the policies.
  */
-import type { HandAnalysis } from '../analysis/types.ts';
-import type { PlayerAction, Street } from '../engine/types.ts';
+import type { HandAnalysis, OutCard } from '../analysis/types.ts';
+import type { Card } from '../core/cards.ts';
+import type { LegalActions, PlayerAction, Street } from '../engine/types.ts';
 import type { HandInfo } from '../eval/describe.ts';
 import type { OpponentRange } from './ranges.ts';
 
@@ -240,3 +241,59 @@ export interface PreflopStyle {
   /** 1: openPct(k); 0: openPct(4) everywhere; 0.5: the mean of the two (§9.2). */
   positionAwareness: 0 | 0.5 | 1;
 }
+
+// --- 5.4 postflop / sizing ---
+
+/**
+ * What a bet or raise is for: it picks the §8.7 row that sizes it. `value` (Monster or Strong),
+ * `protect` (a Strong raise on a Wet or Very wet board), `thinValue` (Medium, 1/3 pot),
+ * `semiBluff` (a Draw), `cbet` (Air, the flop continuation bet), `bluff` (bots only: the policy
+ * never bluffs; chunk 5.7 sizes its bluff candidates with it).
+ */
+export type BetPurpose = 'value' | 'protect' | 'thinValue' | 'semiBluff' | 'cbet' | 'bluff';
+
+/** A profile's size set (§9.2 "Sizes"): `BrainProfile.sizing`. */
+export type SizeSet = BrainProfile['sizing'];
+
+/**
+ * The facts the postflop policy (§8.5) and the sizing (§8.7) read beyond `Features`, all taken
+ * from the `Observation` by `postflopSpot(obs)`. Chips are integers.
+ */
+export interface PostflopSpot {
+  hole: [Card, Card];
+  board: Card[];
+  sb: number;
+  bb: number;
+  /** The hero's own legal bounds (the hero is to act). */
+  legal: LegalActions;
+  /** The street's highest bet ("to"): what a call matches. */
+  currentBet: number;
+  /** The hero's chips already in on this street. */
+  heroStreetBet: number;
+  /** The hero's chips behind, before acting. */
+  heroStack: number;
+  /** §8.5 implied odds: min(the hero's chips behind after calling, the deepest live opponent's). */
+  stackBehind: number;
+  /** §6.3 outs with the hand each makes (flop and turn; [] on the river). */
+  outCards: OutCard[];
+  /** §6.5: no two-card hand beats the hero's hand now. */
+  nuts: boolean;
+  /** Earlier postflop streets of this hand on which the hero bet or raised (§8.5 rule 6). */
+  heroBetStreets: number;
+}
+
+/** A rule action before sizing (§8.2 `act = policy(f)`): the kind, and for a bet or raise its row. */
+export interface PolicyIntent {
+  kind: 'fold' | 'check' | 'call' | 'bet' | 'raise';
+  /** Which §8.7 row sizes a bet or raise; null otherwise. */
+  purpose: BetPurpose | null;
+  /** A bet or raise that goes all-in whatever its row says (§8.5 rule 6: committed, SPR ≤ 3). */
+  allIn: boolean;
+}
+
+/**
+ * What a policy returns: the Appendix A.5 `Decision` fields a policy fills. `action` is legal for
+ * the observation it came from ("raise to", snapped to the small blind); `trace` holds reason
+ * codes (main first) whose `data` are numbers (chips, fractions in [0, 1]) and keys, never English.
+ */
+export type PolicyDecision = Pick<Decision, 'action' | 'kind' | 'trace'>;
