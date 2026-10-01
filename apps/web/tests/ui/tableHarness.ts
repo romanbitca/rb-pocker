@@ -5,7 +5,6 @@
  */
 import { act } from '@testing-library/react';
 import { vi } from 'vitest';
-import { createSimpleBrain } from '../../src/app/brain.ts';
 import { createTableController, type TableController } from '../../src/app/controller.ts';
 import { installBackHandler } from '../../src/app/lifecycle.ts';
 import {
@@ -19,6 +18,7 @@ import {
 import { fixedSeeds } from '../../src/app/testHooks.ts';
 import type { Seed128 } from '../../src/core/rng.ts';
 import type { LegalActions, PlayerAction } from '../../src/engine/types.ts';
+import { testBrain } from '../workers/fakeBrainWorker.ts';
 
 export const TABLE_SEED: Seed128 = '5eed0000000000000000000000000034';
 
@@ -42,7 +42,7 @@ export function startTableHarness(
   appStore.setState({ game: initialGame(), ui: initialUi(false), settings });
   const controller = createTableController({
     store: appStore,
-    brain: createSimpleBrain(),
+    brain: testBrain(),
     heroName: 'You',
     seeds: fixedSeeds(options.seed ?? TABLE_SEED),
   });

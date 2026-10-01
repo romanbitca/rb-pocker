@@ -5,8 +5,9 @@
  * - Epochs: a job carries the epoch it was made for (the controller's). A newer epoch
  *   (`setEpoch`, or a request made with it) cancels every older job, and a reply whose epoch is
  *   not current is dropped.
- * - "Latest for its kind": every job has a slot ('equity', 'handInfo', later 'bot:3'); a new job
- *   cancels the one in its slot, and only the newest job of a slot is ever delivered.
+ * - "Latest for its kind": every job has a slot ('equity', 'handInfo', 'bot:3' = seat 3's bot
+ *   decision); a new job cancels the one in its slot, and only the newest job of a slot is ever
+ *   delivered.
  * - Cancel: `cancel(jobId)` and `cancelAll()` post `{ kind: 'cancel', jobId }` and forget the job:
  *   its callback is never called again, whatever the worker still sends.
  * - Timeouts: a job with no final reply within its `timeoutMs` is cancelled and gets `timeout`.
@@ -16,8 +17,8 @@
  *   `failed` and `request` returns null. `retry()` starts over (the brain's [Try again], Stage 5).
  * - A log of what went out and came back, without card data (Diagnostics, `window.__pc.logs()`).
  */
-import type { EquityReply, EquityRequest } from '../workers/protocol.ts';
-import { spawnEquityWorker } from '../workers/spawn.ts';
+import type { BrainReply, BrainRequest, EquityReply, EquityRequest } from '../workers/protocol.ts';
+import { spawnBrainWorker, spawnEquityWorker } from '../workers/spawn.ts';
 
 /**
  * The clock and timers the client uses: the controller's `Timers` (`realTimers` in the app), since
@@ -434,4 +435,39 @@ export function createEquityClient(
 /** The app's `equity.worker` (a module worker). Where there is none the client is `failed`. */
 export function startEquityWorker(timers: ClientTimers): EquityClient {
   return createEquityClient(fromWorker<EquityRequest, EquityReply>(spawnEquityWorker), timers);
+}
+
+// ---------------------------------------------------------------------------------------------
+// brain.worker
+
+/** Appendix A.6: a bot decision gets 2 s, then the bot takes the safest legal action (§12.14). */
+export const BOT_TIMEOUT_MS = 2000;
+
+/**
+ * The controller's port to `brain.worker` (PLAN §2.2, A.6): bot decisions in the slot `bot:<seat>`
+ * (chunk 5.8), later hints and grades. `failed` after the worker failed twice (§12.14): every
+ * `request` then returns null and the controller plays the safest legal action for its bots.
+ */
+export type BrainClient = WorkerClient<BrainRequest, BrainReply>;
+
+/** Every brain reply is the only reply of its job (an `error` reply too). */
+export function brainReplyIsFinal(): boolean {
+  return true;
+}
+
+export function createBrainClient(
+  spawn: SpawnWorker<BrainRequest, BrainReply>,
+  timers: ClientTimers,
+): BrainClient {
+  return new WorkerClient<BrainRequest, BrainReply>({
+    spawn,
+    isFinal: brainReplyIsFinal,
+    cancelMessage: (jobId) => ({ kind: 'cancel', jobId }),
+    timers,
+  });
+}
+
+/** The app's `brain.worker` (a module worker). Where there is none the client is `failed`. */
+export function startBrainWorker(timers: ClientTimers): BrainClient {
+  return createBrainClient(fromWorker<BrainRequest, BrainReply>(spawnBrainWorker), timers);
 }

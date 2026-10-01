@@ -3,7 +3,6 @@
  * (visibility, Back, layout) and, in development and E2E builds, the test hooks. main.tsx calls it
  * before the first render.
  */
-import { createSimpleBrain } from './brain.ts';
 import {
   createTableController,
   randomSeeds,
@@ -13,7 +12,7 @@ import {
 import { createSafeStorage } from '../persist/storage.ts';
 import { installLifecycle } from './lifecycle.ts';
 import { appStore } from './store.ts';
-import { startEquityWorker } from './workerClient.ts';
+import { startBrainWorker, startEquityWorker } from './workerClient.ts';
 import type { SafeStorage } from '../persist/storage.ts';
 import type * as TestHooks from './testHooks.ts';
 
@@ -33,8 +32,9 @@ export function startApp(options: StartOptions): TableController {
   const seed = hooks?.seedFromSearch(win.location.search) ?? null;
   const controller = createTableController({
     store: appStore,
-    // Stage 3's SimpleBot on the main thread; Stage 5 swaps in the brain.worker client.
-    brain: createSimpleBrain(),
+    // Warmed at start like the equity worker, never awaited (§12.14, §15.3): the bots decide in
+    // brain.worker; without module workers it is `failed` and the bots take the safest action.
+    brain: startBrainWorker(realTimers),
     heroName: options.heroName,
     seeds: hooks !== undefined && seed !== null ? hooks.fixedSeeds(seed) : randomSeeds(),
     // One storage wrapper per launch over the real localStorage (§14.6).

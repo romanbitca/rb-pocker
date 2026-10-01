@@ -2,21 +2,19 @@
  * A TableController on its own store for tests, with Vitest's fake timers (the controller's default
  * timers call `globalThis.setTimeout` and `Date.now`, which `vi.useFakeTimers()` replaces).
  *
- * - `spyBrain` records every request the controller sends (the non-cheating checks read them);
- * - `manualBrain` holds every request until the test answers it (stale-reply tests);
+ * - the bots' brain is a real `WorkerClient` over a fake `brain.worker` (`tests/workers/`) that runs
+ *   the production job runner with the stand-in brain (`testBrain`);
+ * - `spyBrain` records every message the controller posts to it (the non-cheating checks read them);
+ * - `manualBrain` holds every request until the test answers it (stale-reply, timeout and crash tests);
+ * - `scriptedBrain` answers with a chosen action and a fixed think time;
  * - `heroPolicy` is a seeded "scripted hero" that picks random legal actions;
  * - `drive` plays until `hands` hands are complete, answering the hero's turns and reloads.
  */
 import { vi } from 'vitest';
 import { randInt, rngFromSeed, type Rng, type Seed128 } from '../../src/core/rng.ts';
 import {
-  createSimpleBrain,
-  type BotDecisionRequest,
-  type BrainClient,
-  type BrainReply,
-} from '../../src/app/brain.ts';
-import {
   createTableController,
+  realTimers,
   type TableController,
   type Timers,
 } from '../../src/app/controller.ts';
@@ -30,11 +28,23 @@ import {
   type GameSettings,
 } from '../../src/app/store.ts';
 import { fixedSeeds } from '../../src/app/testHooks.ts';
-import { simpleBotAction, simpleBotThinkMs } from '../../src/brain/simpleBot.ts';
+import {
+  createBrainClient,
+  type BrainClient,
+  type EquityClient,
+} from '../../src/app/workerClient.ts';
+import { decide as standInDecide } from '../../src/brain/standIn.ts';
+import { thinkMs } from '../../src/brain/think.ts';
 import type { step } from '../../src/engine/step.ts';
 import type { SafeStorage } from '../../src/persist/storage.ts';
-import type { EquityClient } from '../../src/app/workerClient.ts';
-import type { HandState, LegalActions, PlayerAction } from '../../src/engine/types.ts';
+import type { HandState, LegalActions, Observation, PlayerAction } from '../../src/engine/types.ts';
+import type { BrainReply, BrainRequest } from '../../src/workers/protocol.ts';
+import {
+  fakeBrainWorker,
+  testBrain,
+  type FakeBrainInstance,
+  type FakeBrainWorker,
+} from '../workers/fakeBrainWorker.ts';
 
 export const SEED: Seed128 = 'c0ffee00c0ffee00c0ffee00c0ffee00';
 
@@ -48,6 +58,7 @@ export interface Harness {
 export interface HarnessOptions {
   seed?: Seed128;
   settings?: Partial<GameSettings>;
+  /** The bots' brain (default: `testBrain`, on the controller's timers). */
   brain?: BrainClient;
   step?: typeof step;
   timers?: Timers;
@@ -66,7 +77,7 @@ export function makeHarness(options: HarnessOptions = {}): Harness {
   store.setState({ settings });
   const controller = createTableController({
     store,
-    brain: options.brain ?? createSimpleBrain(),
+    brain: options.brain ?? testBrain(options.timers ?? realTimers),
     heroName: 'You',
     seeds: fixedSeeds(options.seed ?? SEED),
     ...(options.step !== undefined && { step: options.step }),
@@ -102,60 +113,98 @@ export async function elapse(ms: number): Promise<void> {
   await flush();
 }
 
-export interface SpyBrain extends BrainClient {
-  requests: BotDecisionRequest[];
+/** The `botDecision` message the controller posts to `brain.worker`. */
+export type BotDecisionMsg = Extract<BrainRequest, { kind: 'botDecision' }>;
+
+export interface SpyBrain {
+  client: BrainClient;
+  fake: FakeBrainWorker;
+  /** Every `botDecision` posted, as the worker received it. */
+  requests: BotDecisionMsg[];
+  /** The job ids of every `cancel` posted. */
   cancelled: number[];
 }
 
-/** SimpleBot, recording every request (and calling `onRequest` synchronously with it). */
-export function spyBrain(onRequest?: (req: BotDecisionRequest) => void): SpyBrain {
-  const inner = createSimpleBrain();
-  const brain: SpyBrain = {
-    requests: [],
-    cancelled: [],
-    request(req) {
-      brain.requests.push(req);
-      onRequest?.(req);
-      return inner.request(req);
+/** The stand-in brain, recording every message (and calling `onRequest` synchronously with each `botDecision`). */
+export function spyBrain(
+  onRequest?: (req: BotDecisionMsg) => void,
+  timers: Timers = realTimers,
+): SpyBrain {
+  const spy: SpyBrain = { client: null as never, fake: null as never, requests: [], cancelled: [] };
+  spy.fake = fakeBrainWorker({
+    service: { decide: standInDecide },
+    onReceive: (msg) => {
+      if (msg.kind === 'botDecision') {
+        spy.requests.push(msg);
+        onRequest?.(msg);
+      } else if (msg.kind === 'cancel') {
+        spy.cancelled.push(msg.jobId);
+      }
     },
-    cancel(jobId) {
-      brain.cancelled.push(jobId);
-    },
-  };
-  return brain;
+  });
+  spy.client = createBrainClient(spy.fake.spawn, timers);
+  return spy;
 }
 
-export interface ManualBrain extends BrainClient {
-  pending: Map<number, { req: BotDecisionRequest; resolve: (reply: BrainReply) => void }>;
+/** A brain that answers with `choose`'s action (default: the stand-in's) and a fixed think time. */
+export function scriptedBrain(options: {
+  thinkMs: number;
+  choose?: (obs: Observation) => PlayerAction;
+  /** Called synchronously with every `botDecision` as it is posted. */
+  onRequest?: (req: BotDecisionMsg) => void;
+  timers?: Timers;
+}): BrainClient {
+  const { choose, onRequest } = options;
+  const fake = fakeBrainWorker({
+    service: {
+      decide: (obs) => {
+        const decision = standInDecide(obs);
+        return choose === undefined ? decision : { ...decision, action: choose(obs) };
+      },
+      thinkMs: () => options.thinkMs,
+    },
+    onReceive: (msg) => {
+      if (msg.kind === 'botDecision') onRequest?.(msg);
+    },
+  });
+  return createBrainClient(fake.spawn, options.timers ?? realTimers);
+}
+
+export interface ManualBrain {
+  client: BrainClient;
+  fake: FakeBrainWorker;
+  /**
+   * The jobs posted and not yet answered, cancelled ones too (answering one tests that a late
+   * reply is dropped).
+   */
+  pending: Map<number, { req: BotDecisionMsg; instance: FakeBrainInstance }>;
+  /** The job ids of every `cancel` posted (the client's cancels and its timeouts). */
   cancelled: number[];
-  /** Answers one job (SimpleBot's own answer unless `reply` is given). */
+  /** Answers one job as the stand-in brain would, unless `reply` overrides parts of the reply. */
   answer(jobId: number, reply?: Partial<BrainReply>): void;
   /** Answers every pending job. */
   answerAll(): void;
 }
 
 /** A brain that answers only when the test says so. */
-export function manualBrain(): ManualBrain {
+export function manualBrain(timers: Timers = realTimers): ManualBrain {
   const brain: ManualBrain = {
+    client: null as never,
+    fake: null as never,
     pending: new Map(),
     cancelled: [],
-    request(req) {
-      return new Promise((resolve) => brain.pending.set(req.jobId, { req, resolve }));
-    },
-    cancel(jobId) {
-      brain.cancelled.push(jobId);
-    },
     answer(jobId, reply) {
       const job = brain.pending.get(jobId);
       if (job === undefined) throw new Error(`no pending job ${jobId}`);
       brain.pending.delete(jobId);
-      const action = simpleBotAction(job.req.obs);
-      job.resolve({
+      const { obs, seed, epoch } = job.req;
+      const decision = standInDecide(obs);
+      job.instance.reply({
         kind: 'botDecision',
         jobId,
-        epoch: job.req.epoch,
-        decision: { action },
-        thinkMs: simpleBotThinkMs(job.req.obs, action, job.req.seed),
+        epoch,
+        decision,
+        thinkMs: thinkMs(obs, decision, seed),
         ...reply,
       } as BrainReply);
     },
@@ -163,6 +212,13 @@ export function manualBrain(): ManualBrain {
       for (const jobId of [...brain.pending.keys()]) brain.answer(jobId);
     },
   };
+  brain.fake = fakeBrainWorker({
+    onReceive: (msg, instance) => {
+      if (msg.kind === 'botDecision') brain.pending.set(msg.jobId, { req: msg, instance });
+      else if (msg.kind === 'cancel') brain.cancelled.push(msg.jobId);
+    },
+  });
+  brain.client = createBrainClient(brain.fake.spawn, timers);
   return brain;
 }
 

@@ -5,7 +5,6 @@
  * the layout queries feed `ui.layout`.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createSimpleBrain } from '../../src/app/brain.ts';
 import { createTableController, TIMING } from '../../src/app/controller.ts';
 import {
   canGoBack,
@@ -16,6 +15,7 @@ import {
   layoutFor,
 } from '../../src/app/lifecycle.ts';
 import { createAppStore, type AppStore } from '../../src/app/store.ts';
+import { testBrain } from '../workers/fakeBrainWorker.ts';
 
 let off: (() => void)[] = [];
 afterEach(() => {
@@ -105,7 +105,7 @@ describe('visibility (§12.13)', () => {
     const store = createAppStore();
     const controller = createTableController({
       store,
-      brain: createSimpleBrain(),
+      brain: testBrain(),
       heroName: 'You',
     });
     controller.boot();

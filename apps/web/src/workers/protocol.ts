@@ -13,6 +13,11 @@
  * - `equity` replies are progressive: several, the last with `result.final === true`
  *   (Monte Carlo at n = 2,500 and 10,000, then the final; an exact enumeration sends only the
  *   final). `equityKnown` likewise, with `final`. `handInfo` sends one reply.
+ * - ⚠️ `brain.worker` receives an `Observation` built by `observe()`, a profile and a seed, and
+ *   nothing else about the hand: never a `HandState`, the deck or a value derived from the hand
+ *   seed (§2.2, §9.6, pitfall 13). The bot seed comes from the table seed only (§2.4).
+ * - Brain replies are single replies: the first one is the last (an `error` reply too). `hint` and
+ *   `grade` answer `error` ("not available yet") until chunks 5.7 and 6.1.
  * - Timeouts (main thread): equity 4,000 ms (above the worker's own 3 s `truncated` cap, so a
  *   truncated reply still lands); bot decision 2,000 ms; grade 1,500 ms.
  * - The Monte Carlo seed text (§7.3) writes hero cards sorted by `Card` value descending and the
@@ -93,13 +98,20 @@ export type EquityReply =
   | { kind: 'bench'; jobId: number; result: EquityBenchResult }
   | { kind: 'error'; jobId: number; epoch: number; message: string };
 
+/**
+ * Which brain profile a bot plays. Appendix A.6 sends the full `BrainProfile`; until `profileFor`
+ * exists (chunk 5.7) the controller sends only its id, "personality/level" (e.g. "station/easy"),
+ * which every `BrainProfile` has too. Chunk 5.7 changes this field back to `BrainProfile`.
+ */
+export type BotProfileRef = Pick<BrainProfile, 'id'>;
+
 export type BrainRequest =
   | {
       kind: 'botDecision';
       jobId: number;
       epoch: number;
       obs: Observation;
-      profile: BrainProfile;
+      profile: BotProfileRef;
       seed: Seed128;
     }
   | { kind: 'hint'; jobId: number; epoch: number; obs: Observation; eRandom: number | null }
