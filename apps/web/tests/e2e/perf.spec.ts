@@ -49,7 +49,7 @@ test('no main-thread task over 50 ms during 25 hands with 6 players', async ({
 //
 // The rate is relative to the CPU that runs the test, and on the shared 2-vCPU CI runner the
 // worker's busy time also holds the CPU it loses to the game, Playwright and the server, which the
-// model then counts six times (PLAN R16: the postflop final was 539 to 748 ms there, 270 ms on the
+// model then counts six times (PLAN R17: the postflop final was 539 to 748 ms there, 270 ms on the
 // dev Mac). So these two checks only REPORT in CI (`PERF_REPORT_ONLY`, below); they are enforced
 // on a developer machine by `npm run e2e:perf`, and on a real phone by `#bench` (§15.4).
 
