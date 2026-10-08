@@ -8,7 +8,8 @@
  */
 import { describe, expect, it } from 'vitest';
 import { simpleDecide } from '../helpers/simpleDecide.ts';
-import { decide, hint } from '../../src/brain/decide.ts';
+import { coachHint, decide, hint } from '../../src/brain/decide.ts';
+import type { Explanation } from '../../src/brain/explain.ts';
 import { isLegalAction } from '../../src/brain/guardrails.ts';
 import { profileFor } from '../../src/brain/profiles.ts';
 import { thinkMs } from '../../src/brain/think.ts';
@@ -54,7 +55,18 @@ function rig(decide: DecideFn = simpleDecide, think?: typeof thinkMs, coach?: Hi
 }
 
 /** A fake coach: SimpleBot's action, with `eRandom` echoed so a test can tell calls apart. */
-const fakeHint: HintFn = (obs, eRandom) => ({ ...simpleDecide(obs), eRandom: eRandom ?? -1 });
+const fakeHint: HintFn = (obs, eRandom) => ({
+  decision: { ...simpleDecide(obs), eRandom: eRandom ?? -1 },
+  explanation: { headline: { key: 'headline.check', params: {} } } as unknown as Explanation,
+});
+/** The reply the runner posts for a coach answer. */
+const hintReply = (jobId: number, epoch: number, answer: ReturnType<HintFn>) => ({
+  kind: 'hint',
+  jobId,
+  epoch,
+  decision: answer.decision,
+  explanation: answer.explanation,
+});
 
 /** The same table with the hero's cards changed: another observation. */
 function otherObs(i: number): Observation {
@@ -173,7 +185,7 @@ describe('hint', () => {
   it('answers with the coach`s advice for the observation and the HUD number, echoing id and epoch', () => {
     const { service, replies } = rig(simpleDecide, undefined, fakeHint);
     service.handle({ kind: 'hint', jobId: 4, epoch: 2, obs: OBS, eRandom: 0.5 });
-    expect(replies).toEqual([{ kind: 'hint', jobId: 4, epoch: 2, decision: fakeHint(OBS, 0.5) }]);
+    expect(replies).toEqual([hintReply(4, 2, fakeHint(OBS, 0.5))]);
   });
 
   it('computes each observation once: the same job again answers from the cache (§8.11)', () => {
@@ -186,7 +198,7 @@ describe('hint', () => {
     service.handle({ kind: 'hint', jobId: 1, epoch: 1, obs: OBS, eRandom: null });
     service.handle({ kind: 'hint', jobId: 2, epoch: 2, obs: structuredClone(OBS), eRandom: null });
     expect(calls).toHaveLength(1);
-    expect(replies[1]).toEqual({ kind: 'hint', jobId: 2, epoch: 2, decision: fakeHint(OBS, null) });
+    expect(replies[1]).toEqual(hintReply(2, 2, fakeHint(OBS, null)));
     // Another HUD number is another job.
     service.handle({ kind: 'hint', jobId: 3, epoch: 2, obs: OBS, eRandom: 0.25 });
     expect(calls).toHaveLength(2);
@@ -278,9 +290,10 @@ describe('the real brain through the runner (brain.worker.ts)', () => {
   });
 
   it('a hint is hint(obs, eRandom), the same through a structured clone of the message', () => {
-    const { service, replies } = rig(decide, undefined, hint);
+    const { service, replies } = rig(decide, undefined, coachHint);
     service.handle(structuredClone({ kind: 'hint', jobId: 1, epoch: 1, obs: OBS, eRandom: null }));
-    expect(replies).toEqual([{ kind: 'hint', jobId: 1, epoch: 1, decision: hint(OBS, null) }]);
+    expect(replies).toEqual([hintReply(1, 1, coachHint(OBS, null))]);
+    expect(coachHint(OBS, null).decision).toEqual(hint(OBS, null));
   });
 });
 

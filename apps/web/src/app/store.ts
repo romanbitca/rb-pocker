@@ -21,6 +21,7 @@ import { useStore } from 'zustand';
 import { useShallow } from 'zustand/react/shallow';
 import { createStore, type StoreApi } from 'zustand/vanilla';
 import type { EquityResult, HandAnalysis } from '../analysis/types.ts';
+import type { Explanation } from '../brain/explain.ts';
 import type { Decision } from '../brain/types.ts';
 import type { Card } from '../core/cards.ts';
 import type { HandState, LegalActions, PlayerAction, TableState } from '../engine/types.ts';
@@ -243,6 +244,8 @@ export interface CoachSlice {
   /** 'ready': `decision` is the advice; 'failed': the coach could not answer (§12.11). */
   status: 'idle' | 'ready' | 'failed';
   decision: Decision | null;
+  /** `explain()` of `decision` (chunk 5.6), from the worker: `i18n/coach.ts` renders it. */
+  explanation: Explanation | null;
   /**
    * The decision whose hint the player opened (Intermediate's "Hint", §10.2), by its key. Above
    * Beginner, opening it marks the decision as helped (stats, Stage 6).
@@ -251,7 +254,7 @@ export interface CoachSlice {
 }
 
 export function initialCoach(): CoachSlice {
-  return { key: null, status: 'idle', decision: null, opened: null };
+  return { key: null, status: 'idle', decision: null, explanation: null, opened: null };
 }
 
 export interface UiSlice {

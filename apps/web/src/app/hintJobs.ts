@@ -17,7 +17,7 @@
  * - ⚠️ Non-cheating (§9.6, pitfall 13): the request carries the hero's own observation (built by
  *   `observe()`), never a `HandState` or another seat's hidden cards.
  */
-import type { Decision } from '../brain/types.ts';
+import type { CoachHint } from '../brain/decide.ts';
 import type { HandState, Observation } from '../engine/types.ts';
 import type { BrainReply, BrainRequest } from '../workers/protocol.ts';
 import type { AppStore, EquitySlice } from './store.ts';
@@ -136,21 +136,24 @@ export class HintJobs {
 
   private onEvent(ask: HintAsk, jobId: number | null, event: JobEvent<BrainReply>): void {
     if (this.jobId === jobId) this.jobId = null;
-    const decision =
-      event.type === 'reply' && event.reply.kind === 'hint' ? event.reply.decision : null;
-    this.land(ask, decision);
+    const answer =
+      event.type === 'reply' && event.reply.kind === 'hint'
+        ? { decision: event.reply.decision, explanation: event.reply.explanation }
+        : null;
+    this.land(ask, answer);
   }
 
   /** Writes the answer (null: failed) while its decision is still the one asked about. */
-  private land(ask: HintAsk, decision: Decision | null): void {
+  private land(ask: HintAsk, answer: CoachHint | null): void {
     if (this.asked !== ask) return;
     const coach = this.store.getState().coach;
     this.store.setState({
       coach: {
         ...coach,
         key: ask.key,
-        status: decision === null ? 'failed' : 'ready',
-        decision,
+        status: answer === null ? 'failed' : 'ready',
+        decision: answer?.decision ?? null,
+        explanation: answer?.explanation ?? null,
       },
     });
   }

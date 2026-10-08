@@ -9,7 +9,8 @@
  *
  * - `botDecision`: `decide` gives the `Decision`; `thinkMs` (§9.8, `brain/think.ts`) its think time
  *   at Normal speed; both go back in one reply. A throw becomes an `error` reply for the job.
- * - `hint` (chunk 5.7): `hint(obs, eRandom)`, the coach's advice. Hint and grade share one
+ * - `hint` (chunk 5.7): `coachHint(obs, eRandom)`, the coach's advice and `explain()` of it (the
+ *   words need the brain's features; the main thread only renders them). Hint and grade share one
  *   computation, cached by `observationKey` (§8.11, LRU of 32): asking again for the same
  *   observation (an undo, a resume, "Tap to try again") answers at once with the same advice. The
  *   key also holds the `eRandom` the job brought (null: the worker computes the HUD's number).
@@ -19,6 +20,7 @@
  *   left to stop. The main thread drops the reply of a cancelled job (`app/workerClient.ts`).
  */
 import type { Seed128 } from '../core/rng.ts';
+import type { CoachHint } from '../brain/decide.ts';
 import type { BrainProfile, Decision } from '../brain/types.ts';
 import { thinkMs as defaultThinkMs } from '../brain/think.ts';
 import { observationKey, type Observation } from '../engine/types.ts';
@@ -27,8 +29,8 @@ import type { BrainReply, BrainRequest } from './protocol.ts';
 /** `decide(obs, profile, seed)` of Appendix A.5 (`brain/decide.ts`), as the worker calls it. */
 export type DecideFn = (obs: Observation, profile: BrainProfile, seed: Seed128) => Decision;
 
-/** `hint(obs, eRandom)` of Appendix A.5 (`brain/decide.ts`). */
-export type HintFn = (obs: Observation, eRandom: number | null) => Decision;
+/** `coachHint(obs, eRandom)` (`brain/decide.ts`): A.5 `hint` with its explanation. */
+export type HintFn = (obs: Observation, eRandom: number | null) => CoachHint;
 
 /** §9.8: the think time at Normal speed for a decision, in ms (`brain/think.ts`). */
 export type ThinkMsFn = (obs: Observation, decision: Decision, seed: Seed128) => number;
@@ -60,13 +62,13 @@ export function hintKey(obs: Observation, eRandom: number | null): string {
 export function createBrainService(options: BrainServiceOptions): BrainService {
   const { decide, post } = options;
   const thinkMs = options.thinkMs ?? defaultThinkMs;
-  const hints = new Map<string, Decision>();
+  const hints = new Map<string, CoachHint>();
 
   const fail = (jobId: number, epoch: number, message: string): void =>
     post({ kind: 'error', jobId, epoch, message });
 
   /** The hint of `obs`, from the cache when it has it (then it becomes the newest entry). */
-  const hintOf = (hint: HintFn, obs: Observation, eRandom: number | null): Decision => {
+  const hintOf = (hint: HintFn, obs: Observation, eRandom: number | null): CoachHint => {
     const key = hintKey(obs, eRandom);
     const cached = hints.get(key);
     if (cached !== undefined) {
@@ -74,10 +76,10 @@ export function createBrainService(options: BrainServiceOptions): BrainService {
       hints.set(key, cached);
       return cached;
     }
-    const decision = hint(obs, eRandom);
-    hints.set(key, decision);
+    const answer = hint(obs, eRandom);
+    hints.set(key, answer);
     if (hints.size > HINT_CACHE_SIZE) hints.delete(hints.keys().next().value as string);
-    return decision;
+    return answer;
   };
 
   return {
@@ -107,8 +109,8 @@ export function createBrainService(options: BrainServiceOptions): BrainService {
             return;
           }
           try {
-            const decision = hintOf(hint, msg.obs, msg.eRandom);
-            post({ kind: 'hint', jobId: msg.jobId, epoch: msg.epoch, decision });
+            const { decision, explanation } = hintOf(hint, msg.obs, msg.eRandom);
+            post({ kind: 'hint', jobId: msg.jobId, epoch: msg.epoch, decision, explanation });
           } catch (e) {
             fail(msg.jobId, msg.epoch, messageOf(e));
           }

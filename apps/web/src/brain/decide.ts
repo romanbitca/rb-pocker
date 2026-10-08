@@ -47,6 +47,7 @@ import { rankOf, suitOf, type Card } from '../core/cards.ts';
 import { deriveSeed, rngFromSeed, type Rng, type Seed128 } from '../core/rng.ts';
 import type { LegalActions, Observation, PlayerAction } from '../engine/types.ts';
 import { candidateActions, candidateKey, confidence, evModel, type EvModel } from './ev.ts';
+import { explain, explainInput, type Explanation } from './explain.ts';
 import { coachSeed, features } from './features.ts';
 import { guardrails, guardSpot } from './guardrails.ts';
 import {
@@ -672,6 +673,23 @@ export function decide(obs: Observation, profile: BrainProfile, seed: Seed128): 
  */
 export function hint(obs: Observation, eRandom: number | null): Decision {
   return deliberate(obs, COACH, coachSeed(obs), eRandom).decision;
+}
+
+/** The coach's advice with its words (§8.10): what `brain.worker` sends for a hint job. */
+export interface CoachHint {
+  decision: Decision;
+  /** `explain()` of the decision (template keys and values, never English; chunk 5.6). */
+  explanation: Explanation;
+}
+
+/**
+ * `hint(obs, eRandom)` and its explanation from one computation: `explain` needs the §8.2
+ * features, which only the brain has (the main thread renders the lines, `i18n/coach.ts`, so no
+ * brain data joins the main bundle). The numbers in the words are the decision's own (C9).
+ */
+export function coachHint(obs: Observation, eRandom: number | null): CoachHint {
+  const { decision, f } = deliberate(obs, COACH, coachSeed(obs), eRandom);
+  return { decision, explanation: explain(explainInput(obs, f, decision)) };
 }
 
 /** Appendix A.5 `grade(obs, taken, eRandom, decisionId)`: Stage 6 (§8.9, chunk 6.1). */

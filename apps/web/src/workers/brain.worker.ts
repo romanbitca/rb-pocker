@@ -11,7 +11,7 @@
  * Created with the literal `new Worker(new URL('./brain.worker.ts', import.meta.url),
  * { type: 'module' })` in `spawn.ts` (pitfall 38).
  */
-import { decide, hint } from '../brain/decide.ts';
+import { coachHint, decide } from '../brain/decide.ts';
 import { createBrainService } from './brainService.ts';
 import type { BrainReply, BrainRequest } from './protocol.ts';
 
@@ -24,7 +24,7 @@ interface WorkerScope {
 const scope = self as unknown as WorkerScope;
 const service = createBrainService({
   decide,
-  hint,
+  hint: coachHint,
   post: (reply) => scope.postMessage(reply),
 });
 scope.onmessage = (event) => service.handle(event.data);

@@ -10,7 +10,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { HERO, realTimers } from '../../src/app/controller.ts';
 import { coachKeyOf, HINT_TIMEOUT_MS } from '../../src/app/hintJobs.ts';
 import { createBrainClient } from '../../src/app/workerClient.ts';
-import { hint } from '../../src/brain/decide.ts';
+import { coachHint, hint } from '../../src/brain/decide.ts';
+import type { Explanation } from '../../src/brain/explain.ts';
 import type { Decision } from '../../src/brain/types.ts';
 import { observe } from '../../src/engine/observe.ts';
 import {
@@ -55,7 +56,7 @@ interface CoachBrain {
 function coachBrain(
   options: { coach?: HintFn; hold?: boolean; failSpawns?: number } = {},
 ): CoachBrain {
-  const coach = options.coach ?? hint;
+  const coach = options.coach ?? coachHint;
   const hints: HintMsg[] = [];
   const cancelled: number[] = [];
   const held = new Map<number, { msg: HintMsg; instance: FakeBrainInstance }>();
@@ -72,10 +73,10 @@ function coachBrain(
         if (options.hold === true) {
           held.set(msg.jobId, { msg, instance });
         } else {
-          const decision = coach(msg.obs, msg.eRandom);
+          const { decision, explanation } = coach(msg.obs, msg.eRandom);
           const { jobId, epoch } = msg;
           void Promise.resolve().then(() =>
-            instance.reply({ kind: 'hint', jobId, epoch, decision }),
+            instance.reply({ kind: 'hint', jobId, epoch, decision, explanation }),
           );
         }
       } else if (msg.kind === 'cancel') {
@@ -95,12 +96,7 @@ function coachBrain(
       held.delete(jobId);
       const { msg, instance } = job;
       instance.reply(
-        reply ?? {
-          kind: 'hint',
-          jobId,
-          epoch: msg.epoch,
-          decision: coach(msg.obs, msg.eRandom),
-        },
+        reply ?? { kind: 'hint', jobId, epoch: msg.epoch, ...coach(msg.obs, msg.eRandom) },
       );
     },
   };
@@ -152,6 +148,8 @@ describe('the hint at the hero`s turn', () => {
         const coach = h.state().coach;
         expect(coach).toMatchObject({ key: coachKeyOf(hand), status: 'ready' });
         expect(coach.decision).toEqual(hint(req.obs, null));
+        // The words come with it, `explain()` of that decision (rendered by i18n/coach.ts).
+        expect(coach.explanation).toEqual(coachHint(req.obs, null).explanation);
         // Re-publishing the same decision asks nothing new.
         h.dispatch({ type: 'gate', gate: 'tip', closed: true });
         h.dispatch({ type: 'gate', gate: 'tip', closed: false });
@@ -245,9 +243,12 @@ describe('C4: the coach level never changes the advice', () => {
       // real hint is a pure function of the same inputs, C3, checked at 2,000 decision points in
       // tests/brain/hint.property.test.ts).
       const coach: HintFn = (obs: Observation, eRandom) => ({
-        ...simpleDecide(obs),
-        eRandom: eRandom ?? -1,
-        trace: [{ code: 'OPEN_RANGE', data: { key: observationKey(obs) } }],
+        decision: {
+          ...simpleDecide(obs),
+          eRandom: eRandom ?? -1,
+          trace: [{ code: 'OPEN_RANGE', data: { key: observationKey(obs) } }],
+        },
+        explanation: { key: observationKey(obs) } as unknown as Explanation,
       });
       const DECISIONS = 2000;
       const games: { requests: string[]; advice: (Decision | null)[] }[] = [];

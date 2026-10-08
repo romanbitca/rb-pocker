@@ -33,6 +33,7 @@
  * - `bench` (§15.4, the `#bench` screen): the worker measures itself and answers once.
  */
 import type { EquityResult, HandAnalysis } from '../analysis/types.ts';
+import type { Explanation } from '../brain/explain.ts';
 import type { BrainProfile, Decision, GradeResult } from '../brain/types.ts';
 import type { Card } from '../core/cards.ts';
 import type { Seed128 } from '../core/rng.ts';
@@ -127,7 +128,8 @@ export type BrainRequest =
 
 export type BrainReply =
   | { kind: 'botDecision'; jobId: number; epoch: number; decision: Decision; thinkMs: number }
-  | { kind: 'hint'; jobId: number; epoch: number; decision: Decision }
+  /** The coach's advice and `explain()` of it (chunk 5.7; the main thread renders the lines). */
+  | { kind: 'hint'; jobId: number; epoch: number; decision: Decision; explanation: Explanation }
   | { kind: 'grade'; jobId: number; epoch: number; result: GradeResult }
   | { kind: 'bench'; jobId: number; result: { hintP50Ms: number; hintP95Ms: number } }
   | { kind: 'error'; jobId: number; epoch: number; message: string };
