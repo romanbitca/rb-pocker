@@ -232,9 +232,10 @@ export function initialEquity(): EquitySlice {
 }
 
 /**
- * The coach's hint for the hero's decision (§8.10, §10.2, §12.6). `CoachJobs` (app/coachJobs.ts)
- * writes `key`, `status` and `decision` and nothing else (pitfall 37: a hint re-renders only the
- * coach's places); the `showHint` command writes `opened`. Grades join it in Stage 6.
+ * The coach's hint for the hero's decision (§8.10, §10.2, §12.6). The controller's hint jobs
+ * (`app/hintJobs.ts`, chunk 5.7) write `key`, `status` and `decision` and nothing else (pitfall 37:
+ * a hint re-renders only the coach's places); the `showHint` command writes `opened`. Grades join
+ * it in Stage 6.
  */
 export interface CoachSlice {
   /** `coachKeyOf(hand)` of the decision `status` and `decision` are for; null before the first. */

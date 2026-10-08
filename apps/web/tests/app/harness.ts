@@ -3,7 +3,7 @@
  * timers call `globalThis.setTimeout` and `Date.now`, which `vi.useFakeTimers()` replaces).
  *
  * - the bots' brain is a real `WorkerClient` over a fake `brain.worker` (`tests/workers/`) that runs
- *   the production job runner with the stand-in brain (`testBrain`);
+ *   the production job runner with SimpleBot as its brain (`testBrain`, `simpleDecide`);
  * - `spyBrain` records every message the controller posts to it (the non-cheating checks read them);
  * - `manualBrain` holds every request until the test answers it (stale-reply, timeout and crash tests);
  * - `scriptedBrain` answers with a chosen action and a fixed think time;
@@ -34,7 +34,7 @@ import {
   type BrainClient,
   type EquityClient,
 } from '../../src/app/workerClient.ts';
-import { decide as standInDecide } from '../../src/brain/standIn.ts';
+import { simpleDecide } from '../helpers/simpleDecide.ts';
 import { thinkMs } from '../../src/brain/think.ts';
 import type { step } from '../../src/engine/step.ts';
 import type { SafeStorage } from '../../src/persist/storage.ts';
@@ -128,7 +128,7 @@ export interface SpyBrain {
   cancelled: number[];
 }
 
-/** The stand-in brain, recording every message (and calling `onRequest` synchronously with each `botDecision`). */
+/** SimpleBot as the brain, recording every message (and calling `onRequest` synchronously with each `botDecision`). */
 export function spyBrain(
   onRequest?: (req: BotDecisionMsg) => void,
   timers: Timers = realTimers,
@@ -136,7 +136,7 @@ export function spyBrain(
   const requests: BotDecisionMsg[] = [];
   const cancelled: number[] = [];
   const fake = fakeBrainWorker({
-    service: { decide: standInDecide },
+    service: { decide: simpleDecide },
     onReceive: (msg) => {
       if (msg.kind === 'botDecision') {
         requests.push(msg);
@@ -149,7 +149,7 @@ export function spyBrain(
   return { client: createBrainClient(fake.spawn, timers), fake, requests, cancelled };
 }
 
-/** A brain that answers with `choose`'s action (default: the stand-in's) and a fixed think time. */
+/** A brain that answers with `choose`'s action (default: SimpleBot's) and a fixed think time. */
 export function scriptedBrain(options: {
   thinkMs: number;
   choose?: (obs: Observation) => PlayerAction;
@@ -161,7 +161,7 @@ export function scriptedBrain(options: {
   const fake = fakeBrainWorker({
     service: {
       decide: (obs) => {
-        const decision = standInDecide(obs);
+        const decision = simpleDecide(obs);
         return choose === undefined ? decision : { ...decision, action: choose(obs) };
       },
       thinkMs: () => options.thinkMs,
@@ -183,7 +183,7 @@ export interface ManualBrain {
   pending: Map<number, { req: BotDecisionMsg; instance: FakeBrainInstance }>;
   /** The job ids of every `cancel` posted (the client's cancels and its timeouts). */
   cancelled: number[];
-  /** Answers one job as the stand-in brain would, unless `reply` overrides parts of the reply. */
+  /** Answers one job as SimpleBot would, unless `reply` overrides parts of the reply. */
   answer(jobId: number, reply?: Partial<BrainReply>): void;
   /** Answers every pending job. */
   answerAll(): void;
@@ -204,7 +204,7 @@ export function manualBrain(timers: Timers = realTimers): ManualBrain {
     if (job === undefined) throw new Error(`no pending job ${jobId}`);
     pending.delete(jobId);
     const { obs, seed, epoch } = job.req;
-    const decision = standInDecide(obs);
+    const decision = simpleDecide(obs);
     job.instance.reply({
       kind: 'botDecision',
       jobId,

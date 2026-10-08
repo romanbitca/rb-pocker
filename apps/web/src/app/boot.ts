@@ -41,6 +41,8 @@ export function startApp(options: StartOptions): TableController {
     storage: options.storage ?? createSafeStorage(),
     // Warmed at start, never awaited (§12.14); without module workers it reports "unavailable".
     equity: startEquityWorker(realTimers),
+    // The coach's hint at every hero decision, from brain.worker (§8.2, chunk 5.7).
+    hints: true,
   });
   installLifecycle(win, appStore);
   if (hooks !== undefined) hooks.installTestHooks(win, appStore, controller, seed);

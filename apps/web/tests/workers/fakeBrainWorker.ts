@@ -11,7 +11,7 @@ import {
   type BrainClient,
   type SpawnWorker,
 } from '../../src/app/workerClient.ts';
-import { decide as standInDecide } from '../../src/brain/standIn.ts';
+import { simpleDecide } from '../helpers/simpleDecide.ts';
 import { createBrainService, type BrainServiceOptions } from '../../src/workers/brainService.ts';
 import type { BrainReply, BrainRequest } from '../../src/workers/protocol.ts';
 
@@ -105,9 +105,9 @@ export function fakeBrainWorker(options: FakeBrainOptions = {}): FakeBrainWorker
 }
 
 /**
- * A brain client on a fake worker that runs the production job runner with the stand-in brain:
+ * A brain client on a fake worker that runs the production job runner with SimpleBot as its brain (`simpleDecide`):
  * what the app has, minus the thread (component and controller tests that need bots).
  */
 export function testBrain(timers: Timers = realTimers): BrainClient {
-  return createBrainClient(fakeBrainWorker({ service: { decide: standInDecide } }).spawn, timers);
+  return createBrainClient(fakeBrainWorker({ service: { decide: simpleDecide } }).spawn, timers);
 }

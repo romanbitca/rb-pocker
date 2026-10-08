@@ -54,9 +54,11 @@ import { emptyHandMeta, settingsProblem } from '../persist/schema.ts';
 import type { Profile, SessionState, Settings } from '../persist/schema.ts';
 import { clearSession, loadSession, saveSession } from '../persist/session.ts';
 import type { SafeStorage } from '../persist/storage.ts';
-import type { BotProfileRef, BrainReply, BrainRequest } from '../workers/protocol.ts';
-import { CoachJobs, standInHints, type HintSource } from './coachJobs.ts';
+import { profileFor } from '../brain/profiles.ts';
+import type { BrainProfile } from '../brain/types.ts';
+import type { BrainReply, BrainRequest } from '../workers/protocol.ts';
 import { EquityJobs } from './equityJobs.ts';
+import { coachKeyOf, finalHudEquity, HintJobs, type HintAsk } from './hintJobs.ts';
 import {
   updateUi,
   type AppStore,
@@ -203,10 +205,10 @@ export interface ControllerOptions {
    */
   equity?: EquityClient;
   /**
-   * Where the coach's hints come from (chunk 5.9, `app/coachJobs.ts`): they go to the store's
-   * `coach` slice. Default: the stand-in until chunk 5.7 (`standInHints()`); null: no hints.
+   * Ask `brain` for the coach's hint at every hero decision (chunk 5.7, `app/hintJobs.ts`): it
+   * goes to the store's `coach` slice. The app turns it on; tests without a coach leave it off.
    */
-  hints?: HintSource | null;
+  hints?: boolean;
 }
 
 /** One line of the controller's in-memory log (Diagnostics; `window.__pc.logs()` in test builds). */
@@ -319,8 +321,8 @@ export class TableController {
   private readonly equityClient: EquityClient | null;
   /** The win chance and hand-analysis jobs (§7.4); they write only the `equity` slice. */
   private readonly equityJobs: EquityJobs | null;
-  /** The coach's hints (§12.6); they write only the `coach` slice. */
-  private readonly coachJobs: CoachJobs | null;
+  /** The coach's hint jobs (§8.2, §12.6); they write only the `coach` slice. */
+  private readonly hintJobs: HintJobs | null;
   /** The stored profile (settings only in Stage 3); null without storage. */
   private profile: Profile | null = null;
   /** When this table's session began (§14.4); stored in the session. */
@@ -380,13 +382,7 @@ export class TableController {
     this.equityClient = options.equity ?? null;
     this.equityJobs =
       this.equityClient === null ? null : new EquityJobs(this.store, this.equityClient);
-    const hints = options.hints === undefined ? standInHints() : options.hints;
-    this.coachJobs =
-      hints === null
-        ? null
-        : new CoachJobs(this.store, hints, (hand) =>
-            observe(hand, HERO, this.extras(this.table as TableState)),
-          );
+    this.hintJobs = options.hints === true ? new HintJobs(this.store, this.brain) : null;
     this.unsubscribe = this.store.subscribe((s, prev) => {
       if (s.ui.gates !== prev.ui.gates) this.onGates();
     });
@@ -464,7 +460,7 @@ export class TableController {
         this.flushSettings();
         break;
       case 'retryCoach':
-        this.coachJobs?.retry();
+        this.hintJobs?.retry();
         break;
       default:
         this.trace('unknown command', cmd);
@@ -476,7 +472,7 @@ export class TableController {
   dispose(): void {
     this.bumpEpoch();
     this.equityJobs?.dispose();
-    this.coachJobs?.dispose();
+    this.hintJobs?.cancel();
     this.unsubscribe();
     this.store.setGameHandler(null);
     if (this.visibleTimer !== null) this.timers.clearTimeout(this.visibleTimer);
@@ -1139,6 +1135,7 @@ export class TableController {
     this.epoch++;
     this.cancelFlow();
     this.cancelJob();
+    this.hintJobs?.cancel();
     // A headless finish waits for its bot: cancelled jobs never answer, so let it go on.
     const headless = this.headlessJob;
     if (headless !== null) {
@@ -1317,10 +1314,37 @@ export class TableController {
     };
   }
 
-  private profileOf(table: TableState, seat: number): BotProfileRef {
-    const slot = table.slots[seat];
+  /** The seat's brain profile (§9.1 × §9.2): its personality at its effective level. */
+  private profileOf(table: TableState, seat: number): BrainProfile {
     const level = table.config.seatLevels[seat] ?? table.config.botLevel;
-    return { id: `${slot?.personality ?? 'unknown'}/${level}` };
+    return profileFor(table.slots[seat]?.personality ?? 'tag', level);
+  }
+
+  /**
+   * The hero's decision for the coach (§8.2, §12.6): its key, the epoch, and how to build the
+   * request (the hero's observation and the HUD's final number when the equity slice has it).
+   * Null when it is not the hero's turn.
+   */
+  private hintAsk(hand: HandState | null, legal: LegalActions | null): HintAsk | null {
+    const table = this.table;
+    if (
+      this.headless ||
+      this.mode !== 'heroTurn' ||
+      hand === null ||
+      legal === null ||
+      table === null ||
+      hand.toAct !== HERO
+    ) {
+      return null;
+    }
+    return {
+      key: coachKeyOf(hand),
+      epoch: this.epoch,
+      build: () => ({
+        obs: observe(hand, HERO, this.extras(table)),
+        eRandom: finalHudEquity(this.store.getState().equity, hand),
+      }),
+    };
   }
 
   /** The replay record of the current hand so far (§4.7): its table as at hand start and its inputs. */
@@ -1368,6 +1392,8 @@ export class TableController {
     }
     // After the game slice, so the equity slice never describes a hand the store does not have.
     this.equityJobs?.sync(this.headless ? null : hand, this.epoch);
+    // The coach's hint for the hero's decision; null cancels it (§8.2, chunk 5.7).
+    this.hintJobs?.sync(this.hintAsk(hand, legal));
   }
 
   private ui(cmd: UiCommand): void {
