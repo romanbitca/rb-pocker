@@ -6,7 +6,7 @@ This is the working checklist for building [PLAN.md](PLAN.md). PLAN.md is the so
 
 Legend: `[ ]` todo · `[~]` in progress (branch exists) · `[x]` merged to `main` · `[H]` waiting on the human
 
-**Current position:** ▶ Autonomous run (95%/window, stop at 80% weekly). Stages 0–4 ✅. Stage 5: 5.1–5.6, 5.8–5.10 merged. 5.7 (PR #47, draft): golden spots 18/18, C2–C4/C6/C7 + non-cheating pass; remaining = port 3 UI tests (tests/ui/coach.test.ts, Table.coach, Table.profiler) to the real hint, then merge. Next: 5.11 self-play calibration (watch R19: bots raise a lot), decide R18 (strength meter bands). Stage 6 in development: 6.2 (#49), 6.3 (#48).
+**Current position:** ▶ Autonomous run (95%/window, stop at 80% weekly), paused 9 Oct ~23:35Z for the 02:50Z window reset. **Next window, in order:** (1) finish 5.7 PR #47 (port tests/ui/coach.test.ts, Table.coach, Table.profiler to the real hint; CI; merge); (2) 5.11 self-play calibration (acceptance 5–6; watch R19 bots raise a lot) → Stage 5 complete (5.12 [H]); (3) start 6.1 grading (needs 5.7), finish 6.2 PR #49 (2 Playwright specs), merge 6.3 PR #48 and 6.2 after Stage 5; then 6.4 quiz/Exam, 6.5 e2e. Decide R18 (strength-meter bands). Main JS ~144.6/150 KB: everything new must be lazy.
 
 ---
 
