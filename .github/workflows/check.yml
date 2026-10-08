@@ -41,6 +41,11 @@ jobs:
       # 0.5 points of the committed ones. Takes seconds.
       - name: Generated tables (checksums, 20 cells re-sampled)
         run: npm run gen:check
+      # PLAN §8.10, Stage 5 acceptance 7: every coach template and glossary key, then the hints of
+      # 1,000 situations generated with the engine (sentences ≤ 15 words, placeholders, glossary,
+      # the HUD's win chance in every hint, RANGE_ADJUST). Takes a few seconds.
+      - name: Coach copy (templates, glossary, 1,000 generated situations)
+        run: npm run check:copy -w @rb/web
       - run: npm run build
       - name: Size budget (§15.3)
         run: npm run size
