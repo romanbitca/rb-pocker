@@ -17,7 +17,9 @@ permissions:
 jobs:
   check:
     runs-on: ubuntu-24.04 # the same image as the e2e job (see e2e.yml)
-    timeout-minutes: 15
+    # The slowest runs so far took 14 of the old 15 minutes (the unit suite ran twice); the suite
+    # grows with every chunk and the runner's speed varies by a factor of two.
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -30,12 +32,17 @@ jobs:
       - name: Lint (module boundaries, Math.random ban, server-must-not-import-web)
         run: npm run lint
       - run: npm run format:check
-      - name: Unit, property and server tests
-        run: npm test
-      # V8 coverage of the web unit tests without the volume and timing tests (they add no
-      # coverage; see apps/web/vitest.config.ts); fails below src/engine 95% / src/eval 90% branches.
-      - name: Coverage thresholds
+      # The web unit and property tests run once, under V8 coverage, and fail below the thresholds
+      # (apps/web/vitest.config.ts: src/engine 95% branches, src/eval, src/persist and
+      # src/analysis 90%, src/brain 85%). The coverage run leaves out the volume and timing tests
+      # (they reach no new code and V8 makes them several times slower): they run next, without
+      # coverage, and the server tests after them. Together that is every test of `npm test`.
+      - name: Unit and property tests, coverage thresholds
         run: npm run test:coverage
+      - name: Volume and timing tests (left out of the coverage run)
+        run: npm run test:volume
+      - name: Server tests
+        run: npm test -w @rb/server
       # PLAN §7.5: the generated preflop tables match their checksums, the finals agree with the
       # published 7-card counts, and 20 equity cells sampled again (200,000 trials) are within
       # 0.5 points of the committed ones. Takes seconds.
