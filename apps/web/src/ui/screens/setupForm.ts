@@ -37,11 +37,21 @@ export interface SetupValues {
   coachLevel: CoachLevel;
 }
 
-/** The levels a player can pick now; the others show "Coming soon" (§18 Stage 3). */
+/** The levels a player can pick now; the others show "Coming soon" (§18). */
 export interface AvailableLevels {
   bot: readonly BotLevel[];
   coach: readonly CoachLevel[];
 }
+
+/**
+ * What the app offers in Setup and Settings (§18 Stage 5): Easy and Medium bots, Beginner and
+ * Intermediate coach. Hard and Expert come with Stage 7, Advanced and Exam with Stage 6; the
+ * stored settings and the engine already accept all four of each.
+ */
+export const AVAILABLE_LEVELS: AvailableLevels = {
+  bot: ['easy', 'medium'],
+  coach: ['beginner', 'intermediate'],
+};
 
 /**
  * A chips or big-blind field: a preset, or Custom with the digits typed so far. A preset keeps

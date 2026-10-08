@@ -1,17 +1,28 @@
 // @vitest-environment jsdom
-// Settings, Game section (PLAN §12.1, §18 Stage 3): speed, auto next hand, amounts.
+// Settings, Game section (PLAN §12.1, §18 Stages 3 and 5): coach level, bot level, speed, auto next
+// hand, amounts.
 import '../../../src/ui/styles/tokens.css';
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Settings, type GameSettings } from '../../../src/ui/screens/Settings.tsx';
+import { AVAILABLE_LEVELS, type AvailableLevels } from '../../../src/ui/screens/setupForm.ts';
 import { controlCount, smallTargets } from './targets.ts';
 
 afterEach(cleanup);
 
-const GAME: GameSettings = { speed: 'normal', autoNext: true, amounts: 'chips' };
+const GAME: GameSettings = {
+  coachLevel: 'beginner',
+  botLevel: 'easy',
+  speed: 'normal',
+  autoNext: true,
+  amounts: 'chips',
+};
 
-function renderSettings(settings: GameSettings = GAME) {
-  const props = { settings, onChangeSettings: vi.fn(), onBack: vi.fn() };
+function renderSettings(
+  settings: GameSettings = GAME,
+  available: AvailableLevels = AVAILABLE_LEVELS,
+) {
+  const props = { settings, available, onChangeSettings: vi.fn(), onBack: vi.fn() };
   return { ...props, ...render(<Settings {...props} />) };
 }
 
@@ -73,7 +84,93 @@ describe('Settings', () => {
 
   it('every control is at least 44×44 px (§12.12)', () => {
     const { container } = renderSettings();
-    expect(controlCount(container)).toBe(7);
+    // Back, 4 + 4 level cards, 3 speeds, the switch, 2 amounts.
+    expect(controlCount(container)).toBe(15);
     expect(smallTargets(container, () => false)).toEqual([]);
+  });
+});
+
+describe('Settings: coach level and bot level (PLAN §10, §12.1)', () => {
+  const state = (group: string) =>
+    radios(group).map((r) => [r.value, r.checked, r.disabled] as const);
+
+  it('lists the coach level and the bot level first, before the speed', () => {
+    renderSettings();
+    expect(
+      screen.getAllByRole('group').map((g) => g.getElementsByTagName('legend')[0]?.textContent),
+    ).toEqual(['Coach level', 'Bot level', 'Speed', 'Show amounts as']);
+  });
+
+  it('coach level: Beginner and Intermediate can be picked; Advanced and Exam say "Coming soon"', () => {
+    const { onChangeSettings } = renderSettings();
+    expect(state('Coach level')).toEqual([
+      ['beginner', true, false],
+      ['intermediate', false, false],
+      ['advanced', false, true],
+      ['exam', false, true],
+    ]);
+    expect(radios('Coach level').map((r) => r.labels?.[0]?.textContent)).toEqual([
+      'BeginnerFull help',
+      'IntermediateHelp on tap',
+      'AdvancedMistakes onlyComing soon',
+      'ExamTest yourselfComing soon',
+    ]);
+    fireEvent.click(radios('Coach level')[1] as HTMLInputElement);
+    expect(onChangeSettings).toHaveBeenCalledTimes(1);
+    expect(onChangeSettings).toHaveBeenCalledWith({ coachLevel: 'intermediate' });
+  });
+
+  it('bot level: Easy and Medium can be picked; Hard and Expert say "Coming soon"', () => {
+    const { onChangeSettings } = renderSettings();
+    expect(state('Bot level')).toEqual([
+      ['easy', true, false],
+      ['medium', false, false],
+      ['hard', false, true],
+      ['expert', false, true],
+    ]);
+    expect(radios('Bot level').map((r) => r.labels?.[0]?.textContent)).toEqual([
+      'EasyBots make many mistakes. They call too much and rarely bluff.',
+      'MediumBots play okay but are easy to read.',
+      'HardBots play solid poker and read the board. Their style is hidden.Coming soon',
+      'ExpertBots study how you play and adapt.Coming soon',
+    ]);
+    fireEvent.click(radios('Bot level')[1] as HTMLInputElement);
+    expect(onChangeSettings).toHaveBeenCalledTimes(1);
+    expect(onChangeSettings).toHaveBeenCalledWith({ botLevel: 'medium' });
+  });
+
+  it('a card that is not available yet sends nothing', () => {
+    const { onChangeSettings } = renderSettings();
+    fireEvent.click(radios('Bot level')[2] as HTMLInputElement);
+    fireEvent.click(radios('Bot level')[3] as HTMLInputElement);
+    fireEvent.click(radios('Coach level')[2] as HTMLInputElement);
+    fireEvent.click(radios('Coach level')[3] as HTMLInputElement);
+    expect(onChangeSettings).not.toHaveBeenCalled();
+  });
+
+  it('shows the levels that are set, and the hints say when a change starts', () => {
+    renderSettings({ ...GAME, coachLevel: 'intermediate', botLevel: 'medium' });
+    expect(radios('Coach level').find((r) => r.checked)?.value).toBe('intermediate');
+    expect(radios('Bot level').find((r) => r.checked)?.value).toBe('medium');
+    const hint = (group: string) =>
+      document.getElementById(
+        screen.getByRole('group', { name: group }).getAttribute('aria-describedby') ?? '',
+      )?.textContent;
+    expect(hint('Coach level')).toBe('Changes start with your next decision.');
+    expect(hint('Bot level')).toBe('Changes start with the next hand.');
+  });
+
+  it('later stages open more cards through `available`', () => {
+    const { onChangeSettings } = renderSettings(GAME, {
+      bot: ['easy', 'medium', 'hard', 'expert'],
+      coach: ['beginner', 'intermediate', 'advanced', 'exam'],
+    });
+    expect(screen.queryByText('Coming soon')).toBeNull();
+    fireEvent.click(radios('Bot level')[3] as HTMLInputElement);
+    fireEvent.click(radios('Coach level')[3] as HTMLInputElement);
+    expect(onChangeSettings.mock.calls).toEqual([
+      [{ botLevel: 'expert' }],
+      [{ coachLevel: 'exam' }],
+    ]);
   });
 });

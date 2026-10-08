@@ -59,6 +59,18 @@ export interface SeatView {
   readonly winner: boolean;
 }
 
+/**
+ * A bot's card (PLAN §9.3, Appendix F.6), the sheet for a tapped seat. ⚠️ `personality` is null
+ * at Hard and Expert, where the style is hidden ("Style: unknown."); the card never shows more
+ * than the pod does.
+ */
+export interface BotCardView {
+  readonly name: string;
+  readonly personality: SeatPersonality | null;
+  /** Chips behind. */
+  readonly stack: number;
+}
+
 /** The pot (PLAN §12.3): "Pot 340", plus "Main 300 · Side 400" once side pots exist. */
 export interface PotView {
   /** Every chip in the middle, current street bets included (PLAN §0.3 `pot`). */

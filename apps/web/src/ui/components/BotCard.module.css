@@ -1,0 +1,96 @@
+/* The bot card, a bottom sheet for a tapped seat (PLAN §9.3, Appendix F.6). The layer is Modal. */
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+/* The pod's avatar (same colour from the name's hash), so the card is recognised as that seat. */
+.avatar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border: 2px solid var(--surface);
+  border-radius: 50%;
+  background: var(--avatar);
+  color: #fff;
+  font-size: 17px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.name {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  font-size: 1.25rem;
+  font-weight: 700;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.close {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: var(--tap-min);
+  height: var(--tap-min);
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.closeIcon {
+  width: 22px;
+  height: 22px;
+}
+
+/* The personality's icon and name; the shape, not a colour, tells them apart (§12.12). */
+.style {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  font-size: 1.0625rem;
+  font-weight: 700;
+}
+
+.styleIcon {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  color: var(--accent);
+}
+
+.text {
+  margin: 0;
+  line-height: 1.45;
+}
+
+.tipTitle {
+  margin: var(--space-2) 0 0;
+  color: var(--muted);
+  font-size: 0.875rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.stack {
+  margin: var(--space-2) 0 0;
+  padding-top: var(--space-3);
+  border-top: 1px solid rgb(242 245 243 / 15%);
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}

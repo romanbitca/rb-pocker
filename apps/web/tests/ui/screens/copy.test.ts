@@ -74,6 +74,22 @@ const PLAN_WORDS: Record<string, string> = {
       `"${text}"`,
     ]),
   ),
+  // Chunk 5.10: the Settings level rows and the bot card (Appendix F.10, F.6, §9.3).
+  'settings.coachLevel': `"${en.settings.coachLevel.label}" ("${en.settings.coachLevel.hint}")`,
+  'settings.botLevel': `"${en.settings.botLevel.label}" ("${en.settings.botLevel.hint}")`,
+  'botCard.close': `"${en.botCard.close}"`,
+  'botCard.howToBeat': `"${en.botCard.howToBeat}"`,
+  'botCard.stack': `"${en.botCard.stack(placeholder('x'))}"`,
+  'botCard.unknownStyle': `"${en.botCard.unknownStyle}`,
+  ...Object.fromEntries(
+    Object.entries(en.personality).map(([id, name]) => [`personality.${id}`, `| ${name} |`]),
+  ),
+  ...Object.fromEntries(
+    Object.entries(en.personalityText).flatMap(([id, t]) => [
+      [`personalityText.${id}.description`, `"${t.description}"`],
+      [`personalityText.${id}.tip`, `"${t.tip}"`],
+    ]),
+  ),
 };
 
 describe('screen copy comes from docs/PLAN.md', () => {

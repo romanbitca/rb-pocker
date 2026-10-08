@@ -152,8 +152,18 @@ const TopBar = memo(function TopBar({ handsExpanded, handsColumn, onToggleHands 
 // ---------------------------------------------------------------------------------------------
 // The table box: felt, seats, bets, board, pot, the hero's bet, the hand-end banner
 
+/**
+ * The opponents' pods. A tap on a pod opens its bot card (§9.3): the `botCard` command opens the
+ * overlay, which closes the `sheet` gate (no bot acts behind the card). The card itself is mounted
+ * by `App` only while it is open, so this adds no DOM to the table.
+ */
 const SeatsLayer = memo(function SeatsLayer({ geometry }: { geometry: TableGeometry }) {
   const seats = useAppStore(selectSeatViews);
+  const dispatch = useDispatch();
+  const openBotCard = useCallback(
+    (seat: number) => dispatch({ type: 'botCard', seat }),
+    [dispatch],
+  );
   return (
     <>
       {seats.map((view, i) => {
@@ -165,6 +175,7 @@ const SeatsLayer = memo(function SeatsLayer({ geometry }: { geometry: TableGeome
             key={view.seat}
             view={view}
             place={{ pod, bet, inner: geometry.inner[i] ?? 'right' }}
+            onSelect={openBotCard}
           />
         );
       })}

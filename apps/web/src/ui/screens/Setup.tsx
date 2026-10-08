@@ -5,13 +5,13 @@
  * accepts (§3.2), and Start stays disabled until there is one. "More options" (bot speed, per-seat
  * levels, four-colour cards) arrives with the stages that build those settings.
  *
- * Level cards that are not available yet are shown disabled with "Coming soon" (§18 Stage 3:
- * Easy bots and the Beginner coach only).
+ * Level cards that are not available yet are shown disabled with "Coming soon" (§18: Stage 5 offers
+ * Easy and Medium bots, Beginner and Intermediate coach; see `AVAILABLE_LEVELS`).
  */
 import { useId, useState, type FormEvent, type ReactNode } from 'react';
-import type { BotLevel, CoachLevel, TableConfig } from '../../engine/types.ts';
+import type { CoachLevel, TableConfig } from '../../engine/types.ts';
 import { en } from '../../i18n/en.ts';
-import { CheckIcon } from './icons.tsx';
+import { LevelCards } from './LevelCards.tsx';
 import { formatChips } from './numbers.ts';
 import { ScreenBar } from './ScreenBar.tsx';
 import styles from './Screen.module.css';
@@ -39,7 +39,7 @@ import {
 export interface SetupProps {
   /** The last-used values; a `Settings` object fits (Appendix A.7). */
   initial: SetupValues;
-  /** The levels that can be picked now (Stage 3: `{ bot: ['easy'], coach: ['beginner'] }`). */
+  /** The levels that can be picked now (`AVAILABLE_LEVELS`); the others say "Coming soon". */
   available: AvailableLevels;
   /** Start game. The controller asks first when a hand is unfinished (§3.1, the 'newTable' dialog). */
   onStartTable: (config: TableConfig, coachLevel: CoachLevel) => void;
@@ -105,9 +105,10 @@ export function Setup({ initial, available, onStartTable, onBack, onOpenPrivacy 
 
         <Depth id={depthId} stakes={check.stakes} stack={check.stack} />
 
-        <Levels
+        <LevelCards
           name={`${id}-bots`}
-          question={en.setup.bots.question}
+          legend={en.setup.bots.question}
+          legendClass={styles.question}
           order={BOT_LEVEL_ORDER}
           available={available.bot}
           value={form.botLevel}
@@ -116,9 +117,10 @@ export function Setup({ initial, available, onStartTable, onBack, onOpenPrivacy 
           onChange={(botLevel) => update({ botLevel })}
         />
 
-        <Levels
+        <LevelCards
           name={`${id}-coach`}
-          question={en.setup.coach.question}
+          legend={en.setup.coach.question}
+          legendClass={styles.question}
           order={COACH_LEVEL_ORDER}
           available={available.coach}
           value={form.coachLevel}
@@ -349,61 +351,5 @@ function Depth({ id, stakes, stack }: { id: string; stakes: Stakes | null; stack
       {stakes?.kind === 'tooShallow' && <p className={s.error}>{en.setup.depth.tooShallow}</p>}
       {stakes?.kind === 'tooDeep' && <p className={s.error}>{en.setup.depth.tooDeep}</p>}
     </div>
-  );
-}
-
-interface LevelsProps<L extends string> {
-  name: string;
-  question: string;
-  order: readonly L[];
-  available: readonly L[];
-  value: L;
-  names: Readonly<Record<L, string>>;
-  texts: Readonly<Record<L, string>>;
-  onChange: (level: L) => void;
-}
-
-/** Questions 3 and 4: four level cards, 2×2 on phones (§12.2). */
-function Levels<L extends BotLevel | CoachLevel>({
-  name,
-  question,
-  order,
-  available,
-  value,
-  names,
-  texts,
-  onChange,
-}: LevelsProps<L>) {
-  return (
-    <fieldset className={styles.section}>
-      <legend className={styles.question}>{question}</legend>
-      <div className={s.levels}>
-        {order.map((level) => {
-          const open = available.includes(level);
-          return (
-            <label key={level} className={s.level}>
-              <input
-                type="radio"
-                name={name}
-                value={level}
-                checked={value === level}
-                disabled={!open}
-                onChange={() => {
-                  if (open) onChange(level);
-                }}
-              />
-              <span className={s.levelFace}>
-                <span className={s.levelName}>{names[level]}</span>
-                <span className={s.levelText}>{texts[level]}</span>
-                {!open && <span className={s.soon}>{en.levels.comingSoon}</span>}
-                <span className={s.tick}>
-                  <CheckIcon />
-                </span>
-              </span>
-            </label>
-          );
-        })}
-      </div>
-    </fieldset>
   );
 }
