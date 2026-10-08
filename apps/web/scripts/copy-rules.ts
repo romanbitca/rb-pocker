@@ -20,6 +20,7 @@
  *    when the win chance beats the price; the headline is the action.
  */
 import {
+  CLOSE_POINTS,
   GLOSSARY_KEYS,
   shownPct,
   TEMPLATE_KEYS,
@@ -285,8 +286,7 @@ const COMPARES: Readonly<Partial<Record<TemplateKey, 'more' | 'atLeast' | 'less'
   WHY_NOT_CALL: 'less',
 };
 
-/** "It is close" is honest only when the two whole numbers are at most this far apart. */
-export const CLOSE_POINTS = 2;
+/** "It is close" is honest only for whole numbers at most `CLOSE_POINTS` apart (explain.ts). */
 const CLOSE_VARIANTS: ReadonlySet<string> = new Set([
   'CALL_PROFITABLE.close',
   'CALL_PREFLOP.close',

@@ -32,8 +32,9 @@
  * - **Consistency.** A sentence that compares the win chance with the price is used only when the
  *   whole numbers it shows agree with it; otherwise its `.close` variant (or `.realise`: you win
  *   less often when later bets can make you fold; or `.implied` for a pocket pair) says so
- *   without a false comparison. For a decision made by its policy's own rule, "close" then means
- *   equal whole numbers (`scripts/copy-rules.ts` checks it).
+ *   without a false comparison; "close" means at most `CLOSE_POINTS` apart (for a decision made
+ *   by its policy's own rule, equal whole numbers). A price sentence that no variant can say
+ *   honestly is not used (`honest`): the next reason, or FALLBACK, explains the action.
  * - **Why not.** For each legal action group other than the recommendation's (fold, check, call,
  *   bet, raise; all-in joins bet or raise), only when its sentence is true: fold when facing a bet
  *   and the shown win chance beats the price; check before a bet or raise for value (not a
@@ -539,6 +540,24 @@ const PRICE_DIRECTION: Partial<Record<ReasonCode, Direction>> = {
   FOLD_PRICE: 'less',
 };
 
+/** Every code whose sentence compares `{E}` with `{need}`, and how. */
+const COMPARE_DIRECTION: Partial<Record<ReasonCode, Direction>> = {
+  ...PRICE_DIRECTION,
+  CALL_PREFLOP: 'atLeast',
+  CALL_ALLIN: 'atLeast',
+  FOLD_ALLIN: 'less',
+};
+
+/**
+ * "It is close" is said only when the two shown whole numbers are at most this far apart; further
+ * apart, a sentence that compares the price would contradict its own numbers and is not used.
+ */
+export const CLOSE_POINTS = 2;
+
+/** Later bets can still make the hero fold before the river (§8.5: R < 1). */
+const laterBets = (input: ExplainInput): boolean =>
+  input.street !== 'river' && (input.position === 'OOP' || input.nOpp > 1);
+
 /** F.1 `{example}` (VALUE_BET) by the hero's category; none for high card. */
 function exampleKey(category: HandCategory): TemplateKey | null {
   switch (category) {
@@ -632,6 +651,24 @@ function eOf(r: Reason, c: Context): number {
   return c.adjust ? c.rangeE : c.input.eRandom;
 }
 
+/**
+ * Can the reason's sentence be said with the numbers it shows? A price sentence whose whole
+ * numbers point the wrong way is said only as its `.close` variant (at most `CLOSE_POINTS`
+ * apart), `.realise` (a fold at or above the price, with later bets to come) or `.implied` (a
+ * pocket pair's implied odds); otherwise it is not used (e.g. a raise that became an all-in call
+ * because no raise was legal, explained with a price it does not beat).
+ */
+function honest(r: Reason, c: Context): boolean {
+  const direction = COMPARE_DIRECTION[r.code];
+  if (direction === undefined) return true;
+  const E = eOf(r, c);
+  const need = c.input.need;
+  if (holds(direction, E, need)) return true;
+  if (Math.abs(shownPct(E) - shownPct(need)) <= CLOSE_POINTS) return true;
+  if (r.code === 'FOLD_PRICE') return laterBets(c.input) && shownPct(E) >= shownPct(need);
+  return r.code === 'CALL_PREFLOP' && (num(r.data.implied) ?? 0) > 0;
+}
+
 /** The line of one reason, with the variant its numbers call for. */
 function reasonLine(r: Reason, c: Context): Line {
   const { input } = c;
@@ -680,10 +717,9 @@ function reasonLine(r: Reason, c: Context): Line {
         pot: chips(input.winPot),
       });
     case 'FOLD_PRICE': {
-      const laterBets = input.street !== 'river' && (input.position === 'OOP' || input.nOpp > 1);
       const variant = holds('less', E, need)
         ? 'FOLD_PRICE'
-        : laterBets
+        : laterBets(input)
           ? 'FOLD_PRICE.realise'
           : 'FOLD_PRICE.close';
       return line(variant, { E: pE, need: pNeed });
@@ -818,7 +854,8 @@ export function explain(input: ExplainInput): Explanation {
   /** `{E}` of every code that does not name a range: what "Why not …?" compares, too. */
   const win = adjust ? rangeE : input.eRandom;
 
-  // 3. The lines.
+  // 3. The lines: a reason only when its sentence agrees with the numbers it shows.
+  const said = ordered.filter((r) => honest(r, c));
   const trace: Reason[] = [];
   const reasons: Line[] = [];
   if (adjust) {
@@ -833,8 +870,8 @@ export function explain(input: ExplainInput): Explanation {
       },
     });
   }
-  if (ordered.length === 0) reasons.push(line('FALLBACK'));
-  for (const r of ordered) {
+  if (said.length === 0) reasons.push(line('FALLBACK'));
+  for (const r of said) {
     reasons.push(reasonLine(r, c));
     trace.push(r);
   }

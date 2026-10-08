@@ -852,6 +852,39 @@ describe('consistency: a sentence never contradicts the numbers it shows', () =>
     );
   });
 
+  it('a price sentence its numbers contradict by more than CLOSE_POINTS is not used', () => {
+    // Found with the 5.4 policy: a raise for value that became an all-in call (no legal raise)
+    // came with CALL_PROFITABLE at 28% against a 33% price, multiway on the flop.
+    const spot = input({
+      eRandom: 0.282,
+      eRange: 0.28,
+      need: 0.326,
+      nOpp: 3,
+      position: 'OOP',
+      legal: { ...FACING, callIsAllIn: true, raise: null },
+      trace: [r('CALL_PROFITABLE', { E: 0.28 })],
+    });
+    const e = explain(spot);
+    expect(keys(e.reasons)).toEqual(['FALLBACK']);
+    expect(e.trace.map((x) => x.code)).not.toContain('CALL_PROFITABLE');
+    expect(checkHint(e, spot)).toEqual([]);
+    // With a second reason that fits, that one explains the call instead.
+    const committed = explain({ ...spot, trace: [r('CALL_PROFITABLE'), r('COMMITTED')] });
+    expect(keys(committed.reasons)).toEqual(['COMMITTED']);
+    // Within CLOSE_POINTS the close variant is honest; a fold at or above the price with later
+    // bets to come is the realise variant, on the river it is not used.
+    expect(keys(explain({ ...spot, need: 0.3 }).reasons)).toEqual(['CALL_PROFITABLE.close']);
+    const fold = {
+      ...spot,
+      action: { type: 'fold' as const },
+      eRandom: 0.4,
+      eRange: 0.4,
+      trace: [r('FOLD_PRICE')],
+    };
+    expect(keys(explain(fold).reasons)).toEqual(['FOLD_PRICE.realise']);
+    expect(keys(explain({ ...fold, street: 'river' }).reasons)).toEqual(['FALLBACK']);
+  });
+
   it('FOLD_PRICE out of position: you win more than you need, but later bets cost you', () => {
     const e = explain(
       input({
@@ -907,15 +940,17 @@ describe('consistency: a sentence never contradicts the numbers it shows', () =>
       'You win about 33% against their likely hands. You need 38%. If you make a set, you can win a big pot.',
     );
     expect(pair.reasons.at(-1)?.glossary).toEqual(['set']);
-    const other = explain(
-      preflop({
-        facing: 'open',
-        need: 0.38,
-        trace: [r('CALL_PREFLOP', { E: 0.33 })],
-        action: { type: 'call' },
-      }),
-    );
-    expect(other.reasons.at(-1)?.key).toBe('CALL_PREFLOP.close');
+    const other = (E: number): string | undefined =>
+      explain(
+        preflop({
+          facing: 'open',
+          need: 0.38,
+          trace: [r('CALL_PREFLOP', { E })],
+          action: { type: 'call' },
+        }),
+      ).reasons.at(-1)?.key;
+    expect(other(0.37)).toBe('CALL_PREFLOP.close');
+    expect(other(0.33)).toBe('FALLBACK'); // 33% against 38% with no implied odds: not "close"
   });
 
   it('VALUE_BET: an example by category; "strong against n players" when under 50%', () => {
