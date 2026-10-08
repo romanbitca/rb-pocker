@@ -1086,6 +1086,104 @@ describe('explainInput from a real observation and its features', () => {
   });
 });
 
+/**
+ * Stage 5 acceptance 7 on the Appendix E spots that exercise RANGE_ADJUST, with the coach's range
+ * settings (4,000 trials) and the HUD's own number: the hint shows `eRandom` as a whole number,
+ * and RANGE_ADJUST whenever the two equities differ by 5 points or more. The main reason is the
+ * one Appendix E expects (chunk 5.7 runs the same checks on `hint()` for all 18 spots).
+ */
+describe('Appendix E spots E9, E13, E16 (Stage 5 acceptance 7)', () => {
+  const COACH = testProfile('reweight+stats', 4000, 'coach');
+  const spots: ReadonlyArray<[string, () => Observation, PlayerAction, ReasonCode]> = [
+    [
+      'E9: A♥K♥ on Q♥7♥2♣ facing 2 bb into 6 bb: call',
+      () =>
+        observeSpot(
+          playSpot({
+            stacks: [10000, 10000],
+            button: 0,
+            holes: { 0: 'Ah Kh' },
+            board: 'Qh 7h 2c',
+            inputs: [raise(0, 300), call(1), bet(1, 200)],
+          }),
+          0,
+        ),
+      { type: 'call' },
+      'CALL_PROFITABLE',
+    ],
+    [
+      'E13: A♠K♦ on K♥8♣4♦2♠, villain all-in 40 bb: call (COMMITTED)',
+      () =>
+        observeSpot(
+          playSpot({
+            stacks: [5500, 5500],
+            button: 0,
+            holes: { 0: 'As Kd' },
+            board: 'Kh 8c 4d 2s',
+            inputs: [raise(0, 300), call(1), check(1), bet(0, 1200), call(1), bet(1, 4000)],
+          }),
+          0,
+        ),
+      { type: 'call' },
+      'COMMITTED',
+    ],
+    [
+      'E16: 5♥4♥ on A♠K♦9♣2♠J♦, a visible Rock bets pot: fold (FOLD_PRICE)',
+      () =>
+        observeSpot(
+          playSpot({
+            stacks: [10000, 10000],
+            button: 0,
+            holes: { 1: '5h 4h' },
+            board: 'As Kd 9c 2s Jd',
+            inputs: [
+              raise(0, 300),
+              call(1),
+              check(1),
+              bet(0, 200),
+              call(1),
+              check(1),
+              bet(0, 500),
+              call(1),
+              check(1),
+              bet(0, 2000),
+            ],
+          }),
+          1,
+          { labels: ['rock', null], levels: ['medium', 'medium'] },
+        ),
+      { type: 'fold' },
+      'FOLD_PRICE',
+    ],
+  ];
+
+  it.each(spots)(
+    '%s',
+    (_name, spot, action, code) => {
+      const obs = spot();
+      const f = features(obs, COACH, coachSeed(obs));
+      const trace = [r(code, { handName: f.handInfo.name, E: f.eRange, need: f.need })];
+      const d = { action, trace, confidence: 'normal' as const, alt: null };
+      const input = explainInput(obs, f, {
+        ...d,
+        eRandom: f.eRandom,
+        eRange: f.eRange,
+        need: f.need,
+      });
+      const e = explain(input);
+      const said = text(e);
+      expect(said).toContain(`${pctText(100 * f.eRandom)}%`);
+      expect(pctText(100 * f.eRandom)).toMatch(/^\d{1,3}$/);
+      const differ = Math.abs(f.eRange - f.eRandom) >= 0.05;
+      expect(e.reasons[0]?.key.startsWith('RANGE_ADJUST')).toBe(differ || f.rangeAdjust);
+      if (differ) expect(said).toContain(`Against any cards you win ${pctText(100 * f.eRandom)}%.`);
+      expect(e.trace.map((x) => x.code)).toContain(code);
+      expect(checkHint(e, input)).toEqual([]);
+    },
+    20_000,
+  );
+});
+
 describe('feedback rows (Appendix F.5): the template plumbing', () => {
   const cases: ReadonlyArray<[Parameters<typeof feedbackLine>[0], string]> = [
     [
