@@ -86,14 +86,20 @@ export interface HeroLabelProps {
   nuts?: boolean | undefined;
   /** Opens the hand rankings (the drawer, or the wide column). */
   onOpenRankings: () => void;
+  /** Compact mode's 96 px strip (§12.3): a smaller name and a one-line sub-label. */
+  compact?: boolean | undefined;
   className?: string | undefined;
 }
+
+/** Hand names longer than this many characters are drawn smaller (`data-long`). */
+export const LONG_LABEL = 16;
 
 /** `describe()`'s label and sub-label; "You folded" once the hero has folded. */
 export const HeroLabel = memo(function HeroLabel({
   hero,
   nuts = false,
   onOpenRankings,
+  compact = false,
   className,
 }: HeroLabelProps) {
   const hintId = useId();
@@ -110,6 +116,10 @@ export const HeroLabel = memo(function HeroLabel({
         aria-describedby={hintId}
         aria-haspopup="dialog"
         data-hero-label=""
+        // A long name ("Two Pair, Queens and Twos") takes a smaller size, so the label stays in
+        // the hero strip on a phone and never runs into the coach strip under it.
+        data-long={hero.label.length > LONG_LABEL ? '' : undefined}
+        data-compact={compact ? '' : undefined}
         onClick={(e) => {
           e.currentTarget.focus();
           onOpenRankings();

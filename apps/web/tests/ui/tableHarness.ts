@@ -5,11 +5,13 @@
  */
 import { act } from '@testing-library/react';
 import { vi } from 'vitest';
+import type { HintSource } from '../../src/app/coachJobs.ts';
 import { createTableController, type TableController } from '../../src/app/controller.ts';
 import { installBackHandler } from '../../src/app/lifecycle.ts';
 import {
   appStore,
   defaultGameSettings,
+  initialCoach,
   initialGame,
   initialUi,
   type AppState,
@@ -29,9 +31,13 @@ export interface TableHarness {
   dispose(): void;
 }
 
-/** A fresh store on Home and a booted controller; `play` is not sent yet. */
+/**
+ * A fresh store on Home and a booted controller; `play` is not sent yet. `hints`: the coach's
+ * source (default: the chunk 5.9 stand-in, which waits for the HUD's win chance: with no equity
+ * worker here, its hints come only when a test writes the `equity` slice).
+ */
 export function startTableHarness(
-  options: { seed?: Seed128; settings?: Partial<GameSettings> } = {},
+  options: { seed?: Seed128; settings?: Partial<GameSettings>; hints?: HintSource | null } = {},
 ): TableHarness {
   vi.useFakeTimers();
   window.history.replaceState(null, '');
@@ -39,12 +45,13 @@ export function startTableHarness(
   if (options.settings?.players !== undefined && options.settings.seatLevels === undefined) {
     settings.seatLevels = new Array<null>(settings.players).fill(null);
   }
-  appStore.setState({ game: initialGame(), ui: initialUi(false), settings });
+  appStore.setState({ game: initialGame(), ui: initialUi(false), coach: initialCoach(), settings });
   const controller = createTableController({
     store: appStore,
     brain: testBrain(),
     heroName: 'You',
     seeds: fixedSeeds(options.seed ?? TABLE_SEED),
+    ...(options.hints !== undefined && { hints: options.hints }),
   });
   controller.boot();
   const unhook = installBackHandler(window, appStore);
@@ -79,13 +86,15 @@ export async function elapse(ms: number): Promise<void> {
 
 /**
  * Plays until `done()` holds: the hero acts with `hero` on its turns, timers run otherwise.
- * `onStep` runs after every step (DOM checks). Throws after `maxSteps`.
+ * `onStep` runs after every step (DOM checks); `beforeHero` on each hero turn, before the hero
+ * acts (e.g. to let a coach hint land, or open the coach sheet). Throws after `maxSteps`.
  */
 export async function playUntil(
   done: () => boolean,
   options: {
     hero?: (legal: LegalActions) => PlayerAction;
     onStep?: () => void;
+    beforeHero?: () => Promise<void> | void;
     maxSteps?: number;
   } = {},
 ): Promise<void> {
@@ -93,6 +102,10 @@ export async function playUntil(
   const max = options.maxSteps ?? 5000;
   for (let i = 0; i < max; i++) {
     if (done()) return;
+    const before = appStore.getState();
+    if (before.game.mode === 'heroTurn' && before.game.legal !== null && options.beforeHero) {
+      await options.beforeHero();
+    }
     const s = appStore.getState();
     if (s.game.mode === 'heroTurn' && s.game.legal !== null) {
       const action = hero(s.game.legal);

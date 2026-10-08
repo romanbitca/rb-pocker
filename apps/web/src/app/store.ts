@@ -21,10 +21,12 @@ import { useStore } from 'zustand';
 import { useShallow } from 'zustand/react/shallow';
 import { createStore, type StoreApi } from 'zustand/vanilla';
 import type { EquityResult, HandAnalysis } from '../analysis/types.ts';
+import type { Decision } from '../brain/types.ts';
 import type { Card } from '../core/cards.ts';
 import type { HandState, LegalActions, PlayerAction, TableState } from '../engine/types.ts';
 import { defaultSettings } from '../persist/schema.ts';
 import type { Settings } from '../persist/schema.ts';
+import { heroDecisionKey } from './coachViews.ts';
 import {
   currentScreen,
   initialNav,
@@ -47,6 +49,8 @@ export { missingFeatures, secureFeatures, type SecureFeatures } from './secure.t
 export * from './runoutViews.ts';
 // The bot card of a tapped seat (§9.3, chunk 5.10): the same.
 export * from './botCardViews.ts';
+// The coach strip, sheet and recommendation (§10.2, §12.6, chunk 5.9): the same, for the coach.
+export * from './coachViews.ts';
 
 // ---------------------------------------------------------------------------------------------
 // Appendix A.8 (the controller's modes and gates; `app/controller.ts` re-exports them)
@@ -227,9 +231,26 @@ export function initialEquity(): EquitySlice {
   };
 }
 
-/** Stage 5 fills this slice (hints and grades, §8). */
+/**
+ * The coach's hint for the hero's decision (§8.10, §10.2, §12.6). `CoachJobs` (app/coachJobs.ts)
+ * writes `key`, `status` and `decision` and nothing else (pitfall 37: a hint re-renders only the
+ * coach's places); the `showHint` command writes `opened`. Grades join it in Stage 6.
+ */
 export interface CoachSlice {
-  status: 'off';
+  /** `coachKeyOf(hand)` of the decision `status` and `decision` are for; null before the first. */
+  key: string | null;
+  /** 'ready': `decision` is the advice; 'failed': the coach could not answer (§12.11). */
+  status: 'idle' | 'ready' | 'failed';
+  decision: Decision | null;
+  /**
+   * The decision whose hint the player opened (Intermediate's "Hint", §10.2), by its key. Above
+   * Beginner, opening it marks the decision as helped (stats, Stage 6).
+   */
+  opened: string | null;
+}
+
+export function initialCoach(): CoachSlice {
+  return { key: null, status: 'idle', decision: null, opened: null };
 }
 
 export interface UiSlice {
@@ -325,9 +346,17 @@ export type GameCommand =
   /** From `app/lifecycle.ts`: `visibilitychange` (§12.13). */
   | { type: 'visibility'; hidden: boolean }
   /** From `app/lifecycle.ts`: `pagehide` (flush storage, §14.6). */
-  | { type: 'pagehide' };
+  | { type: 'pagehide' }
+  /** "Coach is not available. Tap to try again." (§12.11): ask the coach again. */
+  | { type: 'retryCoach' };
 
-export type Command = UiCommand | GameCommand;
+/**
+ * Commands the store applies to the `coach` slice itself: the player opened the hint of the
+ * hero's decision ("Hint", §10.2; the coach sheet). Nothing happens when it is not the hero's turn.
+ */
+export type CoachCommand = { type: 'showHint' };
+
+export type Command = UiCommand | GameCommand | CoachCommand;
 
 const UI_COMMANDS: ReadonlySet<string> = new Set([
   'go',
@@ -343,6 +372,18 @@ const UI_COMMANDS: ReadonlySet<string> = new Set([
 ]);
 
 export const isUiCommand = (cmd: Command): cmd is UiCommand => UI_COMMANDS.has(cmd.type);
+
+export const isCoachCommand = (cmd: Command): cmd is CoachCommand => cmd.type === 'showHint';
+
+/** `showHint`: marks the hero's current decision as opened; `coach` itself when nothing changes. */
+export function reduceCoach(s: Pick<AppState, 'game' | 'coach'>, cmd: CoachCommand): CoachSlice {
+  switch (cmd.type) {
+    case 'showHint': {
+      const key = heroDecisionKey(s.game.mode, s.game.hand, s.game.legal);
+      return key === null || s.coach.opened === key ? s.coach : { ...s.coach, opened: key };
+    }
+  }
+}
 
 // ---------------------------------------------------------------------------------------------
 // The store
@@ -397,7 +438,7 @@ export function createAppStore(): AppStore {
   const api = createStore<AppState>()((set) => ({
     game: initialGame(),
     equity: initialEquity(),
-    coach: { status: 'off' },
+    coach: initialCoach(),
     ui: initialUi(),
     settings: defaultGameSettings(),
     dispatch: (cmd) => {
@@ -405,6 +446,11 @@ export function createAppStore(): AppStore {
         set((s) => {
           const ui = reduceUi(s.ui, cmd);
           return ui === s.ui ? s : { ui };
+        });
+      } else if (isCoachCommand(cmd)) {
+        set((s) => {
+          const coach = reduceCoach(s, cmd);
+          return coach === s.coach ? s : { coach };
         });
       } else if (gameHandler !== null) {
         gameHandler(cmd);

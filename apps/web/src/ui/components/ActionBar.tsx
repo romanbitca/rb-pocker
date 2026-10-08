@@ -42,6 +42,11 @@ export interface ActionBarProps {
   readonly layout?: 'row' | 'column';
   /** The `SizingTray`'s id, for `aria-controls`. */
   readonly trayId?: string | undefined;
+  /**
+   * The coach's recommended button while its advice is on show (Beginner, or after "Hint"): a
+   * 3 px accent ring and a "Coach" badge (§10.2, §12.7). Never on a disabled button.
+   */
+  readonly recommended?: Slot | null | undefined;
   readonly className?: string | undefined;
 }
 
@@ -69,6 +74,8 @@ interface SlotButtonProps {
   readonly sub?: string | null;
   readonly wide?: boolean;
   readonly primary?: boolean;
+  /** The coach's choice: the accent ring and the "Coach" badge (§12.7). */
+  readonly coach?: boolean;
   /** Ids of the elements that describe the button (its note, its second line). */
   readonly describedBy?: string | undefined;
   /** For the right button while it opens the tray (a disclosure). */
@@ -80,13 +87,21 @@ interface SlotButtonProps {
 
 function SlotButton(props: SlotButtonProps) {
   const { slot, button, label, sub = null, wide = false, primary = false, onPress } = props;
+  const coach = props.coach === true && button.enabled;
   const subId = useId();
-  const described = cx(sub !== null && subId, props.describedBy);
+  const badgeId = useId();
+  const described = cx(sub !== null && subId, coach && badgeId, props.describedBy);
   return (
     <button
       type="button"
-      className={cx(styles.button, wide && styles.wide, primary && styles.primary)}
+      className={cx(
+        styles.button,
+        wide && styles.wide,
+        primary && styles.primary,
+        coach && styles.coach,
+      )}
       data-slot={slot}
+      data-coach={coach ? '' : undefined}
       // Only the tray's own button keeps a tap on it from closing the tray.
       data-sizing-keep={props.expanded === undefined ? undefined : 'true'}
       aria-label={label}
@@ -105,6 +120,11 @@ function SlotButton(props: SlotButtonProps) {
           {sub}
         </span>
       )}
+      {coach && (
+        <span id={badgeId} className={styles.badge}>
+          {en.coachUi.badge}
+        </span>
+      )}
     </button>
   );
 }
@@ -118,6 +138,7 @@ export const ActionBar = memo(function ActionBar({
   onCloseTray,
   layout = 'row',
   trayId,
+  recommended = null,
   className,
 }: ActionBarProps) {
   const lastAction = useRef(Number.NEGATIVE_INFINITY);
@@ -179,6 +200,7 @@ export const ActionBar = memo(function ActionBar({
         slot="fold"
         button={view.fold}
         label={view.fold.label}
+        coach={!view.waiting && recommended === 'fold'}
         describedBy={view.fold.note === null ? undefined : foldNoteId}
         onPress={onPress}
       />
@@ -188,6 +210,7 @@ export const ActionBar = memo(function ActionBar({
         label={view.middle.label}
         sub={view.middle.sub}
         wide={right === null}
+        coach={!view.waiting && recommended === 'middle'}
         onPress={onPress}
       />
       {right === null ? null : (
@@ -196,6 +219,7 @@ export const ActionBar = memo(function ActionBar({
           button={right}
           label={open && view.tray !== null ? trayActionLabel(view.tray, amount) : right.label}
           primary={open}
+          coach={!view.waiting && recommended === 'right'}
           describedBy={right.note === null ? undefined : rightNoteId}
           expanded={disclosure ? open : undefined}
           controls={disclosure && open ? trayId : undefined}

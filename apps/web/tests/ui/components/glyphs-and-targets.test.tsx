@@ -49,12 +49,14 @@ function Everything() {
 }
 
 describe('suit characters (PLAN §13.4, pitfall 31, Stage 3 acceptance 3)', () => {
-  it('never appear in the rendered DOM: suits are SVG from one sprite', () => {
+  it('never appear in the rendered DOM: suits are SVG paths (sprite symbols, card masks)', () => {
     render(<Everything />);
     const html = document.documentElement.outerHTML;
     expect(html).not.toMatch(SUIT_CODE_POINTS);
-    // Every face-up card really is drawn from the sprite.
-    expect(document.querySelectorAll('use[href^="#s-"]').length).toBeGreaterThan(52 * SIZES.length);
+    // Every face-up card names its suit, drawn by its class's mask of the sprite path (Card.test).
+    expect(document.querySelectorAll('[data-suit]').length).toBeGreaterThanOrEqual(
+      52 * SIZES.length,
+    );
     expect(document.querySelectorAll('symbol[id^="s-"]')).toHaveLength(4);
   });
 

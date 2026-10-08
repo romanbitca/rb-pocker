@@ -42,12 +42,12 @@
   grid-template-areas: 'top side' 'table side';
 }
 
-/* Wide (§12.5, §13.1): the play column and the rankings column (or its 44 px rail). The inline
-   coach panel joins in Stage 5. */
+/* Wide (§12.5, §13.1): the play column and the rankings column (or its 44 px rail); the inline
+   coach panel sits between the hero strip and the action bar. */
 .wide {
   grid-template-columns: minmax(0, 1fr) clamp(260px, 24vw, 320px);
-  grid-template-rows: auto minmax(0, 1fr) auto auto;
-  grid-template-areas: 'top rank' 'table rank' 'hero rank' 'actions rank';
+  grid-template-rows: auto minmax(0, 1fr) auto auto auto;
+  grid-template-areas: 'top rank' 'table rank' 'hero rank' 'coach rank' 'actions rank';
 }
 .wide.collapsed {
   grid-template-columns: minmax(0, 1fr) 44px;
@@ -287,6 +287,15 @@
   grid-area: label;
   padding-top: 6px;
 }
+/* No draw chips: the label may use their row too (a long name and its sub-label need it). Not in
+   compact mode, where that row holds the coach pill. */
+.hero:not(:has([data-draw-chips])) .heroLabel {
+  grid-row: 1 / 3;
+}
+.compact .hero .heroLabel {
+  grid-row: 1;
+  padding-top: 2px;
+}
 
 .heroOdds {
   position: relative;
@@ -304,11 +313,52 @@
   padding-top: 0;
 }
 
-/* ---- The coach strip (§12.6): its 48 px place, empty until Stage 5 ---- */
+/* ---- The coach (§12.3, §12.5, §12.6) ---- */
 
+/* Portrait: the 48 px strip, as wide as the hero strip above it. */
 .coach {
   grid-area: coach;
+  justify-self: center;
+  width: 100%;
+  max-width: 600px;
   height: var(--coach-strip);
+}
+
+/* Compact: the "Coach" pill in the draw chips' row of the hero strip, left of the badge column;
+   its 28 px face is centred on the row, its 44 px hit area reaches 8 px past the strip. */
+.heroPill {
+  position: absolute;
+  right: calc(max(12px, env(safe-area-inset-right)) + 76px + 8px);
+  bottom: -8px;
+  z-index: 1;
+}
+/* While the pill shows, a draw chip ends before it (the chip shortens with an ellipsis). */
+.hero:has(.heroPill button) .heroDraws {
+  margin-right: 80px;
+}
+
+/* Wide: the inline panel (the sheet's sections, always open), at most 30% of the height. */
+.coachPanel {
+  grid-area: coach;
+  justify-self: center;
+  width: 100%;
+  max-width: 720px;
+  max-height: 30vh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 4px max(16px, env(safe-area-inset-right)) 12px max(16px, env(safe-area-inset-left));
+  border-top: 1px solid var(--control-border);
+  background: var(--surface);
+}
+
+/* The panel's sections line up with its head row's text, right of the reserved Undo slot. */
+.panelDetails {
+  padding: 4px 0 0 52px;
+}
+
+/* Landscape: the coach rows under the label, in the column's scrolling middle. */
+.coachSide {
+  padding-bottom: 8px;
 }
 
 /* ---- The tray and Row A (§12.7) ---- */
@@ -346,7 +396,23 @@
   background: var(--surface);
 }
 .side .actions {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  gap: 8px;
   max-width: none;
+}
+/* Only with the tray open may the area shrink (the tray scrolls inside; Row A keeps its size). */
+.side .actions:has(.trayPanel) {
+  flex: 0 1 auto;
+  min-height: 0;
+}
+/* A tall tray (a sixth chip, big blinds) scrolls inside, so Fold / Call / Raise always show. */
+.actions .trayPanel {
+  flex: 0 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 /* The label beside the badge (price chip under it), then "You · 2,340" and the draw chips. */

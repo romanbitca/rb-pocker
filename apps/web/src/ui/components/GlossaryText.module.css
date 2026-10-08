@@ -1,0 +1,58 @@
+/* Glossary links in coach text (PLAN §12.6, F.9): dotted-underlined terms, a one-line popover. */
+.root {
+  position: relative;
+}
+
+/* An inline term: it stays in the sentence's flow, so its 44×44 hit area (§12.12) is drawn by
+   `::after` around it (WCAG 2.5.8 counts inline targets as text). */
+.term {
+  position: relative;
+  display: inline;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: inherit;
+  text-decoration: underline dotted;
+  text-decoration-thickness: 1.5px;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+.term::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: max(100%, 44px);
+  height: 44px;
+  transform: translate(-50%, -50%);
+}
+.term[aria-expanded='true'] {
+  color: var(--accent);
+}
+.term:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+/* The definition, under the text it belongs to, over what follows. */
+.pop {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 3;
+  display: block;
+  max-width: min(320px, 100%);
+  padding: 8px 12px;
+  border: 1px solid var(--control-border);
+  border-radius: var(--radius-2);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 0.9375rem;
+  font-weight: 500;
+  line-height: 1.35;
+  box-shadow: 0 2px 8px rgb(0 0 0 / 40%);
+}

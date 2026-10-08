@@ -442,6 +442,20 @@ export const en = {
     riskyCard: (card: string) => `${card}, may help them too`,
   },
 
+  /**
+   * The coach (PLAN §12.6, §12.7): the words the initial bundle needs. The strip, the sheet and
+   * the panels say the rest; their words load with the coach's lazy chunk (`i18n/coachUi.ts`).
+   */
+  coachUi: {
+    /** The sheet (§12.6). */
+    title: 'Coach',
+    /** The recommended Row A button's badge (§12.7). */
+    badge: 'Coach',
+    /** The sizing tray's coach chip (§12.7 "Coach: ¾ pot") and its accessible name. */
+    chip: 'Coach',
+    chipName: (amount: string) => `Coach's amount: ${amount}`,
+  },
+
   /** The hand-end banner (PLAN §12.9, §12.11). `x` is an amount already formatted. */
   handEnd: {
     youWin: (x: string) => `You win ${x}!`,

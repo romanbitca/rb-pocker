@@ -529,9 +529,11 @@ const trayKey = (tray: TrayView | null): string | null =>
  * The tray's open state and amount, for the screen that renders `ActionBar` and `SizingTray`.
  * The tray and Row A may sit in different places (above Row A, over the table in compact mode,
  * in the landscape column), so this state lives with their common parent. Opening starts at
- * `tray.start`; a new decision closes the tray.
+ * `coachStart` when the coach's advice is on show (§12.7 "the coach's size when the
+ * recommendation is visible"), else at `tray.start`, always snapped to the legal bounds; a new
+ * decision closes the tray.
  */
-export function useSizing(tray: TrayView | null): Sizing {
+export function useSizing(tray: TrayView | null, coachStart: number | null = null): Sizing {
   const [open, setOpen] = useState(false);
   const [amount, setAmountState] = useState(tray?.start ?? 0);
   const [key, setKey] = useState(() => trayKey(tray));
@@ -543,9 +545,9 @@ export function useSizing(tray: TrayView | null): Sizing {
   }
   const openTray = useCallback(() => {
     if (tray === null) return;
-    setAmountState(tray.start);
+    setAmountState(coachStart === null ? tray.start : snapAmount(coachStart, tray));
     setOpen(true);
-  }, [tray]);
+  }, [tray, coachStart]);
   const closeTray = useCallback(() => setOpen(false), []);
   const setAmount = useCallback(
     (value: number) => {

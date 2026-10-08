@@ -53,9 +53,12 @@
   min-width: 0;
 }
 
-/* Five chips fit a 280 px column; a sixth wraps to a second row. */
+/* Five 44 px chips with 6 px gaps fit the 280 px column's 246 px inside the panel (with 8 px gaps
+   they wrapped and pushed Row A off a 390 px screen); a sixth (the coach's amount) wraps to a
+   second row, and the tray then scrolls inside (Table.module.css `.trayPanel`). */
 .panel .presets {
   flex-wrap: wrap;
+  column-gap: 6px;
   row-gap: 8px;
 }
 
@@ -92,6 +95,12 @@
   border-color: var(--control-selected-bg);
   background: var(--control-selected-bg);
   color: var(--control-selected-text);
+}
+
+/* The coach's amount (§12.7): ringed while the coach's advice is on show. */
+.coach {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent);
 }
 
 /* Out of the legal range (§12.7). */

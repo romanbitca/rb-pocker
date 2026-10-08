@@ -8,9 +8,12 @@
 import { act, cleanup, render } from '@testing-library/react';
 import { Profiler } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import type { HintSource } from '../../../src/app/coachJobs.ts';
 import { appStore, initialEquity, type EquitySlice } from '../../../src/app/store.ts';
+import type { Decision } from '../../../src/brain/types.ts';
 import type { Card } from '../../../src/core/cards.ts';
 import type { HandState } from '../../../src/engine/types.ts';
+import { loadCoach } from '../../../src/ui/coachModule.ts';
 import type { SeatProps } from '../../../src/ui/components/Seat.tsx';
 import type { WinBadgeProps } from '../../../src/ui/components/WinBadge.tsx';
 import { Table } from '../../../src/ui/screens/Table.tsx';
@@ -116,5 +119,42 @@ describe('pitfall 37: equity progress never re-renders the table', () => {
     if (legal === null) throw new Error('hero turn without legal actions');
     act(() => h?.state().dispatch({ type: 'act', action: passive(legal) }));
     expect(commits.length).toBeGreaterThan(0);
+  }, 20_000);
+
+  it('a coach hint landing (chunk 5.9) renders the coach and Row A, zero Seat renders', async () => {
+    await loadCoach();
+    let answer: ((d: Decision) => void) | null = null;
+    const hints: HintSource = {
+      waitsForWinChance: false,
+      request: () => new Promise<Decision>((resolve) => (answer = resolve)),
+    };
+    h = startTableHarness({ hints });
+    render(<Table />);
+    act(() => h?.state().dispatch({ type: 'play' }));
+    await playUntil(() => h?.state().game.mode === 'heroTurn' && answer !== null);
+    expect(document.querySelector('[data-coach-strip="thinking"]')).not.toBeNull();
+    const seatsBefore = renders.seat;
+    const legal = h.state().game.legal;
+    if (legal === null || answer === null) throw new Error('no hero turn');
+    const land = answer as (d: Decision) => void;
+    await act(async () => {
+      land({
+        action: passive(legal),
+        kind: legal.canCheck ? 'check' : 'call',
+        ev: {},
+        eRandom: 0.5,
+        eRange: 0.5,
+        need: 0.2,
+        bucket: null,
+        strength: 'decent',
+        confidence: 'clear',
+        alt: null,
+        trace: [{ code: legal.canCheck ? 'CHECK_FREE' : 'CALL_PROFITABLE', data: {} }],
+      });
+      await Promise.resolve();
+    });
+    expect(document.querySelector('[data-coach-strip="advice"]')).not.toBeNull();
+    expect(document.querySelector('[data-coach][data-slot]')).not.toBeNull();
+    expect(renders.seat).toBe(seatsBefore);
   }, 20_000);
 });

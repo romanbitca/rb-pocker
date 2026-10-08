@@ -2,8 +2,12 @@
  * One playing card (PLAN §13.4, §6.1, §12.12): `<Card size card highlight? dim? used?>` serves the
  * rankings panel, the board, the hero strip and the seats.
  *
- * - Face up: the rank as text ("10", never "T") and the suit from the SVG sprite (`<use href="#s-h">`),
- *   `aria-label` "King of hearts" from `core/cards.ts`.
+ * - Face up: ONE element. The rank is its text ("10", never "T"); the suit is drawn by CSS
+ *   (`Card.module.css`: the sprite's suit paths as a mask on `::after`, and on `::before` for the
+ *   big corner pip of the larger sizes), so a card costs one DOM node, not three or five: the
+ *   Table stays within its 600 nodes with nine players, the rankings column and the coach (§15.3).
+ *   `data-suit` ("c", "d", "h", "s") names the suit for tests; `aria-label` "King of hearts" comes
+ *   from `core/cards.ts`.
  * - Face down (`card === null`): a plain back with `aria-label` "Hidden card". ⚠️ It is given no
  *   card, so no rank or suit can reach the DOM or the accessibility tree.
  * - Fixed size per `size` (no layout shift, PLAN §15.3). `board` takes its width from the
@@ -14,13 +18,13 @@ import {
   cardAriaLabel,
   rankLabel,
   rankOf,
+  SUIT_CHARS,
   suitOf,
   type Card as CardValue,
 } from '../../core/cards.ts';
 import { en } from '../../i18n/en.ts';
 import type { CardHighlight } from '../views.ts';
 import styles from './Card.module.css';
-import { SUIT_SYMBOLS } from './SvgSprite.tsx';
 
 /**
  * Card sizes (width × height, CSS px): xs 16×22 (bot backs, §12.4) · sm 24×34 (drawer, §13.4) ·
@@ -77,11 +81,11 @@ export const Card = memo(function Card({
   }
   const rank = rankLabel(rankOf(card));
   const suit = suitOf(card);
-  const symbol = `#${SUIT_SYMBOLS[suit]}`;
   return (
     <span
       role="img"
       aria-label={label ?? cardAriaLabel(card)}
+      data-suit={SUIT_CHARS[suit]}
       className={join(
         styles.card,
         sizeClass,
@@ -95,18 +99,10 @@ export const Card = memo(function Card({
         className,
       )}
     >
-      {/* The rank is a bare text node (no wrapper element): the Table stays under 600 DOM nodes
-          (§15.3) with nine players, the rankings column and every hand shown. `role="img"` with
-          its label makes the text presentational for screen readers. */}
+      {/* The rank is a bare text node and the suit a CSS mask (no child elements): the Table
+          stays under 600 DOM nodes (§15.3). `role="img"` with its label makes the text
+          presentational for screen readers. */}
       {rank}
-      <svg className={styles.suit} aria-hidden="true" focusable="false">
-        <use href={symbol} />
-      </svg>
-      {!INDEX_ONLY.has(size) && (
-        <svg className={styles.pip} aria-hidden="true" focusable="false">
-          <use href={symbol} />
-        </svg>
-      )}
     </span>
   );
 });

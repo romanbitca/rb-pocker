@@ -55,6 +55,7 @@ import type { Profile, SessionState, Settings } from '../persist/schema.ts';
 import { clearSession, loadSession, saveSession } from '../persist/session.ts';
 import type { SafeStorage } from '../persist/storage.ts';
 import type { BotProfileRef, BrainReply, BrainRequest } from '../workers/protocol.ts';
+import { CoachJobs, standInHints, type HintSource } from './coachJobs.ts';
 import { EquityJobs } from './equityJobs.ts';
 import {
   updateUi,
@@ -201,6 +202,11 @@ export interface ControllerOptions {
    * store's `equity` slice. Without it (tests) the slice stays 'off'.
    */
   equity?: EquityClient;
+  /**
+   * Where the coach's hints come from (chunk 5.9, `app/coachJobs.ts`): they go to the store's
+   * `coach` slice. Default: the stand-in until chunk 5.7 (`standInHints()`); null: no hints.
+   */
+  hints?: HintSource | null;
 }
 
 /** One line of the controller's in-memory log (Diagnostics; `window.__pc.logs()` in test builds). */
@@ -313,6 +319,8 @@ export class TableController {
   private readonly equityClient: EquityClient | null;
   /** The win chance and hand-analysis jobs (§7.4); they write only the `equity` slice. */
   private readonly equityJobs: EquityJobs | null;
+  /** The coach's hints (§12.6); they write only the `coach` slice. */
+  private readonly coachJobs: CoachJobs | null;
   /** The stored profile (settings only in Stage 3); null without storage. */
   private profile: Profile | null = null;
   /** When this table's session began (§14.4); stored in the session. */
@@ -372,6 +380,13 @@ export class TableController {
     this.equityClient = options.equity ?? null;
     this.equityJobs =
       this.equityClient === null ? null : new EquityJobs(this.store, this.equityClient);
+    const hints = options.hints === undefined ? standInHints() : options.hints;
+    this.coachJobs =
+      hints === null
+        ? null
+        : new CoachJobs(this.store, hints, (hand) =>
+            observe(hand, HERO, this.extras(this.table as TableState)),
+          );
     this.unsubscribe = this.store.subscribe((s, prev) => {
       if (s.ui.gates !== prev.ui.gates) this.onGates();
     });
@@ -448,6 +463,9 @@ export class TableController {
         // §14.6 rule 4: the session is saved after every step; the settings wait 250 ms.
         this.flushSettings();
         break;
+      case 'retryCoach':
+        this.coachJobs?.retry();
+        break;
       default:
         this.trace('unknown command', cmd);
     }
@@ -458,6 +476,7 @@ export class TableController {
   dispose(): void {
     this.bumpEpoch();
     this.equityJobs?.dispose();
+    this.coachJobs?.dispose();
     this.unsubscribe();
     this.store.setGameHandler(null);
     if (this.visibleTimer !== null) this.timers.clearTimeout(this.visibleTimer);

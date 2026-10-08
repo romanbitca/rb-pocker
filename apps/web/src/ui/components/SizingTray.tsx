@@ -20,6 +20,7 @@ import {
 } from 'react';
 import { en } from '../../i18n/en.ts';
 import {
+  formatAmount,
   amountAt,
   amountFieldText,
   indexOfAmount,
@@ -54,11 +55,19 @@ export interface SizingTrayProps {
   /** ✕, Esc and a tap outside. */
   readonly onClose: () => void;
   readonly placement?: TrayPlacement;
+  /**
+   * The coach's amount while its advice is on show (§12.7): the preset with that amount gets the
+   * accent ring, or a sixth "Coach" chip shows it when no preset has it. Null: no coach chip.
+   */
+  readonly coachAmount?: number | null | undefined;
   readonly id?: string | undefined;
   readonly className?: string | undefined;
 }
 
 const cx = (...names: (string | false | undefined)[]): string => names.filter(Boolean).join(' ');
+
+/** An amount as the chips show it: "120" or "6 BB". */
+const amountText = (t: TrayView, chips: number): string => formatAmount(chips, t.bb, t.amounts);
 
 /** Is an `aria-modal` dialog open? Then Esc and outside taps belong to it, not to the tray. */
 const modalOpen = (): boolean => document.querySelector('[aria-modal="true"]') !== null;
@@ -80,11 +89,14 @@ export const SizingTray = memo(function SizingTray({
   onAmount,
   onClose,
   placement = 'inline',
+  coachAmount = null,
   id,
   className,
 }: SizingTrayProps) {
   const rootRef = useRef<HTMLDivElement>(null);
   const current = snapAmount(amount, tray);
+  const coach = coachAmount === null ? null : snapAmount(coachAmount, tray);
+  const coachPreset = coach !== null && tray.presets.some((p) => p.enabled && p.amount === coach);
   const count = stepCount(tray);
   const index = indexOfAmount(tray, current);
 
@@ -190,10 +202,11 @@ export const SizingTray = memo(function SizingTray({
           <button
             key={p.id}
             type="button"
-            className={styles.chip}
+            className={cx(styles.chip, coachPreset && p.amount === coach && styles.coach)}
             disabled={!p.enabled}
             aria-pressed={p.enabled && p.amount === current}
             aria-label={en.sizing.presetName(p.spoken, p.amountText)}
+            data-coach={coachPreset && p.amount === coach ? '' : undefined}
             onClick={() => onAmount(p.amount)}
           >
             <span className={styles.chipLabel}>{p.label}</span>
@@ -202,6 +215,19 @@ export const SizingTray = memo(function SizingTray({
             )}
           </button>
         ))}
+        {coach !== null && !coachPreset && (
+          <button
+            type="button"
+            className={cx(styles.chip, styles.coach)}
+            aria-pressed={coach === current}
+            aria-label={en.coachUi.chipName(amountText(tray, coach))}
+            data-coach=""
+            onClick={() => onAmount(coach)}
+          >
+            <span className={styles.chipLabel}>{en.coachUi.chip}</span>
+            <span className={styles.chipAmount}>{amountText(tray, coach)}</span>
+          </button>
+        )}
       </div>
       <div className={styles.row}>
         {stepButton(-1, en.sizing.smaller, MINUS, current <= tray.min)}
