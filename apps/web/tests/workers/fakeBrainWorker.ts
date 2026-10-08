@@ -12,6 +12,7 @@ import {
   type SpawnWorker,
 } from '../../src/app/workerClient.ts';
 import { simpleDecide } from '../helpers/simpleDecide.ts';
+import { coachHint } from '../../src/brain/decide.ts';
 import { createBrainService, type BrainServiceOptions } from '../../src/workers/brainService.ts';
 import type { BrainReply, BrainRequest } from '../../src/workers/protocol.ts';
 
@@ -109,5 +110,8 @@ export function fakeBrainWorker(options: FakeBrainOptions = {}): FakeBrainWorker
  * what the app has, minus the thread (component and controller tests that need bots).
  */
 export function testBrain(timers: Timers = realTimers): BrainClient {
-  return createBrainClient(fakeBrainWorker({ service: { decide: simpleDecide } }).spawn, timers);
+  return createBrainClient(
+    fakeBrainWorker({ service: { decide: simpleDecide, hint: coachHint } }).spawn,
+    timers,
+  );
 }

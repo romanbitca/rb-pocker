@@ -60,7 +60,7 @@ import type { Decision, Facing, Features, Position, Reason, ReasonCode } from '.
 
 /**
  * Glossary keys (Appendix F.9): every name in the Term column and every parenthesised alias, lower
- * case. `en.glossary` defines each one; `check-copy` keeps the two lists equal.
+ * case. `enCoach.glossary` defines each one; `check-copy` keeps the two lists equal.
  */
 export const GLOSSARY_KEYS = [
   'all-in',

@@ -22,7 +22,7 @@ import {
   topText,
   type CoachStrings,
 } from '../../src/i18n/coach.ts';
-import { en } from '../../src/i18n/en.ts';
+import { enCoach } from '../../src/i18n/enCoach.ts';
 import { percentText } from '../../src/ui/equity.ts';
 
 const l = (
@@ -51,12 +51,12 @@ describe('templates', () => {
   });
 
   it('lists the forms, placeholders and glossary keys of a template', () => {
-    const plural = en.coach.templates.PUSH_FOLD;
+    const plural = enCoach.coach.templates.PUSH_FOLD;
     expect(templateForms(plural)).toHaveLength(2);
     expect(templateParams(plural)).toEqual(['E', 'Pfold', 'S']);
     expect(templateGlossary(plural)).toEqual(['all-in', 'big blind']);
     expect(templateForms('One form')).toEqual(['One form']);
-    expect(templateParams(en.coach.templates.CHECK_FREE)).toEqual([]);
+    expect(templateParams(enCoach.coach.templates.CHECK_FREE)).toEqual([]);
   });
 });
 

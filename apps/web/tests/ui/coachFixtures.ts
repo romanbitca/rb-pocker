@@ -3,6 +3,7 @@
  * would select, and action-bar inputs for the spots they belong to.
  */
 import type { CoachData, NarrationData } from '../../src/app/store.ts';
+import { explain, type Explanation } from '../../src/brain/explain.ts';
 import type { Decision, Reason, ReasonCode } from '../../src/brain/types.ts';
 import type { LegalActions, SeatState } from '../../src/engine/types.ts';
 import type { ActionBarInput } from '../../src/ui/actionBar.ts';
@@ -81,12 +82,49 @@ export function input(
   };
 }
 
+/**
+ * `explain()` (chunk 5.6) of a fixture decision in the fixtures' spot: heads-up flop, pot 120, a
+ * Pair of Kings, facing a 40 bet when there is something to call (as the worker sends it).
+ */
+export function explanationOf(d: Decision): Explanation {
+  const facing = d.action.type === 'call' || d.action.type === 'fold' || d.need > 0;
+  const legal = facing ? FACING : CHECKED;
+  return explain({
+    action: d.action,
+    trace: d.trace,
+    confidence: d.confidence,
+    alt: d.alt,
+    eRandom: d.eRandom,
+    eRange: d.eRange,
+    need: d.need,
+    pot: 120,
+    winPot: 120,
+    toCall: legal.callAmount,
+    bb: 20,
+    legal,
+    street: 'flop',
+    facing: facing ? 'bet' : 'none',
+    position: 'IP',
+    nOpp: 1,
+    k: 0,
+    rankPct: 10,
+    handName: 'Pair of Kings',
+    handCategory: 'pair',
+    preflopName: 'King-Queen suited',
+    draws: [],
+    outs: 0,
+    villain: facing ? 'bets' : null,
+  });
+}
+
 export function coachData(over: Partial<CoachData> = {}): CoachData {
+  const d = over.decision === undefined ? decision() : over.decision;
   return {
     level: 'beginner',
     state: 'ready',
     key: '7:12',
-    decision: decision(),
+    decision: d,
+    explanation: d === null ? null : explanationOf(d),
     opened: false,
     ...over,
   };

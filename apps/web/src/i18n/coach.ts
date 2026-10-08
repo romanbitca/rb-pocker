@@ -16,6 +16,7 @@
 import type { DrawKind } from '../analysis/types.ts';
 import type { Explanation, GlossaryKey, Line, Param, TemplateKey } from '../brain/explain.ts';
 import { en } from './en.ts';
+import { enCoach } from './enCoach.ts';
 
 /** A template: one string, or a form for a count of 1 and one for every other count. */
 export type CoachTemplate =
@@ -30,10 +31,10 @@ export interface CoachStrings {
 }
 
 export const EN_COACH: CoachStrings = {
-  templates: en.coach.templates,
+  templates: enCoach.coach.templates,
   drawNames: en.draws.name,
-  genericDraw: en.coach.genericDraw,
-  size: en.coach.size,
+  genericDraw: enCoach.coach.genericDraw,
+  size: enCoach.coach.size,
 };
 
 /** One piece of a rendered line. */
@@ -261,7 +262,7 @@ export function glossaryKeys(term: string): string[] {
 /** The entry that defines a glossary key, or null. */
 export function glossaryEntry(
   key: string,
-  glossary: readonly GlossaryEntry[] = en.glossary,
+  glossary: readonly GlossaryEntry[] = enCoach.glossary,
 ): GlossaryEntry | null {
   return glossary.find((g) => glossaryKeys(g.term).includes(key)) ?? null;
 }

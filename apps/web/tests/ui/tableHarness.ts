@@ -5,7 +5,6 @@
  */
 import { act } from '@testing-library/react';
 import { vi } from 'vitest';
-import type { HintSource } from '../../src/app/coachJobs.ts';
 import { createTableController, type TableController } from '../../src/app/controller.ts';
 import { installBackHandler } from '../../src/app/lifecycle.ts';
 import {
@@ -32,12 +31,12 @@ export interface TableHarness {
 }
 
 /**
- * A fresh store on Home and a booted controller; `play` is not sent yet. `hints`: the coach's
- * source (default: the chunk 5.9 stand-in, which waits for the HUD's win chance: with no equity
- * worker here, its hints come only when a test writes the `equity` slice).
+ * A fresh store on Home and a booted controller; `play` is not sent yet. `hints`: ask the brain
+ * for the coach's hint at every hero decision (chunk 5.7); the test brain's coach is the real
+ * `coachHint` (`testBrain`), its bots SimpleBot.
  */
 export function startTableHarness(
-  options: { seed?: Seed128; settings?: Partial<GameSettings>; hints?: HintSource | null } = {},
+  options: { seed?: Seed128; settings?: Partial<GameSettings>; hints?: boolean } = {},
 ): TableHarness {
   vi.useFakeTimers();
   window.history.replaceState(null, '');

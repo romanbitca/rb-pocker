@@ -24,7 +24,7 @@ import { coachSeed, features, showsRangeAdjust } from '../../src/brain/features.
 import type { Reason, ReasonCode } from '../../src/brain/types.ts';
 import type { LegalActions, Observation, PlayerAction } from '../../src/engine/types.ts';
 import { hintText, lineText, pctText } from '../../src/i18n/coach.ts';
-import { en } from '../../src/i18n/en.ts';
+import { enCoach } from '../../src/i18n/enCoach.ts';
 import { checkHint } from '../../scripts/copy-rules.ts';
 import { bet, call, check, raise } from '../engine/play.ts';
 import { FC_SEED } from '../engine/helpers.ts';
@@ -1280,9 +1280,9 @@ describe('feedback rows (Appendix F.5): the template plumbing', () => {
   });
 });
 
-describe('TEMPLATES and en.coach.templates', () => {
+describe('TEMPLATES and enCoach.coach.templates', () => {
   it('every key has a template and every template a key', () => {
-    expect(Object.keys(en.coach.templates).sort()).toEqual([...TEMPLATE_KEYS].sort());
+    expect(Object.keys(enCoach.coach.templates).sort()).toEqual([...TEMPLATE_KEYS].sort());
   });
 
   it('the shown whole number of a chance', () => {

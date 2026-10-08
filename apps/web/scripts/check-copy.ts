@@ -3,7 +3,7 @@
  * pitfalls 35 and 39; §18 Stage 5 acceptance 7). The rules are in `copy-rules.ts`; this script
  * runs them on:
  *
- * 1. every template of `en.coach.templates` and the glossary (`checkTemplates`, `checkGlossary`);
+ * 1. every template of `enCoach.coach.templates` and the glossary (`checkTemplates`, `checkGlossary`);
  * 2. the hints of generated situations (1,000 by default): random tables and random legal play
  *    with the real engine (only here: the brain never runs the engine), every hero decision
  *    observed and its §8.2 features computed; then the coach's own advice there (`hint`'s

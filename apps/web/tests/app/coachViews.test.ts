@@ -20,6 +20,7 @@ import type { HandState } from '../../src/engine/types.ts';
 import { playSpot } from '../brain/fixtures.ts';
 import { tableWith } from '../engine/helpers.ts';
 import { bet, call, check, fold, raise } from '../engine/play.ts';
+import { explanationOf } from '../ui/coachFixtures.ts';
 
 const DECISION: Decision = {
   action: { type: 'fold' },
@@ -73,17 +74,31 @@ describe('coachDataOf (§12.6 states)', () => {
       key,
       decision: null,
     });
-    const ready: CoachSlice = { key, status: 'ready', decision: DECISION, opened: null };
+    const explanation = explanationOf(DECISION);
+    const ready: CoachSlice = {
+      key,
+      status: 'ready',
+      decision: DECISION,
+      explanation,
+      opened: null,
+    };
     expect(coachDataOf('heroTurn', hand, legal, ready, 'intermediate')).toMatchObject({
       level: 'intermediate',
       state: 'ready',
       decision: DECISION,
+      explanation,
       opened: false,
     });
     // A hint for another decision is not this one's.
     const stale = { ...ready, key: `${hand.handSeq}:1` };
     expect(coachDataOf('heroTurn', hand, legal, stale, 'beginner').state).toBe('pending');
-    const failed: CoachSlice = { key, status: 'failed', decision: null, opened: key };
+    const failed: CoachSlice = {
+      key,
+      status: 'failed',
+      decision: null,
+      explanation: null,
+      opened: key,
+    };
     expect(coachDataOf('heroTurn', hand, legal, failed, 'beginner')).toMatchObject({
       state: 'failed',
       opened: true,
