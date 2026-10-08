@@ -7,7 +7,6 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   decodePushFold,
   decodeRanges,
-  PUSH_FOLD_KNOWN_MISSES,
   PUSH_MAX_STACK_BB,
   RANGE_CLASSES,
   RANGE_KNOTS,
@@ -51,11 +50,9 @@ describe('the committed range tables', () => {
     expect(files[PUSH_FOLD_FILE]).toMatchObject({ generator: PUSH_GENERATOR, trials: 40_000 });
   });
 
-  it('are sound: a ranking that passes the §8.3 acceptance, and a push/fold table whose only misses are the known ones', () => {
+  it('are sound: a ranking that passes the §8.3 acceptance, and a push/fold table that passes §8.4', () => {
     expect(checkRangesTable(committedRanges())).toEqual([]);
-    const { problems, known } = checkPushFoldTable(committedPushFold());
-    expect(problems).toEqual([]);
-    expect(known).toHaveLength(PUSH_FOLD_KNOWN_MISSES.length);
+    expect(checkPushFoldTable(committedPushFold())).toEqual([]);
   });
 
   it('agree with cells sampled again: each within 0.5 points, and no drift one way', async () => {
@@ -67,10 +64,10 @@ describe('the committed range tables', () => {
     expect(Math.abs(mean)).toBeLessThan(0.12);
   }, 60_000);
 
-  it('pass the whole check, and say which spots miss the published charts', async () => {
+  it('pass the whole check', async () => {
     const { problems, lines } = await checkRangeTables({ cells: 5, threads: 2 });
     expect(problems).toEqual([]);
-    expect(lines.filter((line) => line.includes('KNOWN MISS'))).toHaveLength(3);
+    expect(lines.some((line) => line.startsWith('pushfold: '))).toBe(true);
     expect(lines.some((line) => line.startsWith('ranges: 5 cells re-sampled'))).toBe(true);
   }, 60_000);
 });
@@ -123,24 +120,26 @@ describe('damaged tables are caught', () => {
     expect(problems.some((p) => p.includes('falls from'))).toBe(true);
   });
 
-  it('a push/fold value above 100%, 1 bb that does not shove everything, and a miss that is not known', () => {
+  it('a push/fold value above 100%, a small blind that does not shove everything with 1 bb, and a miss', () => {
     const base = committedPushFold();
     const push = base.push.slice();
-    push[0] = 10_001; // k = 1, S = 1
-    push[1 * PUSH_MAX_STACK_BB] = 9_000; // k = 2, S = 1: not 100%
-    push[0 * PUSH_MAX_STACK_BB + 9] = 3_000; // SB at 10 bb: 30%, outside 55-70%
-    const { problems } = checkPushFoldTable({ push, call: base.call });
-    expect(problems.some((p) => p.includes('value 0 is 100.01%'))).toBe(true);
-    expect(problems.some((p) => p.includes('k = 2 and 1 bb'))).toBe(true);
-    expect(problems.some((p) => p.includes('SB at 10 bb'))).toBe(true);
+    push[0] = 9_000; // k = 1, S = 1: the small blind shoves only 90%
+    push[1] = 10_001; // k = 1, S = 2
+    push[0 * PUSH_MAX_STACK_BB + 9] = 3_000; // SB at 10 bb: 30%, outside 55.4-61.4%
+    const problems = checkPushFoldTable({ push, call: base.call });
+    expect(problems.some((p) => p.includes('value 1 is 100.01%'))).toBe(true);
+    expect(problems.some((p) => p.includes('small blind with 1 bb shoves 90%'))).toBe(true);
+    expect(problems.some((p) => p.includes('SB at 10 bb: 30.0%'))).toBe(true);
+    expect(problems).toHaveLength(3);
   });
 
-  it('a known miss that has come inside its band must leave the list', () => {
+  it('a spot just outside its band names the band and the published value', () => {
     const base = committedPushFold();
     const push = base.push.slice();
-    push[2 * PUSH_MAX_STACK_BB + 9] = 3_000; // k = 3, S = 10: the CO at 10 bb, 30% is inside 28-38%
-    const { problems } = checkPushFoldTable({ push, call: base.call });
-    expect(problems).toEqual([expect.stringContaining('CO at 10 bb is inside its band now')]);
+    push[2 * PUSH_MAX_STACK_BB + 9] = 2_270; // k = 3, S = 10: the CO at 10 bb, 22.7% < 22.8%
+    expect(checkPushFoldTable({ push, call: base.call })).toEqual([
+      'pushfold: CO at 10 bb: 22.7%, expected 22.8–28.8% (published 25.8%)',
+    ]);
   });
 });
 
@@ -198,6 +197,20 @@ describe('checksum verification', () => {
       expect.stringContaining('different number of trials'),
     );
   });
+
+  it('a push/fold module solved with another number of rounds than the script', () => {
+    const path = join(dir, PUSH_FOLD_FILE);
+    writeFileSync(
+      path,
+      readFileSync(path, 'utf8').replace(
+        'PUSH_FOLD_ITERATIONS = 3000',
+        'PUSH_FOLD_ITERATIONS = 300',
+      ),
+    );
+    expect(checkRangeParameters(dir)).toEqual([
+      `${PUSH_FOLD_FILE} says a different number of rounds than 3000`,
+    ]);
+  });
 });
 
 describe('scripts/check-range-tables.ts from the command line', () => {
@@ -207,7 +220,7 @@ describe('scripts/check-range-tables.ts from the command line', () => {
     expect(run.stderr).toBe('');
     expect(run.status).toBe(0);
     expect(run.stdout).toContain('check-range-tables: ok');
-    expect(run.stdout).toContain('KNOWN MISS');
+    expect(run.stdout).toContain('the PLAN 8.4 acceptance');
   }, 60_000);
 
   it('exits 1 with one line per problem on a damaged folder', () => {

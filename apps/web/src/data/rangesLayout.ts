@@ -203,26 +203,42 @@ export function rangeAcceptance(rankPct: (cls: number) => number): string[] {
   return problems;
 }
 
-/** One line of the push/fold acceptance: a spot, its `k` and `S`, and the allowed percent range. */
+/**
+ * One line of the push/fold acceptance: a spot, its `k` and `S`, the published no-ante value and
+ * the allowed percent range around it.
+ */
 export interface PushFoldSpot {
   readonly name: string;
   readonly k: number;
   readonly S: number;
+  readonly published: number;
   readonly min: number;
   readonly max: number;
 }
 
+/** The acceptance band: the published value ± this many points (PLAN §8.4 says why). */
+export const PUSH_FOLD_TOLERANCE_POINTS = 3;
+
+function spot(name: string, k: number, S: number, published: number): PushFoldSpot {
+  const t = PUSH_FOLD_TOLERANCE_POINTS;
+  return { name, k, S, published, min: published - t, max: published + t };
+}
+
 /**
- * §8.4, "Acceptance at 10 bb (vs published charts)": SB 55–70%, BTN 35–45%, CO 28–38%, 6-max UTG
- * 18–26%; "at 12 bb 9-handed UTG about 10–15%". The SB has one player behind (k = 1), the button
- * two, the cutoff three, 6-max UTG five and 9-handed UTG eight.
+ * §8.4 acceptance, against the published **no-ante** Nash push/fold chart for 9-handed play (Jonathan
+ * Little, PokerCoaching.com, "Push Fold Charts No Ante", https://pokercoaching.com/push-fold-charts/;
+ * its small-blind column matches HoldemResources' heads-up Nash chart). The game has no antes
+ * (§1.6): the plan's first bands (SB 55–70%, BTN 35–45%, CO 28–38%, 6-max UTG 18–26%, 9-handed
+ * UTG at 12 bb 10–15%) are the values of charts with antes (risk R16, closed). The SB has one
+ * player behind (k = 1), the button two, the cutoff three, 6-max UTG five (with no antes the same
+ * game as the 9-handed lojack) and 9-handed UTG eight.
  */
 export const PUSH_FOLD_SPOTS: readonly PushFoldSpot[] = [
-  { name: 'SB at 10 bb', k: 1, S: 10, min: 55, max: 70 },
-  { name: 'BTN at 10 bb', k: 2, S: 10, min: 35, max: 45 },
-  { name: 'CO at 10 bb', k: 3, S: 10, min: 28, max: 38 },
-  { name: '6-max UTG at 10 bb', k: 5, S: 10, min: 18, max: 26 },
-  { name: '9-handed UTG at 12 bb', k: 8, S: 12, min: 10, max: 15 },
+  spot('SB at 10 bb', 1, 10, 58.4),
+  spot('BTN at 10 bb', 2, 10, 33.0),
+  spot('CO at 10 bb', 3, 10, 25.8),
+  spot('6-max UTG at 10 bb', 5, 10, 16.3),
+  spot('9-handed UTG at 12 bb', 8, 12, 7.5),
 ];
 
 /** The spots of `PUSH_FOLD_SPOTS` whose `pushPct(k, S)` (percent) is outside the published band. */
@@ -237,19 +253,7 @@ export function pushFoldMisses(pushPct: (k: number, S: number) => number): PushF
 export function pushFoldAcceptance(pushPct: (k: number, S: number) => number): string[] {
   return pushFoldMisses(pushPct).map(
     (spot) =>
-      `${spot.name}: ${pushPct(spot.k, spot.S).toFixed(1)}%, expected ${spot.min}–${spot.max}%`,
+      `${spot.name}: ${pushPct(spot.k, spot.S).toFixed(1)}%, expected ` +
+      `${spot.min.toFixed(1)}–${spot.max.toFixed(1)}% (published ${spot.published.toFixed(1)}%)`,
   );
 }
-
-/**
- * The spots that the model of §8.4 as written does not reach (PLAN risk register R16): the table
- * is about 1 to 3 points under the published charts there. The acceptance tests mark them as known
- * failures (`it.fails`) and `check-range-tables` reports them without failing, until the model or
- * the bands are changed by decision; a spot that passes again must leave this list (both complain
- * if it does not). Nothing here edits an expected value: `PUSH_FOLD_SPOTS` is the plan's.
- */
-export const PUSH_FOLD_KNOWN_MISSES: readonly string[] = [
-  'CO at 10 bb',
-  '6-max UTG at 10 bb',
-  '9-handed UTG at 12 bb',
-];

@@ -28,9 +28,10 @@ import {
 } from '../../scripts/gen-pushfold.ts';
 import {
   BLINDS,
+  game,
+  HANDS_LEFT,
   ITERATIONS,
   solvePushFold,
-  stakes,
   type Matchups,
 } from '../../scripts/pushfold-solver.ts';
 import {
@@ -118,34 +119,42 @@ describe('the matrix and the jobs', () => {
 });
 
 describe('the game (PLAN §8.4)', () => {
-  it('heads-up the small blind has posted 0.5 and the big blind 1; otherwise the blinds are dead money', () => {
-    expect(stakes(1, 10)).toEqual({
+  it('heads-up the small blind has posted 0.5 and the big blind 1', () => {
+    expect(game(1, 10)).toEqual({
       gain: BLINDS,
-      pushPot: 20,
-      pushRisk: 9.5,
-      callPot: 20,
-      callCost: 9,
+      pusherPosted: 0.5,
+      risk: 9.5,
+      callers: [{ posted: 1, cost: 9, pot: 20 }],
     });
-    expect(stakes(3, 10)).toEqual({
-      gain: BLINDS,
-      pushPot: 21.5,
-      pushRisk: 10,
-      callPot: 21.5,
-      callCost: 10,
-    });
-    expect(() => stakes(0, 10)).toThrow(RangeError);
-    expect(() => stakes(2, 0.5)).toThrow(RangeError);
   });
 
-  it('solves in 300 rounds by default and refuses fewer than two', () => {
-    expect(ITERATIONS).toBe(300);
+  it('otherwise the players behind are those with nothing posted, then the small and the big blind', () => {
+    expect(game(4, 10)).toEqual({
+      gain: BLINDS,
+      pusherPosted: 0,
+      risk: 10,
+      callers: [
+        { posted: 0, cost: 10, pot: 21.5 },
+        { posted: 0, cost: 10, pot: 21.5 },
+        { posted: 0.5, cost: 9.5, pot: 21 },
+        { posted: 1, cost: 9, pot: 20.5 },
+      ],
+    });
+    expect(game(2, 6).callers.map((c) => c.posted)).toEqual([0.5, 1]);
+    expect(HANDS_LEFT).toBe(1225);
+    expect(() => game(0, 10)).toThrow(RangeError);
+    expect(() => game(2, 0.5)).toThrow(RangeError);
+  });
+
+  it('solves in 3,000 rounds by default and refuses fewer than two', () => {
+    expect(ITERATIONS).toBe(3000);
     expect(() => solvePushFold(synthetic(), 2, 10, 1)).toThrow(RangeError);
   });
 
   it('gives averaged strategies in [0, 1], the same every time', () => {
     const mu = synthetic();
-    const a = solvePushFold(mu, 3, 8);
-    const b = solvePushFold(mu, 3, 8);
+    const a = solvePushFold(mu, 3, 8, 300);
+    const b = solvePushFold(mu, 3, 8, 300);
     expect(a.push).toEqual(b.push);
     expect(a.call).toEqual(b.call);
     expect(a.pushPct).toBe(b.pushPct);
@@ -156,10 +165,10 @@ describe('the game (PLAN §8.4)', () => {
     expect(a.pushPct).toBeGreaterThan(0);
     expect(a.pushPct).toBeLessThanOrEqual(100);
     expect(Math.abs(a.pushPct - a.halfwayPushPct)).toBeLessThan(10);
-  });
+  }, 30_000);
 
   it('shoves strong hands at least as often as weak ones', () => {
-    const { push, call } = solvePushFold(synthetic(), 2, 10);
+    const { push, call } = solvePushFold(synthetic(), 2, 10, 300);
     for (const [strong, weak] of [
       ['AA', '72o'],
       ['KK', '93o'],
@@ -169,22 +178,34 @@ describe('the game (PLAN §8.4)', () => {
       expect(call[at(strong)]).toBeGreaterThanOrEqual(call[at(weak)] as number);
     }
     expect(push[at('AA')]).toBe(1);
-  });
+  }, 30_000);
 
   it('shoves fewer hands with a deeper stack and with more players behind', () => {
     const mu = synthetic();
-    const pct = (k: number, S: number): number => solvePushFold(mu, k, S).pushPct;
+    const pct = (k: number, S: number): number => solvePushFold(mu, k, S, 300).pushPct;
     expect(pct(2, 12)).toBeLessThan(pct(2, 4));
     expect(pct(6, 9)).toBeLessThan(pct(1, 9));
     expect(pct(4, 9)).toBeLessThan(pct(2, 9));
-  });
+  }, 60_000);
 
-  it('shoves every hand with one big blind and calls every hand when the call costs nothing', () => {
+  it('the small blind shoves every hand with one big blind, which the big blind calls for free', () => {
     const mu = synthetic();
-    const s = solvePushFold(mu, 1, 1);
+    const s = solvePushFold(mu, 1, 1, 300);
+    expect(s.pushPct).toBeCloseTo(100, 6);
     expect(s.callPct).toBeCloseTo(100, 6); // the big blind is all-in already: calling is free
-    expect(solvePushFold(mu, 5, 1).pushPct).toBeGreaterThan(90);
-  });
+    // From the button, the small blind calls every hand for half a blind and is always first.
+    expect(solvePushFold(mu, 2, 1, 300).pushPct).toBeLessThan(100);
+  }, 30_000);
+
+  it('the blinds call at their discount: wider than a player with nothing posted', () => {
+    const s = solvePushFold(synthetic(), 3, 10, 300);
+    expect(s.callers.map((c) => c.posted)).toEqual([0, 0.5, 1]);
+    const [none, small, big] = s.callers.map((c) => c.callPct) as [number, number, number];
+    expect(none).toBeGreaterThan(0);
+    expect(small).toBeGreaterThanOrEqual(none);
+    expect(big).toBeGreaterThan(none);
+    expect(s.callPct).toBe(big);
+  }, 30_000);
 });
 
 describe('the tables', () => {

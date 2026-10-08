@@ -13,8 +13,8 @@
       "trials": 500000
     },
     "pushfold.ts": {
-      "sha256": "2be057d26a6bfdf87d59e0c424ee15d8ebd98efcade2c37b7fd6725350b66e1a",
-      "generator": "gen-pushfold@1",
+      "sha256": "691bd1ed589cc95e8cc1e7085d88d8a3a783c764f78e5d6b2572056b243a61af",
+      "generator": "gen-pushfold@2",
       "seed": "b3fa9e20b507129b4a198627aa09d24e",
       "trials": 40000
     },

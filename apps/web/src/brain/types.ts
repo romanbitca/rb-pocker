@@ -213,3 +213,30 @@ export interface EvCandidate {
   action: PlayerAction;
   ev: number;
 }
+
+// --- 5.3 preflop / push-fold ---
+
+/**
+ * What the preflop policy (§8.3–8.4) recommends before the EV model (§8.9) and the guardrails
+ * (§8.8) run: a legal action, its kind and the reason codes that explain it (the brain never
+ * builds English, §8.10). `decide()` adds the numbers of `Decision`.
+ */
+export interface PreflopDecision {
+  action: PlayerAction;
+  kind: Decision['kind'];
+  trace: Reason[];
+}
+
+/**
+ * The preflop parts of a profile (§9.2, §9.4). The coach's are `COACH_PREFLOP_STYLE`: no noise,
+ * the thresholds as written, full position awareness. A bot's come from its decision seed
+ * (`preflopStyle()`): its N(0, σ) draw and its U(−j, j) draw.
+ */
+export interface PreflopStyle {
+  /** Added to every equity the rules compare: E' = clamp(E + equityNoise, 0, 1). */
+  equityNoise: number;
+  /** Every "rankPct ≤ X" threshold X becomes min(100, X × thresholdFactor). */
+  thresholdFactor: number;
+  /** 1: openPct(k); 0: openPct(4) everywhere; 0.5: the mean of the two (§9.2). */
+  positionAwareness: 0 | 0.5 | 1;
+}

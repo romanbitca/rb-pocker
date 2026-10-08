@@ -9,9 +9,9 @@
  *    `gen-pushfold.ts` use now: a changed method needs a regeneration.
  * 3. The `ranges` table is sound: the order is a ranking of the 169 classes, it passes the §8.3
  *    acceptance, and every equity row grows with the width of the range (within the noise).
- * 4. The `pushfold` table is sound: percentages in range, every stack 1 shoves everything, and it
- *    passes the §8.4 acceptance at 10 and 12 bb, except the known misses (`PUSH_FOLD_KNOWN_MISSES`,
- *    printed, and an error once they pass: the list must then shrink).
+ * 4. The `pushfold` table is sound: percentages in range, the small blind shoves every hand with
+ *    1 bb (the big blind's call is free), and it passes the §8.4 acceptance at 10 and 12 bb (the
+ *    published no-ante chart ± 3 points).
  * 5. 20 cells of the `eqVsRange` table, chosen at random with a fixed seed (every range at least
  *    once), are sampled again with 200,000 trials and a seed of this script's own: each must be
  *    within 0.5 points of the committed cell (two independent estimates differ by up to 0.16
@@ -28,10 +28,8 @@ import {
   decodePushFold,
   decodeRanges,
   orderProblem,
-  PUSH_MAX_PLAYERS_BEHIND,
   PUSH_MAX_STACK_BB,
-  PUSH_FOLD_KNOWN_MISSES,
-  pushFoldMisses,
+  pushFoldAcceptance,
   RANGE_CLASSES,
   RANGE_KNOTS,
   rangeAcceptance,
@@ -63,6 +61,7 @@ import {
   verifyChecksums,
 } from './generated.ts';
 import { defaultThreads } from './pool.ts';
+import { ITERATIONS as PUSH_ROUNDS } from './pushfold-solver.ts';
 import { runRangeJobs, type RangeJob } from './range-jobs.ts';
 
 /** Cells re-sampled, trials per re-sampled cell, and the allowed difference in percentage points. */
@@ -146,6 +145,9 @@ export function checkRangeParameters(dir: string): string[] {
   if (moduleNumber(PUSH_FOLD_FILE, 'PUSH_FOLD_TRIALS') !== PAIR_TRIALS) {
     problems.push(`${PUSH_FOLD_FILE} says a different number of trials than ${PAIR_TRIALS}`);
   }
+  if (moduleNumber(PUSH_FOLD_FILE, 'PUSH_FOLD_ITERATIONS') !== PUSH_ROUNDS) {
+    problems.push(`${PUSH_FOLD_FILE} says a different number of rounds than ${PUSH_ROUNDS}`);
+  }
   return problems;
 }
 
@@ -175,36 +177,19 @@ export function checkRangesTable(table: RangesTable): string[] {
   return problems;
 }
 
-/**
- * The shoving and calling ranges: see the file header, 4. `known` lists the spots of the §8.4
- * acceptance that miss by a known, recorded reason (`PUSH_FOLD_KNOWN_MISSES`): not a problem.
- */
-export function checkPushFoldTable(table: PushFoldTable): { problems: string[]; known: string[] } {
+/** The shoving and calling ranges: see the file header, 4. */
+export function checkPushFoldTable(table: PushFoldTable): string[] {
   const problems: string[] = [];
   const at = (k: number, S: number): number =>
     (table.push[(k - 1) * PUSH_MAX_STACK_BB + (S - 1)] as number) / 100;
   for (const [i, word] of [...table.push, ...table.call].entries()) {
     if (word > 10_000) problems.push(`pushfold: value ${i} is ${word / 100}%`);
   }
-  for (let k = 1; k <= PUSH_MAX_PLAYERS_BEHIND; k++) {
-    if (at(k, 1) !== 100)
-      problems.push(`pushfold: with k = ${k} and 1 bb the range is ${at(k, 1)}%, not 100%`);
+  if (at(1, 1) !== 100) {
+    problems.push(`pushfold: the small blind with 1 bb shoves ${at(1, 1)}%, not 100%`);
   }
-  const known: string[] = [];
-  const misses = pushFoldMisses(at);
-  for (const spot of misses) {
-    const line = `${spot.name}: ${at(spot.k, spot.S).toFixed(1)}%, expected ${spot.min}–${spot.max}%`;
-    if (PUSH_FOLD_KNOWN_MISSES.includes(spot.name)) known.push(line);
-    else problems.push(`pushfold: ${line}`);
-  }
-  for (const name of PUSH_FOLD_KNOWN_MISSES) {
-    if (!misses.some((spot) => spot.name === name)) {
-      problems.push(
-        `pushfold: ${name} is inside its band now: remove it from PUSH_FOLD_KNOWN_MISSES`,
-      );
-    }
-  }
-  return { problems, known };
+  problems.push(...pushFoldAcceptance(at).map((miss) => `pushfold: ${miss}`));
+  return problems;
 }
 
 export interface RangeCellCheck {
@@ -272,12 +257,10 @@ export async function checkRangeTables(options: CheckOptions = {}): Promise<Chec
     `ranges: a ranking of ${RANGE_CLASSES} classes that passes the PLAN 8.3 acceptance; equities grow with the range`,
   );
   const pushFold = decodePushFold(read(PUSH_FOLD_FILE, 'PUSH_FOLD_B64'));
-  const pushChecks = checkPushFoldTable(pushFold);
-  problems.push(...pushChecks.problems);
-  lines.push('pushfold: percentages in range, 1 bb shoves everything, the PLAN 8.4 acceptance');
-  for (const miss of pushChecks.known) {
-    lines.push(`pushfold: KNOWN MISS of the PLAN 8.4 acceptance (risk R16): ${miss}`);
-  }
+  problems.push(...checkPushFoldTable(pushFold));
+  lines.push(
+    'pushfold: percentages in range, the small blind shoves everything with 1 bb, the PLAN 8.4 acceptance',
+  );
 
   if (orderProblem(ranges.order) === null) {
     const started = performance.now();
