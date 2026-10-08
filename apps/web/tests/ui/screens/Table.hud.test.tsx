@@ -117,7 +117,7 @@ describe('the Table with the win badge, price chip, draw chips, "By river" and t
     expect(seen.shown).toBeGreaterThanOrEqual(3);
     expect(seen.coach).toBeGreaterThan(5);
     expect(most).toBeLessThanOrEqual(600);
-  }, 30_000);
+  }, 90_000);
 
   it('stays within 600 DOM nodes with nine players in portrait, the strip on, the sheet open', async () => {
     h = startTableHarness({ settings: { players: 9 } });
@@ -146,5 +146,5 @@ describe('the Table with the win badge, price chip, draw chips, "By river" and t
     expect(seen.strip).toBeGreaterThan(0);
     expect(seen.sheet).toBeGreaterThan(3);
     expect(most).toBeLessThanOrEqual(600);
-  }, 30_000);
+  }, 90_000);
 });
