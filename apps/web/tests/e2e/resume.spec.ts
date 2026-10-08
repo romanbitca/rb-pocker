@@ -7,6 +7,7 @@ import {
   openApp,
   pcState,
   prng,
+  reloadAfterBust,
   seedFor,
   sizeOf,
   slot,
@@ -53,7 +54,10 @@ test.describe('resume', () => {
         await page.locator('[data-hand-end]').click();
         continue;
       }
-      if (point === 'bust') throw new Error('out of chips while checking and calling');
+      if (point === 'bust') {
+        await reloadAfterBust(page);
+        continue;
+      }
       if ((await pcState(page)).game.hand?.street !== 'preflop') break;
       await heroAct(page, () => 0.3 + random() * 0.4); // check or call
     }
@@ -80,6 +84,9 @@ test.describe('resume', () => {
   test('without a saved game, Play starts a new table with the last-used settings', async ({
     page,
   }, testInfo) => {
+    // A frozen clock: the first hand cannot end (the real bots may fold it round in a walk, and
+    // the next hand start) before the test reads it.
+    await page.clock.install();
     await openApp(page, seedFor(testInfo));
     await newTable(page, { players: 4 });
     // Drop the saved session (the profile with the settings stays), as after "Change table".
@@ -88,10 +95,8 @@ test.describe('resume', () => {
     const play = page.getByRole('button', { name: 'Play', exact: true });
     await expect(play).toBeVisible();
     await play.click();
-    await page.waitForFunction(() => {
-      const hand = window.__pc?.state().game.hand;
-      return hand !== null && hand !== undefined && hand.phase !== 'complete';
-    });
+    // Play deals at once (the click runs the controller); no timer has to run for it.
+    await expect.poll(async () => (await pcState(page)).game.hand?.phase).toBe('betting');
     const s = await pcState(page);
     expect(s.ui.screen).toBe('table');
     expect(s.game.hand?.seats).toHaveLength(4);
