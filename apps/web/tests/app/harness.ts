@@ -69,6 +69,8 @@ export interface HarnessOptions {
   storage?: SafeStorage;
   /** Chunk 4.5: equity.worker's client (a fake worker in tests). */
   equity?: EquityClient;
+  /** Chunk 5.7: ask the brain for the coach's hint at every hero decision. */
+  hints?: boolean;
 }
 
 export function makeHarness(options: HarnessOptions = {}): Harness {
@@ -87,6 +89,7 @@ export function makeHarness(options: HarnessOptions = {}): Harness {
     ...(options.timers !== undefined && { timers: options.timers }),
     ...(options.storage !== undefined && { storage: options.storage }),
     ...(options.equity !== undefined && { equity: options.equity }),
+    ...(options.hints !== undefined && { hints: options.hints }),
   });
   controller.boot();
   return {
