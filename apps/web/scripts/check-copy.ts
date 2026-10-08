@@ -26,6 +26,7 @@ import {
 } from '../src/brain/explain.ts';
 import { candidateEVs, confidence } from '../src/brain/ev.ts';
 import { coachSeed, features } from '../src/brain/features.ts';
+import { preflopPolicy, realisation as preflopRealisation } from '../src/brain/preflopPolicy.ts';
 import { guardrails, guardSpot } from '../src/brain/guardrails.ts';
 import { liveOpponents } from '../src/brain/ranges.ts';
 import { openPct } from '../src/brain/tunables.ts';
@@ -237,7 +238,8 @@ const sameAction = (a: PlayerAction, b: PlayerAction): boolean =>
   (a.type !== 'bet' && a.type !== 'raise' ? true : a.to === (b as { to: number }).to);
 
 /**
- * Every reason the spot allows, each under the condition its policy uses (§8.3–8.5: a call on
+ * Before the flop, the coach's own decision (`preflopPolicy`, chunk 5.3); then every reason the
+ * spot allows, each under the condition its policy uses (§8.3–8.5: a call on
  * price only when `E·R` beats the price, a value bet only with a strong hand, …), with an action
  * it explains and the data the chunk 5.3–5.4 policies put in `Reason.data` (sizes as `to`/`bb`
  * before the flop and `size`/`sizeBB` after it, `E` = the policy's range equity, chances as
@@ -268,6 +270,9 @@ export function candidateDecisions(s: Situation, rng: Rng): CheckDecision[] {
     a !== null && (a.type === 'bet' || a.type === 'raise') ? { size: a.to, sizeBB: a.to / bb } : {};
 
   if (f.street === 'preflop') {
+    // The coach's own decision first (chunk 5.3, the real policy), then every other reason.
+    const coach = preflopPolicy(obs, f);
+    add(coach.action, coach.trace);
     const headsUp = obs.dealtIn.filter(Boolean).length === 2;
     const open = openPct(f.k, headsUp);
     if (f.facing === 'none' || f.facing === 'limpers') {
@@ -392,7 +397,7 @@ export function candidateDecisions(s: Situation, rng: Rng): CheckDecision[] {
  */
 function finish(s: Situation, proposals: readonly [PlayerAction, Reason[]][]): CheckDecision[] {
   const { obs, f } = s;
-  const R = f.street === 'preflop' ? (f.position === 'IP' ? 0.95 : 0.8) : realisation(f);
+  const R = f.street === 'preflop' ? preflopRealisation(f.position, obs.hole) : realisation(f);
   let ranked: EvCandidate[];
   try {
     const evs = candidateEVs({ obs, f, R, implied: 0, seed: coachSeed(obs), trials: EV_TRIALS });
