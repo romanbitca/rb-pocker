@@ -1,10 +1,9 @@
 // The coach speaks the PLAN's words (chunk 5.9): the strip and sheet words (§10.2, §12.6, §12.11,
-// Appendix F.10), every Appendix F.1 template and its placeholder words, and every F.9 glossary
-// line must appear verbatim in docs/PLAN.md. The copy is plain on purpose, for a reader whose
+// Appendix F.10) must appear verbatim in docs/PLAN.md. (The F.1 templates and the F.9 glossary are
+// chunk 5.6's, checked by its tests and `check-copy`; chunk 5.7 removed the 5.9 stand-in copies.) The copy is plain on purpose, for a reader whose
 // first language is not English.
 import { describe, expect, it } from 'vitest';
-import type { ReasonCode } from '../../src/brain/types.ts';
-import { coachText, coachWords, glossary } from '../../src/i18n/coachUi.ts';
+import { coachWords } from '../../src/i18n/coachUi.ts';
 import { en } from '../../src/i18n/en.ts';
 
 const PLAN = Object.values(
@@ -17,11 +16,6 @@ const PLAN = Object.values(
 
 /** The PLAN writes plain spaces where the app keeps "3 BB" on one line (U+00A0). */
 const plain = (s: string): string => s.replace(/\u00A0/g, ' ');
-
-/** Every placeholder as its own name: `{E}`, `{need}`, … (`Draw` is F.1's `{draw}`). */
-const NAMES = new Proxy({} as Record<string, string>, {
-  get: (_, key: string) => (key === 'Draw' ? '{draw}' : `{${key}}`),
-});
 
 describe('the coach’s words are the PLAN’s', () => {
   it('loaded the plan', () => {
@@ -81,35 +75,6 @@ describe('the coach’s words are the PLAN’s', () => {
       en.coachUi.chipName('{x}'),
     ];
     const missing = words.filter((word) => !PLAN.includes(word));
-    expect(missing).toEqual([]);
-  });
-
-  it('every Appendix F.1 template, word for word', () => {
-    const codes = Object.keys(coachText.reason) as ReasonCode[];
-    expect(codes).toHaveLength(36);
-    const missing = codes.filter(
-      (code) => !PLAN.includes(`| ${code} | "${coachText.reason[code](NAMES)}" |`),
-    );
-    expect(missing).toEqual([]);
-  });
-
-  it('the words F.1’s placeholders map to, and F.2’s preflop names', () => {
-    const words = [
-      ...Object.values(coachText.example),
-      ...Object.values(coachText.actionDescription),
-      ...Object.values(coachText.guardrail),
-    ].map((w) => `"${w}"`);
-    words.push(
-      coachText.pocket('{Ranks}'),
-      coachText.suited('{Rank}', '{Rank}'),
-      coachText.offsuit('{Rank}', '{Rank}'),
-    );
-    expect(words.filter((w) => !PLAN.includes(w))).toEqual([]);
-  });
-
-  it('every Appendix F.9 glossary line', () => {
-    expect(glossary.length).toBe(33);
-    const missing = glossary.filter((g) => !PLAN.includes(`| ${g.term} | ${g.text} |`));
     expect(missing).toEqual([]);
   });
 });
