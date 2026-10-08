@@ -94,8 +94,8 @@ Legend: `[ ]` todo · `[~]` in progress (branch exists) · `[x]` merged to `main
 ## Stage 6 - Grading, feedback, Undo, Advanced/Exam (PLAN §8.9, §10.2–10.3, §11)
 
 - [ ] 6.1 `feature/decision-grading` - `grade.ts`, leak tags, controller `grading` state, grade chips.
-- [ ] 6.2 `feature/mistake-feedback-and-undo` - feedback card, toolbar Undo, `reshuffle`, practice flag, §11.5 tests, `?script=` hook.
-- [ ] 6.3 `feature/hand-review-replay` - hand summary and read-only Review.
+- [~] 6.2 `feature/mistake-feedback-and-undo` - feedback card, toolbar Undo, `reshuffle`, practice flag, §11.5 tests, `?script=` hook.
+- [~] 6.3 `feature/hand-review-replay` - hand summary and read-only Review.
 - [ ] 6.4 `feature/advanced-quiz-and-exam-level` - quiz, Exam behaviour, full level matrix.
 - [ ] 6.5 `test/grading-and-undo-e2e` - acceptance 2–6.
 
