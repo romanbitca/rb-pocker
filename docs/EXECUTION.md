@@ -156,6 +156,10 @@ If the human's answer later reveals a problem, the fix becomes a new chunk ahead
 
 - **4.7 acceptance 3 (perf at 6× throttle) in CI** (orchestrator, 1 Oct 00:30Z): CDP cannot throttle workers, and on the shared 2-vCPU runner the modelled 6× worker time is noise (final 539–748 ms in CI vs 270 ms locally). Decision: the two perf checks run **report-only** in the PR e2e job (numbers printed in the job summary), are **enforced locally** (`npm run e2e:perf` or equivalent, run before merging perf-sensitive PRs), and on a **real phone via `#bench`** (4.8 [H]). PLAN Testing strategy already says latency budgets are checked "per stage on a real phone"; write this into §17.5 + risk register.
 
+### Notes for Stage 6
+
+- 5.10 (PR #45): the coach level is read live from settings, not latched per hero decision as §10 says; latching needs the Stage 6 decision records — do it in 6.1/6.4.
+
 ### Decisions pending (Claude, before Stage 5 completes)
 
 - ✅ resolved in 5.3 (PR #41): bands came from 12.5%-ante charts; restated from PokerCoaching.com no-ante charts (± 3 pts), model fixed (blinds call at own price, pusher's cards removed, 3,000 rounds); R16 closed. — **§8.4 push/fold acceptance bands** (from 5.1, PR #37): the fictitious-play model gives CO 27.2% (band 28–38), 6-max UTG 15.1% (18–26), 9-handed UTG @12 bb 8.8% (10–15); SB and BTN pass. Suspicion: the bands assume antes (this game has none, §1.6). Plan: check published no-ante Nash push/fold charts (e.g. HRC), then either fix the model (multiway-aware caller) or restate the bands with a named source (risk R16). Tests are `it.fails` until then.
