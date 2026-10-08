@@ -167,7 +167,8 @@ If the human's answer later reveals a problem, the fix becomes a new chunk ahead
 ### Budgets to watch in Stage 5 (from 4.6, 1 Oct)
 
 - Table screen DOM: 594 of 600 nodes at 9 players with everything shown — the coach strip (5.9) must find nodes (e.g. collapse/merge elements) or the budget must be renegotiated in PLAN §15.3 with a reason.
-- Main JS: 132.6 KB gzip (target 130, gate 150). Brain tables must live in the brain worker chunk; coach UI should lazy-load its sheet.
+- Main JS: ~140 KB gzip after 5.9, ~144 KB with 5.6's coach text (target 130, gate 150) — Stage 6+ UI must be lazy (feedback card, quiz, Review, Stats). 5.9 freed DOM nodes: Table peak 481/600.
+- UX: the strength meter read "Decent" at 6% win chance 5-handed (5.9) — check its bands in 5.7. Brain tables must live in the brain worker chunk; coach UI should lazy-load its sheet.
 
 ### Pending fixes (apply at merge time)
 
