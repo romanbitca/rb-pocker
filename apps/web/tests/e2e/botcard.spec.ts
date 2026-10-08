@@ -200,6 +200,40 @@ test.describe('the bot card', () => {
   });
 });
 
+test.describe('the bot card offline', () => {
+  // eslint-disable-next-line no-empty-pattern -- Playwright reads the fixtures from this pattern
+  test.beforeEach(({}, testInfo) => {
+    test.skip(sizeOf(testInfo) !== '390x844', 'one phone size per browser');
+  });
+
+  // The card's code is a lazy chunk, so a browser that went offline must already have it: the
+  // service worker precaches every built file (§15.1), the lazy chunk and its CSS included.
+  test('its chunk and its CSS are in the offline cache', async ({ page }, testInfo) => {
+    test.setTimeout(60_000);
+    await openApp(page, seedFor(testInfo));
+    await page.evaluate(async () => {
+      await navigator.serviceWorker.ready;
+    });
+    const cached = async (): Promise<string[]> => {
+      const urls = await page.evaluate(async () => {
+        const all: string[] = [];
+        for (const name of await caches.keys()) {
+          const cache = await caches.open(name);
+          for (const request of await cache.keys()) all.push(request.url);
+        }
+        return all;
+      });
+      return urls.filter((url) => /\/BotCard-[^/?]*\.(js|css)(\?.*)?$/.test(url));
+    };
+    // The worker fills its cache while it installs: a moment after it is ready.
+    await expect
+      .poll(async () => (await cached()).map((url) => /\.(js|css)/.exec(url)?.[1]).sort(), {
+        timeout: 30_000,
+      })
+      .toEqual(['css', 'js']);
+  });
+});
+
 test.describe('the level cards', () => {
   // eslint-disable-next-line no-empty-pattern -- Playwright reads the fixtures from this pattern
   test.beforeEach(({}, testInfo) => {

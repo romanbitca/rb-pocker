@@ -10,6 +10,7 @@
  */
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import type { GameSettings } from '../../../src/app/store.ts';
 import type { BotLevel, HandState, TableState } from '../../../src/engine/types.ts';
 import { en } from '../../../src/i18n/en.ts';
 import { App } from '../../../src/ui/App.tsx';
@@ -38,14 +39,8 @@ afterEach(() => {
   h = null;
 });
 
-type Settings = Parameters<typeof startTableHarness>[0] extends infer O
-  ? O extends { settings?: infer S }
-    ? S
-    : never
-  : never;
-
 /** Renders the app on a table and deals (one tap on Play). */
-function renderTable(settings: Settings = {}): TableHarness {
+function renderTable(settings: Partial<GameSettings> = {}): TableHarness {
   h = startTableHarness({ settings });
   render(<App />);
   act(() => h?.state().dispatch({ type: 'play' }));
