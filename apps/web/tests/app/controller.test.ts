@@ -7,10 +7,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { InvariantError } from '../../src/core/assert.ts';
 import { deriveSeed } from '../../src/core/rng.ts';
-import type { BotDecisionRequest, BrainClient } from '../../src/app/brain.ts';
 import { botSeed, HERO, safestAction, TIMING, type Timers } from '../../src/app/controller.ts';
 import { GATES, selectCanTopUp, type Gate } from '../../src/app/store.ts';
-import { simpleBotAction } from '../../src/brain/simpleBot.ts';
+import type { BrainClient } from '../../src/app/workerClient.ts';
 import { observe } from '../../src/engine/observe.ts';
 import { replay } from '../../src/engine/replay.ts';
 import { step } from '../../src/engine/step.ts';
@@ -30,10 +29,12 @@ import {
   heroPolicy,
   makeHarness,
   manualBrain,
+  scriptedBrain,
   SEED,
   setGate,
   spyBrain,
   tick,
+  type BotDecisionMsg,
   type Harness,
   type ManualBrain,
 } from './harness.ts';
@@ -78,19 +79,9 @@ async function toAdvancing(h: Harness): Promise<void> {
 
 const inputsOf = (h: Harness): EngineInput[] => h.controller.snapshot().inputs;
 
-/** A brain that answers with SimpleBot's action (or `choose`) and a fixed think time. */
+/** A brain that answers with the stand-in's action (or `choose`) and a fixed think time. */
 function fixedBrain(thinkMs: number, choose?: (obs: Observation) => PlayerAction): BrainClient {
-  return {
-    request: (req) =>
-      Promise.resolve({
-        kind: 'botDecision',
-        jobId: req.jobId,
-        epoch: req.epoch,
-        decision: { action: (choose ?? simpleBotAction)(req.obs) },
-        thinkMs,
-      }),
-    cancel: () => {},
-  };
+  return scriptedBrain({ thinkMs, ...(choose !== undefined && { choose }) });
 }
 
 /** Runs timers until the controller has applied `count` inputs in this hand. */
@@ -238,7 +229,7 @@ describe('gates (Appendix A.8): bots, think timers and advance wait while any ga
 describe('stale replies and timers (pitfall 22)', () => {
   it('drops a reply to a job cancelled when the page was hidden, and asks again when visible', async () => {
     const brain = manualBrain();
-    const h = makeHarness({ brain });
+    const h = makeHarness({ brain: brain.client });
     h.dispatch({ type: 'play' });
     await toBotTurn(h);
     const [first] = [...brain.pending.values()];
@@ -249,7 +240,7 @@ describe('stale replies and timers (pitfall 22)', () => {
     brain.answer(first.req.jobId);
     await elapse(10_000);
     expect(inputsOf(h)).toHaveLength(before);
-    expect(h.controller.logs().brain.some((e) => e.what === 'drop')).toBe(true);
+    expect(h.controller.logs().brainWorker.some((e) => e.what === 'drop')).toBe(true);
     setGate(h, 'hidden', false);
     await elapse(TIMING.resumeAfterVisibleMs);
     const [again] = [...brain.pending.values()];
@@ -263,7 +254,7 @@ describe('stale replies and timers (pitfall 22)', () => {
 
   it('drops a reply from the previous hand after a new table (epoch)', async () => {
     const brain = manualBrain();
-    const h = makeHarness({ brain });
+    const h = makeHarness({ brain: brain.client });
     h.dispatch({ type: 'play' });
     await toBotTurn(h);
     const [old] = [...brain.pending.values()];
@@ -282,7 +273,9 @@ describe('stale replies and timers (pitfall 22)', () => {
     const hand = h.state().game.hand;
     brain.answer(old.req.jobId);
     await flush();
-    expect(h.controller.logs().brain.filter((e) => e.what === 'drop').length).toBeGreaterThan(0);
+    expect(h.controller.logs().brainWorker.filter((e) => e.what === 'drop').length).toBeGreaterThan(
+      0,
+    );
     expect(inputsOf(h)).toHaveLength(inputs);
     expect(h.state().game.hand).toBe(hand);
   });
@@ -328,13 +321,16 @@ describe('non-cheating boundary (§4.8, §9.6): the brain gets an Observation on
   ]; // prettier-ignore
 
   it('every request is exactly observe(state, seat) plus a table-only seed; never a HandState', async () => {
-    const seen: { req: BotDecisionRequest; hand: HandState; table: TableState }[] = [];
+    const seen: { req: BotDecisionMsg; hand: HandState; table: TableState }[] = [];
     let h: Harness | null = null;
     const brain = spyBrain((req) => {
       const snap = (h as Harness).controller.snapshot();
       seen.push({ req, hand: snap.hand as HandState, table: snap.table as TableState });
     });
-    h = makeHarness({ brain, settings: { players: 9, startingStack: 400, sb: 10, bb: 20 } });
+    h = makeHarness({
+      brain: brain.client,
+      settings: { players: 9, startingStack: 400, sb: 10, bb: 20 },
+    });
     h.dispatch({ type: 'play' });
     await drive(h, { hands: 40, hero: heroPolicy(deriveSeed(`${'0'.repeat(31)}9`, 'hero')) });
     expect(seen.length).toBeGreaterThan(200);
@@ -385,14 +381,11 @@ describe('non-cheating boundary (§4.8, §9.6): the brain gets an Observation on
 describe('speed and pauses (§9.8, §12.8)', () => {
   /** A brain with a fixed think time that records when it was asked, per seat. */
   function timedBrain(thinkMs: number, asked: Map<number, number>): BrainClient {
-    const inner = fixedBrain(thinkMs, (o) => passive(o.legal));
-    return {
-      request: (req) => {
-        asked.set(req.obs.seat, Date.now());
-        return inner.request(req);
-      },
-      cancel: () => {},
-    };
+    return scriptedBrain({
+      thinkMs,
+      choose: (o) => passive(o.legal),
+      onRequest: (req) => asked.set(req.obs.seat, Date.now()),
+    });
   }
 
   /** Calls `onInput` with every input the controller applies inside a hand, and the time. */
@@ -514,7 +507,7 @@ describe('speed and pauses (§9.8, §12.8)', () => {
 describe('errors (§4.5)', () => {
   it('an illegal bot action is replaced by the safest legal action and counted', async () => {
     const brain = manualBrain();
-    const h = makeHarness({ brain });
+    const h = makeHarness({ brain: brain.client });
     h.dispatch({ type: 'play' });
     await toBotTurn(h);
     await flush();
@@ -532,16 +525,17 @@ describe('errors (§4.5)', () => {
     expect(h.state().game.diag).toEqual({ engineErrors: 1, botFallbacks: 1, voidedHands: 0 });
   });
 
-  it('a brain error or a reply later than 2 s gives the safest legal action', async () => {
+  it('a brain error or a reply later than the timeout gives the safest legal action', async () => {
     const brain = manualBrain();
-    const h = makeHarness({ brain });
+    const h = makeHarness({ brain: brain.client });
     h.dispatch({ type: 'play' });
     await toBotTurn(h);
     await flush();
     const [job] = [...brain.pending.values()];
     if (job === undefined) throw new Error('no request');
     const before = inputsOf(h).length;
-    await elapse(TIMING.botTimeoutMs - 1);
+    // The very first decision of a session gets 3 s: the worker may still be starting (§12.14).
+    await elapse(TIMING.botFirstTimeoutMs - 1);
     expect(inputsOf(h)).toHaveLength(before);
     await elapse(1);
     expect(brain.cancelled).toContain(job.req.jobId);

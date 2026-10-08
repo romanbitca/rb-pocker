@@ -8,3 +8,11 @@
 export function spawnEquityWorker(): Worker {
   return new Worker(new URL('./equity.worker.ts', import.meta.url), { type: 'module' });
 }
+
+/**
+ * A new `brain.worker`: bot decisions now, coach hints (chunk 5.7) and grades (chunk 6.1) later.
+ * Throws where module workers are missing, like `spawnEquityWorker`.
+ */
+export function spawnBrainWorker(): Worker {
+  return new Worker(new URL('./brain.worker.ts', import.meta.url), { type: 'module' });
+}

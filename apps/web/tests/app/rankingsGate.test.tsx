@@ -7,7 +7,6 @@
  */
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createSimpleBrain } from '../../src/app/brain.ts';
 import { createTableController, type TableController } from '../../src/app/controller.ts';
 import { installBackHandler } from '../../src/app/lifecycle.ts';
 import {
@@ -19,6 +18,7 @@ import {
 } from '../../src/app/store.ts';
 import { RankingsDrawer } from '../../src/ui/components/RankingsDrawer.tsx';
 import type { LegalActions, PlayerAction } from '../../src/engine/types.ts';
+import { testBrain } from '../workers/fakeBrainWorker.ts';
 
 function DrawerHost() {
   const [open, setOpen] = useOverlay('rankings');
@@ -43,7 +43,7 @@ beforeEach(() => {
   window.history.replaceState(null, '');
   controller = createTableController({
     store: appStore,
-    brain: createSimpleBrain(),
+    brain: testBrain(),
     heroName: 'You',
   });
   controller.boot();

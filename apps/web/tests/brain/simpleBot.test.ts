@@ -1,16 +1,12 @@
 /**
- * The temporary Stage 3 SimpleBot (PLAN §18 Stage 3): every rule of its spec on real engine states
- * (built with createTable + startHand + step, observed with `observe`), its think time (§9.8),
- * and that it only ever picks legal actions (thousands of seeded hands through `step`).
+ * SimpleBot, the Stage 3 bot and now a scripted self-play baseline (PLAN §18 Stage 3, §0.1
+ * `scripts/bots/`): every rule of its spec on real engine states (built with createTable +
+ * startHand + step, observed with `observe`), and that it only ever picks legal actions (thousands
+ * of seeded hands through `step`). Its think time is `brain/think.ts` (tests/brain/think.test.ts).
  */
 import { describe, expect, it } from 'vitest';
-import { randInt, rngFromSeed, deriveSeed, type Seed128 } from '../../src/core/rng.ts';
-import {
-  isAllInAction,
-  simpleBotAction,
-  simpleBotThinkMs,
-  THINK_ALL_IN_MS,
-} from '../../src/brain/simpleBot.ts';
+import { simpleBotAction } from '../../scripts/bots/simple.ts';
+import { randInt, rngFromSeed, deriveSeed } from '../../src/core/rng.ts';
 import { observe } from '../../src/engine/observe.ts';
 import { startHand } from '../../src/engine/start.ts';
 import { step } from '../../src/engine/step.ts';
@@ -168,30 +164,4 @@ describe('SimpleBot always acts legally', () => {
       }
     }
   }, 60_000);
-});
-
-describe('SimpleBot think time (§9.8)', () => {
-  const seed = (i: number): Seed128 => deriveSeed('0123456789abcdef0123456789abcdef', 'think', i);
-
-  it('is 450 ms + U(0, 400 ms) for a clear decision, the same for the same seed', () => {
-    const obs = obsOf(sixMax({ 3: '8h 3d' }), 3);
-    const times = Array.from({ length: 500 }, (_, i) =>
-      simpleBotThinkMs(obs, { type: 'call' }, seed(i)),
-    );
-    expect(Math.min(...times)).toBeGreaterThanOrEqual(450);
-    expect(Math.max(...times)).toBeLessThanOrEqual(850);
-    expect(new Set(times).size).toBeGreaterThan(100);
-    expect(simpleBotThinkMs(obs, { type: 'call' }, seed(7))).toBe(times[7]);
-  });
-
-  it('takes at least 1,500 ms for an all-in decision', () => {
-    const h = sixMax({ 3: 'Ac Ad' }, [10000, 10000, 10000, 250, 10000, 10000]);
-    const obs = obsOf(h, 3);
-    const allIn = { type: 'raise', to: 250 } as const;
-    expect(isAllInAction(obs.legal, allIn)).toBe(true);
-    expect(isAllInAction(obs.legal, { type: 'raise', to: 200 })).toBe(false);
-    for (let i = 0; i < 50; i++) {
-      expect(simpleBotThinkMs(obs, allIn, seed(i))).toBeGreaterThanOrEqual(THINK_ALL_IN_MS);
-    }
-  });
 });

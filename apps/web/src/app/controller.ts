@@ -4,7 +4,7 @@
  * code that uses timers (§0.3 "Time"), and the only writer of the store's `game` slice.
  *
  * One hand (§2.3):
- * - `startHand` → 'betting'. A bot's turn: `observe(state, seat)` → the brain's `botDecision`
+ * - `startHand` → 'betting'. A bot's turn: `observe(state, seat)` → `brain.worker`'s `botDecision`
  *   (only an Observation crosses, §4.8) → wait `max(think time, compute time)` (§9.8) → `step`.
  *   The hero's turn: mode 'heroTurn' and `game.legal`; the hero's tap arrives as `act`.
  * - 'roundComplete' / 'showdown': an animation pause (mode 'advancing'), then `step(advance)`.
@@ -24,6 +24,11 @@
  * Errors (§4.5): an input the engine refuses (`EngineError`) is logged and ignored; for a bot the
  * safest legal action (check, else fold) is taken instead. Anything else (a broken invariant) voids
  * the hand: every seat gets its hand-start stack back and the next hand starts.
+ *
+ * The brain worker (§12.14): a bot decision that gets no reply in 2 s, a worker that crashes with
+ * the decision pending, or a worker that has failed for good (`brain.status === 'failed'`) all give
+ * the bot the safest legal action, so the hand always finishes. The client (`app/workerClient.ts`)
+ * owns the timeout and the restart.
  */
 import { EngineError } from '../core/assert.ts';
 import { deriveSeed, randomSeed, type Seed128 } from '../core/rng.ts';
@@ -49,7 +54,7 @@ import { emptyHandMeta, settingsProblem } from '../persist/schema.ts';
 import type { Profile, SessionState, Settings } from '../persist/schema.ts';
 import { clearSession, loadSession, saveSession } from '../persist/session.ts';
 import type { SafeStorage } from '../persist/storage.ts';
-import type { BotDecisionRequest, BotProfileRef, BrainClient, BrainReply } from './brain.ts';
+import type { BotProfileRef, BrainReply, BrainRequest } from '../workers/protocol.ts';
 import { EquityJobs } from './equityJobs.ts';
 import {
   updateUi,
@@ -61,7 +66,13 @@ import {
   type Toast,
   type UiCommand,
 } from './store.ts';
-import type { EquityClient, WorkerLogEntry } from './workerClient.ts';
+import {
+  BOT_TIMEOUT_MS,
+  type BrainClient,
+  type EquityClient,
+  type JobEvent,
+  type WorkerLogEntry,
+} from './workerClient.ts';
 
 export type { ControllerMode, Gate } from './store.ts';
 
@@ -86,7 +97,12 @@ export const TIMING = {
   /** Play resumes 300 ms after the page is visible again (§12.13). */
   resumeAfterVisibleMs: 300,
   /** A bot decision that takes longer gets the safest legal action (Appendix A.6). */
-  botTimeoutMs: 2000,
+  botTimeoutMs: BOT_TIMEOUT_MS,
+  /**
+   * The same for decisions until the brain worker has answered once: it may still be starting
+   * (§12.14: "max 3 s" until `brain.worker` is ready).
+   */
+  botFirstTimeoutMs: 3000,
   /** How long a toast stays (§12.11). */
   toastMs: 4000,
   /** Settings changes are saved 250 ms after the last one (§14.2), and at once when hidden. */
@@ -128,6 +144,27 @@ export function safestAction(legal: LegalActions): PlayerAction {
   return legal.canCheck ? { type: 'check' } : { type: 'fold' };
 }
 
+/** What the log calls a brain job that gave no decision (§12.14). */
+function failureOf(event: JobEvent<BrainReply>): string {
+  switch (event.type) {
+    case 'timeout':
+      return 'bot timeout';
+    case 'failed':
+      return 'brain worker failed';
+    default:
+      return 'brain error';
+  }
+}
+
+/** The reason text of a failed brain job, for the log. */
+function messageOf(event: JobEvent<BrainReply>): { message?: string } {
+  if (event.type === 'failed') return { message: event.reason };
+  if (event.type === 'reply' && event.reply.kind === 'error') {
+    return { message: event.reply.message };
+  }
+  return {};
+}
+
 /** The clock and timers the controller uses (tests use Vitest's fake timers through the defaults). */
 export interface Timers {
   setTimeout(fn: () => void, ms: number): unknown;
@@ -144,6 +181,7 @@ export const realTimers: Timers = {
 
 export interface ControllerOptions {
   store: AppStore;
+  /** `brain.worker`'s client (chunk 5.8): every bot decision goes through it. */
   brain: BrainClient;
   /** The hero's name, from `en.ts` (the hero is always "You", Appendix F.10). */
   heroName: string;
@@ -178,12 +216,14 @@ export interface ControllerLogs {
   events: ControllerEvent[];
   /** Refused inputs, bot fallbacks and voided hands (last 50). */
   errors: ControllerEvent[];
-  /** Brain requests, replies, drops and cancels: the "worker log" (last 200). */
+  /** Brain requests, replies, drops and cancels, as the controller saw them (last 200). */
   brain: ControllerEvent[];
   /** Replay records of the last 5 voided hands (§4.5; Stage 8 stores them under `pc.v1.diag`). */
   voided: ReplayRecord[];
   /** equity.worker's message log: requests, replies, drops, cancels, timeouts (last 200). */
   equity: WorkerLogEntry[];
+  /** brain.worker's message log, the same kind of lines (last 200). */
+  brainWorker: WorkerLogEntry[];
 }
 
 /** What the controller holds, for tests and (chunk 3.2) the session. Arrays are copies. */
@@ -217,7 +257,13 @@ interface BotJob {
   epoch: number;
   seat: number;
   sentAt: number;
-  timeout: unknown;
+}
+
+/** The bot decision a headless finish (§3.1) is waiting for. */
+interface HeadlessJob {
+  jobId: number;
+  /** The epoch changed: let the waiting loop go on (it sees the new epoch and stops). */
+  release(): void;
 }
 
 type NewToast =
@@ -288,7 +334,9 @@ export class TableController {
   private inputs: EngineInput[] = [];
   private flow: FlowTimer | null = null;
   private job: BotJob | null = null;
-  private jobSeq = 0;
+  private headlessJob: HeadlessJob | null = null;
+  /** `brain.worker` has answered at least once, so it is running (the first decision waits 3 s). */
+  private brainWarm = false;
   private timerSeq = 0;
   private toastSeq = 0;
   private newTableSeq = 0;
@@ -438,6 +486,7 @@ export class TableController {
       brain: [...this.brainEvents],
       voided: [...this.voided],
       equity: this.equityClient?.log() ?? [],
+      brainWorker: this.brain.log(),
     };
   }
 
@@ -708,82 +757,66 @@ export class TableController {
   }
 
   private requestBot(h: HandState, seat: number): void {
-    const req = this.botRequest(h, seat);
-    const job: BotJob = {
-      jobId: req.jobId,
-      epoch: this.epoch,
-      seat,
-      sentAt: this.timers.now(),
-      timeout: null,
-    };
-    this.job = job;
-    job.timeout = this.timers.setTimeout(() => this.onBotTimeout(job), TIMING.botTimeoutMs);
-    void this.send(req).then((reply) => this.onBotReply(job, reply));
-  }
-
-  /** The request for `seat`'s decision: its observation, its profile and the table-only seed. */
-  private botRequest(h: HandState, seat: number): BotDecisionRequest {
-    const table = this.table as TableState;
-    const jobId = ++this.jobSeq;
-    this.brainLog('request', { jobId, seat, handSeq: h.handSeq, logLength: h.log.length });
-    return {
-      kind: 'botDecision',
-      jobId,
-      epoch: this.epoch,
-      obs: observe(h, seat, this.extras(table)),
-      profile: this.profileOf(table, seat),
-      seed: botSeed(table.tableSeed, h.handSeq, seat, h.log.length),
-    };
-  }
-
-  /** The brain's reply as a promise that never rejects (a throw becomes an `error` reply). */
-  private send(req: BotDecisionRequest): Promise<BrainReply> {
-    const failed = (e: unknown): BrainReply => ({
-      kind: 'error',
-      jobId: req.jobId,
-      epoch: req.epoch,
-      message: e instanceof Error ? e.message : String(e),
-    });
-    try {
-      return this.brain.request(req).catch(failed);
-    } catch (e) {
-      return Promise.resolve(failed(e));
-    }
-  }
-
-  private onBotReply(job: BotJob, reply: BrainReply): void {
-    if (
-      this.job !== job ||
-      job.epoch !== this.epoch ||
-      reply.jobId !== job.jobId ||
-      reply.epoch !== job.epoch
-    ) {
-      this.brainLog('drop', { jobId: reply.jobId, epoch: reply.epoch, current: this.epoch });
+    const job: BotJob = { jobId: 0, epoch: this.epoch, seat, sentAt: this.timers.now() };
+    const jobId = this.sendBot(h, seat, (event) => this.onBotEvent(job, event));
+    if (jobId === null) {
+      // The brain worker has failed for good (§12.14): the bot takes the safest legal action.
+      this.fallback('brain unavailable', { seat });
+      this.schedule('act', this.botWaitMs(0, job.sentAt), () => this.applyBot(seat, null));
       return;
     }
-    this.timers.clearTimeout(job.timeout);
+    job.jobId = jobId;
+    this.job = job;
+  }
+
+  /**
+   * Sends `seat`'s decision to `brain.worker`: its observation, its profile and the table-only
+   * seed (§2.4), in the slot `bot:<seat>`. The client owns the 2 s timeout (§12.14). Returns the
+   * job id, or null when the client sent nothing (the worker has failed for good).
+   */
+  private sendBot(
+    h: HandState,
+    seat: number,
+    onEvent: (event: JobEvent<BrainReply>) => void,
+  ): number | null {
+    const table = this.table as TableState;
+    const epoch = this.epoch;
+    const obs = observe(h, seat, this.extras(table));
+    const profile = this.profileOf(table, seat);
+    const seed = botSeed(table.tableSeed, h.handSeq, seat, h.log.length);
+    const jobId = this.brain.request({
+      slot: `bot:${seat}`,
+      epoch,
+      timeoutMs: this.brainWarm ? TIMING.botTimeoutMs : TIMING.botFirstTimeoutMs,
+      build: (id): BrainRequest => ({ kind: 'botDecision', jobId: id, epoch, obs, profile, seed }),
+      onEvent: (event) => {
+        if (event.type === 'reply') this.brainWarm = true;
+        onEvent(event);
+      },
+    });
+    this.brainLog('request', { jobId, seat, handSeq: h.handSeq, logLength: h.log.length });
+    return jobId;
+  }
+
+  private onBotEvent(job: BotJob, event: JobEvent<BrainReply>): void {
+    if (this.job !== job || job.epoch !== this.epoch) {
+      this.brainLog('drop', { jobId: job.jobId, epoch: job.epoch, current: this.epoch });
+      return;
+    }
     this.job = null;
     let action: PlayerAction | null = null;
     let thinkMs = 0;
-    if (reply.kind === 'botDecision') {
-      action = reply.decision.action;
-      thinkMs = Number.isFinite(reply.thinkMs) ? Math.max(0, reply.thinkMs) : 0;
-      this.brainLog('reply', { jobId: reply.jobId, seat: job.seat, action, thinkMs });
+    const detail = { jobId: job.jobId, seat: job.seat };
+    if (event.type === 'reply' && event.reply.kind === 'botDecision') {
+      action = event.reply.decision.action;
+      thinkMs = Number.isFinite(event.reply.thinkMs) ? Math.max(0, event.reply.thinkMs) : 0;
+      this.brainLog('reply', { ...detail, action, thinkMs });
     } else {
-      this.fallback('brain error', { jobId: reply.jobId, seat: job.seat, message: reply.message });
+      this.fallback(failureOf(event), { ...detail, ...messageOf(event) });
     }
     this.schedule('act', this.botWaitMs(thinkMs, job.sentAt), () =>
       this.applyBot(job.seat, action),
     );
-    this.publish();
-  }
-
-  private onBotTimeout(job: BotJob): void {
-    if (this.job !== job || job.epoch !== this.epoch) return;
-    this.job = null;
-    this.brain.cancel(job.jobId);
-    this.fallback('bot timeout', { jobId: job.jobId, seat: job.seat });
-    this.schedule('act', this.botWaitMs(0, job.sentAt), () => this.applyBot(job.seat, null));
     this.publish();
   }
 
@@ -893,7 +926,10 @@ export class TableController {
           const seat = h.toAct as number;
           const legal = legalActions(h) as LegalActions;
           const action = seat === HERO ? safestAction(legal) : await this.decideNow(h, seat, legal);
-          if (epoch !== this.epoch || this.hand !== h) return;
+          if (epoch !== this.epoch || this.hand !== h) {
+            this.trace('headless finish dropped', { epoch });
+            return;
+          }
           input = { kind: 'act', seat, action };
         } else {
           input = { kind: 'advance' };
@@ -923,23 +959,24 @@ export class TableController {
 
   /** A bot decision with no think time (headless play), still with the 2 s timeout. */
   private decideNow(h: HandState, seat: number, legal: LegalActions): Promise<PlayerAction> {
-    const req = this.botRequest(h, seat);
     return new Promise((resolve) => {
-      let done = false;
-      const finish = (action: PlayerAction | null, why: string): void => {
-        if (done) return;
-        done = true;
-        this.timers.clearTimeout(timeout);
-        if (action === null) this.fallback(why, { jobId: req.jobId, seat });
-        resolve(action ?? safestAction(legal));
+      let jobId: number | null = null;
+      const finish = (event: JobEvent<BrainReply> | null): void => {
+        if (this.headlessJob?.jobId === jobId) this.headlessJob = null;
+        if (event?.type === 'reply' && event.reply.kind === 'botDecision') {
+          resolve(event.reply.decision.action);
+          return;
+        }
+        const why = event === null ? 'brain unavailable' : failureOf(event);
+        this.fallback(why, { jobId, seat, ...(event === null ? {} : messageOf(event)) });
+        resolve(safestAction(legal));
       };
-      const timeout = this.timers.setTimeout(() => {
-        this.brain.cancel(req.jobId);
-        finish(null, 'bot timeout');
-      }, TIMING.botTimeoutMs);
-      void this.send(req).then((reply) =>
-        finish(reply.kind === 'botDecision' ? reply.decision.action : null, 'brain error'),
-      );
+      jobId = this.sendBot(h, seat, finish);
+      if (jobId === null) {
+        finish(null);
+        return;
+      }
+      this.headlessJob = { jobId, release: () => resolve(safestAction(legal)) };
     });
   }
 
@@ -1070,7 +1107,6 @@ export class TableController {
     const job = this.job;
     if (job === null) return;
     this.job = null;
-    this.timers.clearTimeout(job.timeout);
     this.brain.cancel(job.jobId);
     this.brainLog('cancel', { jobId: job.jobId, seat: job.seat });
   }
@@ -1080,6 +1116,13 @@ export class TableController {
     this.epoch++;
     this.cancelFlow();
     this.cancelJob();
+    // A headless finish waits for its bot: cancelled jobs never answer, so let it go on.
+    const headless = this.headlessJob;
+    if (headless !== null) {
+      this.headlessJob = null;
+      this.brain.cancel(headless.jobId);
+      headless.release();
+    }
   }
 
   // -------------------------------------------------------------------------------------------
