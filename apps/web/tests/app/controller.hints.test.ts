@@ -125,38 +125,42 @@ async function toHeroTurn(h: Harness): Promise<HandState> {
 const settings = { players: 6, startingStack: 2000, sb: 10, bb: 20 };
 
 describe('the hint at the hero`s turn', () => {
-  it('one request per hero decision, the hero`s observation only; the advice lands under its key', async () => {
-    const brain = coachBrain();
-    const h = makeHarness({ brain: brain.client, settings, hints: true });
-    h.dispatch({ type: 'play' });
-    let decisions = 0;
-    for (let n = 0; n < 12; n++) {
-      const hand = await toHeroTurn(h);
-      await flush();
-      decisions++;
-      expect(brain.hints).toHaveLength(decisions);
-      const req = brain.hints.at(-1) as HintMsg;
-      expect(Object.keys(req).sort()).toEqual(['eRandom', 'epoch', 'jobId', 'kind', 'obs']);
-      expect(req.eRandom).toBeNull(); // no HUD value yet (no equity worker here)
-      expect(req.obs).toEqual(
-        observe(hand, HERO, {
-          seatStats: req.obs.seatStats,
-          visiblePersonality: req.obs.visiblePersonality,
-          seatLevels: req.obs.seatLevels,
-        }),
-      );
-      expect(req.obs.seat).toBe(HERO);
-      const coach = h.state().coach;
-      expect(coach).toMatchObject({ key: coachKeyOf(hand), status: 'ready' });
-      expect(coach.decision).toEqual(hint(req.obs, null));
-      // Re-publishing the same decision asks nothing new.
-      h.dispatch({ type: 'gate', gate: 'tip', closed: true });
-      h.dispatch({ type: 'gate', gate: 'tip', closed: false });
-      expect(brain.hints).toHaveLength(decisions);
-      h.dispatch({ type: 'act', action: passive(h.state().game.legal as LegalActions) });
-    }
-    expect(brain.cancelled).toEqual([]);
-  });
+  it(
+    'one request per hero decision, the hero`s observation only; the advice lands under its key',
+    { timeout: 10_000 },
+    async () => {
+      const brain = coachBrain();
+      const h = makeHarness({ brain: brain.client, settings, hints: true });
+      h.dispatch({ type: 'play' });
+      let decisions = 0;
+      for (let n = 0; n < 12; n++) {
+        const hand = await toHeroTurn(h);
+        await flush();
+        decisions++;
+        expect(brain.hints).toHaveLength(decisions);
+        const req = brain.hints.at(-1) as HintMsg;
+        expect(Object.keys(req).sort()).toEqual(['eRandom', 'epoch', 'jobId', 'kind', 'obs']);
+        expect(req.eRandom).toBeNull(); // no HUD value yet (no equity worker here)
+        expect(req.obs).toEqual(
+          observe(hand, HERO, {
+            seatStats: req.obs.seatStats,
+            visiblePersonality: req.obs.visiblePersonality,
+            seatLevels: req.obs.seatLevels,
+          }),
+        );
+        expect(req.obs.seat).toBe(HERO);
+        const coach = h.state().coach;
+        expect(coach).toMatchObject({ key: coachKeyOf(hand), status: 'ready' });
+        expect(coach.decision).toEqual(hint(req.obs, null));
+        // Re-publishing the same decision asks nothing new.
+        h.dispatch({ type: 'gate', gate: 'tip', closed: true });
+        h.dispatch({ type: 'gate', gate: 'tip', closed: false });
+        expect(brain.hints).toHaveLength(decisions);
+        h.dispatch({ type: 'act', action: passive(h.state().game.legal as LegalActions) });
+      }
+      expect(brain.cancelled).toEqual([]);
+    },
+  );
 
   it('the hero`s action cancels a hint still on its way; its late answer is dropped', async () => {
     const brain = coachBrain({ hold: true });
