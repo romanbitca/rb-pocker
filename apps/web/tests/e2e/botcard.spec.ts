@@ -2,6 +2,7 @@ import type { Locator, Page } from '@playwright/test';
 import { en } from '../../src/i18n/en.ts';
 import { expect, test } from './fixtures.ts';
 import {
+  collectErrors,
   installLeakWatch,
   leakViolations,
   newTable,
@@ -67,6 +68,7 @@ test.describe('the bot card', () => {
 
   test('opens from a seat, says who it is, and closes four ways', async ({ page }, testInfo) => {
     test.setTimeout(90_000);
+    const errors = collectErrors(page);
     await openApp(page, seedFor(testInfo));
     await newTable(page, { players: 6, speed: 'normal' });
     await installLeakWatch(page);
@@ -116,9 +118,11 @@ test.describe('the bot card', () => {
       await expect(pod(page, seat), `${how}: focus is back on the seat`).toBeFocused();
     }
 
-    // Opened once, its chunk was fetched; and it never named a hidden card.
+    // Opened once, its chunk was fetched; and it never named a hidden card. The lazy chunk and its
+    // stylesheet load under the page's CSP without a console error.
     expect((await chunkFetches(page)).length).toBeGreaterThan(0);
     expect(await leakViolations(page)).toEqual([]);
+    expect(errors).toEqual([]);
   });
 
   test('no bot acts while it is open', async ({ page }, testInfo) => {
