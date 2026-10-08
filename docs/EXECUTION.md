@@ -158,6 +158,8 @@ If the human's answer later reveals a problem, the fix becomes a new chunk ahead
 
 ### Notes for Stage 6
 
+- 6.2 (PR #49, draft): all built except the Playwright specs for acceptance 2 (scripted blunder: `?seed=46&script=river-min-bet`, 3 players → nut flush on the river of hand 1) and the e2e half of 3. Until 6.1's `grade()` lands, decisions record `grade: null` (no pause yet). Undo slot must be rebased onto #44's coach strip.
+
 - 5.10 (PR #45): the coach level is read live from settings, not latched per hero decision as §10 says; latching needs the Stage 6 decision records — do it in 6.1/6.4.
 
 ### Decisions pending (Claude, before Stage 5 completes)
