@@ -6,7 +6,7 @@ This is the working checklist for building [PLAN.md](PLAN.md). PLAN.md is the so
 
 Legend: `[ ]` todo · `[~]` in progress (branch exists) · `[x]` merged to `main` · `[H]` waiting on the human
 
-**Current position:** ⏸ Paused at the owner's 80% weekly cap (1 Oct 22:00Z; weekly resets 2 Oct 18:00Z). Stages 0–4 ✅ (4.8 = owner's #bench). Stage 5: 5.1, 5.2 merged. Open PRs, all based on main now: [#40](https://github.com/romanbitca/rb-pocker/pull/40) 5.5 guardrails + EV (ready), [#42](https://github.com/romanbitca/rb-pocker/pull/42) 5.8 brain worker (ready, CI green), [#41](https://github.com/romanbitca/rb-pocker/pull/41) 5.3 preflop + push/fold (draft), [#43](https://github.com/romanbitca/rb-pocker/pull/43) 5.4 postflop + sizing (draft; replaces auto-closed #39). #40, #41, #43 still contain pre-squash 5.1/5.2 commits: rebase each with `git rebase --onto origin/main <old base> <branch>` (old base ed58953, or 944f4e7 for #41), CI, then merge. Next chunks: 5.6, 5.7, 5.9, 5.10, 5.11.
+**Current position:** ▶ Autonomous run from 8 Oct 20:25Z (owner: 95% per window, stop at 80% weekly; watchdog + cron tick). Stages 0–4 ✅. Stage 5: 5.1, 5.2 merged; merging #42 (5.8), #40 (5.5), #41 (5.3), #43 (5.4); building 5.6 explanations, 5.9 coach UI, 5.10 level selectors; next 5.7 profiles + decide/hint, then 5.11 self-play.
 
 ---
 
@@ -83,11 +83,11 @@ Legend: `[ ]` todo · `[~]` in progress (branch exists) · `[x]` merged to `main
 - [~] 5.3 `feature/preflop-and-push-fold-policy` - `preflopPolicy.ts`, `pushfold.ts`.
 - [~] 5.4 `feature/postflop-policy-and-bet-sizing` - `postflopPolicy.ts`, `sizing.ts`.
 - [~] 5.5 `feature/coach-guardrails-and-ev-model` - `guardrails.ts`, `ev.ts`; each guardrail has a test that fails without it.
-- [ ] 5.6 `feature/coach-explanations` - `explain.ts`, `i18n/en.ts` templates, `check-copy.ts`.
+- [~] 5.6 `feature/coach-explanations` - `explain.ts`, `i18n/en.ts` templates, `check-copy.ts`.
 - [ ] 5.7 `feature/bot-personalities-easy-medium` - `profiles.ts`, `decide.ts`, `hint`, think time, non-cheating property test, Appendix E golden spots.
 - [~] 5.8 `feature/brain-worker` - `brain.worker.ts` replaces `SimpleBot` (moved to `scripts/bots/`).
-- [ ] 5.9 `feature/coach-strip-and-sheet` - Beginner/Intermediate UI, recommended ring, "Use coach size", RANGE_ADJUST, glossary popovers.
-- [ ] 5.10 `feature/bot-and-coach-level-selectors` - level cards, personality labels, bot card.
+- [~] 5.9 `feature/coach-strip-and-sheet` - Beginner/Intermediate UI, recommended ring, "Use coach size", RANGE_ADJUST, glossary popovers.
+- [~] 5.10 `feature/bot-and-coach-level-selectors` - level cards, personality labels, bot card.
 - [ ] 5.11 `test/self-play-calibration` - `scripts/selfplay.ts` + baselines; acceptance 5–6.
 - [ ] 5.12 [H] **Human gate:** read 10 hints on the phone → announce MVP.
 
