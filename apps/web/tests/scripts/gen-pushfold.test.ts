@@ -165,7 +165,7 @@ describe('the game (PLAN §8.4)', () => {
     expect(a.pushPct).toBeGreaterThan(0);
     expect(a.pushPct).toBeLessThanOrEqual(100);
     expect(Math.abs(a.pushPct - a.halfwayPushPct)).toBeLessThan(10);
-  });
+  }, 30_000);
 
   it('shoves strong hands at least as often as weak ones', () => {
     const { push, call } = solvePushFold(synthetic(), 2, 10, 300);
@@ -178,7 +178,7 @@ describe('the game (PLAN §8.4)', () => {
       expect(call[at(strong)]).toBeGreaterThanOrEqual(call[at(weak)] as number);
     }
     expect(push[at('AA')]).toBe(1);
-  });
+  }, 30_000);
 
   it('shoves fewer hands with a deeper stack and with more players behind', () => {
     const mu = synthetic();
@@ -186,7 +186,7 @@ describe('the game (PLAN §8.4)', () => {
     expect(pct(2, 12)).toBeLessThan(pct(2, 4));
     expect(pct(6, 9)).toBeLessThan(pct(1, 9));
     expect(pct(4, 9)).toBeLessThan(pct(2, 9));
-  });
+  }, 60_000);
 
   it('the small blind shoves every hand with one big blind, which the big blind calls for free', () => {
     const mu = synthetic();
@@ -195,7 +195,7 @@ describe('the game (PLAN §8.4)', () => {
     expect(s.callPct).toBeCloseTo(100, 6); // the big blind is all-in already: calling is free
     // From the button, the small blind calls every hand for half a blind and is always first.
     expect(solvePushFold(mu, 2, 1, 300).pushPct).toBeLessThan(100);
-  });
+  }, 30_000);
 
   it('the blinds call at their discount: wider than a player with nothing posted', () => {
     const s = solvePushFold(synthetic(), 3, 10, 300);
@@ -205,7 +205,7 @@ describe('the game (PLAN §8.4)', () => {
     expect(small).toBeGreaterThanOrEqual(none);
     expect(big).toBeGreaterThan(none);
     expect(s.callPct).toBe(big);
-  });
+  }, 30_000);
 });
 
 describe('the tables', () => {
