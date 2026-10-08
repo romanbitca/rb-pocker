@@ -1,0 +1,335 @@
+/* The coach sheet and its sections (PLAN §12.6, §12.8, §12.12). Calm: one column, short headings,
+   plain text, the price bar and the strength meter drawn by CSS (one element each). */
+
+/* ---- The sheet: fills its host (everything above the action bar), rises from its bottom ---- */
+
+.layer {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  overflow: clip;
+}
+
+.scrim {
+  position: absolute;
+  inset: 0;
+  background: var(--scrim);
+  animation: fade var(--duration-sheet) ease-out;
+}
+
+.sheet {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: 600px;
+  max-height: min(45svh, 100%);
+  border-top: 1px solid var(--control-border);
+  border-radius: var(--radius-3) var(--radius-3) 0 0;
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 -6px 20px rgb(0 0 0 / 45%);
+  animation: rise var(--duration-sheet) ease-out;
+}
+.sheet:focus {
+  outline: none;
+}
+/* Landscape: the table column is short; the sheet may use all of it. */
+.tall .sheet {
+  max-height: 100%;
+}
+
+.header {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 4px 0 16px;
+}
+.title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 700;
+}
+.close {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  min-width: 44px;
+  min-height: 44px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-2);
+  background: none;
+  color: var(--text);
+  cursor: pointer;
+}
+.close:active {
+  background: var(--control-bg-pressed);
+}
+.close:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+.closeIcon {
+  width: 20px;
+  height: 20px;
+}
+
+.scroll {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 0 16px max(16px, env(safe-area-inset-bottom));
+}
+
+@keyframes rise {
+  from {
+    transform: translateY(100%);
+  }
+}
+@keyframes fade {
+  from {
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sheet {
+    animation: fade 120ms ease-out;
+  }
+}
+
+/* ---- The sections (the sheet, the wide panel, the landscape column) ---- */
+
+.details {
+  display: grid;
+  gap: 14px;
+  font-size: 0.9375rem;
+  line-height: 1.4;
+}
+
+.section {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.heading {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.headline {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 700;
+}
+
+.text,
+.small {
+  margin: 0;
+}
+.small {
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+
+.hand {
+  margin: 0;
+  font-weight: 600;
+}
+
+/* The strength meter (§8.10): five segments, the first `data-level` lit, then the word. Colour is
+   not the only cue: the lit count and the word say it too (§12.12). */
+.meter {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  font-weight: 600;
+}
+.meter::before {
+  content: '';
+  flex: none;
+  width: 110px;
+  height: 10px;
+  border-radius: 5px;
+  background:
+    repeating-linear-gradient(90deg, transparent 0 20px, var(--surface) 20px 22px),
+    linear-gradient(
+      90deg,
+      var(--accent) 0 calc(var(--lit, 0) * 22px),
+      var(--control-track) calc(var(--lit, 0) * 22px) 100%
+    );
+}
+.meter[data-level='1'] {
+  --lit: 1;
+}
+.meter[data-level='2'] {
+  --lit: 2;
+}
+.meter[data-level='3'] {
+  --lit: 3;
+}
+.meter[data-level='4'] {
+  --lit: 4;
+}
+.meter[data-level='5'] {
+  --lit: 5;
+}
+
+.numbers,
+.list {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.numbers li {
+  font-variant-numeric: tabular-nums;
+}
+.list {
+  gap: 6px;
+}
+
+/* The price bar (§12.6): 0–100%, filled to the coach's win number, a marker at "Need". */
+.bar {
+  position: relative;
+  height: 12px;
+  margin: 6px 0 2px;
+  border-radius: 6px;
+  background: var(--control-track);
+}
+.bar::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 6px;
+  background: var(--grade-best);
+  transform: scaleX(var(--win, 0));
+  transform-origin: left;
+}
+.bar[data-good='false']::before {
+  background: var(--grade-mistake);
+}
+.bar::after {
+  content: '';
+  position: absolute;
+  top: -4px;
+  bottom: -4px;
+  left: calc(var(--need, 0) * 100% - 1.5px);
+  width: 3px;
+  border-radius: 2px;
+  background: var(--text);
+}
+
+/* "✓ You win more often than you need." with a drawn mark (never a glyph). */
+.verdict {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font-weight: 600;
+}
+.verdict::before {
+  content: '';
+  flex: none;
+  width: 16px;
+  height: 16px;
+  background-color: var(--grade-best);
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='none' stroke='black' stroke-width='3.2' stroke-linecap='round' stroke-linejoin='round' d='m4.5 12.5 5 5 10-11'/%3E%3C/svg%3E")
+    center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='none' stroke='black' stroke-width='3.2' stroke-linecap='round' stroke-linejoin='round' d='m4.5 12.5 5 5 10-11'/%3E%3C/svg%3E")
+    center / contain no-repeat;
+}
+.verdict[data-good='false']::before {
+  background-color: var(--grade-mistake);
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='none' stroke='black' stroke-width='3.2' stroke-linecap='round' d='M6 6l12 12M18 6 6 18'/%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='none' stroke='black' stroke-width='3.2' stroke-linecap='round' d='M6 6l12 12M18 6 6 18'/%3E%3C/svg%3E");
+}
+
+/* "More", "How is this calculated?": text buttons with a 44 px target. */
+.link {
+  justify-self: start;
+  min-width: 44px;
+  min-height: 44px;
+  margin: -8px 0 -8px -4px;
+  padding: 0 4px;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  font-size: 0.875rem;
+  font-weight: 600;
+  text-align: left;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+.link:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+/* A draw and its out cards (mini cards; risky ones marked "!", §6.4). */
+.draw {
+  display: grid;
+  gap: 4px;
+}
+.drawName {
+  margin: 0;
+  font-size: 0.875rem;
+}
+.outs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+/* The "!" sits on the card's free `::before` (index-only cards draw their suit with `::after`). */
+.risky::before {
+  content: '!';
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  display: grid;
+  place-items: center;
+  width: 14px;
+  height: 14px;
+  border-radius: 7px;
+  background: var(--grade-mistake);
+  color: #111;
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.useSize {
+  min-width: 44px;
+  min-height: 44px;
+  margin: 2px 0 0;
+  padding: 0 16px;
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-2);
+  background: var(--control-bg);
+  color: var(--text);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+.useSize:active {
+  background: var(--control-bg-pressed);
+}
+.useSize:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}

@@ -17,15 +17,31 @@
  * only when its own view changes. Only the HUD slots read the `equity` slice (the win badge, the
  * draw chips, the big-move line, the nuts suffix and the "By river" column; the all-in TV-mode bars
  * and the banner's luck line, `components/Runout.tsx`), so equity progress re-renders the badge and
- * nothing else. The coach's places (the portrait coach strip, the
- * landscape coach rows, the wide inline panel) stay empty until Stage 5.
+ * nothing else.
+ *
+ * The coach (chunk 5.9, §12.5, §12.6): the portrait strip under the hero strip, the compact
+ * "Coach" pill in the hero strip, the landscape column's coach rows and the wide inline panel;
+ * the sheet opens over everything above the action bar. Its words and the sheet are a lazy chunk
+ * (`ui/coachModule.ts`), asked for when the Table mounts. The action bar's ring and the tray's
+ * coach amount come from `coachAdvice` (no words).
  */
-import { memo, useCallback, useEffect, useId, useMemo, useRef, type CSSProperties } from 'react';
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  type CSSProperties,
+  type MutableRefObject,
+} from 'react';
 import {
   selectActionBarInput,
   selectBigMove,
   selectBoardView,
   selectByRiver,
+  selectCoach,
+  selectCoachLevel,
   selectDrawChips,
   selectHandEnd,
   selectHeroHandView,
@@ -41,13 +57,15 @@ import {
   useDispatch,
   useOverlay,
   type ActionBarInputData,
-  type AppState,
 } from '../../app/store.ts';
 import type { PlayerAction } from '../../engine/types.ts';
 import { en } from '../../i18n/en.ts';
 import { actionBarView, useSizing } from '../actionBar.ts';
+import { coachAdvice } from '../coachAdvice.ts';
+import { loadCoach, useCoachModule, useCoachView } from '../coachModule.ts';
 import { ActionBar } from '../components/ActionBar.tsx';
 import { Board } from '../components/Board.tsx';
+import type { StripVariant } from '../components/CoachStrip.tsx';
 import { DrawChips } from '../components/DrawChips.tsx';
 import { HandEndBanner } from '../components/HandEndBanner.tsx';
 import { HandsTab } from '../components/HandsTab.tsx';
@@ -319,8 +337,6 @@ const TableArea = memo(function TableArea({ layout }: { layout: TableLayout }) {
 // The HUD: win badge, price chip, big-move line, draw chips (§7.6, §12.3). Each slot subscribes
 // on its own: equity progress re-renders the badge only; a bet re-renders the price chip only.
 
-const selectCoachLevel = (s: AppState): AppState['settings']['coachLevel'] => s.settings.coachLevel;
-
 const BadgeSlot = memo(function BadgeSlot({ placement }: { placement: BadgePlacement }) {
   const data = useAppStore(selectWinBadge);
   const view = useBadgeView(data);
@@ -414,6 +430,7 @@ const HeroStrip = memo(function HeroStrip({
             hero={hero}
             nuts={nuts}
             onOpenRankings={onOpenRankings}
+            compact={layout === 'compact'}
             className={styles.heroLabel}
           />
           <OddsColumn
@@ -428,6 +445,12 @@ const HeroStrip = memo(function HeroStrip({
             compact={layout !== 'wide'}
             className={styles.heroDraws}
           />
+          {/* Compact mode: the coach strip becomes a "Coach" pill here (§12.3). */}
+          {layout === 'compact' && (
+            <div className={styles.heroPill}>
+              <CoachSlot variant="pill" />
+            </div>
+          )}
         </>
       )}
     </section>
@@ -463,6 +486,147 @@ const SideBanner = memo(function SideBanner() {
 });
 
 // ---------------------------------------------------------------------------------------------
+// The coach (§10.2, §12.3, §12.5, §12.6)
+
+/** "Use coach size" (§12.6): the action area puts its handler here for the sheet and the panels. */
+type CoachSizeRef = MutableRefObject<(() => void) | null>;
+
+/** The strip's taps: open the sheet, "Hint", "Tap to try again". */
+function useCoachActions(): {
+  onOpen: () => void;
+  onHint: () => void;
+  onRetry: () => void;
+} {
+  const dispatch = useDispatch();
+  const [, setSheet] = useOverlay('coach');
+  return useMemo(
+    () => ({
+      onOpen: () => {
+        // Opening the sheet shows the hint too (it marks an Intermediate decision as helped).
+        dispatch({ type: 'showHint' });
+        setSheet(true);
+      },
+      onHint: () => dispatch({ type: 'showHint' }),
+      onRetry: () => dispatch({ type: 'retryCoach' }),
+    }),
+    [dispatch, setSheet],
+  );
+}
+
+/** The portrait strip (48 px), compact mode's pill, the landscape column's coach rows. */
+const CoachSlot = memo(function CoachSlot({
+  variant,
+  wrap = false,
+  collapse = false,
+  className,
+}: {
+  variant: Exclude<StripVariant, 'header'>;
+  wrap?: boolean;
+  /** Nothing to say takes no space (the landscape column: the hand-end banner needs it). */
+  collapse?: boolean;
+  className?: string | undefined;
+}) {
+  const view = useCoachView();
+  const mod = useCoachModule();
+  const { onOpen, onHint, onRetry } = useCoachActions();
+  if (collapse && (view === null || view.strip.kind === 'empty')) return null;
+  // The strip is part of the coach's lazy chunk; until it is there its row stays empty.
+  if (mod === null || view === null) {
+    return variant === 'strip' ? <div className={className} /> : null;
+  }
+  return (
+    <mod.CoachStrip
+      view={view.strip}
+      variant={variant}
+      onOpen={onOpen}
+      onHint={onHint}
+      onRetry={onRetry}
+      wrap={wrap}
+      className={className}
+    />
+  );
+});
+
+/**
+ * Landscape (§12.5): the coach rows under the label, the reason wrapping; "›" opens the sheet
+ * over the table column. The open sizing tray takes their place.
+ */
+const SideCoach = memo(function SideCoach() {
+  const trayOpen = useAppStore(selectOverlayOpen('tray'));
+  return trayOpen ? null : <CoachSlot variant="strip" wrap collapse className={styles.coachSide} />;
+});
+
+/**
+ * The wide screen's inline coach panel (§12.5): the strip's content as its head row, then the
+ * sheet's sections while the advice is on show (no sheet on wide screens), scrolling inside.
+ */
+const CoachPanel = memo(function CoachPanel({ coachSize }: { coachSize: CoachSizeRef }) {
+  const view = useCoachView();
+  const mod = useCoachModule();
+  const { onOpen, onHint, onRetry } = useCoachActions();
+  const onUseSize = useCallback(() => coachSize.current?.(), [coachSize]);
+  if (mod === null || view === null || (view.strip.kind === 'empty' && view.hint === null)) {
+    return null;
+  }
+  const details = view.shown && view.hint !== null;
+  // With the sections under it, the head row says the action only (the reason follows below).
+  const strip = details && view.strip.kind === 'advice' ? { ...view.strip, line: '' } : view.strip;
+  return (
+    <section className={styles.coachPanel} aria-label={en.coachUi.title} data-coach-panel="">
+      <mod.CoachStrip
+        view={strip}
+        variant="header"
+        onOpen={onOpen}
+        onHint={onHint}
+        onRetry={onRetry}
+      />
+      {details && (
+        <mod.CoachDetails
+          view={view}
+          place="panel"
+          onUseSize={view.size === null ? null : onUseSize}
+          className={styles.panelDetails}
+        />
+      )}
+    </section>
+  );
+});
+
+/**
+ * The coach sheet (§12.6), over everything above the action bar (the table column in landscape).
+ * It closes when the advice goes (the hero acted, the hand moved on).
+ */
+const CoachSheetHost = memo(function CoachSheetHost({
+  tall,
+  coachSize,
+}: {
+  tall: boolean;
+  coachSize: CoachSizeRef;
+}) {
+  const [open, setOpen] = useOverlay('coach');
+  const view = useCoachView();
+  const mod = useCoachModule();
+  const ready = view !== null && view.shown && view.hint !== null;
+  useEffect(() => {
+    if (open && !ready) setOpen(false);
+  }, [open, ready, setOpen]);
+  const onClose = useCallback(() => setOpen(false), [setOpen]);
+  const onUseSize = useCallback(() => {
+    setOpen(false);
+    coachSize.current?.();
+  }, [setOpen, coachSize]);
+  if (!open || !ready || mod === null) return null;
+  return (
+    <mod.CoachSheet
+      view={view}
+      onClose={onClose}
+      onUseSize={view.size === null ? null : onUseSize}
+      tall={tall}
+    />
+  );
+});
+
+// ---------------------------------------------------------------------------------------------
 // The sizing tray and Row A
 
 /** Row A while no hand is dealt: "Waiting…". */
@@ -481,11 +645,24 @@ const NO_HAND: ActionBarInputData = {
  * navigation model, so Android Back closes it before anything else (§12.1, Stage 3 acceptance 8):
  * it shows while both are open, and whichever closes first closes the other.
  */
-const ActionArea = memo(function ActionArea({ layout }: { layout: TableLayout }) {
+const ActionArea = memo(function ActionArea({
+  layout,
+  coachSize,
+}: {
+  layout: TableLayout;
+  coachSize: CoachSizeRef;
+}) {
   const dispatch = useDispatch();
   const input = useAppStore(selectActionBarInput);
   const view = useMemo(() => actionBarView(input ?? NO_HAND), [input]);
-  const sizing = useSizing(view.tray);
+  // The coach's advice while on show: the ring on Row A, the tray's start and its coach chip.
+  const coach = useAppStore(selectCoach);
+  const advice = useMemo(() => coachAdvice(coach), [coach]);
+  const coachStart =
+    advice.size !== null && view.tray !== null && advice.size.kind === view.tray.kind
+      ? advice.size.to
+      : null;
+  const sizing = useSizing(view.tray, coachStart);
   const [trayShown, setTrayShown] = useOverlay('tray');
   const trayOpen = sizing.open && trayShown;
   const { openTray: openLocal, closeTray: closeLocal } = sizing;
@@ -508,6 +685,21 @@ const ActionArea = memo(function ActionArea({ layout }: { layout: TableLayout })
     if (!trayShown && sizing.open) closeLocal();
   }, [trayShown, sizing.open, closeLocal]);
 
+  // "Use coach size" (§12.6): open the tray at the coach's amount (or move the open tray there).
+  const setAmount = sizing.setAmount;
+  useEffect(() => {
+    coachSize.current =
+      coachStart === null
+        ? null
+        : () => {
+            if (trayOpen) setAmount(coachStart);
+            else openTray();
+          };
+    return () => {
+      coachSize.current = null;
+    };
+  }, [coachSize, coachStart, trayOpen, setAmount, openTray]);
+
   const act = useCallback((action: PlayerAction) => dispatch({ type: 'act', action }), [dispatch]);
   const placement = layout === 'landscape' ? 'panel' : layout === 'compact' ? 'overlay' : 'inline';
   return (
@@ -520,7 +712,14 @@ const ActionArea = memo(function ActionArea({ layout }: { layout: TableLayout })
           onAmount={sizing.setAmount}
           onClose={closeTray}
           placement={placement}
-          className={placement === 'overlay' ? styles.trayOverlay : undefined}
+          coachAmount={coachStart}
+          className={
+            placement === 'overlay'
+              ? styles.trayOverlay
+              : placement === 'panel'
+                ? styles.trayPanel
+                : undefined
+          }
         />
       )}
       <ActionBar
@@ -531,6 +730,7 @@ const ActionArea = memo(function ActionArea({ layout }: { layout: TableLayout })
         onAct={act}
         onOpenTray={openTray}
         onCloseTray={closeTray}
+        recommended={advice.ring}
         layout={layout === 'landscape' ? 'column' : 'row'}
       />
     </div>
@@ -540,15 +740,33 @@ const ActionArea = memo(function ActionArea({ layout }: { layout: TableLayout })
 // ---------------------------------------------------------------------------------------------
 // The hand rankings: a drawer on phones, a column on wide screens (§13.1)
 
-/** Fills the area the drawer may cover: above the action bar (portrait), the table column (landscape). */
-const DrawerHost = memo(function DrawerHost() {
+/**
+ * Fills the area the drawer and the coach sheet may cover: above the action bar (portrait), the
+ * table column (landscape).
+ */
+const DrawerHost = memo(function DrawerHost({
+  layout,
+  coachSize,
+}: {
+  layout: TableLayout;
+  coachSize: CoachSizeRef;
+}) {
   const [open, setOpen] = useOverlay('rankings');
   const hero = useAppStore(selectHeroHandView);
   const byRiver = useAppStore(selectByRiver);
+  // §10.2: the rankings' tips at Beginner; Intermediate collapses them.
+  const tips = useAppStore(selectCoachLevel) === 'beginner';
   const onOpenChange = useCallback((next: boolean) => setOpen(next), [setOpen]);
   return (
     <div className={styles.drawerHost}>
-      <RankingsDrawer open={open} onOpenChange={onOpenChange} hero={hero} byRiver={byRiver} />
+      <RankingsDrawer
+        open={open}
+        onOpenChange={onOpenChange}
+        hero={hero}
+        byRiver={byRiver}
+        showTips={tips}
+      />
+      <CoachSheetHost tall={layout === 'landscape'} coachSize={coachSize} />
     </div>
   );
 });
@@ -562,6 +780,7 @@ const RankingsPanel = memo(function RankingsPanel({
 }) {
   const hero = useAppStore(selectHeroHandView);
   const byRiver = useAppStore(selectByRiver);
+  const tips = useAppStore(selectCoachLevel) === 'beginner';
   return (
     <div className={styles.rankings}>
       <RankingsColumn
@@ -569,6 +788,7 @@ const RankingsPanel = memo(function RankingsPanel({
         collapsed={collapsed}
         onCollapsedChange={onCollapsedChange}
         byRiver={byRiver}
+        showTips={tips}
       />
     </div>
   );
@@ -600,10 +820,19 @@ export function Table() {
   }, [wide, collapsed, drawerOpen, setCollapsed, setDrawerOpen]);
 
   // Wide screens have the column, not the drawer: a drawer left open by a rotation or a resize
-  // would keep the `sheet` gate closed with nothing on screen to close it.
+  // would keep the `sheet` gate closed with nothing on screen to close it. The same for the coach
+  // sheet: wide screens show the coach inline.
+  const [coachOpen, setCoachOpen] = useOverlay('coach');
   useEffect(() => {
     if (wide && drawerOpen) setDrawerOpen(false);
-  }, [wide, drawerOpen, setDrawerOpen]);
+    if (wide && coachOpen) setCoachOpen(false);
+  }, [wide, drawerOpen, setDrawerOpen, coachOpen, setCoachOpen]);
+
+  // The coach's words and sheet: a lazy chunk, asked for now, long before the first hint.
+  useEffect(() => {
+    void loadCoach().catch(() => {});
+  }, []);
+  const coachSize: CoachSizeRef = useRef<(() => void) | null>(null);
 
   return (
     <main
@@ -621,21 +850,23 @@ export function Table() {
         <aside className={styles.side}>
           <SideHero onOpenRankings={openRankings} />
           <div className={styles.sideMiddle}>
+            <SideCoach />
             <SideBanner />
           </div>
-          <ActionArea layout={layout} />
+          <ActionArea layout={layout} coachSize={coachSize} />
         </aside>
       ) : (
         <>
           <HeroStrip layout={layout} onOpenRankings={openRankings} />
-          {layout === 'portrait' && <div className={styles.coach} />}
-          <ActionArea layout={layout} />
+          {layout === 'portrait' && <CoachSlot variant="strip" className={styles.coach} />}
+          {wide && <CoachPanel coachSize={coachSize} />}
+          <ActionArea layout={layout} coachSize={coachSize} />
         </>
       )}
       {wide ? (
         <RankingsPanel collapsed={collapsed} onCollapsedChange={setCollapsed} />
       ) : (
-        <DrawerHost />
+        <DrawerHost layout={layout} coachSize={coachSize} />
       )}
     </main>
   );

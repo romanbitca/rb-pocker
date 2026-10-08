@@ -89,7 +89,7 @@ describe('Seat (PLAN §12.4, §12.12)', () => {
     const backs = container.querySelectorAll('[role="img"]');
     expect(backs).toHaveLength(2);
     for (const back of backs) expect(back.getAttribute('aria-label')).toBe(en.cards.hidden);
-    expect(container.querySelector('use[href^="#s-"]')).toBeNull();
+    expect(container.querySelector('use[href^="#s-"], [data-suit]')).toBeNull();
     expect(labels(container).join(' ')).not.toMatch(CARD_NAME);
     expect(container.innerHTML).not.toMatch(CARD_NAME);
     // No rank word or rank text beyond the name and chip numbers.

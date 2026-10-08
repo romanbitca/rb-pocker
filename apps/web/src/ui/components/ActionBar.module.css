@@ -92,6 +92,31 @@
   height: 11px;
 }
 
+/* The coach's choice (§10.2, §12.7): a 3 px accent ring and a "Coach" badge on the top edge, so
+   the cue is a shape and a word, not only a colour (§12.12). */
+.button {
+  position: relative;
+}
+.coach {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent);
+}
+.badge {
+  position: absolute;
+  top: -9px;
+  left: 50%;
+  padding: 0 6px;
+  border-radius: 8px;
+  background: var(--accent);
+  color: var(--bg);
+  font-size: 0.6875rem;
+  font-weight: 800;
+  line-height: 16px;
+  letter-spacing: 0.02em;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
 /* "Pot you can win 150" under a short all-in call (§0.3). */
 .sub {
   font-size: 0.75rem;

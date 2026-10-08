@@ -71,6 +71,10 @@ function smallTargets(page: Page, where: string): Promise<SmallTarget[]> {
       if (el.closest('[inert]') !== null || !el.checkVisibility({ visibilityProperty: true })) {
         continue;
       }
+      // An inline glossary term in coach text (chunk 5.9) is a word in a sentence: its 44 px hit
+      // area is drawn by `::after` around it, which a bounding box does not show (§12.12, WCAG
+      // 2.5.8's inline exception).
+      if (el.hasAttribute('data-glossary')) continue;
       let target: Element = el;
       if (el instanceof HTMLInputElement && (el.type === 'radio' || el.type === 'checkbox')) {
         target = el.closest('label') ?? (el.labels?.[0] as Element | undefined) ?? el;

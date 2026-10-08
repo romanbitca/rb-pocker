@@ -228,7 +228,7 @@ suite('RankingsDrawer (PLAN §13.1, Stage 3 acceptance 3)', () => {
     const d = dialog() as HTMLElement;
     expect(interactiveCount(d)).toBe(11); // ✕ and ten rows
     expect(smallTapTargets(d)).toEqual([]);
-    expect(container.querySelectorAll('use[href^="#s-"]').length).toBeGreaterThan(50);
+    expect(container.querySelectorAll('[data-suit]').length).toBeGreaterThan(50);
   });
 });
 

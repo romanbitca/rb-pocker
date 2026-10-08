@@ -132,19 +132,50 @@
   background: var(--control-bg-pressed);
 }
 
+/* At most three lines of name and two of sub-label: the label never runs out of the hero strip
+   into the coach strip under it (chunk 5.9). */
 .name {
+  display: -webkit-box;
   max-width: 100%;
+  overflow: hidden;
   font-size: 1.25rem;
   font-weight: 700;
   line-height: 1.2;
   overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+}
+.label[data-long] .name {
+  font-size: 1.0625rem;
+}
+/* Compact mode (§12.3): two lines of name and one of sub-label above the coach pill's row. */
+.label[data-compact] {
+  padding-top: 0;
+  padding-bottom: 0;
+}
+.label[data-compact] .name {
+  font-size: 1.0625rem;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+}
+.label[data-compact] .sub {
+  font-size: 0.8125rem;
+  line-height: 1.2;
+  -webkit-line-clamp: 1;
+  line-clamp: 1;
 }
 
 .sub {
+  display: -webkit-box;
   max-width: 100%;
+  overflow: hidden;
   color: var(--muted);
   font-size: 0.875rem;
   line-height: 1.25;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
 }
 
 .labelFolded .name {
