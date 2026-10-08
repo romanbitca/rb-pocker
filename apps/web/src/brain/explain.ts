@@ -24,19 +24,22 @@
  *   the range number, which RANGE_ADJUST has labelled.
  * - **RANGE_ADJUST** is shown when §8.10's rule holds for the range number or for the decision's
  *   `eRange` (`showsRangeAdjust`), and also when a price sentence (CALL_PROFITABLE, FOLD_PRICE)
- *   would contradict the decision with `eRandom` but not with the range number. Its wording: the
- *   F.1 sentence ("This player bets big only with good hands") only when the range number is the
- *   decision's `eRange`, lower than `eRandom`, and the villain's last action is known; `.weaker`
- *   when it is higher; `.plain` (both numbers, labelled) otherwise.
+ *   would contradict the decision with `eRandom` (whole numbers the other way) but not with the
+ *   range number. Its wording: the F.1 sentence ("This player bets big only with good hands")
+ *   only when the range number is the decision's `eRange`, lower than `eRandom`, and the
+ *   villain's last action is known; `.weaker` when it is higher; `.plain` (both numbers,
+ *   labelled) otherwise.
  * - **Consistency.** A sentence that compares the win chance with the price is used only when the
  *   whole numbers it shows agree with it; otherwise its `.close` variant (or `.realise`: you win
  *   less often when later bets can make you fold; or `.implied` for a pocket pair) says so
- *   without a false comparison. "Why not fold?" and "Why not call?" appear only when true.
+ *   without a false comparison. For a decision made by its policy's own rule, "close" then means
+ *   equal whole numbers (`scripts/copy-rules.ts` checks it).
  * - **Why not.** For each legal action group other than the recommendation's (fold, check, call,
- *   bet, raise; all-in joins bet or raise): fold when facing a bet and the shown win chance beats
- *   the price; check before a bet or raise for value (not a semi-bluff or a continuation bet);
- *   call when the shown win chance is below the price (never a limp); bet instead of a check;
- *   raise instead of a call, a check or a fold. The close alternative's group gets no line.
+ *   bet, raise; all-in joins bet or raise), only when its sentence is true: fold when facing a bet
+ *   and the shown win chance beats the price; check before a bet or raise for value (not a
+ *   semi-bluff or a continuation bet); call when the shown win chance is below the price (never a
+ *   limp, never in push/fold); bet instead of a check; raise instead of a call, a check or a fold.
+ *   The close alternative's group gets the "Close call" line instead.
  */
 import { outsChances } from '../analysis/chances.ts';
 import type { DrawKind } from '../analysis/types.ts';
@@ -523,6 +526,13 @@ function holds(direction: Direction, win: number, need: number): boolean {
   return direction === 'more' ? a > b : direction === 'atLeast' ? a >= b : a < b;
 }
 
+/** The whole numbers point the other way (a tie is no contradiction: it is "close"). */
+function contradicts(direction: Direction, win: number, need: number): boolean {
+  const a = shownPct(win);
+  const b = shownPct(need);
+  return direction === 'less' ? a > b : a < b;
+}
+
 /** The two price codes whose `{E}` is `eRandom` unless RANGE_ADJUST is shown. */
 const PRICE_DIRECTION: Partial<Record<ReasonCode, Direction>> = {
   CALL_PROFITABLE: 'more',
@@ -799,8 +809,8 @@ export function explain(input: ExplainInput): Explanation {
   if (
     !adjust &&
     direction !== undefined &&
-    !holds(direction, input.eRandom, input.need) &&
-    holds(direction, rangeE, input.need)
+    contradicts(direction, input.eRandom, input.need) &&
+    !contradicts(direction, rangeE, input.need)
   ) {
     adjust = true;
   }

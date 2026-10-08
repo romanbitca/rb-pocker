@@ -1,28 +1,18 @@
 /**
  * CI check of the coach's words (PLAN §8.10 "Language rules", Appendix F.1, F.5, F.9; Known
- * pitfalls 35 and 39; §18 Stage 5 acceptance 7). Three parts:
+ * pitfalls 35 and 39; §18 Stage 5 acceptance 7). The rules are in `copy-rules.ts`; this script
+ * runs them on:
  *
- * 1. **Templates** (`en.coach.templates` against `TEMPLATES` in `brain/explain.ts`): one template
- *    per key and no other; every sentence at most 15 words (a placeholder counts as one word, a
- *    glossary link as its own words, symbols such as "·" and "×" as none); the placeholders are
- *    exactly the key's (none missing, none unused, in every plural form); every `{g:term}` is one
- *    the key declares and one the glossary defines; no decimal number and no stray brace in the
- *    words. Each template is rendered once with sample values (both plural forms).
- * 2. **Glossary** (`en.glossary`, F.9): its keys are exactly `GLOSSARY_KEYS`, each defined once;
- *    every definition sentence at most 15 words (a " / " definition is one part per key).
- * 3. **Hints over generated situations** (1,000 by default): random tables and random legal play
+ * 1. every template of `en.coach.templates` and the glossary (`checkTemplates`, `checkGlossary`);
+ * 2. the hints of generated situations (1,000 by default): random tables and random legal play
  *    with the real engine (only here: the brain never runs the engine), every hero decision
  *    observed and its §8.2 features computed; then every reason the spot allows, with the data
  *    the policies put in `Reason.data` (chunks 5.3–5.5) and the guardrail reasons, is explained
- *    (`explain`) and rendered. Each hint: every line renders with exactly its template's values
- *    and glossary keys, no "{" left and sentences of at most 15 words; the numbers line shows the
- *    HUD's `eRandom` as a whole number (C9); RANGE_ADJUST comes first whenever the two equities
- *    differ by 5 points or more, and shows both; no sentence that compares the win chance with the
- *    price contradicts the numbers it shows; a code that does not name a range shows `eRandom`
- *    unless RANGE_ADJUST labelled the range number (pitfall 35); the headline is the action.
+ *    (`explain`), rendered and checked (`checkHint`).
  *
  * Usage (from apps/web): `npm run check:copy` (= `node scripts/check-copy.ts`), optional
- * `--situations <n>` and `--seed <32 hex>`. Exits with code 1 and lists the problems.
+ * `--situations <n>`, `--seed <32 hex>` and `--print <n>` (prints n hints for a reader). Exits
+ * with code 1 and lists the problems.
  */
 import { equity } from '../src/analysis/equity.ts';
 import { preflopEquity } from '../src/analysis/preflop.ts';
@@ -30,14 +20,8 @@ import {
   explain,
   explainInput,
   GLOSSARY_KEYS,
-  shownPct,
   TEMPLATE_KEYS,
-  TEMPLATES,
-  templateSpec,
-  type ExplainInput,
-  type Explanation,
   type Line,
-  type Param,
   type TemplateKey,
 } from '../src/brain/explain.ts';
 import { coachSeed, features } from '../src/brain/features.ts';
@@ -67,332 +51,13 @@ import type {
   PlayerAction,
   TableConfig,
 } from '../src/engine/types.ts';
-import {
-  EN_COACH,
-  glossaryKeys,
-  hintLines,
-  hintText,
-  lineText,
-  parseTemplate,
-  pctText,
-  renderLine,
-  templateForms,
-  templateGlossary,
-  templateParams,
-  type CoachStrings,
-  type CoachTemplate,
-  type GlossaryEntry,
-  type Segment,
-} from '../src/i18n/coach.ts';
+import { hintLines, hintText } from '../src/i18n/coach.ts';
 import { en } from '../src/i18n/en.ts';
+import { checkGlossary, checkHint, checkTemplates } from './copy-rules.ts';
 
-/** §8.10: at most 15 words a sentence. */
-export const MAX_WORDS = 15;
 /** Stage 5 acceptance 7: the run covers 1,000 generated situations. */
 export const DEFAULT_SITUATIONS = 1000;
 export const DEFAULT_SEED: Seed128 = 'c0c0c0c0000000000000000000005006';
-
-// ── Words and sentences ────────────────────────────────────────────────────────────────────────
-
-/** A placeholder's value stands for one word. */
-const VALUE = '§';
-
-/**
- * The sentences of segments as their words: a value is one word; a token without a letter or a
- * digit ("·", "×", "≈", a lone "%") is none. Sentences end at ".", "?" or "!" before a space.
- */
-export function sentenceWords(segments: readonly Segment[]): string[][] {
-  const text = segments.map((s) => (s.value === true ? VALUE : s.text)).join('');
-  return text
-    .split(/(?<=[.?!])\s+/)
-    .map((sentence) => sentence.split(/\s+/).filter((w) => /[\p{L}\p{N}§]/u.test(w)))
-    .filter((words) => words.length > 0);
-}
-
-/** A template form as segments (a placeholder as a value, a glossary link as its words). */
-function templateSegments(form: string): Segment[] {
-  return parseTemplate(form).map((p) =>
-    p.kind === 'text'
-      ? { text: p.text }
-      : p.kind === 'glossary'
-        ? { text: p.key }
-        : { text: '', value: true as const },
-  );
-}
-
-function longSentences(segments: readonly Segment[]): string[] {
-  return sentenceWords(segments)
-    .filter((words) => words.length > MAX_WORDS)
-    .map((words) => `${words.length} words: "${words.join(' ')}"`);
-}
-
-const sorted = (xs: Iterable<string>): string[] => [...new Set(xs)].sort();
-const minus = (a: readonly string[], b: readonly string[]): string[] =>
-  a.filter((x) => !b.includes(x));
-
-// ── 1. Templates ───────────────────────────────────────────────────────────────────────────────
-
-/** A sample value for a placeholder name (every name `TEMPLATES` uses). */
-function sampleParam(name: string, n: number): Param {
-  switch (name) {
-    case 'hand':
-      return { kind: 'name', text: 'Ace-King suited' };
-    case 'handName':
-      return { kind: 'name', text: 'Two Pair, Kings and Sevens' };
-    case 'rankPct':
-      return { kind: 'top', value: 4.2 };
-    case 'size':
-      return { kind: 'size', to: 1250, bb: 12.5 };
-    case 'toCall':
-    case 'pot':
-    case 'amount':
-      return { kind: 'chips', value: 1250 };
-    case 'behind':
-    case 'S':
-    case 'n':
-    case 'outs':
-      return { kind: 'count', value: n };
-    case 'draw':
-      return { kind: 'draw', draw: 'oesd' };
-    case 'example':
-      return { kind: 'line', line: { key: 'example.twoPair', params: {}, glossary: [] } };
-    case 'actionDescription':
-      return { kind: 'line', line: { key: 'villain.betsBig', params: {}, glossary: [] } };
-    case 'detail':
-      return { kind: 'line', line: { key: 'detail.tooStrongToFold', params: {}, glossary: [] } };
-    case 'alt':
-      return {
-        kind: 'line',
-        line: { key: 'alt.call', params: { amount: { kind: 'chips', value: 40 } }, glossary: [] },
-      };
-    default:
-      return { kind: 'pct', value: 37.4 };
-  }
-}
-
-/** A line of `key` with sample values, its plural count set to `n`. */
-export function sampleLine(key: TemplateKey, n = 2): Line {
-  const spec = templateSpec(key);
-  const params: Record<string, Param> = {};
-  for (const name of spec.params) params[name] = sampleParam(name, n);
-  return { key, params, glossary: spec.glossary ?? [] };
-}
-
-/** Every problem of the templates (see the header, part 1). */
-export function checkTemplates(
-  strings: CoachStrings = EN_COACH,
-  glossary: readonly GlossaryEntry[] = en.glossary,
-): string[] {
-  const problems: string[] = [];
-  const known = new Set(glossary.flatMap((g) => glossaryKeys(g.term)));
-  const templates = strings.templates as Readonly<Record<string, CoachTemplate | undefined>>;
-  for (const key of Object.keys(templates)) {
-    if (!Object.prototype.hasOwnProperty.call(TEMPLATES, key)) {
-      problems.push(`${key}: a template that no code uses`);
-    }
-  }
-  for (const key of TEMPLATE_KEYS) {
-    const template = templates[key];
-    if (template === undefined) {
-      problems.push(`${key}: no template`);
-      continue;
-    }
-    const spec = templateSpec(key);
-    const want = sorted(spec.params);
-    for (const form of templateForms(template)) {
-      const have = templateParams(form);
-      for (const x of minus(want, have)) problems.push(`${key}: missing {${x}} in "${form}"`);
-      for (const x of minus(have, want)) problems.push(`${key}: unused {${x}} in "${form}"`);
-      for (const long of longSentences(templateSegments(form))) {
-        problems.push(`${key}: a sentence of ${long}`);
-      }
-      for (const part of parseTemplate(form)) {
-        if (part.kind !== 'text') continue;
-        if (/[{}]/.test(part.text)) problems.push(`${key}: a stray brace in "${form}"`);
-        if (/\d\.\d/.test(part.text)) {
-          problems.push(`${key}: a decimal number in "${form}" (percentages are whole numbers)`);
-        }
-      }
-    }
-    if (typeof template !== 'string' && !spec.params.includes(template.count)) {
-      problems.push(`${key}: its plural count {${template.count}} is not one of its values`);
-    }
-    const links = templateGlossary(template);
-    const declared = sorted(spec.glossary ?? []);
-    for (const x of minus(links, declared)) problems.push(`${key}: links {g:${x}}, not declared`);
-    for (const x of minus(declared, links)) problems.push(`${key}: declares {g:${x}}, not linked`);
-    for (const x of links) {
-      if (!known.has(x)) problems.push(`${key}: {g:${x}} is not in the glossary`);
-    }
-    for (const n of typeof template === 'string' ? [2] : [1, 2]) {
-      try {
-        const text = lineText(sampleLine(key, n), strings);
-        if (/[{}]/.test(text)) problems.push(`${key}: renders with a brace: "${text}"`);
-      } catch (error) {
-        problems.push(`${key}: does not render: ${(error as Error).message}`);
-      }
-    }
-  }
-  return problems;
-}
-
-// ── 2. Glossary ────────────────────────────────────────────────────────────────────────────────
-
-/** Every problem of the glossary (see the header, part 2). */
-export function checkGlossary(glossary: readonly GlossaryEntry[] = en.glossary): string[] {
-  const problems: string[] = [];
-  const seen = new Map<string, string>();
-  for (const entry of glossary) {
-    for (const key of glossaryKeys(entry.term)) {
-      const before = seen.get(key);
-      if (before !== undefined) problems.push(`glossary: "${key}" is defined twice`);
-      seen.set(key, entry.term);
-    }
-    const parts = entry.term.includes(' / ') ? entry.definition.split(' / ') : [entry.definition];
-    for (const part of parts) {
-      for (const long of longSentences([{ text: part }])) {
-        problems.push(`glossary "${entry.term}": a sentence of ${long}`);
-      }
-    }
-  }
-  const keys = [...seen.keys()];
-  for (const x of minus([...GLOSSARY_KEYS], keys)) problems.push(`glossary: no entry for "${x}"`);
-  for (const x of minus(keys, [...GLOSSARY_KEYS])) {
-    problems.push(`glossary: "${x}" is not in GLOSSARY_KEYS (brain/explain.ts)`);
-  }
-  return problems;
-}
-
-// ── 3. Hints ───────────────────────────────────────────────────────────────────────────────────
-
-const GLOSSARY_SET: ReadonlySet<string> = new Set(GLOSSARY_KEYS);
-
-/** Every problem of one line as built by `explain` (values, glossary keys, rendering, length). */
-export function checkLine(line: Line, strings: CoachStrings = EN_COACH): string[] {
-  const problems: string[] = [];
-  const template = (strings.templates as Readonly<Record<string, CoachTemplate | undefined>>)[
-    line.key
-  ];
-  if (template === undefined) return [`${line.key}: no template`];
-  const spec = templateSpec(line.key);
-  const have = sorted(Object.keys(line.params));
-  const want = sorted(spec.params);
-  for (const x of minus(want, have)) problems.push(`${line.key}: no value for {${x}}`);
-  for (const x of minus(have, want)) problems.push(`${line.key}: unused value {${x}}`);
-  const glossary = sorted(line.glossary);
-  const links = templateGlossary(template);
-  if (glossary.join() !== links.join()) {
-    problems.push(`${line.key}: glossary keys [${glossary.join()}], template [${links.join()}]`);
-  }
-  for (const x of glossary) {
-    if (!GLOSSARY_SET.has(x)) problems.push(`${line.key}: unknown glossary key "${x}"`);
-  }
-  for (const p of Object.values(line.params)) {
-    if (p.kind === 'line') problems.push(...checkLine(p.line, strings));
-  }
-  try {
-    const segments = renderLine(line, strings);
-    const text = segments.map((s) => s.text).join('');
-    if (/[{}]/.test(text)) problems.push(`${line.key}: unresolved placeholder in "${text}"`);
-    for (const long of longSentences(segments)) problems.push(`${line.key}: a sentence of ${long}`);
-  } catch (error) {
-    problems.push(`${line.key}: does not render: ${(error as Error).message}`);
-  }
-  return problems;
-}
-
-/** The base code of a key: "FOLD_PRICE.close" → "FOLD_PRICE". */
-const baseOf = (key: TemplateKey): string => key.split('.')[0] as string;
-
-/** Codes whose `{E}` is a range number labelled by their own sentence (Appendix F.1). */
-const RANGE_SENTENCES: ReadonlySet<string> = new Set([
-  'CALL_PREFLOP',
-  'FOLD_VS_RAISE',
-  'THREE_BET_VALUE',
-  'FOUR_BET_VALUE',
-  'CALL_ALLIN',
-  'FOLD_ALLIN',
-  'PUSH_FOLD',
-]);
-
-/** How each comparing sentence (the F.1 wording, not its variants) relates `{E}` to `{need}`. */
-const COMPARES: Readonly<Partial<Record<TemplateKey, 'more' | 'atLeast' | 'less'>>> = {
-  CALL_PROFITABLE: 'more',
-  CALL_PREFLOP: 'atLeast',
-  CALL_ALLIN: 'atLeast',
-  FOLD_PRICE: 'less',
-  FOLD_ALLIN: 'less',
-  WHY_NOT_CALL: 'less',
-};
-
-const pointsOf = (p: Param | undefined): number | null => (p?.kind === 'pct' ? p.value : null);
-
-/** Every problem of one hint (see the header, part 3). */
-export function checkHint(
-  e: Explanation,
-  input: ExplainInput,
-  strings: CoachStrings = EN_COACH,
-): string[] {
-  const problems: string[] = [];
-  for (const line of hintLines(e)) problems.push(...checkLine(line, strings));
-  const hud = `${pctText(100 * input.eRandom)}%`;
-  const numbers = lineText(e.numbers, strings);
-  if (!numbers.includes(hud)) problems.push(`numbers line "${numbers}" lacks the HUD's ${hud}`);
-
-  const adjustAt = e.reasons.findIndex((l) => baseOf(l.key) === 'RANGE_ADJUST');
-  if (Math.abs(input.eRange - input.eRandom) >= 0.05 - 1e-9 && adjustAt !== 0) {
-    problems.push(
-      `eRandom ${hud} and eRange ${pctText(100 * input.eRange)}% differ by 5+ points, but RANGE_ADJUST does not come first`,
-    );
-  }
-  if (adjustAt > 0) problems.push('RANGE_ADJUST is not the first reason');
-  if (adjustAt >= 0) {
-    const text = lineText(e.reasons[adjustAt] as Line, strings);
-    const range = `${pctText(100 * (e.shown.eRange ?? Number.NaN))}%`;
-    if (!text.includes(hud) || !text.includes(range)) {
-      problems.push(`RANGE_ADJUST "${text}" does not show both ${hud} and ${range}`);
-    }
-  }
-
-  const head = e.headline;
-  const a = input.action;
-  const kind = head.key.split('.')[1];
-  const sizeTo = head.params.size?.kind === 'size' ? head.params.size.to : null;
-  const amount = head.params.amount?.kind === 'chips' ? head.params.amount.value : null;
-  const headOk =
-    a.type === 'fold'
-      ? kind === 'fold'
-      : a.type === 'check'
-        ? kind === 'check'
-        : a.type === 'call'
-          ? (kind === 'call' || kind === 'callAllIn') && amount === input.toCall
-          : (kind === a.type || kind === 'allIn') && sizeTo === a.to;
-  if (!headOk) problems.push(`headline ${head.key} does not match the action ${JSON.stringify(a)}`);
-
-  const adjusted = adjustAt >= 0;
-  for (const line of [...e.reasons, ...e.whyNot]) {
-    const E = pointsOf(line.params.E);
-    const need = pointsOf(line.params.need);
-    const direction = COMPARES[line.key];
-    if (direction !== undefined && E !== null && need !== null) {
-      const x = shownPct(E / 100);
-      const y = shownPct(need / 100);
-      const ok = direction === 'more' ? x > y : direction === 'atLeast' ? x >= y : x < y;
-      if (!ok) problems.push(`${line.key}: "${lineText(line, strings)}" contradicts its numbers`);
-    }
-    if (E !== null && !RANGE_SENTENCES.has(baseOf(line.key)) && !adjusted) {
-      if (shownPct(E / 100) !== shownPct(input.eRandom)) {
-        problems.push(`${line.key}: shows ${pctText(E)}% with no label, not the HUD's ${hud}`);
-      }
-    }
-  }
-  if (e.whyNot.some((l) => l.key === 'WHY_NOT_FOLD')) {
-    if (!(shownPct(e.shown.win) > shownPct(input.need))) {
-      problems.push('WHY_NOT_FOLD is shown but the win chance does not beat the price');
-    }
-  }
-  return problems;
-}
 
 // ── Situations: the engine plays, the hero's decisions are observed ────────────────────────────
 
@@ -553,9 +218,21 @@ function allInAction(obs: Observation): PlayerAction | null {
 }
 
 /**
- * Every reason the spot allows, each with an action it explains, the data the chunk 5.3–5.5
- * policies put in `Reason.data` (sizes as `to`/`bb` before the flop and `size`/`sizeBB` after it,
- * `E` = the policy's range equity, chances as fractions) and a few guardrail corrections.
+ * §8.5 step 2 realisation, with R = 1 when the call ends the betting (facing an all-in), as §8.4
+ * and the §8.9 EV model read it.
+ */
+function realisation(f: Features): number {
+  if (f.street === 'river' || f.facing === 'allin') return 1;
+  const base = f.position === 'IP' ? 1 : f.street === 'flop' ? 0.85 : 0.92;
+  return f.nOpp > 1 ? base - 0.05 : base;
+}
+
+/**
+ * Every reason the spot allows, each under the condition its policy uses (§8.3–8.5, §8.8: a call
+ * on price only when `E·R` beats the price, a value bet only with a strong hand, a guardrail only
+ * past its limit), with an action it explains and the data the chunk 5.3–5.5 policies put in
+ * `Reason.data` (sizes as `to`/`bb` before the flop and `size`/`sizeBB` after it, `E` = the
+ * policy's range equity, chances as fractions).
  */
 export function candidateDecisions(s: Situation, rng: Rng): CheckDecision[] {
   const { obs, f } = s;
@@ -607,20 +284,28 @@ export function candidateDecisions(s: Situation, rng: Rng): CheckDecision[] {
         add(raise, [r('ISOLATE', { hand, rankPct: f.rankPct, limpers: 1, ...sized(raise) })]);
       }
     } else if (f.facing === 'allin') {
+      // §8.4: call if E ≥ need against the shover's range (R = 1).
       const E = noisy();
-      add(call, [r('CALL_ALLIN', { hand, E, need: f.need, V: 12 })], f.eRange);
-      add(fold, [r('FOLD_ALLIN', { hand, E, need: f.need, V: 12 })], f.eRange);
+      const data = { hand, E, need: f.need, V: 12 };
+      add(E >= f.need ? call : fold, [r(E >= f.need ? 'CALL_ALLIN' : 'FOLD_ALLIN', data)]);
     } else {
+      // §8.3: re-raise for value with E ≥ 0.58; call when EV(call) > 0 (a pocket pair adds the
+      // set-mining implied odds); fold on range.
       const E = noisy();
-      const numbers = { hand, E, need: f.need, V: 15, R: 0.95, evCall: 1 };
+      const R = f.position === 'IP' ? 0.95 : 0.8;
+      const numbers = { hand, E, need: f.need, V: 15, R, evCall: 1 };
       const reraise = aggressive(obs, 3 * currentBet);
-      add(reraise, [
-        r(f.facing === 'open' ? 'THREE_BET_VALUE' : 'FOUR_BET_VALUE', {
-          ...numbers,
-          ...sized(reraise),
-        }),
-      ]);
-      add(call, [r('CALL_PREFLOP', { ...numbers, implied: pair ? 3 * bb : 0 })]);
+      if (E >= 0.58) {
+        add(reraise, [
+          r(f.facing === 'open' ? 'THREE_BET_VALUE' : 'FOUR_BET_VALUE', {
+            ...numbers,
+            ...sized(reraise),
+          }),
+        ]);
+      }
+      if (E * R > f.need || pair) {
+        add(call, [r('CALL_PREFLOP', { ...numbers, implied: pair ? 3 * bb : 0 })]);
+      }
       if (pair) add(call, [r('SET_MINING', { ...numbers, implied: 3 * bb })]);
       add(fold, [r('FOLD_VS_RAISE', numbers)]);
     }
@@ -634,46 +319,63 @@ export function candidateDecisions(s: Situation, rng: Rng): CheckDecision[] {
     return out;
   }
 
+  // §8.5: the bucket from p, the price from E·R (+ implied odds for a draw), §8.8 guardrails.
   const E = f.eRange;
   const need = f.need;
+  const R = realisation(f);
+  const p = f.p;
   const handName = f.handInfo.name;
   const largest = f.draws.reduce<Features['draws'][number] | null>(
     (best, d) => (best === null || d.outs > best.outs ? d : best),
     null,
   );
+  const madeDraw =
+    largest !== null &&
+    ['flush', 'nutFlush', 'oesd', 'doubleGutshot', 'gutshot'].includes(largest.kind);
   if (f.toCall > 0) {
     const raise = aggressive(obs, 3 * currentBet);
     const shove = allInAction(obs);
-    add(raise, [r('VALUE_RAISE', sizedPost(raise))]);
-    add(raise, [r('RAISE_PROTECT', sizedPost(raise))]);
-    add(raise, [r('NUTS', sizedPost(raise))]);
-    add(shove, [r('VALUE_RAISE', sizedPost(shove)), r('COMMITTED', { handName, E, need })]);
-    add(call, [r('CALL_PROFITABLE', { E, need, toCall: f.toCall, pot: f.winPot })]);
-    add(call, [r('COMMITTED', { handName, E, need })]);
-    if (largest !== null) {
-      const needImplied = f.toCall / (f.winPot + f.toCall + 0.5 * f.pot);
-      add(call, [r('IMPLIED', { E, need, needImplied, draw: largest.kind })]);
+    if (p >= 0.65) {
+      add(raise, [r('VALUE_RAISE', sizedPost(raise))]);
+      add(raise, [r('RAISE_PROTECT', sizedPost(raise))]);
+      add(shove, [r('VALUE_RAISE', sizedPost(shove)), r('COMMITTED', { handName, E, need })]);
     }
+    if (p >= 0.85) add(raise, [r('NUTS', sizedPost(raise))]);
+    if (f.spr <= 6 && p >= 0.6) add(call, [r('COMMITTED', { handName, E, need })]);
     if (f.facing === 'allin') {
-      add(call, [r('CALL_ALLIN', { E, need })]);
-      add(fold, [r('FOLD_ALLIN', { E, need })]);
-      add(call, [
-        r('FOLD_ALLIN', { E, need }),
-        r('GUARDRAIL', { rule: 4, detail: 'allInPriceGood' }),
-      ]);
-      add(fold, [
-        r('CALL_ALLIN', { E, need }),
-        r('GUARDRAIL', { rule: 4, detail: 'allInPriceBad' }),
-      ]);
+      const calls = E * R > need;
+      add(calls ? call : fold, [r(calls ? 'CALL_ALLIN' : 'FOLD_ALLIN', { E, need })]);
+      if (E >= need + 0.15) {
+        add(call, [
+          r('FOLD_ALLIN', { E, need }),
+          r('GUARDRAIL', { rule: 4, detail: 'allInPriceGood' }),
+        ]);
+      }
+      if (E < need - 0.25) {
+        add(fold, [
+          r('CALL_ALLIN', { E, need }),
+          r('GUARDRAIL', { rule: 4, detail: 'allInPriceBad' }),
+        ]);
+      }
+    } else if (E * R > need) {
+      add(call, [r('CALL_PROFITABLE', { E, need, toCall: f.toCall, pot: f.winPot })]);
     } else {
       add(fold, [r('FOLD_PRICE', { E, need })]);
+      if (madeDraw && largest !== null) {
+        // Just enough implied odds to make the call pay (§8.5 step 3).
+        const implied = f.toCall - E * R * (f.winPot + f.toCall) + 0.05 * f.toCall;
+        const needImplied = f.toCall / (f.winPot + f.toCall + implied);
+        add(call, [r('IMPLIED', { E, need, needImplied, draw: largest.kind })]);
+      }
     }
-    add(fold, [r('BOARD_PLAYS')]);
-    add(call, [
-      r('FOLD_PRICE', { E, need }),
-      r('GUARDRAIL', { rule: 2, detail: 'tooStrongToFold' }),
-    ]);
-    if (f.street === 'river') {
+    if (f.handInfo.playsTheBoard) add(fold, [r('BOARD_PLAYS')]);
+    if (p >= 0.95) {
+      add(call, [
+        r('FOLD_PRICE', { E, need }),
+        r('GUARDRAIL', { rule: 2, detail: 'tooStrongToFold' }),
+      ]);
+    }
+    if (f.street === 'river' && E < 0.03) {
       add(fold, [
         r('CALL_PROFITABLE', { E, need, toCall: f.toCall, pot: f.winPot }),
         r('GUARDRAIL', { rule: 3, detail: 'riverNoChance' }),
@@ -682,24 +384,21 @@ export function candidateDecisions(s: Situation, rng: Rng): CheckDecision[] {
   } else {
     const bet = aggressive(obs, f.pot / 2);
     const third = aggressive(obs, f.pot / 3);
-    add(bet, [r('VALUE_BET', { handName, category: f.handInfo.category, E, ...sizedPost(bet) })]);
-    add(bet, [r('NUTS', { handName, category: f.handInfo.category, E, ...sizedPost(bet) })]);
-    add(third, [r('THIN_VALUE', { handName, E, ...sizedPost(third) })]);
-    add(third, [r('CBET_DRY', sizedPost(third))]);
-    if (f.street !== 'river' && f.outs > 0) {
-      add(bet, [
-        r('SEMI_BLUFF', {
-          draw: largest?.kind ?? '',
-          outs: f.outs,
-          hitNext: 0.2,
-          hitRiver: 0.35,
-          ...sizedPost(bet),
-        }),
-      ]);
+    const category = f.handInfo.category;
+    if (p >= 0.65) add(bet, [r('VALUE_BET', { handName, category, E, ...sizedPost(bet) })]);
+    if (p >= 0.85) add(bet, [r('NUTS', { handName, category, E, ...sizedPost(bet) })]);
+    if (p >= 0.45 && p < 0.65) add(third, [r('THIN_VALUE', { handName, E, ...sizedPost(third) })]);
+    if (p >= 0.45) add(check, [r('POT_CONTROL', { handName })]);
+    if (p < 0.45) {
+      add(third, [r('CBET_DRY', sizedPost(third))]);
+      add(check, [r(f.street === 'river' ? 'CHECK_FREE' : 'CHECK_WEAK')]);
+      if (f.street !== 'river' && f.outs >= 8) {
+        const hits = { hitNext: 0.2, hitRiver: 0.35 };
+        const data = { draw: largest?.kind ?? '', outs: f.outs, ...hits, ...sizedPost(bet) };
+        add(bet, [r('SEMI_BLUFF', data)]);
+      }
     }
-    add(check, [r('POT_CONTROL', { handName })]);
-    add(check, [r(f.street === 'river' ? 'CHECK_FREE' : 'CHECK_WEAK')]);
-    add(check, [r('BOARD_PLAYS')]);
+    if (f.handInfo.playsTheBoard) add(check, [r('BOARD_PLAYS')]);
     add(check, [r('FOLD_PRICE', { E, need }), r('GUARDRAIL', { rule: 1, detail: 'checkFree' })]);
   }
   return out;
