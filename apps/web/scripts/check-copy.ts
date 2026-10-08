@@ -24,10 +24,12 @@ import {
   type Line,
   type TemplateKey,
 } from '../src/brain/explain.ts';
+import { candidateEVs, confidence } from '../src/brain/ev.ts';
 import { coachSeed, features } from '../src/brain/features.ts';
+import { guardrails, guardSpot } from '../src/brain/guardrails.ts';
 import { liveOpponents } from '../src/brain/ranges.ts';
 import { openPct } from '../src/brain/tunables.ts';
-import type { BrainProfile, Decision, Features, Reason } from '../src/brain/types.ts';
+import type { BrainProfile, Decision, EvCandidate, Features, Reason } from '../src/brain/types.ts';
 import { classOf, className, rankOf } from '../src/core/cards.ts';
 import {
   deriveSeed,
@@ -227,35 +229,29 @@ function realisation(f: Features): number {
   return f.nOpp > 1 ? base - 0.05 : base;
 }
 
+/** `E_called` trials of the EV model here (800 in the coach): the words need no precision. */
+const EV_TRIALS = 100;
+
+const sameAction = (a: PlayerAction, b: PlayerAction): boolean =>
+  a.type === b.type &&
+  (a.type !== 'bet' && a.type !== 'raise' ? true : a.to === (b as { to: number }).to);
+
 /**
- * Every reason the spot allows, each under the condition its policy uses (§8.3–8.5, §8.8: a call
- * on price only when `E·R` beats the price, a value bet only with a strong hand, a guardrail only
- * past its limit), with an action it explains and the data the chunk 5.3–5.5 policies put in
- * `Reason.data` (sizes as `to`/`bb` before the flop and `size`/`sizeBB` after it, `E` = the
- * policy's range equity, chances as fractions).
+ * Every reason the spot allows, each under the condition its policy uses (§8.3–8.5: a call on
+ * price only when `E·R` beats the price, a value bet only with a strong hand, …), with an action
+ * it explains and the data the chunk 5.3–5.4 policies put in `Reason.data` (sizes as `to`/`bb`
+ * before the flop and `size`/`sizeBB` after it, `E` = the policy's range equity, chances as
+ * fractions); plus a few proposals past a §8.8 limit (a fold with `p ≥ 0.95`, a fold when checking
+ * is free, …). Then, as `decide()` will: the real guardrails (`guardrails.ts`) correct the action
+ * and add their reasons, and the real EV model (`ev.ts`, `EV_TRIALS`) gives the Close/Clear
+ * confidence and the alternative (the best other candidate).
  */
 export function candidateDecisions(s: Situation, rng: Rng): CheckDecision[] {
   const { obs, f } = s;
   const legal = obs.legal;
-  const out: CheckDecision[] = [];
-  const confidences: Decision['confidence'][] = ['clear', 'normal', 'close'];
-  const add = (action: PlayerAction | null, trace: Reason[], E = f.eRange): void => {
-    if (action === null) return;
-    const confidence = confidences[randInt(rng, 3)] as Decision['confidence'];
-    const others = [FOLD, CHECK, CALL].filter(
-      (x) =>
-        x.type !== action.type &&
-        (x.type === 'fold'
-          ? legal.canFold && !legal.canCheck
-          : x.type === 'check'
-            ? legal.canCheck
-            : legal.canCall),
-    );
-    const alt =
-      confidence === 'close' && others.length > 0
-        ? (others[randInt(rng, others.length)] as PlayerAction)
-        : null;
-    out.push({ action, trace, confidence, alt, eRandom: f.eRandom, eRange: E, need: f.need });
+  const proposals: [PlayerAction, Reason[]][] = [];
+  const add = (action: PlayerAction | null, trace: Reason[]): void => {
+    if (action !== null) proposals.push([action, trace]);
   };
   const hand = className(classOf(obs.hole[0], obs.hole[1]));
   const pair = rankOf(obs.hole[0]) === rankOf(obs.hole[1]);
@@ -316,7 +312,8 @@ export function candidateDecisions(s: Situation, rng: Rng): CheckDecision[] {
       add(shove, [r('PUSH_FOLD', { action: 'allin', ...data, Pfold: 0.55, E: noisy() })]);
       add(fold, [r('PUSH_FOLD', { action: 'fold', ...data, Pfold: 0.3, E: noisy() })]);
     }
-    return out;
+    if (f.facing === 'allin' && f.eRange >= f.need + 0.15) add(fold, [r('FOLD_ALLIN', { hand })]);
+    return finish(s, proposals);
   }
 
   // §8.5: the bucket from p, the price from E·R (+ implied odds for a draw), §8.8 guardrails.
@@ -345,18 +342,9 @@ export function candidateDecisions(s: Situation, rng: Rng): CheckDecision[] {
     if (f.facing === 'allin') {
       const calls = E * R > need;
       add(calls ? call : fold, [r(calls ? 'CALL_ALLIN' : 'FOLD_ALLIN', { E, need })]);
-      if (E >= need + 0.15) {
-        add(call, [
-          r('FOLD_ALLIN', { E, need }),
-          r('GUARDRAIL', { rule: 4, detail: 'allInPriceGood' }),
-        ]);
-      }
-      if (E < need - 0.25) {
-        add(fold, [
-          r('CALL_ALLIN', { E, need }),
-          r('GUARDRAIL', { rule: 4, detail: 'allInPriceBad' }),
-        ]);
-      }
+      // Past the §8.8 rule 4 limits: the guardrails turn these around.
+      if (E >= need + 0.15) add(fold, [r('FOLD_ALLIN', { E, need })]);
+      if (E < need - 0.25) add(call, [r('CALL_ALLIN', { E, need })]);
     } else if (E * R > need) {
       add(call, [r('CALL_PROFITABLE', { E, need, toCall: f.toCall, pot: f.winPot })]);
     } else {
@@ -369,17 +357,10 @@ export function candidateDecisions(s: Situation, rng: Rng): CheckDecision[] {
       }
     }
     if (f.handInfo.playsTheBoard) add(fold, [r('BOARD_PLAYS')]);
-    if (p >= 0.95) {
-      add(call, [
-        r('FOLD_PRICE', { E, need }),
-        r('GUARDRAIL', { rule: 2, detail: 'tooStrongToFold' }),
-      ]);
-    }
+    // Past the §8.8 rule 2 and 3 limits: the guardrails turn these around.
+    if (p >= 0.95) add(fold, [r('FOLD_PRICE', { E, need })]);
     if (f.street === 'river' && E < 0.03) {
-      add(fold, [
-        r('CALL_PROFITABLE', { E, need, toCall: f.toCall, pot: f.winPot }),
-        r('GUARDRAIL', { rule: 3, detail: 'riverNoChance' }),
-      ]);
+      add(call, [r('CALL_PROFITABLE', { E, need, toCall: f.toCall, pot: f.winPot })]);
     }
   } else {
     const bet = aggressive(obs, f.pot / 2);
@@ -399,9 +380,43 @@ export function candidateDecisions(s: Situation, rng: Rng): CheckDecision[] {
       }
     }
     if (f.handInfo.playsTheBoard) add(check, [r('BOARD_PLAYS')]);
-    add(check, [r('FOLD_PRICE', { E, need }), r('GUARDRAIL', { rule: 1, detail: 'checkFree' })]);
+    // A fold when checking is free: §8.8 rule 1 makes it a check.
+    add(FOLD, [r('FOLD_PRICE', { E, need })]);
   }
-  return out;
+  return finish(s, proposals);
+}
+
+/**
+ * What `decide()` does after the policy: the guardrails correct the proposed action and add their
+ * reasons; the EV model's candidates (once per spot) give the confidence and the alternative.
+ */
+function finish(s: Situation, proposals: readonly [PlayerAction, Reason[]][]): CheckDecision[] {
+  const { obs, f } = s;
+  const R = f.street === 'preflop' ? (f.position === 'IP' ? 0.95 : 0.8) : realisation(f);
+  let ranked: EvCandidate[];
+  try {
+    const evs = candidateEVs({ obs, f, R, implied: 0, seed: coachSeed(obs), trials: EV_TRIALS });
+    ranked = [...evs].sort((a, b) => b.ev - a.ev);
+  } catch {
+    ranked = []; // no opponent can act: nothing to bet into
+  }
+  const conf = confidence(
+    ranked.map((c) => c.ev),
+    f.pot,
+  );
+  return proposals.map(([proposed, reasons]) => {
+    const g = guardrails(guardSpot(obs, f), proposed);
+    const alt = ranked.find((c) => !sameAction(c.action, g.action))?.action ?? null;
+    return {
+      action: g.action,
+      trace: [...reasons, ...g.trace],
+      confidence: conf,
+      alt,
+      eRandom: f.eRandom,
+      eRange: f.eRange,
+      need: f.need,
+    };
+  });
 }
 
 // ── The run ────────────────────────────────────────────────────────────────────────────────────
