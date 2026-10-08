@@ -91,6 +91,8 @@ export function postflopSpot(obs: Observation): PostflopSpot {
     outCards: drawStreet ? findOuts(obs.hole, obs.board) : [],
     nuts: beaters !== null && beaters.count === 0,
     heroBetStreets: betStreets.size,
+    callEndsBetting:
+      obs.legal.callIsAllIn || liveOpponents(obs).every((s) => obs.allIn[s] === true),
   };
 }
 
@@ -332,8 +334,10 @@ export interface PostflopRead {
 }
 
 export function postflopRead(f: Features, spot: PostflopSpot): PostflopRead {
-  const r = realisation(f);
-  const implied = f.toCall > 0 ? impliedOdds(f, spot) : 0;
+  // A call that ends the betting realises all its equity and wins nothing later (§8.4, chunk 5.7).
+  const ends = f.toCall > 0 && spot.callEndsBetting;
+  const r = ends ? REALISATION_FULL : realisation(f);
+  const implied = f.toCall > 0 && !ends ? impliedOdds(f, spot) : 0;
   const made = madeHand(spot.hole, spot.board, f.handInfo);
   const band = sprBand(f.spr);
   const potControl = band === 3 && ONE_PAIR.has(made.made);
@@ -364,7 +368,9 @@ export function postflopIntent(
   read = postflopRead(f, spot),
 ): PolicyIntent {
   if (f.toCall > 0) {
+    // A value raise that cannot be made is no reason to call: the price decides (chunk 5.7).
     const raise =
+      spot.legal.raise !== null &&
       (f.bucket === 'monster' || (f.bucket === 'strong' && f.texture !== 'dry')) &&
       !read.potControl;
     if (raise) {

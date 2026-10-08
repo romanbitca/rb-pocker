@@ -69,11 +69,12 @@ import {
 } from './preflopPolicy.ts';
 import { COACH } from './profiles.ts';
 import { pushFoldApplies } from './pushfold.ts';
-import { raiseTarget, snapRaiseTo, textureBetFraction } from './sizing.ts';
+import { raiseTarget, sizeIntent, snapRaiseTo, textureBetFraction } from './sizing.ts';
 import {
   BUCKET_MEDIUM,
   BUCKET_MONSTER,
   BUCKET_STRONG,
+  CLEAR_SPOT_POT,
   CLOSE_SPOT_POT,
   E_CALLED_TRIALS,
   MIX_BLUFF_BONUS,
@@ -243,7 +244,7 @@ function evModelOf(
   let implied = 0;
   if (spot !== null && f.toCall > 0) implied = impliedOdds(f, spot);
   else if (spot === null && facingRaise) implied = preflopImplied(obs, f);
-  return evModel({
+  const model = evModel({
     obs,
     f: { pot: f.pot, toCall: f.toCall, winPot: f.winPot, eRange: E, ranges: f.ranges },
     R,
@@ -251,6 +252,20 @@ function evModelOf(
     seed,
     trials: Math.min(E_CALLED_TRIALS, profile.mcTrials),
   });
+  // Each action's EV once per decision (a bet's E_called is a Monte Carlo of its own).
+  const memo = new Map<CandidateKey, number>();
+  return {
+    ev: (action) => {
+      const key = candidateKey(obs.legal, action);
+      let v = memo.get(key);
+      if (v === undefined) {
+        v = model.ev(action);
+        memo.set(key, v);
+      }
+      return v;
+    },
+    candidates: () => model.candidates(),
+  };
 }
 
 /** Candidates with unique keys, in order (§8.9 keys). */
@@ -406,7 +421,6 @@ const WHY_NOT: Readonly<Record<PlayerAction['type'], ReasonCode>> = {
   bet: 'WHY_NOT_BET',
   raise: 'WHY_NOT_RAISE',
 };
-const GROUPS: readonly PlayerAction['type'][] = ['fold', 'check', 'call', 'bet', 'raise'];
 const RULE_2_4_DRAWS: ReadonlySet<DrawKind> = new Set<DrawKind>([
   'flush',
   'nutFlush',
@@ -417,42 +431,100 @@ const RULE_2_4_DRAWS: ReadonlySet<DrawKind> = new Set<DrawKind>([
 /** "Above 8 outs" the trick guesses too high (§8.10). */
 const RULE_2_4_BIG_OUTS = 8;
 
+/** The coach's bet or raise of the spot: §8.3 before the flop, §8.7 (value, by texture) after it. */
+function coachAggression(
+  obs: Observation,
+  f: Features,
+  spot: PostflopSpot | null,
+): PlayerAction | null {
+  if (spot === null) return preflopRaiseSize(obs, f)?.action ?? null;
+  const { legal } = obs;
+  if (legal.bet === null && legal.raise === null) return null;
+  const kind = legal.bet !== null ? 'bet' : 'raise';
+  const sized = sizeIntent({ kind, purpose: 'value', allIn: false }, f, spot, 'texture');
+  return isAggressive(sized.action) ? sized.action : null;
+}
+
 /**
- * The close alternative (§8.9: the top two candidate EVs within 3% of the pot): when the spot is
- * close and the recommendation is itself within 3% of the pot of the best EV, the best action of
- * another kind (fold, check, call, bet, raise) that is too. Null otherwise.
+ * The coach's sensible alternatives (§8.10 "one line per other sensible action"), with their EVs:
+ * for each kind of legal action other than the recommendation's, the one the coach would take of
+ * that kind. A fold when there is something to call; a check; a call, but never a limp or a
+ * complete (C10) nor a flat call of a raise with a short stack (§8.4: fold or all-in); a bet or
+ * raise of the coach's own size (§8.3 before the flop, §8.7 by texture after it), so all-in only
+ * where those sizes go all-in. The EV-best of the §8.9 sizes is never offered: the fold-equity
+ * heuristic can rate a deep all-in near a normal open, and "Close call: All-in 21,800 is also
+ * fine" would be absurd (chunk 5.7).
+ */
+export function sensibleAlternatives(
+  obs: Observation,
+  f: Features,
+  spot: PostflopSpot | null,
+  action: PlayerAction,
+  model: EvModel,
+): EvCandidate[] {
+  const { legal } = obs;
+  const raw: PlayerAction[] = [];
+  if (legal.canFold && legal.toCall > 0) raw.push(FOLD);
+  if (legal.canCheck) raw.push(CHECK);
+  const flat =
+    spot !== null ||
+    (f.facing !== 'none' &&
+      f.facing !== 'limpers' &&
+      (f.facing === 'allin' || !pushFoldApplies(f)));
+  if (legal.canCall && flat) raw.push(CALL);
+  const aggressive = coachAggression(obs, f, spot);
+  if (aggressive !== null) raw.push(aggressive);
+  return unique(
+    legal,
+    raw.filter((a) => a.type !== action.type),
+  ).map((c) => ({ ...c, ev: model.ev(c.action) }));
+}
+
+/**
+ * A hint's confidence (§8.9 Close / Clear): the recommendation against its best sensible
+ * alternative. Close when the two are within 3% of the pot, either way; Clear when the
+ * recommendation is ahead by more than 10%; else Normal, also when the model rates the alternative
+ * higher (the rule policy decides, §8.9, and a hint never calls a choice "clear" that its own EVs
+ * rate worse). No alternative at all: Clear.
+ */
+export function hintConfidence(
+  recEV: number,
+  alternatives: readonly EvCandidate[],
+  pot: number,
+): Decision['confidence'] {
+  if (alternatives.length === 0) return 'clear';
+  const best = Math.max(...alternatives.map((c) => c.ev));
+  const gap = recEV - best;
+  if (Math.abs(gap) <= CLOSE_SPOT_POT * pot + 1e-9) return 'close';
+  return gap > CLEAR_SPOT_POT * pot ? 'clear' : 'normal';
+}
+
+/**
+ * The close alternative (§8.9 "Close call: {alt} is also fine"): the best sensible alternative
+ * when it is within 3% of the pot of the recommendation; null otherwise.
  */
 export function closeAlternative(
-  candidates: readonly EvCandidate[],
-  action: PlayerAction,
+  alternatives: readonly EvCandidate[],
   recEV: number,
   pot: number,
-  conf: Decision['confidence'],
 ): EvCandidate | null {
-  if (conf !== 'close') return null;
-  const band = CLOSE_SPOT_POT * pot + 1e-9;
-  const best = Math.max(...candidates.map((c) => c.ev));
-  if (best - recEV > band) return null;
   let alt: EvCandidate | null = null;
-  for (const c of candidates) {
-    if (c.action.type === action.type || best - c.ev > band) continue;
-    if (alt === null || c.ev > alt.ev) alt = c;
-  }
+  for (const c of alternatives) if (alt === null || c.ev > alt.ev) alt = c;
+  if (alt === null || Math.abs(recEV - alt.ev) > CLOSE_SPOT_POT * pot + 1e-9) return null;
   return alt;
 }
 
 /**
  * The hint's structured extras (§8.10 hint structure 3–5, Appendix F.1): RANGE_ADJUST when both
  * equities must be shown (`{eRandom}`, `{eRange}`), CLOSE_SPOT with the close alternative, one
- * WHY_NOT_* per other kind of legal action (its best candidate, its EV and what it loses against
- * the recommendation, and the hint's `{E}` and `{need}`), and the rule of 2 and 4 on a draw (exact
+ * WHY_NOT_* per other sensible alternative (its key, its EV and what it loses against the
+ * recommendation, and the hint's `{E}` and `{need}`), and the rule of 2 and 4 on a draw (exact
  * chances as fractions). Which lines are said, and how, is `explain.ts`'s business.
  */
 function hintExtras(
   obs: Observation,
   f: Features,
-  action: PlayerAction,
-  candidates: readonly EvCandidate[],
+  alternatives: readonly EvCandidate[],
   recEV: number,
   alt: EvCandidate | null,
 ): Reason[] {
@@ -465,16 +537,11 @@ function hintExtras(
   }
   if (alt !== null) trace.push({ code: 'CLOSE_SPOT', data: { alt: alt.key, ev: alt.ev } });
   const E = f.rangeAdjust ? f.eRange : f.eRandom;
-  for (const group of GROUPS) {
-    if (group === action.type || (alt !== null && group === alt.action.type)) continue;
-    let best: EvCandidate | null = null;
-    for (const c of candidates) {
-      if (c.action.type === group && (best === null || c.ev > best.ev)) best = c;
-    }
-    if (best === null) continue;
+  for (const c of alternatives) {
+    if (c === alt) continue;
     trace.push({
-      code: WHY_NOT[group],
-      data: { alt: best.key, ev: best.ev, loss: recEV - best.ev, E, need: f.need },
+      code: WHY_NOT[c.action.type],
+      data: { alt: c.key, ev: c.ev, loss: recEV - c.ev, E, need: f.need },
     });
   }
   const drawStreet = obs.board.length === 3 || obs.board.length === 4;
@@ -547,27 +614,30 @@ export function deliberate(
     candidates = [...candidates, { key, action, ev: model.ev(action) }];
   }
   const recEV = (candidates.find((c) => c.key === key) as EvCandidate).ev;
-  const conf = confidence(
-    candidates.map((c) => c.ev),
-    f.pot,
-  );
-  const ev: Decision['ev'] = {};
-  for (const c of candidates) ev[c.key] = c.ev;
 
   let trace: Reason[];
   let alt: EvCandidate | null = null;
+  let conf: Decision['confidence'];
   if (bot === null) {
-    alt = closeAlternative(candidates, action, recEV, f.pot, conf);
-    trace = [
-      ...rule.trace,
-      ...guarded.trace,
-      ...hintExtras(obs, f, action, candidates, recEV, alt),
-    ];
+    // The coach: its recommendation against the sensible alternatives (§8.9, §8.10).
+    const alternatives = sensibleAlternatives(obs, f, spot, action, model);
+    for (const c of alternatives) {
+      if (!candidates.some((x) => x.key === c.key)) candidates.push(c);
+    }
+    conf = hintConfidence(recEV, alternatives, f.pot);
+    alt = conf === 'close' ? closeAlternative(alternatives, recEV, f.pot) : null;
+    trace = [...rule.trace, ...guarded.trace, ...hintExtras(obs, f, alternatives, recEV, alt)];
   } else {
+    conf = confidence(
+      candidates.map((c) => c.ev),
+      f.pot,
+    );
     // A bot's reasons explain A* only when it picked A* (they are never shown, §8.10).
     const pickedRule = bot.pick.key === candidateKey(obs.legal, rule.action);
     trace = [...(pickedRule ? rule.trace : []), ...guarded.trace];
   }
+  const ev: Decision['ev'] = {};
+  for (const c of candidates) ev[c.key] = c.ev;
 
   const decision: Decision = {
     action,

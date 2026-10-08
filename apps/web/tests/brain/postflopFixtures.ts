@@ -42,6 +42,8 @@ export interface SynthSpec {
   /** Defaults to min(heroStack − call, 10,000). */
   stackBehind?: number;
   heroBetStreets?: number;
+  /** Default: the call is all-in, or the hero faces the all-in of its only opponent. */
+  callEndsBetting?: boolean;
   bb?: number;
   /** Overrides for the computed legal actions. */
   legal?: Partial<LegalActions>;
@@ -137,6 +139,8 @@ export function synth(spec: SynthSpec): Synth {
     outCards,
     nuts: beaters !== null && beaters.count === 0,
     heroBetStreets: spec.heroBetStreets ?? 0,
+    callEndsBetting:
+      spec.callEndsBetting ?? (legal.callIsAllIn || (f.facing === 'allin' && nOpp === 1)),
   };
   return { f, spot };
 }
