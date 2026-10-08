@@ -4,7 +4,7 @@
  * through the navigation reducer.
  *
  * Items for screens that do not exist yet are hidden, not disabled (§18 Stage 3): Hand rankings,
- * Stats, Learn and Install app show only when their callback is given.
+ * Recent hands, Stats, Learn and Install app show only when their callback is given.
  */
 import { useId } from 'react';
 import { en } from '../../i18n/en.ts';
@@ -23,6 +23,8 @@ export interface MenuProps {
   /** A reload up to the starting stack (§3.1). */
   onTopUp: () => void;
   onOpenRankings?: (() => void) | undefined;
+  /** "Recent hands" (Review, §12.10); given only once a hand is finished. */
+  onOpenHands?: (() => void) | undefined;
   onOpenSettings: () => void;
   onOpenStats?: (() => void) | undefined;
   onOpenLearn?: (() => void) | undefined;
@@ -45,6 +47,7 @@ export function Menu(props: MenuProps) {
     add('topUp', en.menu.topUp(formatChips(props.topUpTo)), props.onTopUp);
   }
   add('rankings', en.menu.rankings, props.onOpenRankings);
+  add('hands', en.menu.hands, props.onOpenHands);
   add('settings', en.menu.settings, props.onOpenSettings);
   add('stats', en.menu.stats, props.onOpenStats);
   add('learn', en.menu.learn, props.onOpenLearn);

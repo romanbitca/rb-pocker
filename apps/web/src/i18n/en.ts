@@ -147,6 +147,8 @@ export const en = {
     stats: 'Stats',
     learn: 'Learn',
     install: 'Install app',
+    /** The list of finished hands (Review, §12.10). */
+    hands: 'Recent hands',
     leaveTable: 'Leave table',
     newTable: 'New table',
   },
@@ -508,6 +510,8 @@ export const en = {
       royalFlush: 'Royal Flush',
     },
     nextHand: 'Next hand',
+    /** Under the banner: opens Review on this hand (§12.9, §12.10). */
+    review: 'Review this hand',
   },
 
   /** Short messages (PLAN §12.11). */
@@ -587,6 +591,17 @@ export const en = {
       `You had ${pct} when the chips went in. Good decision. Unlucky this time.`,
     /** The hero won with 35% or less. */
     lucky: (pct: string) => `You got lucky. You had ${pct}.`,
+  },
+
+  /**
+   * Review's loading and failure lines, shown by the app while the lazy Review chunk loads or when
+   * it cannot (PLAN §12.10, §15.3). Every other Review word is in `i18n/review.ts` (lazy).
+   */
+  review: {
+    screenTitle: 'Review',
+    loading: 'Loading…',
+    /** The screen's files could not be loaded (no connection, not cached yet). */
+    loadFailed: 'Review could not be loaded. Check your connection and try again.',
   },
 
   /**
