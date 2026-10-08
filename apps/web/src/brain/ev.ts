@@ -11,7 +11,7 @@
  *   `pot' = pot + inv + (T − villainStreetBet)`. Each opponent continues with the top
  *   `c = clamp(MDF × stickiness, 0.15, 0.95)` of its weighted range, `MDF = pot / (pot + inv)`;
  *   `FE = Π (1 − c_i / √n)`; `E_called` = 800 weighted trials against only the continuing part
- *   of each range.
+ *   of the range of the one caller that `pot'` counts (chunk 5.7, below).
  *
  * `E` is `eRange`. The realisation `R` and the implied odds come from the policy (§8.3 steps 3–4,
  * §8.5 steps 2–3), which owns those formulas.
@@ -26,6 +26,11 @@
  *   `inv`, `MDF` and `pot'` use the matched amount (the §0.3 idea, for bets).
  * - An opponent who is already all-in cannot fold: it keeps its whole range in `E_called`, and
  *   while one is live nothing is won uncontested (`FE = 0`). `n` counts the opponents who can act.
+ * - `E_called` is against the villain's continuing range (and the all-in opponents' whole ranges)
+ *   only, as `pot'` counts one call: when somebody calls, it is nearly always one player
+ *   (chunk 5.7). Against every continuing range at once, an unopened open faced five calls in its
+ *   equity but one in its pot, and the model rated A♠A♥'s open under the gun at break-even, so the
+ *   bots (§9.4 step 3) folded or limped aces.
  * - "Top c of its weighted range": combos ordered by the §8.6 EHS proxy after the flop and by
  *   `rankPct` before it, strongest first (ties by combo index); the cut takes `c` of the range's
  *   total weight, and the combo on the edge keeps the part that fits.
@@ -299,10 +304,16 @@ export function evModel(spot: EvSpot): EvModel {
     const callIn = matched - (obs.streetBets[villain.seat] as number);
     const cs = responders.map((r) => continueFraction(f.pot, heroIn, stickiness(r.seat)));
     const FE = anyAllIn ? 0 : foldEquity(cs);
-    let j = 0;
-    const ranges = f.ranges.map((r) =>
-      allInSeat(r) ? r.weights : continuingWeights(r.weights, orderOf(r), cs[j++] as number),
-    );
+    // One caller, as pot′ counts it: the villain's continuing range, plus the whole range of every
+    // all-in opponent (in the pot, it cannot fold); the others have folded (chunk 5.7, PLAN §8.9).
+    const ranges: Float64Array[] = [];
+    for (const r of f.ranges) {
+      if (allInSeat(r)) ranges.push(r.weights);
+      else if (r === villain) {
+        const c = cs[responders.indexOf(r)] as number;
+        ranges.push(continuingWeights(r.weights, orderOf(r), c));
+      }
+    }
     const eCalled = rangeEquity({
       hole: obs.hole,
       board: obs.board,

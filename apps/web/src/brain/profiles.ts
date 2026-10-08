@@ -6,10 +6,10 @@
  * noise and the full range model (§8.1 C1).
  *
  * Every number comes from `tunables.ts` (`PERSONALITIES`, `LEVEL_PARAMS`): PLAN and code change
- * together there.
+ * together there. The controller builds each bot's profile on the main thread, so this module
+ * imports nothing heavy (no tables): the brain's data stays in the `brain.worker` chunk (§15.3).
  */
 import type { BotLevel, PersonalityId } from '../engine/types.ts';
-import { COACH_ID } from './features.ts';
 import {
   AGGRESSION_AF_BASE,
   AGGRESSION_SCALE,
@@ -18,6 +18,9 @@ import {
   RANGE_TRIALS,
 } from './tunables.ts';
 import type { BrainProfile } from './types.ts';
+
+/** `BrainProfile.id` of the coach (Appendix A.5 `COACH`). */
+export const COACH_ID = 'coach';
 
 /** §9.1: `ln(AF / 2.5) × 0.1`, added to the scores of bets and raises (§9.4 step 3). */
 export function aggressionBias(af: number): number {

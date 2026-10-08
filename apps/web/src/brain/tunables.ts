@@ -405,6 +405,12 @@ export const LEVEL_PARAMS: Readonly<Record<BotLevel, LevelParams>> = {
   },
 };
 
+/**
+ * §8.10 strength meter: Weak below 0.35, Marginal from 0.35; Decent, Strong and Monster from the
+ * §8.2 bucket bounds (`BUCKET_MEDIUM`, `BUCKET_STRONG`, `BUCKET_MONSTER`).
+ */
+export const STRENGTH_MARGINAL = 0.35;
+
 /** §9.4 step 3 score biases, in pots: the rule action `A*`; a call, per unit of stickiness. */
 export const MIX_RULE_BONUS = 0.1;
 export const MIX_CALL_STICKINESS = 0.05;

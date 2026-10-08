@@ -34,10 +34,10 @@ import {
   TEXTURE_VERY_WET,
   TEXTURE_WET,
 } from './tunables.ts';
+import { COACH_ID } from './profiles.ts';
 import type { BrainProfile, Bucket, Facing, Features, Position, Texture } from './types.ts';
 
-/** `BrainProfile.id` of the coach (Appendix A.5 `COACH`). */
-export const COACH_ID = 'coach';
+export { COACH_ID };
 
 /** §2.4: the coach's Monte Carlo seed, `deriveSeed(ZERO_SEED, 'coach|' + observationKey)`. */
 export function coachSeed(obs: Observation): Seed128 {
