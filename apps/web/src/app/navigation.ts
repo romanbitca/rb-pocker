@@ -12,8 +12,11 @@
  * an overlay that Back must not close (the out-of-chips dialog, §3.1) takes its screen with it.
  */
 
-/** The full-page screens built so far. Later stages add 'stats', 'learn', 'about', 'review'. */
-export type Screen = 'welcome' | 'home' | 'setup' | 'table' | 'settings';
+/**
+ * The full-page screens built so far. Later stages add 'stats', 'learn', 'about'. 'review' (§12.10)
+ * is a lazy screen: it is pushed over the Table, so Back returns to the hand.
+ */
+export type Screen = 'welcome' | 'home' | 'setup' | 'table' | 'settings' | 'review';
 
 /**
  * Layers over a screen. Each one but the sizing tray keeps a controller gate closed while it is

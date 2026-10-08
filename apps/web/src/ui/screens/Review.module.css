@@ -1,0 +1,393 @@
+/* The Review screen (PLAN §12.10, §12.12). One CSS grid per layout, like the Table (§12.3, §12.5):
+   - portrait / compact: top bar · table · hero · what happened · controls;
+   - wide: the same beside a column of recent hands;
+   - landscape: the table, and a 280 px column with what happened and the controls.
+   Unlike the Table it may scroll, so large text and 200% zoom never clip. Tap targets: 44 px or
+   more, 8 px apart. */
+
+.review {
+  --hero-strip: 112px;
+  --hero-overlap: 24px;
+
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto minmax(220px, 1fr) auto auto auto;
+  grid-template-areas: 'top' 'table' 'hero' 'story' 'controls';
+  min-height: 100vh;
+  min-height: 100dvh;
+  background: var(--bg);
+  color: var(--text);
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.compact {
+  --hero-strip: 96px;
+  --hero-overlap: 20px;
+}
+
+/* A page with no replay on it (the list, an empty list, a hand that cannot be replayed). */
+.plain {
+  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-areas: 'top' 'body';
+}
+
+.wide {
+  grid-template-columns: minmax(0, 1fr) clamp(260px, 24vw, 320px);
+  grid-template-areas: 'top list' 'table list' 'hero list' 'story list' 'controls list';
+}
+.wide.plain {
+  grid-template-areas: 'top list' 'body list';
+}
+
+.landscape {
+  grid-template-columns: minmax(0, 1fr) calc(280px + env(safe-area-inset-right));
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-template-areas: 'top story' 'table story' 'table controls';
+}
+.landscape.plain {
+  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-areas: 'top top' 'body body';
+}
+
+/* ---- Top bar: Back, the title, "All hands" ---- */
+
+.top {
+  grid-area: top;
+  display: grid;
+  grid-template-columns: minmax(var(--tap-min), 1fr) auto minmax(var(--tap-min), 1fr);
+  align-items: center;
+  gap: var(--space-2);
+  min-height: calc(52px + env(safe-area-inset-top));
+  padding: env(safe-area-inset-top) max(var(--space-2), env(safe-area-inset-right)) 0
+    max(var(--space-2), env(safe-area-inset-left));
+  background: var(--surface);
+}
+
+.back {
+  justify-self: start;
+}
+
+.title {
+  max-width: 100%;
+  margin: 0;
+  overflow: hidden;
+  font-size: 1.125rem;
+  font-weight: 700;
+  line-height: 1.3;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.title:focus {
+  outline: none;
+}
+
+.allHands {
+  justify-self: end;
+  min-width: var(--tap-min);
+  min-height: var(--tap-min);
+  padding: 0 var(--space-3);
+  border: 1px solid var(--control-border);
+  border-radius: var(--radius-2);
+  background: var(--control-bg);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+/* ---- The replay ---- */
+
+.area {
+  grid-area: table;
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+}
+
+/* The hero's cards reach up into the felt; above the pods (z-index) like the Table's strip. */
+.heroSlot {
+  grid-area: hero;
+  position: relative;
+  z-index: 7;
+}
+
+.story {
+  grid-area: story;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
+  width: 100%;
+  max-width: 560px;
+  min-height: 76px;
+  justify-self: center;
+  padding: 6px var(--space-4);
+  text-align: center;
+}
+.landscape .story {
+  min-height: 0;
+  justify-content: flex-start;
+  align-self: start;
+  padding-top: var(--space-4);
+  text-align: left;
+}
+
+.lineMain,
+.line {
+  margin: 0;
+  line-height: 1.35;
+}
+.lineMain {
+  font-size: 1.0625rem;
+  font-weight: 700;
+}
+.line {
+  font-size: 0.9375rem;
+}
+
+.controls {
+  grid-area: controls;
+  display: grid;
+  gap: var(--space-1);
+  width: 100%;
+  max-width: 560px;
+  justify-self: center;
+  padding: 0 var(--space-4) max(var(--space-3), env(safe-area-inset-bottom));
+}
+
+.scrub {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.slider {
+  width: 100%;
+  min-width: var(--tap-min);
+  height: var(--tap-min);
+  margin: 0;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.count {
+  min-width: 6.5em;
+  color: var(--muted);
+  font-size: 0.875rem;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.buttons {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+}
+
+.step,
+.play {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 48px;
+  margin: 0;
+  font: inherit;
+  cursor: pointer;
+}
+
+.step {
+  width: 48px;
+  min-width: var(--tap-min);
+  padding: 0;
+  border: 1px solid var(--control-border);
+  border-radius: var(--radius-2);
+  background: var(--control-bg);
+  color: var(--text);
+}
+.step:active {
+  background: var(--control-bg-pressed);
+}
+.step svg,
+.play svg {
+  width: 24px;
+  height: 24px;
+}
+
+/* Looks off but keeps the focus: `aria-disabled`, not `disabled`. */
+.off {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.play {
+  gap: var(--space-1);
+  min-width: 112px;
+  padding: 0 var(--space-4);
+  border: 0;
+  border-radius: var(--radius-2);
+  background: var(--accent);
+  color: var(--bg);
+  font-weight: 700;
+}
+
+.step:focus-visible,
+.play:focus-visible,
+.slider:focus-visible,
+.allHands:focus-visible,
+.row:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Landscape: the 280 px column is too narrow for five buttons in a row, so Play takes a row of its
+   own, the four step buttons sit under it, and the step count goes under the slider. */
+.landscape .controls {
+  gap: var(--space-2);
+  padding-left: var(--space-3);
+  padding-right: max(var(--space-3), env(safe-area-inset-right));
+}
+.landscape .scrub {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0;
+}
+.landscape .count {
+  min-width: 0;
+  text-align: left;
+}
+.landscape .buttons {
+  flex-wrap: wrap;
+}
+.landscape .play {
+  flex: 1 1 100%;
+  order: -1;
+}
+
+/* ---- A hand that cannot be replayed, and the empty list ---- */
+
+.summaryOnly,
+.empty {
+  grid-area: body;
+  width: 100%;
+  max-width: 560px;
+  justify-self: center;
+  padding: var(--space-5) var(--space-4);
+  text-align: center;
+}
+.summaryOnly {
+  display: grid;
+  align-content: start;
+  gap: var(--space-2);
+}
+.empty {
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: var(--space-3);
+}
+.emptyTitle {
+  margin: 0;
+  font-size: 1.125rem;
+  font-weight: 700;
+}
+.hint {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.9375rem;
+}
+.empty button {
+  max-width: 320px;
+  margin-top: var(--space-2);
+}
+
+/* ---- The list of recent hands: the page on phones, a column on wide screens ---- */
+
+.listSlot {
+  grid-area: body;
+  width: 100%;
+  max-width: 560px;
+  min-height: 0;
+  justify-self: center;
+  padding: var(--space-3) max(var(--space-3), env(safe-area-inset-right)) var(--space-5)
+    max(var(--space-3), env(safe-area-inset-left));
+}
+.wide .listSlot {
+  grid-area: list;
+  max-width: none;
+  overflow-y: auto;
+  border-left: 1px solid rgb(242 245 243 / 10%);
+}
+
+.listTitle {
+  margin: 0 0 var(--space-2);
+  color: var(--muted);
+  font-size: 0.875rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.list {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  min-width: var(--tap-min);
+  min-height: 64px;
+  padding: var(--space-2) var(--space-3);
+  border: 2px solid transparent;
+  border-radius: var(--radius-3);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.row[aria-current='true'] {
+  border-color: var(--accent);
+}
+
+.rowCards {
+  display: flex;
+  gap: 2px;
+  min-width: 50px;
+}
+
+.rowText {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.rowTitle {
+  font-weight: 700;
+}
+.rowLine {
+  display: -webkit-box;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 0.875rem;
+  line-height: 1.3;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+}
+
+.rowNet {
+  min-width: 3.5ch;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}

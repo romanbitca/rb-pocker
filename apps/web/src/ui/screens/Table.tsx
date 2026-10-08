@@ -289,12 +289,22 @@ export function bannerStyle(geometry: TableGeometry): CSSProperties {
   return { position: 'absolute', left, width, bottom: size.h - pot.y + 6 };
 }
 
+/** "Review this hand" on the banner: the Review screen on the hand that just ended (§12.10). */
+function useReviewHand(): () => void {
+  const dispatch = useDispatch();
+  const handSeq = useAppStore((s) => s.game.hand?.handSeq ?? null);
+  return useCallback(() => dispatch({ type: 'review', handSeq }), [dispatch, handSeq]);
+}
+
 const BannerLayer = memo(function BannerLayer({ geometry }: { geometry: TableGeometry }) {
   const lines = useHandEndLines();
   const dispatch = useDispatch();
   const next = useCallback(() => dispatch({ type: 'nextHand' }), [dispatch]);
+  const review = useReviewHand();
   if (lines === null) return null;
-  return <HandEndBanner lines={lines} onNext={next} style={bannerStyle(geometry)} />;
+  return (
+    <HandEndBanner lines={lines} onNext={next} onReview={review} style={bannerStyle(geometry)} />
+  );
 });
 
 /** Landscape: the hero's cards inset at the bottom centre of the felt (§12.5). */
@@ -501,8 +511,9 @@ const SideBanner = memo(function SideBanner() {
   const lines = useHandEndLines();
   const dispatch = useDispatch();
   const next = useCallback(() => dispatch({ type: 'nextHand' }), [dispatch]);
+  const review = useReviewHand();
   if (lines === null) return null;
-  return <HandEndBanner lines={lines} onNext={next} />;
+  return <HandEndBanner lines={lines} onNext={next} onReview={review} side />;
 });
 
 // ---------------------------------------------------------------------------------------------
