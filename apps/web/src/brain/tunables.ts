@@ -322,3 +322,92 @@ export const SIZE_HALF = 1 / 2;
 export const SIZE_POT = 1;
 /** 'two': a §8.7 bet fraction at least this big becomes a pot-size bet, a smaller one 1/2 pot. */
 export const TWO_SIZES_POT_FROM = 3 / 4;
+
+// --- 5.7 profiles / decide ---
+
+/** §9.1 `aggressionBias = ln(AF / 2.5) × 0.1`: the TAG's AF scores no bias. */
+export const AGGRESSION_AF_BASE = 2.5;
+export const AGGRESSION_SCALE = 0.1;
+
+/** The §9.2 parameters of one bot level (`profileFor` adds the §9.1 personality). */
+export interface LevelParams {
+  /** Monte Carlo trials of `eRange` (and of `E_called`, at most `E_CALLED_TRIALS`). */
+  mcTrials: number;
+  /** σ of the Gaussian noise on the perceived equity (§9.4 step 1). */
+  equityNoiseSD: number;
+  rangeModel: 'random' | 'static' | 'reweight' | 'reweight+stats';
+  /** 0: `openPct(4)` everywhere; 0.5: the mean of `openPct(k)` and `openPct(4)`; 1: `openPct(k)`. */
+  positionAwareness: 0 | 0.5 | 1;
+  sizing: 'half' | 'two' | 'texture' | 'texture+exploit';
+  /** Softmax temperature `T` (§9.4 step 5). */
+  temperature: number;
+  /** Share of MDF defended against bets (§9.4 step 4). */
+  defenseFactor: number;
+  /** Preflop threshold jitter `U(−j, j)` (§9.4 step 2). */
+  preflopJitter: number;
+  /** §9.2 "Bluffs": Easy bluffs a flat 5% whatever its personality; null = the personality's. */
+  bluffFreq: number | null;
+  exploit: boolean;
+}
+
+/**
+ * §9.2 difficulty → engine parameters. Hard and Expert come from the same table so that
+ * `profileFor` is total; Stage 7 adds their balanced bluffs and the Expert exploits.
+ */
+export const LEVEL_PARAMS: Readonly<Record<BotLevel, LevelParams>> = {
+  easy: {
+    mcTrials: 200,
+    equityNoiseSD: 0.12,
+    rangeModel: 'random',
+    positionAwareness: 0,
+    sizing: 'half',
+    temperature: 0.25,
+    defenseFactor: 0.55,
+    preflopJitter: 0.4,
+    bluffFreq: 0.05,
+    exploit: false,
+  },
+  medium: {
+    mcTrials: 500,
+    equityNoiseSD: 0.07,
+    rangeModel: 'static',
+    positionAwareness: 0.5,
+    sizing: 'two',
+    temperature: 0.12,
+    defenseFactor: 0.7,
+    preflopJitter: 0.2,
+    bluffFreq: null,
+    exploit: false,
+  },
+  hard: {
+    mcTrials: 1500,
+    equityNoiseSD: 0.03,
+    rangeModel: 'reweight',
+    positionAwareness: 1,
+    sizing: 'texture',
+    temperature: 0.06,
+    defenseFactor: 0.85,
+    preflopJitter: 0.1,
+    bluffFreq: null,
+    exploit: false,
+  },
+  expert: {
+    mcTrials: 3000,
+    equityNoiseSD: 0.01,
+    rangeModel: 'reweight+stats',
+    positionAwareness: 1,
+    sizing: 'texture+exploit',
+    temperature: 0.04,
+    defenseFactor: 0.95,
+    preflopJitter: 0.05,
+    bluffFreq: null,
+    exploit: true,
+  },
+};
+
+/** §9.4 step 3 score biases, in pots: the rule action `A*`; a call, per unit of stickiness. */
+export const MIX_RULE_BONUS = 0.1;
+export const MIX_CALL_STICKINESS = 0.05;
+/** §9.4 step 3: a bet or raise with Air (a bluff), a Monster's check on a Dry board (a slow-play). */
+export const MIX_BLUFF_BONUS = 0.3;
+export const MIX_SLOWPLAY_BONUS = 0.3;

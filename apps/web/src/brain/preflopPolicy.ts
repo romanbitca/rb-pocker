@@ -33,7 +33,7 @@
  * shows `{size}` as "{to} ({to ÷ bb} BB)"); `hand` is the class name ("AKs", "66"); `behind` is `k`.
  */
 import { classOf, className, rankOf, suitOf } from '../core/cards.ts';
-import { deriveSeed, type Seed128 } from '../core/rng.ts';
+import { deriveSeed, ZERO_SEED, type Seed128 } from '../core/rng.ts';
 import type { LegalActions, Observation, PlayerAction } from '../engine/types.ts';
 import { coachSeed } from './features.ts';
 import { observedSeatModel } from './opponentStats.ts';
@@ -406,6 +406,19 @@ function limped(spot: Spot): PreflopDecision {
   });
 }
 
+/**
+ * §8.3 step 4: set-mining implied odds of a pocket pair, `0.118 × 0.4 × effStackAfterCall`
+ * (`effStackAfterCall = effStack − (street bet + toCall)`); 0 for every other hand.
+ */
+export function preflopImplied(
+  obs: Pick<Observation, 'hole' | 'seat' | 'streetBets'>,
+  f: Pick<Features, 'effStack' | 'toCall'>,
+): number {
+  if (rankOf(obs.hole[0]) !== rankOf(obs.hole[1])) return 0;
+  const afterCall = Math.max(0, f.effStack - ((obs.streetBets[obs.seat] as number) + f.toCall));
+  return SET_HIT_CHANCE * SET_PAYOFF_SHARE * afterCall;
+}
+
 /** Facing an open, a 3-bet or a 4-bet or more that is not all-in (§8.3). */
 function facingRaise(spot: Spot): PreflopDecision {
   const { f, obs } = spot;
@@ -414,8 +427,7 @@ function facingRaise(spot: Spot): PreflopDecision {
   const { E: e0 } = equityVs(spot, last.seat, V);
   const E = clamp01(e0 + spot.style.equityNoise);
   const R = realisation(f.position, obs.hole);
-  const afterCall = Math.max(0, f.effStack - ((obs.streetBets[obs.seat] as number) + f.toCall));
-  const implied = spot.pair ? SET_HIT_CHANCE * SET_PAYOFF_SHARE * afterCall : 0;
+  const implied = preflopImplied(obs, f);
   const evCall = E * R * (f.winPot + f.toCall) - f.toCall + implied;
   const numbers = { hand: spot.hand, E, need: f.need, V, R, evCall };
 
@@ -522,6 +534,34 @@ function shortStack(spot: Spot): PreflopDecision {
       equityNoise: spot.style.equityNoise,
     }),
   );
+}
+
+/**
+ * The raise the §8.3 rules would make in this spot, whether or not they make one: the open (or
+ * isolation) size unopened or after limpers, the 3-bet size facing an open, the 4-bet size facing
+ * a 3-bet, all-in facing more, or with a short stack (§8.4). Rounded and clamped like the rules'
+ * own raises (all-in instead at 35% of the chips). Null when no raise is legal. A bot scores it as
+ * its raise candidate before the flop (§9.4 step 3).
+ */
+export function preflopRaiseSize(
+  obs: Observation,
+  f: Features,
+): { action: PlayerAction; kind: 'raise' | 'allin' } | null {
+  if (obs.legal.raise === null) return null;
+  const spot = readSpot(obs, f, { seed: ZERO_SEED }); // sizes draw nothing
+  const currentBet = (obs.streetBets[obs.seat] as number) + obs.legal.toCall;
+  let b: Built;
+  if (pushFoldApplies(f)) b = allIn(obs.legal);
+  else if (f.facing === 'none' || f.facing === 'limpers') b = raiseTo(spot, openSize(spot));
+  else if (f.facing === 'open') {
+    const last = spot.raises[spot.raises.length - 1] as PreflopRaise;
+    const mult =
+      (f.position === 'IP' ? THREE_BET_SIZE_IP : THREE_BET_SIZE_OOP) +
+      THREE_BET_SIZE_PER_CALLER * callersIn(spot, last.seat).length;
+    b = raiseTo(spot, mult * currentBet);
+  } else if (f.facing === '3bet') b = raiseTo(spot, FOUR_BET_SIZE * currentBet);
+  else b = allIn(obs.legal);
+  return b.kind === 'raise' || b.kind === 'allin' ? { action: b.action, kind: b.kind } : null;
 }
 
 /**
