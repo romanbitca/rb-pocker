@@ -9,7 +9,8 @@
  * - `React.memo` with a value comparison (`seatPropsEqual`): a store that rebuilds equal view
  *   objects on every update still causes no re-render (PLAN §15.3, pitfall 37).
  * - One screen-reader label per seat ("Anna, bot, Careful, stack 1,250, bet 50, folded"); the
- *   drawing inside is `aria-hidden`.
+ *   drawing inside is `aria-hidden`. With `onSelect` the pod is a button that opens the bot card
+ *   (§9.3); it is the same box, so it adds no DOM node.
  */
 import { memo, type CSSProperties } from 'react';
 import { cardAriaLabel } from '../../core/cards.ts';
@@ -32,7 +33,7 @@ export interface SeatPlace {
 export interface SeatProps {
   view: SeatView;
   place: SeatPlace;
-  /** Makes the pod a button (for example to open the bot card, §12.1). Pass a stable function. */
+  /** Makes the pod a button that opens the bot card (§9.3, §12.1). Pass a stable function. */
   onSelect?: ((seat: number) => void) | undefined;
 }
 
@@ -173,8 +174,13 @@ function SeatImpl({ view, place, onSelect }: SeatProps) {
         <button
           type="button"
           aria-label={label}
+          aria-haspopup="dialog"
           className={podClass}
-          onClick={() => onSelect(view.seat)}
+          onClick={(e) => {
+            // Safari does not focus a button on tap; the card returns focus to its opener (Modal).
+            e.currentTarget.focus();
+            onSelect(view.seat);
+          }}
         >
           {body}
         </button>

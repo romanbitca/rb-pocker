@@ -11,6 +11,7 @@ import { OutOfChipsDialog } from '../../../src/ui/screens/Dialogs.tsx';
 import { ScreenSwitcher } from '../../../src/ui/screens/ScreenSwitcher.tsx';
 import { Settings } from '../../../src/ui/screens/Settings.tsx';
 import { Setup } from '../../../src/ui/screens/Setup.tsx';
+import { AVAILABLE_LEVELS } from '../../../src/ui/screens/setupForm.ts';
 import { Welcome } from '../../../src/ui/screens/Welcome.tsx';
 
 afterEach(cleanup);
@@ -71,7 +72,14 @@ function App({ firstLaunch, onPlay }: { firstLaunch: boolean; onPlay: () => void
         table: () => <Table dispatch={dispatch} />,
         settings: () => (
           <Settings
-            settings={{ speed: 'normal', autoNext: true, amounts: 'chips' }}
+            settings={{
+              coachLevel: 'beginner',
+              botLevel: 'easy',
+              speed: 'normal',
+              autoNext: true,
+              amounts: 'chips',
+            }}
+            available={AVAILABLE_LEVELS}
             onChangeSettings={() => {}}
             onBack={back}
           />

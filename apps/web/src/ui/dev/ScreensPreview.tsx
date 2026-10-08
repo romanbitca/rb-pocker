@@ -14,7 +14,7 @@ import { Menu } from '../screens/Menu.tsx';
 import { ScreenSwitcher } from '../screens/ScreenSwitcher.tsx';
 import { Settings, type GameSettings } from '../screens/Settings.tsx';
 import { Setup } from '../screens/Setup.tsx';
-import type { AvailableLevels, SetupValues } from '../screens/setupForm.ts';
+import { AVAILABLE_LEVELS, type AvailableLevels, type SetupValues } from '../screens/setupForm.ts';
 import { Welcome } from '../screens/Welcome.tsx';
 import styles from './ScreensPreview.module.css';
 
@@ -24,7 +24,6 @@ export const SCREENS_PREVIEW_MARKER = 'rb-dev-screens-preview';
 /** The part of app/navigation.ts the flow needs (passed in: ui may not load app/ at run time). */
 export type PreviewNavigation = Pick<typeof Navigation, 'initialNav' | 'navigate'>;
 
-const STAGE_3: AvailableLevels = { bot: ['easy'], coach: ['beginner'] };
 const ALL_LEVELS: AvailableLevels = {
   bot: ['easy', 'medium', 'hard', 'expert'],
   coach: ['beginner', 'intermediate', 'advanced', 'exam'],
@@ -79,6 +78,7 @@ function SettingsState() {
   return (
     <Settings
       settings={settings}
+      available={AVAILABLE_LEVELS}
       onChangeSettings={(patch) => {
         log('changeSettings')(patch);
         setSettings((s) => ({ ...s, ...patch }));
@@ -99,7 +99,7 @@ const menuProps = {
 };
 
 const setupProps = {
-  available: STAGE_3,
+  available: AVAILABLE_LEVELS,
   onStartTable: log('startTable'),
   onBack: log('back'),
 };
@@ -254,7 +254,7 @@ function Flow({ navigation }: { navigation: PreviewNavigation }) {
         setup: () => (
           <Setup
             initial={settings}
-            available={STAGE_3}
+            available={AVAILABLE_LEVELS}
             onStartTable={(config, coach) => {
               if (session === null) return startConfig(config, coach);
               setPending({ config, coach });
@@ -275,6 +275,7 @@ function Flow({ navigation }: { navigation: PreviewNavigation }) {
         settings: () => (
           <Settings
             settings={settings}
+            available={AVAILABLE_LEVELS}
             onChangeSettings={(patch) => setSettings((s) => ({ ...s, ...patch }))}
             onBack={back}
           />

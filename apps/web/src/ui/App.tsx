@@ -7,13 +7,16 @@
  *   acceptance 9).
  * - The UI talks to the game only through the store (`useAppStore`, `dispatch`, §2.1): screens
  *   stay presentational; the small wrappers below give them their props.
+ * - The level cards (Setup, Settings) offer `AVAILABLE_LEVELS`; a choice is saved with the settings
+ *   (`pc.v1.profile`) and starts with the next table, hand or decision (§10).
  * - Motion (§12.8): `--speed` on the root element follows the speed setting (Normal 1, Fast 0.5,
  *   Instant 0); `data-motion` follows "reduce motion" (the system's choice unless the setting says
  *   otherwise), and `data-deck="two"` the two-colour deck.
  */
-import { useEffect } from 'react';
+import { lazy, Suspense, useCallback, useEffect } from 'react';
 import { useRegisterSW } from 'virtual:pwa-register/react';
 import {
+  selectBotCard,
   selectCanTopUp,
   selectCurrentTable,
   selectLayout,
@@ -26,6 +29,7 @@ import {
   type Speed,
 } from '../app/store.ts';
 import type { CoachLevel, TableConfig } from '../engine/types.ts';
+import { LoadBoundary } from './components/LoadBoundary.tsx';
 import { StorageBanner, Toasts } from './components/Notices.tsx';
 import { SvgSprite } from './components/SvgSprite.tsx';
 import { NewTableDialog, OutOfChipsDialog } from './screens/Dialogs.tsx';
@@ -34,15 +38,20 @@ import { Menu } from './screens/Menu.tsx';
 import { ScreenSwitcher } from './screens/ScreenSwitcher.tsx';
 import { Settings } from './screens/Settings.tsx';
 import { Setup } from './screens/Setup.tsx';
-import type { AvailableLevels } from './screens/setupForm.ts';
+import { AVAILABLE_LEVELS } from './screens/setupForm.ts';
 import { Table } from './screens/Table.tsx';
 import { Welcome } from './screens/Welcome.tsx';
 
 /** §12.8: animation and pause factor per speed. */
 const SPEED: Readonly<Record<Speed, number>> = { normal: 1, fast: 0.5, instant: 0 };
 
-/** Stage 3 offers Easy bots and the Beginner coach only (§18); the other levels say "Coming soon". */
-const STAGE_3_LEVELS: AvailableLevels = { bot: ['easy'], coach: ['beginner'] };
+/**
+ * The bot card's code is a lazy chunk (still precached for offline play, §15.1): the main bundle
+ * and the Table's DOM pay nothing for it until a seat is tapped (§15.3).
+ */
+const BotCardSheet = lazy(() =>
+  import('./components/BotCard.tsx').then((m) => ({ default: m.BotCard })),
+);
 
 // ---------------------------------------------------------------------------------------------
 // Screens wired to the store
@@ -95,7 +104,7 @@ function SetupScreen() {
   return (
     <Setup
       initial={initial}
-      available={STAGE_3_LEVELS}
+      available={AVAILABLE_LEVELS}
       onStartTable={start}
       onBack={() => dispatch({ type: 'back' })}
     />
@@ -105,6 +114,8 @@ function SetupScreen() {
 function SettingsScreen() {
   const dispatch = useDispatch();
   const settings = useAppStoreShallow((s) => ({
+    coachLevel: s.settings.coachLevel,
+    botLevel: s.settings.botLevel,
     speed: s.settings.speed,
     autoNext: s.settings.autoNext,
     amounts: s.settings.amounts,
@@ -112,6 +123,7 @@ function SettingsScreen() {
   return (
     <Settings
       settings={settings}
+      available={AVAILABLE_LEVELS}
       onChangeSettings={(patch) => dispatch({ type: 'settings', patch })}
       onBack={() => dispatch({ type: 'back' })}
     />
@@ -177,10 +189,34 @@ function NewTableOverlay() {
   );
 }
 
+/**
+ * A tapped seat's card (§9.3). ScreenSwitcher mounts this only while the `botCard` overlay is open;
+ * the overlay keeps the `sheet` gate closed, so no bot acts behind it. If there is nothing to show
+ * (the seat is gone) or the chunk cannot load, the overlay closes again: the gate never stays shut
+ * over an empty screen.
+ */
+function BotCardOverlay() {
+  const dispatch = useDispatch();
+  const card = useAppStore(selectBotCard);
+  const close = useCallback(() => dispatch({ type: 'close', overlay: 'botCard' }), [dispatch]);
+  useEffect(() => {
+    if (card === null) close();
+  }, [card, close]);
+  if (card === null) return null;
+  return (
+    <LoadBoundary onError={close}>
+      <Suspense fallback={null}>
+        <BotCardSheet card={card} onClose={close} />
+      </Suspense>
+    </LoadBoundary>
+  );
+}
+
 const OVERLAYS = {
   menu: () => <MenuOverlay />,
   outOfChips: () => <OutOfChipsOverlay />,
   newTable: () => <NewTableOverlay />,
+  botCard: () => <BotCardOverlay />,
 } as const;
 
 // ---------------------------------------------------------------------------------------------

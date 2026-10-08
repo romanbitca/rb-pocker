@@ -36,7 +36,7 @@ import { legalActions } from '../engine/legal.ts';
 import { observe } from '../engine/observe.ts';
 import { startHand } from '../engine/start.ts';
 import { step } from '../engine/step.ts';
-import { createTable, initialSlots, nextTable, topUp } from '../engine/table.ts';
+import { createTable, initialSlots, nextTable, topUp, withLevels } from '../engine/table.ts';
 import {
   ENGINE_VERSION,
   type BotLevel,
@@ -689,11 +689,14 @@ export class TableController {
     }
   }
 
-  /** Deals the next hand at `table` (§2.3 `startNextHand`). */
+  /** Deals the next hand at `table` (§2.3 `startNextHand`), at the bot level the settings name now. */
   private startHandAt(table: TableState): void {
     this.bumpEpoch();
+    const levelled = this.withSettingsLevel(table);
     const t =
-      table.nextHandSeq < this.handSeqFloor ? { ...table, nextHandSeq: this.handSeqFloor } : table;
+      levelled.nextHandSeq < this.handSeqFloor
+        ? { ...levelled, nextHandSeq: this.handSeqFloor }
+        : levelled;
     let hand: HandState;
     try {
       hand = startHand(t, this.seeds.handSeed(t.nextHandSeq));
@@ -728,7 +731,8 @@ export class TableController {
     const table = this.table as TableState;
     let next: TableState;
     try {
-      next = nextTable(table, h);
+      // The bots that sit down for the next hand are picked at the level it will be played at.
+      next = nextTable(this.withSettingsLevel(table), h);
     } catch (e) {
       this.voidHand(e, null);
       return;
@@ -1255,6 +1259,23 @@ export class TableController {
     } catch (e) {
       this.refused(e, null);
       return null;
+    }
+  }
+
+  /**
+   * §10: a bot level chosen in Settings starts with the next hand. `table` keeps its seated bots
+   * (names, personalities, stacks) and its per-seat overrides and gets the settings' table level;
+   * the hand dealt from it reads that level for its pods' labels and its bots' profiles. A hand
+   * that is already being played is not touched: its table is the one it was dealt from.
+   */
+  private withSettingsLevel(table: TableState): TableState {
+    const level = this.settings().botLevel;
+    if (table.config.botLevel === level) return table;
+    try {
+      return withLevels(table, level, table.config.seatLevels);
+    } catch (e) {
+      this.refused(e, null);
+      return table;
     }
   }
 

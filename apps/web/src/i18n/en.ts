@@ -27,7 +27,7 @@ export const en = {
       advanced: 'Mistakes only',
       exam: 'Test yourself',
     },
-    /** A level card that later stages switch on (§18 Stage 3). */
+    /** A level card that a later stage switches on (Hard, Expert, Advanced, Exam; §18). */
     comingSoon: 'Coming soon',
   },
 
@@ -111,10 +111,13 @@ export const en = {
     start: 'Start game',
   },
 
-  /** Settings: the Game section (PLAN §12.1; §18 Stage 3). Later stages add rows and sections. */
+  /** Settings: the Game section (PLAN §12.1; §18 Stages 3 and 5). Later stages add rows and sections. */
   settings: {
     title: 'Settings',
     game: 'Game',
+    /** The two level rows are the Setup cards (§10, §12.1); when a change starts is in the hint. */
+    coachLevel: { label: 'Coach level', hint: 'Changes start with your next decision.' },
+    botLevel: { label: 'Bot level', hint: 'Changes start with the next hand.' },
     speed: {
       label: 'Speed',
       hint: 'How fast the bots play and the cards move.',
@@ -259,6 +262,42 @@ export const en = {
     lag: 'Aggressive',
     station: 'Calls a lot',
     maniac: 'Wild',
+  },
+
+  /** What each personality is like and how to beat it: the bot card's text (PLAN Appendix F.6). */
+  personalityText: {
+    rock: {
+      description: 'Plays few hands. When they bet big, believe them.',
+      tip: 'Steal their blinds. Fold when they raise.',
+    },
+    tag: {
+      description: 'Plays good hands and bets them well.',
+      tip: "Play good hands. Don't bluff too much.",
+    },
+    lag: {
+      description: 'Plays many hands and bets often.',
+      tip: 'Call them down with good hands. Let them bluff.',
+    },
+    station: {
+      description: 'Calls with almost anything. Rarely raises.',
+      tip: 'Bet your good hands. Almost never bluff.',
+    },
+    maniac: {
+      description: 'Bets and raises with anything.',
+      tip: 'Wait for a good hand. Then let them bet for you.',
+    },
+  },
+
+  /** The bot card, the sheet for a tapped seat (PLAN §9.3, Appendix F.6, F.10). */
+  botCard: {
+    close: 'Close',
+    howToBeat: 'How to beat them',
+    stack: (chips: string) => `Stack: ${chips}`,
+    /**
+     * Hard and Expert hide the personality (§9.2). Stage 7 adds "Here is what you have seen:" and
+     * the stats under this line (§9.3).
+     */
+    unknownStyle: 'Style: unknown.',
   },
 
   /** Seat pods (PLAN §12.4, §12.12). */

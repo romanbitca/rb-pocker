@@ -45,6 +45,8 @@ export * from './equityViews.ts';
 export { missingFeatures, secureFeatures, type SecureFeatures } from './secure.ts';
 // All-in TV mode and the luck line (§7.6, chunk 4.7): the same, for the table.
 export * from './runoutViews.ts';
+// The bot card of a tapped seat (§9.3, chunk 5.10): the same.
+export * from './botCardViews.ts';
 
 // ---------------------------------------------------------------------------------------------
 // Appendix A.8 (the controller's modes and gates; `app/controller.ts` re-exports them)
@@ -250,6 +252,11 @@ export interface UiSlice {
    * (once per launch, `SafeStorage.onFailure`); [OK] sends `dismissStorageBanner`.
    */
   storageBanner: boolean;
+  /**
+   * The seat whose bot card is open (§9.3): set by the `botCard` command, which also opens the
+   * `botCard` overlay, and null whenever that overlay is not open.
+   */
+  botCardSeat: number | null;
 }
 
 /**
@@ -284,7 +291,12 @@ export type UiCommand =
   | { type: 'layout'; layout: Layout }
   | { type: 'dismissToast'; id: number }
   /** [OK] on the storage banner. */
-  | { type: 'dismissStorageBanner' };
+  | { type: 'dismissStorageBanner' }
+  /**
+   * A tap on a bot's seat (§9.3): opens the `botCard` overlay for `seat` (1..8). It closes the
+   * `sheet` gate, so no bot acts while the card is open; close it with `close` (Esc, ✕, Back).
+   */
+  | { type: 'botCard'; seat: number };
 
 /** Commands the TableController handles. */
 export type GameCommand =
@@ -327,6 +339,7 @@ const UI_COMMANDS: ReadonlySet<string> = new Set([
   'layout',
   'dismissToast',
   'dismissStorageBanner',
+  'botCard',
 ]);
 
 export const isUiCommand = (cmd: Command): cmd is UiCommand => UI_COMMANDS.has(cmd.type);
@@ -374,6 +387,7 @@ export function initialUi(firstLaunch = true): UiSlice {
     layout: 'portrait',
     toasts: [],
     storageBanner: false,
+    botCardSeat: null,
   });
 }
 
@@ -425,7 +439,27 @@ export function reduceUi(ui: UiSlice, cmd: UiCommand): UiSlice {
     case 'close': {
       const nav = navigate(ui.nav, cmd);
       if (nav === ui.nav) return ui;
-      return withGates({ ...ui, nav, screen: currentScreen(nav), overlays: nav.overlays });
+      return withGates({
+        ...ui,
+        nav,
+        screen: currentScreen(nav),
+        overlays: nav.overlays,
+        // Whatever closes the card (✕, Esc, Back, a new screen) also forgets its seat.
+        botCardSeat: nav.overlays.includes('botCard') ? ui.botCardSeat : null,
+      });
+    }
+    case 'botCard': {
+      // The hero (seat 0) is drawn by the hero strip and has no card.
+      if (!Number.isSafeInteger(cmd.seat) || cmd.seat < 1) return ui;
+      const nav = navigate(ui.nav, { type: 'open', overlay: 'botCard' });
+      if (nav === ui.nav && ui.botCardSeat === cmd.seat) return ui;
+      return withGates({
+        ...ui,
+        nav,
+        screen: currentScreen(nav),
+        overlays: nav.overlays,
+        botCardSeat: cmd.seat,
+      });
     }
     case 'gate': {
       const owner = cmd.owner ?? cmd.gate;

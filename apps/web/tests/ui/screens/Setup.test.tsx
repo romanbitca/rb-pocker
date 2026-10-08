@@ -5,7 +5,11 @@ import { cleanup, fireEvent, render, screen, within } from '@testing-library/rea
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import styles from '../../../src/ui/screens/Screen.module.css';
 import { Setup, type SetupProps } from '../../../src/ui/screens/Setup.tsx';
-import type { SetupValues } from '../../../src/ui/screens/setupForm.ts';
+import {
+  AVAILABLE_LEVELS,
+  type AvailableLevels,
+  type SetupValues,
+} from '../../../src/ui/screens/setupForm.ts';
 import { controlCount, cssClass, declaredSize, smallTargets } from './targets.ts';
 
 const PRIMARY = cssClass(styles, 'primary');
@@ -25,7 +29,7 @@ function renderSetup(extra: Partial<SetupProps> = {}) {
   const onBack = vi.fn();
   const props: SetupProps = {
     initial: DEFAULTS,
-    available: { bot: ['easy'], coach: ['beginner'] },
+    available: AVAILABLE_LEVELS,
     onStartTable,
     onBack,
     ...extra,
@@ -258,14 +262,19 @@ describe('Setup: chips and blinds (question 2)', () => {
 });
 
 describe('Setup: level cards (questions 3 and 4)', () => {
-  it('Stage 3: Easy and Beginner only; the others are disabled with "Coming soon"', () => {
+  const ALL: AvailableLevels = {
+    bot: ['easy', 'medium', 'hard', 'expert'],
+    coach: ['beginner', 'intermediate', 'advanced', 'exam'],
+  };
+
+  it('Stage 5: Easy and Medium bots, Beginner and Intermediate coach; the rest say "Coming soon"', () => {
     renderSetup();
     const bots = within(group('How good are the bots?')).getAllByRole(
       'radio',
     ) as HTMLInputElement[];
     expect(bots.map((r) => [r.value, r.checked, r.disabled])).toEqual([
       ['easy', true, false],
-      ['medium', false, true],
+      ['medium', false, false],
       ['hard', false, true],
       ['expert', false, true],
     ]);
@@ -274,39 +283,71 @@ describe('Setup: level cards (questions 3 and 4)', () => {
     ) as HTMLInputElement[];
     expect(coach.map((r) => [r.value, r.checked, r.disabled])).toEqual([
       ['beginner', true, false],
-      ['intermediate', false, true],
+      ['intermediate', false, false],
       ['advanced', false, true],
       ['exam', false, true],
     ]);
     // The card text is the §10.1 / §12.2 text; the caption says why it cannot be picked.
     expect(bots.map((r) => r.labels?.[0]?.textContent)).toEqual([
       'EasyBots make many mistakes. They call too much and rarely bluff.',
-      'MediumBots play okay but are easy to read.Coming soon',
+      'MediumBots play okay but are easy to read.',
       'HardBots play solid poker and read the board. Their style is hidden.Coming soon',
       'ExpertBots study how you play and adapt.Coming soon',
     ]);
     expect(coach.map((r) => r.labels?.[0]?.textContent)).toEqual([
       'BeginnerFull help',
-      'IntermediateHelp on tapComing soon',
+      'IntermediateHelp on tap',
       'AdvancedMistakes onlyComing soon',
       'ExamTest yourselfComing soon',
     ]);
   });
 
+  it('Medium bots and the Intermediate coach can be picked and are sent with Start', () => {
+    const { onStartTable } = renderSetup();
+    fireEvent.click(radio('How good are the bots?', /^Medium/));
+    fireEvent.click(radio('How much help do you want?', /^Intermediate/));
+    expect(radio('How good are the bots?', /^Medium/).checked).toBe(true);
+    expect(radio('How good are the bots?', /^Easy/).checked).toBe(false);
+    expect(radio('How much help do you want?', /^Intermediate/).checked).toBe(true);
+    fireEvent.click(start());
+    expect(onStartTable).toHaveBeenCalledWith(
+      expect.objectContaining({
+        botLevel: 'medium',
+        seatLevels: [null, null, null, null, null, null],
+      }),
+      'intermediate',
+    );
+  });
+
   it('a disabled card cannot be picked', () => {
     const { onStartTable } = renderSetup();
     fireEvent.click(radio('How good are the bots?', /^Hard/));
+    fireEvent.click(radio('How much help do you want?', /^Exam/));
     fireEvent.click(start());
-    expect(onStartTable.mock.calls[0]?.[0].botLevel).toBe('easy');
+    expect(onStartTable).toHaveBeenCalledWith(
+      expect.objectContaining({ botLevel: 'easy' }),
+      'beginner',
+    );
   });
 
   it('later stages open more levels through `available`', () => {
+    const { onStartTable } = renderSetup({ available: ALL });
+    expect(screen.queryByText('Coming soon')).toBeNull();
+    fireEvent.click(radio('How good are the bots?', /^Hard/));
+    fireEvent.click(radio('How much help do you want?', /^Exam/));
+    fireEvent.click(start());
+    expect(onStartTable).toHaveBeenCalledWith(
+      expect.objectContaining({ botLevel: 'hard' }),
+      'exam',
+    );
+  });
+
+  it('opens with the last-used Medium and Intermediate', () => {
     const { onStartTable } = renderSetup({
-      available: { bot: ['easy', 'medium'], coach: ['beginner', 'intermediate'] },
+      initial: { ...DEFAULTS, botLevel: 'medium', coachLevel: 'intermediate' },
     });
-    expect(screen.getAllByText('Coming soon')).toHaveLength(4);
-    fireEvent.click(radio('How good are the bots?', /^Medium/));
-    fireEvent.click(radio('How much help do you want?', /^Intermediate/));
+    expect(radio('How good are the bots?', /^Medium/).checked).toBe(true);
+    expect(radio('How much help do you want?', /^Intermediate/).checked).toBe(true);
     fireEvent.click(start());
     expect(onStartTable).toHaveBeenCalledWith(
       expect.objectContaining({ botLevel: 'medium' }),

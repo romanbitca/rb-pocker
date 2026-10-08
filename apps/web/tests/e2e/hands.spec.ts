@@ -62,7 +62,10 @@ test.describe('50 hands', () => {
         (s, i) => i > 0 && s.hole !== null && !hand.revealed.includes(i),
       );
       const hole = hand.seats[seat]?.hole;
-      const pod = document.querySelector(`[data-seat="${seat}"] > [role="group"]`);
+      // A pod is a button (it opens the bot card, §9.3), or a labelled group where it cannot.
+      const pod = document.querySelector(
+        `[data-seat="${seat}"] > button, [data-seat="${seat}"] > [role="group"]`,
+      );
       if (hole === null || hole === undefined || pod === null) return 'no hidden bot';
       const face = document.createElement('span');
       face.setAttribute('role', 'img');
