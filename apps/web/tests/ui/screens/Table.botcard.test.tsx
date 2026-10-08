@@ -149,11 +149,16 @@ describe('the card is mounted only while it is open', () => {
     expect(document.querySelectorAll('*').length).toBe(nodes);
   });
 
-  it('a pod costs no DOM node: the button replaces the old group', () => {
+  it('a pod costs no DOM node: the button is the box the labelled group was', () => {
     renderTable();
-    const first = pods()[0] as HTMLButtonElement;
-    expect(first.parentElement?.children).toHaveLength(1 + (first.nextElementSibling ? 1 : 0));
     expect(document.querySelectorAll('[data-seat] > [role="group"]')).toHaveLength(0);
+    const seats = [...document.querySelectorAll('[data-seat]')];
+    expect(seats).toHaveLength(5);
+    // A seat holds its pod (first) and, when it has one, its bet chip: nothing else.
+    for (const seat of seats) {
+      expect(seat.firstElementChild?.tagName).toBe('BUTTON');
+      expect(seat.children.length).toBeLessThanOrEqual(2);
+    }
   });
 });
 

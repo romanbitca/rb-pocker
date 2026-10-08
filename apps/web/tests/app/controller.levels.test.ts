@@ -7,7 +7,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { TIMING } from '../../src/app/controller.ts';
-import { selectSessionLine } from '../../src/app/store.ts';
+import { seatView, selectSessionLine } from '../../src/app/store.ts';
 import { PERSONALITY_LISTS } from '../../src/engine/table.ts';
 import type {
   BotLevel,
@@ -210,10 +210,22 @@ describe('a new bot level starts with the next hand (§10)', () => {
     expect(h.controller.logs().errors).toEqual([]);
   });
 
-  it('a bot that sits down for the next hand is picked from the new level’s list', async () => {
-    // Heads-up with 10 big blinds each, the hero shoving every hand: the bot folds its way to
-    // zero and is replaced by the next entry of its seat's list (§9.3). The level was changed in
-    // the first hand, so the newcomer comes from the Hard list, not the Easy one.
+  it('the table for the next hand already has the new level when a hand ends', async () => {
+    const h = makeHarness({ settings: { autoNext: false } });
+    h.dispatch({ type: 'play' });
+    h.dispatch({ type: 'settings', patch: { botLevel: 'medium' } });
+    await drive(h, { hands: 1, hero: passive });
+    // The hand just ended and the next one is not dealt: its table is ready, at Medium.
+    expect(h.state().game.mode).toBe('handEnd');
+    expect(h.state().game.next?.config.botLevel).toBe('medium');
+    expect(table(h).config.botLevel).toBe('easy'); // the hand on the table is the old one
+  });
+
+  it('a bot that sits down at the end of a hand is picked at the level the next hand will use', async () => {
+    // Heads-up with 10 big blinds each, the hero shoving every hand: the bot folds its way to zero.
+    // Every hand is dealt at Easy and the setting moves to Hard while it is played, so the bust is
+    // always in a hand whose own table says Easy; the bot that sits down still comes from the Hard
+    // list (§9.3): entry 1 of the list is "station" at Easy and "lag" at Hard.
     const shove = (legal: LegalActions): PlayerAction => {
       if (legal.raise !== null) return { type: 'raise', to: legal.raise.max };
       if (legal.bet !== null) return { type: 'bet', to: legal.bet.max };
@@ -223,24 +235,61 @@ describe('a new bot level starts with the next hand (§10)', () => {
       settings: { players: 2, startingStack: 200, sb: 10, bb: 20, botLevel: 'easy' },
     });
     h.dispatch({ type: 'play' });
-    const before = table(h).slots[1]?.playerId;
-    h.dispatch({ type: 'settings', patch: { botLevel: 'hard' } });
+    const first = table(h).slots[1]?.playerId;
+    let switched = 0;
     let replaced: TableState | null = null;
-    for (let n = 0; n < 60 && replaced === null; n++) {
-      await drive(h, { hands: 1, hero: shove });
+    for (let n = 0; n < 80 && replaced === null; n++) {
+      h.dispatch({ type: 'settings', patch: { botLevel: 'easy' } }); // the next hand: Easy
+      await drive(h, {
+        hands: 1,
+        hero: shove,
+        beforeStep: () => {
+          const now = h.state().game.hand;
+          if (now === null || now.phase === 'complete' || now.handSeq === switched) return;
+          switched = now.handSeq; // a new hand is being played: its table says Easy …
+          expect(table(h).config.botLevel).toBe('easy');
+          h.dispatch({ type: 'settings', patch: { botLevel: 'hard' } }); // … the setting says Hard
+        },
+      });
       const next = h.state().game.next;
-      if (next !== null && next.slots[1]?.playerId !== before) replaced = next;
+      if (next !== null && next.slots[1]?.playerId !== first) replaced = next;
     }
     const next = replaced as TableState | null;
     expect(next).not.toBeNull();
-    expect(next?.config.botLevel).toBe('hard');
-    // The first bot to sit down takes entry 1 of the list: the two levels differ there.
     expect(PERSONALITY_LISTS.easy[1]).toBe('station');
     expect(PERSONALITY_LISTS.hard[1]).toBe('lag');
     expect(next?.personalityCursor).toBe(2);
     expect(next?.slots[1]?.personality).toBe('lag');
     expect(next?.slots[1]?.stack).toBe(200);
+    expect(next?.config.botLevel).toBe('hard');
   }, 60_000);
+});
+
+describe('one rule for the pods and the brain (§9.2 "Personality label visible")', () => {
+  it.each<BotLevel>(['easy', 'medium', 'hard', 'expert'])(
+    'at %s, with a Hard and an Easy seat: the brain is told a personality exactly where a pod shows one',
+    async (botLevel) => {
+      const spy = spyBrain();
+      const h = makeHarness({
+        brain: spy.client,
+        settings: { players: 4, botLevel, seatLevels: [null, 'hard', null, 'easy'] },
+      });
+      h.dispatch({ type: 'play' });
+      await drive(h, { hands: 1, hero: passive });
+      expect(spy.requests.length).toBeGreaterThan(0);
+      const done = hand(h);
+      for (const req of spy.requests) {
+        for (const seat of [1, 2, 3]) {
+          expect(req.obs.visiblePersonality[seat], `seat ${seat}`).toBe(
+            seatView(done, table(h), seat).personality,
+          );
+        }
+      }
+      // Seat 1 is always hidden (own level Hard), seat 3 always shown (own level Easy).
+      expect(seatView(done, table(h), 1).personality).toBeNull();
+      expect(seatView(done, table(h), 3).personality).not.toBeNull();
+    },
+  );
 });
 
 describe('the coach level (§10: from the next decision)', () => {
