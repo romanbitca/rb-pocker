@@ -6,10 +6,11 @@
  * - The app grades in `brain.worker` (`brainGrader`): a `grade` job in the slot 'grade', with the
  *   hero's observation at the decision, the action taken, the HUD's final win chance when the
  *   controller has it (else null: the worker computes the same number, §8.2) and the decisionId.
- *   The worker's `grade()` arrives with chunk 6.1; until then it answers `error`, so every
- *   decision is recorded with `grade: null` and nothing pauses.
- * - Tests (and the `?script=` hook) pass graders of their own: a fixed grade, a slow one, one that
- *   fails, one that never answers.
+ *   The worker answers with chunk 6.1's `grade()` (`brain/grade.ts`), from the same deliberation
+ *   as the decision's hint (§8.11). The `?script=` hook grades the same way (its bots are scripted,
+ *   its coach is brain.worker).
+ * - Unit tests pass graders of their own (`tests/app/graders.ts`): a fixed grade, a slow one, one
+ *   that fails, one that never answers; `tests/app/controller.grade.test.ts` runs the real one.
  *
  * ⚠️ Only an `Observation` crosses (§4.8, pitfall 13): never the `HandState`.
  */

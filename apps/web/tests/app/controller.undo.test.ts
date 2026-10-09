@@ -3,7 +3,8 @@
  * chunk 6.2): the §11.5 tests that need the controller, Stage 6 acceptance 3 and 4 at the
  * controller level, the pause before any new card or bot action, and the session (§11.3 r7). The
  * pure parts and the 10,000-undo chi-square test are in `undo.test.ts`. Grades come from stub
- * graders (`graders.ts`): the real grader is chunk 6.1's. Fake timers throughout.
+ * graders (`graders.ts`); `controller.grade.test.ts` runs chunk 6.1's real grade through the same
+ * flow. Fake timers throughout.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { HERO, TIMING } from '../../src/app/controller.ts';

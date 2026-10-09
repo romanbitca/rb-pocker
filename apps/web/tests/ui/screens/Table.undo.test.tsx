@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 /**
  * Undo and the feedback card on the Table, with the real store and controller (PLAN §11, §10.2,
- * §12.3, §12.5, §12.6; chunk 6.2). Grades come from stub graders (the real grader is 6.1's).
+ * §12.3, §12.5, §12.6; chunk 6.2). Grades come from stub graders (the real one, chunk 6.1's, runs
+ * in `tests/app/controller.grade.test.ts` and the E2E specs).
  * - The toolbar Undo: disabled until the grade is in, then a tap takes the move back; after that
  *   it is disabled again, and U does nothing (§11.5: "UI disabled, keyboard shortcut ignored").
  * - The feedback card: over the table with the action bar disabled, Undo / Keep my move.

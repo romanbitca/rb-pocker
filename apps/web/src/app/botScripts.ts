@@ -1,23 +1,28 @@
 /**
  * Scripted bots for development and E2E builds: `?script=<name>` (PLAN §18 Stage 6, next to the
- * Stage 3 `?seed=` hook). The bots follow a named script instead of `brain.worker`, and so do the
- * hero's grades until chunk 6.1 brings `grade()`: with a fixed seed a run is the same every time,
- * e.g. the scripted blunder of Stage 6 acceptance 2.
+ * Stage 3 `?seed=` hook). The bots follow a named script instead of `brain.worker`'s `decide()`;
+ * the coach does not: hints and grades still come from the real `brain.worker` (chunk 6.1), so a
+ * scripted run is graded exactly as the app grades. With a fixed seed a run is the same every
+ * time (the coach is deterministic too, §2.4), e.g. the scripted blunder of Stage 6 acceptance 2.
  *
  * ⚠️ Loaded only through `app/testHooks.ts`, which main.tsx imports behind `__PC_TEST_HOOKS__`:
  * never in a production build (tests/app/testHooks.bundle.test.ts searches the built files for
  * `SCRIPT_HOOK_MARKER`).
  *
- * The scripted "worker" runs on the main thread inside a real brain client (`createBrainClient`),
- * so job ids, epochs, cancels and timeouts behave as with `brain.worker`; replies arrive on a later
- * microtask, like `postMessage`. It sees what the worker would see: observations only (§4.8).
+ * The scripted "worker" sits in front of the real one inside a real brain client
+ * (`createBrainClient`), so job ids, epochs, cancels, timeouts and restarts behave as with
+ * `brain.worker` alone: a `botDecision` is answered from the script on a later microtask, like
+ * `postMessage`; every other message (hint, grade, bench, cancel) goes on to `brain.worker`, whose
+ * replies come back through the same client. The script sees what the worker would see:
+ * observations only (§4.8).
  */
-import { feedbackLine } from '../brain/explain.ts';
-import type { Decision, GradeResult } from '../brain/types.ts';
+import type { Decision } from '../brain/types.ts';
 import type { LegalActions, Observation, PlayerAction } from '../engine/types.ts';
 import type { BrainReply, BrainRequest } from '../workers/protocol.ts';
+import { spawnBrainWorker } from '../workers/spawn.ts';
 import {
   createBrainClient,
+  fromWorker,
   type BrainClient,
   type ClientTimers,
   type SpawnWorker,
@@ -26,13 +31,9 @@ import {
 /** Present in every build that has the script hook, and in no other (the bundle test looks). */
 export const SCRIPT_HOOK_MARKER = 'rb-pc-script-hook-v1';
 
-type GradeRequest = Extract<BrainRequest, { kind: 'grade' }>;
-
 export interface BotScript {
   /** What the bot at `obs.seat` does (always legal). */
   act(obs: Observation): PlayerAction;
-  /** The grade of a hero decision; null answers `error` (as brain.worker before 6.1). */
-  grade(req: GradeRequest): GradeResult | null;
   /** The bots' think time at Normal speed, ms (§9.8). */
   thinkMs: number;
 }
@@ -40,69 +41,17 @@ export interface BotScript {
 const passive = (legal: LegalActions): PlayerAction =>
   legal.canCheck ? { type: 'check' } : { type: 'call' };
 
-/** §0.3: the price of the observer's call, with the capped pot it can win. */
-function needOf(obs: Observation): number {
-  const toCall = obs.legal.callAmount;
-  if (toCall <= 0) return 0;
-  const own = obs.totalBets[obs.seat] ?? 0;
-  let winPot = own;
-  obs.totalBets.forEach((bet, s) => {
-    if (s !== obs.seat && obs.dealtIn[s] === true) winPot += Math.min(bet, own + toCall);
-  });
-  return toCall / (winPot + toCall);
-}
-
-/** A Best grade: the move taken was the coach's. */
-function best(req: GradeRequest): GradeResult {
-  return {
-    decisionId: req.decisionId,
-    grade: 'best',
-    rec: req.taken,
-    taken: req.taken,
-    lossChips: 0,
-    lossPot: 0,
-    lossMilliBB: 0,
-    leak: null,
-    trace: [],
-    feedback: null,
-  };
-}
-
-/** A fold facing a bet with the best hand: a Big mistake; the coach calls (F.5 price row). */
-function foldedTheBest(req: GradeRequest): GradeResult {
-  const { obs } = req;
-  const pot = obs.pot;
-  return {
-    decisionId: req.decisionId,
-    grade: 'blunder',
-    rec: { type: 'call' },
-    taken: req.taken,
-    lossChips: pot,
-    lossPot: 1,
-    lossMilliBB: Math.round((1000 * pot) / obs.bb),
-    leak: 'overfold',
-    trace: [],
-    feedback: feedbackLine({
-      row: 'foldedPrice',
-      E: req.eRandom ?? 1,
-      need: needOf(obs),
-      rangeAdjust: false,
-    }),
-  };
-}
-
 /** The named scripts. */
 export const BOT_SCRIPTS: Readonly<Record<string, BotScript>> = {
-  /** Everyone checks or calls; every hero decision is Best. */
+  /** Everyone checks or calls. */
   passive: {
     thinkMs: 400,
     act: (obs) => passive(obs.legal),
-    grade: best,
   },
   /**
    * Bots check and call; on the river the first bot that can open bets the minimum, a small bet.
-   * A hero fold facing a bet is a Big mistake (the acceptance 2 seed gives the hero the nuts on
-   * that river); every other hero decision is Best.
+   * With `?seed=46` and 3 players the hero holds the nut flush on the river of hand 1 and faces
+   * that bet: folding there is the scripted blunder of Stage 6 acceptance 2.
    */
   'river-min-bet': {
     thinkMs: 400,
@@ -110,8 +59,6 @@ export const BOT_SCRIPTS: Readonly<Record<string, BotScript>> = {
       obs.street === 'river' && obs.legal.bet !== null
         ? { type: 'bet', to: obs.legal.bet.min }
         : passive(obs.legal),
-    grade: (req) =>
-      req.taken.type === 'fold' && req.obs.legal.callAmount > 0 ? foldedTheBest(req) : best(req),
   },
 };
 
@@ -139,55 +86,54 @@ function decisionOf(action: PlayerAction): Decision {
   };
 }
 
-function answer(script: BotScript, msg: BrainRequest): BrainReply | null {
-  switch (msg.kind) {
-    case 'cancel':
-      return null;
-    case 'botDecision':
-      return {
-        kind: 'botDecision',
-        jobId: msg.jobId,
-        epoch: msg.epoch,
-        decision: decisionOf(script.act(msg.obs)),
-        thinkMs: script.thinkMs,
-      };
-    case 'grade': {
-      const result = script.grade(msg);
-      return result === null
-        ? { kind: 'error', jobId: msg.jobId, epoch: msg.epoch, message: 'grade: not scripted' }
-        : { kind: 'grade', jobId: msg.jobId, epoch: msg.epoch, result };
-    }
-    case 'hint':
-      return { kind: 'error', jobId: msg.jobId, epoch: msg.epoch, message: 'hint: scripted bots' };
-    case 'bench':
-      return { kind: 'error', jobId: msg.jobId, epoch: 0, message: 'bench: scripted bots' };
-  }
-}
-
-/** A "worker" that answers from `script` on the main thread. */
-function spawnScript(script: BotScript): SpawnWorker<BrainRequest, BrainReply> {
+/**
+ * A "worker" that answers bot decisions from `script` on the main thread and passes everything
+ * else to the coach's worker, started by `coach` with the same events.
+ */
+function spawnScript(
+  script: BotScript,
+  coach: SpawnWorker<BrainRequest, BrainReply>,
+): SpawnWorker<BrainRequest, BrainReply> {
   return (events) => {
     let live = true;
+    const worker = coach(events);
     return {
       postMessage(message) {
         if (!live) throw new Error('posted to a stopped script');
+        if (message.kind !== 'botDecision') {
+          worker.postMessage(message);
+          return;
+        }
         const copy = structuredClone(message); // what a worker would receive
         void Promise.resolve().then(() => {
           if (!live) return;
-          const reply = answer(script, copy);
-          if (reply !== null) events.message(reply);
+          events.message({
+            kind: 'botDecision',
+            jobId: copy.jobId,
+            epoch: copy.epoch,
+            decision: decisionOf(script.act(copy.obs)),
+            thinkMs: script.thinkMs,
+          });
         });
       },
       terminate() {
         live = false;
+        worker.terminate();
       },
     };
   };
 }
 
-/** The brain client for `?script=<name>`. */
-export function scriptedBrain(name: string, timers: ClientTimers): BrainClient {
+/**
+ * The brain client for `?script=<name>`: the script's bots, and the coach of `coach` (default: a
+ * real `brain.worker`; tests pass a fake one).
+ */
+export function scriptedBrain(
+  name: string,
+  timers: ClientTimers,
+  coach: SpawnWorker<BrainRequest, BrainReply> = fromWorker(spawnBrainWorker),
+): BrainClient {
   const script = BOT_SCRIPTS[name];
   if (script === undefined) throw new Error(`no bot script "${name}"`);
-  return createBrainClient(spawnScript(script), timers);
+  return createBrainClient(spawnScript(script, coach), timers);
 }
