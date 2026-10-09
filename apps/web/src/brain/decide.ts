@@ -284,7 +284,12 @@ export function valueMediumRule(
   if (seen.bucket !== 'medium' || rule.action.type !== 'check') return rule;
   const bet = betOf('thinValue', seen, spot, profile);
   if (bet === null || bet.type !== 'bet') return rule;
-  const data = { handName: seen.handInfo.name, E: seen.eRange, size: bet.to, sizeBB: bet.to / spot.bb };
+  const data = {
+    handName: seen.handInfo.name,
+    E: seen.eRange,
+    size: bet.to,
+    sizeBB: bet.to / spot.bb,
+  };
   return { action: bet, kind: kindOf(spot.legal, bet), trace: [{ code: 'THIN_VALUE', data }] };
 }
 

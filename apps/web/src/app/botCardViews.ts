@@ -60,7 +60,8 @@ export function seenAggression(stats: SeatStats): SeenAggression | null {
 /** What `stats` show (null when the seat has not made a preflop decision yet). */
 export function seenPlay(stats: SeatStats | null): SeenPlay | null {
   if (stats === null || stats.vpip[1] === 0) return null;
-  const pct = ([x, n]: readonly [number, number]): number => (n === 0 ? 0 : Math.round((100 * x) / n));
+  const pct = ([x, n]: readonly [number, number]): number =>
+    n === 0 ? 0 : Math.round((100 * x) / n);
   return {
     hands: stats.vpip[1],
     plays: pct(stats.vpip),
