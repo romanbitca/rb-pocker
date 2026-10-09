@@ -72,6 +72,7 @@ import {
   type ObserveExtras,
   type PlayerAction,
   type ReplayRecord,
+  type SeatStats,
   type TableConfig,
   type TableState,
 } from '../engine/types.ts';
@@ -87,6 +88,7 @@ import type {
 } from '../persist/schema.ts';
 import { clearSession, loadSession, saveSession } from '../persist/session.ts';
 import type { SafeStorage } from '../persist/storage.ts';
+import { updateSeatStats } from '../brain/opponentStats.ts';
 import { profileFor } from '../brain/profiles.ts';
 import type { BrainProfile, GradeResult } from '../brain/types.ts';
 import type { BrainReply, BrainRequest } from '../workers/protocol.ts';
@@ -104,6 +106,7 @@ import {
 import { addHand, type ReviewHand } from './review.ts';
 import { handEndViewOf } from './tableViews.ts';
 import {
+  NO_SEAT_STATS,
   updateUi,
   type AppStore,
   type ControllerMode,
@@ -211,6 +214,61 @@ export function botSeed(
 /** §4.5: the safest legal action, check if legal, else fold. */
 export function safestAction(legal: LegalActions): PlayerAction {
   return legal.canCheck ? { type: 'check' } : { type: 'fold' };
+}
+
+/** The hero's `playerId` (Appendix A.3 `PlayerSlot`): the key of the hero model in `seatStats`. */
+export const HERO_ID = 'hero';
+
+/**
+ * Only the hero's entry of `stats` (a new table: no bot seen yet), or `heroModel` instead when it
+ * holds at least one hand (the profile's, §9.5).
+ */
+export function heroOnly(
+  stats: Readonly<Record<string, SeatStats>>,
+  heroModel?: SeatStats,
+): Readonly<Record<string, SeatStats>> {
+  const hero = heroModel !== undefined && heroModel.hands > 0 ? heroModel : stats[HERO_ID];
+  return hero === undefined ? NO_SEAT_STATS : { [HERO_ID]: hero };
+}
+
+/**
+ * `stats` after the finished hand `h` (§9.5, `updateSeatStats`): every seat dealt in gets the
+ * hand added under its `playerId` in `table` (the table it was dealt from).
+ */
+export function withHandStats(
+  stats: Readonly<Record<string, SeatStats>>,
+  table: TableState,
+  h: HandState,
+): Readonly<Record<string, SeatStats>> {
+  const next: Record<string, SeatStats> = { ...stats };
+  h.seats.forEach((seat, i) => {
+    const id = table.slots[i]?.playerId;
+    if (!seat.dealtIn || id === undefined) return;
+    next[id] = updateSeatStats(stats[id] ?? null, h.log, i);
+  });
+  return next;
+}
+
+/** The entries of `stats` for the players seated at `table` (the others have left it). */
+export function seatedStats(
+  stats: Readonly<Record<string, SeatStats>>,
+  table: TableState,
+): Readonly<Record<string, SeatStats>> {
+  const out: Record<string, SeatStats> = {};
+  let all = true;
+  for (const id of Object.keys(stats)) {
+    if (table.slots.some((slot) => slot.playerId === id)) out[id] = stats[id] as SeatStats;
+    else all = false;
+  }
+  return all ? stats : out;
+}
+
+/** The observation's per-seat statistics (A.4 `ObserveExtras.seatStats`): null for a player not seen yet. */
+export function statsBySeat(
+  stats: Readonly<Record<string, SeatStats>>,
+  table: TableState,
+): (SeatStats | null)[] {
+  return table.slots.map((slot) => stats[slot.playerId] ?? null);
 }
 
 /** What the log calls a brain job that gave no decision (§12.14). */
@@ -462,6 +520,13 @@ export class TableController {
   private handSeqFloor = 1;
   /** Bots that sat down at the last `nextTable`; their toast shows when the next hand starts. */
   private newcomers: string[] = [];
+  /**
+   * §9.5 seat statistics by `playerId`, updated at hand end only, so every observation of a hand
+   * sees the same numbers. The hero's ('hero') is the hero model: it stays across tables, in
+   * memory until Stage 8 commits it to `profile.heroModel`; a bot's starts when it sits down
+   * (a replaced bot's new `playerId` has none) and goes with its table.
+   */
+  private seatStats: Readonly<Record<string, SeatStats>> = NO_SEAT_STATS;
   private visibleTimer: unknown = null;
   private visibleSeq = 0;
   private readonly toastTimers = new Map<number, unknown>();
@@ -531,6 +596,7 @@ export class TableController {
       const now = this.now();
       const loaded = loadProfile(storage, { now });
       this.profile = loaded.profile;
+      this.seatStats = heroOnly(NO_SEAT_STATS, loaded.profile.heroModel);
       this.store.setState({ settings: sanitize(loaded.profile.settings, {}) });
       if (loaded.status === 'reset') {
         this.error('profile reset', loaded.problem);
@@ -652,6 +718,7 @@ export class TableController {
     if (this.table === null && this.hand === null && this.next === null) {
       const table = this.buildTable();
       if (table === null) return;
+      this.seatStats = heroOnly(this.seatStats); // a new table: its bots have not been seen yet
       this.beginSession();
       this.startHandAt(table);
     } else if (this.heroBust()) {
@@ -686,8 +753,10 @@ export class TableController {
       await this.finishHeadless();
       if (token !== this.newTableSeq) return;
     }
-    // Stage 8 commits the finished hand here (§14.3) and ends the session (§14.4).
+    // Stage 8 commits the finished hand here (§14.3) and ends the session (§14.4). A hand
+    // finished headless (the hero folded by the app, §3.1) adds nothing to the statistics.
     this.closeTable();
+    this.seatStats = heroOnly(this.seatStats); // a new table: its bots have not been seen yet
     this.beginSession();
     this.startHandAt(table);
     this.navigateToTable();
@@ -882,6 +951,8 @@ export class TableController {
     this.next = null;
     this.inputs = [];
     this.revealShown = false;
+    // The players who left the table at the last hand end take their statistics with them.
+    this.seatStats = seatedStats(this.seatStats, t);
     this.handSeqFloor = Math.max(this.handSeqFloor, hand.handSeq + 1);
     this.dealUntil = this.timers.now() + this.dealMs(hand);
     this.resetDecisions();
@@ -914,6 +985,8 @@ export class TableController {
     this.newcomers = next.slots
       .filter((slot, i) => slot.playerId !== table.slots[i]?.playerId)
       .map((slot) => slot.name);
+    // §9.5: the seat statistics change only here, at hand end (a newcomer has none yet).
+    this.seatStats = withHandStats(this.seatStats, table, h);
     this.next = next;
     this.mode = 'handEnd';
     this.remember(h);
@@ -1690,6 +1763,14 @@ export class TableController {
       this.resumeDecision();
     }
     const t = session.table;
+    // §9.5: the saved statistics, so a resumed hand has the same observations (and hints); the
+    // hero model the profile holds when the session has none for the hero.
+    const stats: Record<string, SeatStats> = { ...heroOnly(this.seatStats) };
+    t.slots.forEach((slot, i) => {
+      const s = session.seatStats[i];
+      if (s !== null && s !== undefined) stats[slot.playerId] = s;
+    });
+    this.seatStats = stats;
     this.handSeqFloor = Math.max(
       this.handSeqFloor,
       t.nextHandSeq,
@@ -1720,7 +1801,7 @@ export class TableController {
       handInputs: withHand ? this.inputs : [],
       meta: withHand ? this.meta : emptyHandMeta(),
       undoSnapshot: withHand ? this.undoSnapshot : null,
-      seatStats: table.slots.map(() => null),
+      seatStats: statsBySeat(this.seatStats, table),
       resumeAfterUpdate: false,
     };
     const saved = saveSession(this.storage, session);
@@ -1821,11 +1902,14 @@ export class TableController {
     this.ui({ type: 'go', screen: 'table' });
   }
 
-  /** What `observe` adds for the brain (§4.8, A.4). Stage 5 fills the seat statistics (§9.5). */
+  /**
+   * What `observe` adds for the brain (§4.8, A.4): the seat statistics as at hand start (§9.5),
+   * the labels a seat's level shows, and the levels.
+   */
   private extras(table: TableState): ObserveExtras {
     const levels = table.slots.map((_, i) => table.config.seatLevels[i] ?? table.config.botLevel);
     return {
-      seatStats: table.slots.map(() => null),
+      seatStats: statsBySeat(this.seatStats, table),
       visiblePersonality: table.slots.map((slot, i) =>
         slot.kind === 'bot' && (levels[i] === 'easy' || levels[i] === 'medium')
           ? slot.personality
@@ -1908,6 +1992,7 @@ export class TableController {
       g.next !== this.next ||
       g.legal !== legal ||
       g.heroBust !== heroBust ||
+      g.seatStats !== this.seatStats ||
       g.diag !== this.diag ||
       g.canUndo !== canUndo ||
       g.feedback !== this.feedback ||
@@ -1922,6 +2007,7 @@ export class TableController {
           next: this.next,
           legal,
           heroBust,
+          seatStats: this.seatStats,
           diag: this.diag,
           canUndo,
           feedback: this.feedback,

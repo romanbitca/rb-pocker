@@ -5,8 +5,8 @@
  * accepts (§3.2), and Start stays disabled until there is one. "More options" (bot speed, per-seat
  * levels, four-colour cards) arrives with the stages that build those settings.
  *
- * Level cards that are not available yet are shown disabled with "Coming soon" (§18: Stage 5 offers
- * Easy and Medium bots, Beginner and Intermediate coach; see `AVAILABLE_LEVELS`).
+ * Level cards that are not available yet are shown disabled with "Coming soon" (§18: from chunk
+ * 7.1 all four bot levels, Beginner and Intermediate coach; see `AVAILABLE_LEVELS`).
  */
 import { useId, useState, type FormEvent, type ReactNode } from 'react';
 import type { CoachLevel, TableConfig } from '../../engine/types.ts';

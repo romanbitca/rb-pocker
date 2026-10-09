@@ -42,6 +42,7 @@ const card = (extra: Partial<BotCardView> = {}): BotCardView => ({
   name: 'Anna',
   personality: 'rock',
   stack: 1250,
+  seen: null,
   ...extra,
 });
 
@@ -120,6 +121,33 @@ describe('BotCard at Hard and Expert (the personality is hidden)', () => {
     }
     expect(dialog.hasAttribute('aria-describedby')).toBe(false);
     expect(screen.getByRole('dialog', { name: 'Anna Style: unknown.' })).toBe(dialog);
+    // Not seen yet (chunk 7.1): it says so, with no numbers.
+    expect(within(dialog).getByText('You have not seen them play yet.')).toBeTruthy();
+    expect(dialog.textContent).not.toContain('Here is what you have seen:');
+    expect(dialog.textContent).not.toContain('%');
+  });
+
+  it('says what the player has seen it do, in plain words (§9.3, chunk 7.1)', () => {
+    renderCard({
+      personality: null,
+      seen: { hands: 41, plays: 34, raises: 20, aggression: 'betsOften' },
+    });
+    const dialog = sheet();
+    expect(within(dialog).getByText('Style: unknown.')).toBeTruthy();
+    expect(within(dialog).getByText('Here is what you have seen:')).toBeTruthy();
+    expect(within(dialog).getByText('Plays 34% of hands · Raises 20% · Bets often')).toBeTruthy();
+    expect(within(dialog).getByText('Hands seen: 41')).toBeTruthy();
+    expect(within(dialog).getByText('Stack: 1,250')).toBeTruthy();
+  });
+
+  it.each([
+    ['betsSometimes', 'Plays 12% of hands · Raises 9% · Bets sometimes'],
+    ['mostlyCalls', 'Plays 12% of hands · Raises 9% · Mostly calls'],
+    [null, 'Plays 12% of hands · Raises 9%'],
+  ] as const)('aggression %s: "%s"', (aggression, line) => {
+    renderCard({ personality: null, seen: { hands: 1200, plays: 12, raises: 9, aggression } });
+    expect(within(sheet()).getByText(line)).toBeTruthy();
+    expect(within(sheet()).getByText('Hands seen: 1,200')).toBeTruthy();
   });
 });
 
