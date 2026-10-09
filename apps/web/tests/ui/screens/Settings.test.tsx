@@ -125,27 +125,35 @@ describe('Settings: coach level and bot level (PLAN §10, §12.1)', () => {
     ]);
   });
 
-  it('bot level: Easy and Medium can be picked; Hard and Expert say "Coming soon"', () => {
+  it('bot level: all four can be picked (Hard and Expert from chunk 7.1)', () => {
     const { onChangeSettings } = renderSettings();
     expect(state('Bot level')).toEqual([
       ['easy', true, false],
       ['medium', false, false],
-      ['hard', false, true],
-      ['expert', false, true],
+      ['hard', false, false],
+      ['expert', false, false],
     ]);
     expect(radios('Bot level').map((r) => r.labels?.[0]?.textContent)).toEqual([
       'EasyBots make many mistakes. They call too much and rarely bluff.',
       'MediumBots play okay but are easy to read.',
-      'HardBots play solid poker and read the board. Their style is hidden.Coming soon',
-      'ExpertBots study how you play and adapt.Coming soon',
+      'HardBots play solid poker and read the board. Their style is hidden.',
+      'ExpertBots study how you play and adapt.',
     ]);
     fireEvent.click(radios('Bot level')[1] as HTMLInputElement);
-    expect(onChangeSettings).toHaveBeenCalledTimes(1);
-    expect(onChangeSettings).toHaveBeenCalledWith({ botLevel: 'medium' });
+    fireEvent.click(radios('Bot level')[2] as HTMLInputElement);
+    fireEvent.click(radios('Bot level')[3] as HTMLInputElement);
+    expect(onChangeSettings.mock.calls).toEqual([
+      [{ botLevel: 'medium' }],
+      [{ botLevel: 'hard' }],
+      [{ botLevel: 'expert' }],
+    ]);
   });
 
   it('a card that is not available yet sends nothing', () => {
-    const { onChangeSettings } = renderSettings();
+    const { onChangeSettings } = renderSettings(GAME, {
+      ...AVAILABLE_LEVELS,
+      bot: ['easy', 'medium'],
+    });
     fireEvent.click(radios('Bot level')[2] as HTMLInputElement);
     fireEvent.click(radios('Bot level')[3] as HTMLInputElement);
     expect(onChangeSettings).not.toHaveBeenCalled();

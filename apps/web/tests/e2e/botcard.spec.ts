@@ -205,6 +205,10 @@ test.describe('the bot card', () => {
         await expect(dialog).toContainText(en.botCard.unknownStyle);
         await expect(dialog).not.toContainText(en.botCard.howToBeat);
         await expect(dialog.locator('use[href^="#p-"]')).toHaveCount(0);
+        // Chunk 7.1: what the player has seen it do (a new table: nothing yet, or its first hand).
+        await expect(dialog).toContainText(
+          new RegExp(`${en.botCard.seenIntro}|${en.botCard.notSeenYet.replace('.', '\\.')}`),
+        );
       }
       await page.keyboard.press('Escape');
       await expect(sheet(page)).toHaveCount(0);
@@ -265,21 +269,22 @@ test.describe('the level cards', () => {
     await openApp(page, seedFor(testInfo));
     await page.getByRole('button', { name: 'Choose players, chips and levels' }).click();
 
-    // Setup: Easy and Beginner by default; Medium and Intermediate can be picked, the others not.
+    // Setup: Easy and Beginner by default; every bot level (Hard and Expert from chunk 7.1) and
+    // every coach level (Advanced and Exam from chunk 6.4) can be picked.
     const bots = 'How good are the bots?';
     const coach = 'How much help do you want?';
     await expect(cards(page, bots).nth(0)).toBeChecked();
     await expect(cards(page, coach).nth(0)).toBeChecked();
     for (const [group, open] of [
-      [bots, [true, true, false, false]],
+      [bots, [true, true, true, true]],
       [coach, [true, true, true, true]],
     ] as const) {
       for (const [i, enabled] of open.entries()) {
         await expect(cards(page, group).nth(i)).toBeEnabled({ enabled });
       }
     }
-    // Hard and Expert bots (Stage 7); every coach level is open since chunk 6.4.
-    await expect(page.getByText('Coming soon')).toHaveCount(2);
+    // Nothing is left to come: no card says "Coming soon".
+    await expect(page.getByText('Coming soon')).toHaveCount(0);
     await pick(page, bots, 1);
     await pick(page, coach, 1);
     await page.getByRole('button', { name: 'Start game', exact: true }).click();
@@ -295,7 +300,7 @@ test.describe('the level cards', () => {
     await page.getByRole('button', { name: 'Settings', exact: true }).click();
     await expect(cards(page, 'Bot level').nth(1)).toBeChecked();
     await expect(cards(page, 'Coach level').nth(1)).toBeChecked();
-    await expect(cards(page, 'Bot level').nth(2)).toBeDisabled();
+    await expect(cards(page, 'Bot level').nth(3)).toBeEnabled(); // Expert, since chunk 7.1
     await expect(cards(page, 'Coach level').nth(3)).toBeEnabled(); // Exam, since chunk 6.4
 
     // A new bot level is saved at once, and the hand in play keeps its table (§10).

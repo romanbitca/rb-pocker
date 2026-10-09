@@ -324,10 +324,22 @@ export const en = {
     howToBeat: 'How to beat them',
     stack: (chips: string) => `Stack: ${chips}`,
     /**
-     * Hard and Expert hide the personality (§9.2). Stage 7 adds "Here is what you have seen:" and
-     * the stats under this line (§9.3).
+     * Hard and Expert hide the personality (§9.2); the card shows what the player has seen the bot
+     * do instead (§9.3, chunk 7.1): "Plays 34% of hands · Raises 20% · Bets often".
      */
     unknownStyle: 'Style: unknown.',
+    seenIntro: 'Here is what you have seen:',
+    notSeenYet: 'You have not seen them play yet.',
+    plays: (pct: number) => `Plays ${pct}% of hands`,
+    raises: (pct: number) => `Raises ${pct}%`,
+    aggression: {
+      betsOften: 'Bets often',
+      betsSometimes: 'Bets sometimes',
+      mostlyCalls: 'Mostly calls',
+    },
+    /** Joins the parts of the stats line. */
+    separator: ' · ',
+    handsSeen: (hands: string) => `Hands seen: ${hands}`,
   },
 
   /** Seat pods (PLAN §12.4, §12.12). */

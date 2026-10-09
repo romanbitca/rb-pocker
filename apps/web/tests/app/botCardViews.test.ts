@@ -18,7 +18,9 @@ import {
   type AppStore,
   type BotCardData,
 } from '../../src/app/store.ts';
-import type { BotLevel, HandState, TableState } from '../../src/engine/types.ts';
+import { seenAggression, seenPlay } from '../../src/app/botCardViews.ts';
+import { emptySeatStats } from '../../src/brain/opponentStats.ts';
+import type { BotLevel, HandState, SeatStats, TableState } from '../../src/engine/types.ts';
 import type { BotCardView } from '../../src/ui/views.ts';
 import { deal, tableWith } from '../engine/helpers.ts';
 
@@ -63,6 +65,7 @@ describe('botCardOf', () => {
         name: `P${seat}`,
         personality: labelVisible(level) ? 'tag' : null,
         stack: hand.seats[seat]?.stack,
+        seen: null,
       });
       fitsCard(card as BotCardData);
     }
@@ -95,13 +98,48 @@ describe('botCardOf', () => {
     expect(botCardOf(hand, table, -1)).toBeNull();
   });
 
-  it('holds nothing but the seat, name, personality and stack (no hole card)', () => {
+  it('holds nothing but the seat, name, personality, stack and seen play (no hole card)', () => {
     const { table, hand } = dealt();
     const card = botCardOf(hand, table, 1) as BotCardData;
-    expect(Object.keys(card).sort()).toEqual(['name', 'personality', 'seat', 'stack']);
+    expect(Object.keys(card).sort()).toEqual(['name', 'personality', 'seat', 'seen', 'stack']);
     const hole = hand.seats[1]?.hole ?? [];
     expect(hole).toHaveLength(2);
     expect(JSON.stringify(card)).not.toContain(JSON.stringify(hole));
+  });
+
+  it('Hard and Expert: what the player has seen, from the seat statistics (§9.3, chunk 7.1)', () => {
+    const { table, hand } = dealt({ botLevel: 'hard', seatLevels: [null, null, 'easy'] });
+    const stats = (over: Partial<SeatStats>): SeatStats => ({ ...emptySeatStats(), ...over });
+    const id1 = table.slots[1]?.playerId as string;
+    const id2 = table.slots[2]?.playerId as string;
+    const seen = {
+      [id1]: stats({ hands: 50, vpip: [17, 50], pfr: [10, 50], aggActions: 9, passiveActions: 3 }),
+      [id2]: stats({ hands: 50, vpip: [25, 50], pfr: [5, 50] }),
+    };
+    // The Hard seat: whole percentages of the hands with a preflop decision, AF 3 = "Bets often".
+    expect(botCardOf(hand, table, 1, seen)?.seen).toEqual({
+      hands: 50,
+      plays: 34,
+      raises: 20,
+      aggression: 'betsOften',
+    });
+    // The Easy seat shows its personality instead: no seen play.
+    expect(botCardOf(hand, table, 2, seen)?.seen).toBeNull();
+    // Nobody seen yet: null.
+    expect(botCardOf(hand, table, 1, {})?.seen).toBeNull();
+    expect(seenPlay(stats({ hands: 3 }))).toBeNull(); // no preflop decision yet
+  });
+
+  it('puts AF into words: often from 2, sometimes from 1, else mostly calls; none unseen', () => {
+    const af = (aggActions: number, passiveActions: number) =>
+      seenAggression({ ...emptySeatStats(), aggActions, passiveActions });
+    expect(af(0, 0)).toBeNull();
+    expect(af(3, 0)).toBe('betsOften');
+    expect(af(4, 2)).toBe('betsOften');
+    expect(af(3, 2)).toBe('betsSometimes');
+    expect(af(2, 2)).toBe('betsSometimes');
+    expect(af(1, 2)).toBe('mostlyCalls');
+    expect(af(0, 5)).toBe('mostlyCalls');
   });
 
   it('shows the chips behind, as the pod does, once a bet is in front of the seat', () => {

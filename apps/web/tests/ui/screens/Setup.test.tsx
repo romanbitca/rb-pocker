@@ -267,7 +267,7 @@ describe('Setup: level cards (questions 3 and 4)', () => {
     coach: ['beginner', 'intermediate', 'advanced', 'exam'],
   };
 
-  it('Easy and Medium bots, all four coach levels (6.4); Hard and Expert say "Coming soon"', () => {
+  it('all four bot levels (7.1) and all four coach levels (6.4); nothing says "Coming soon"', () => {
     renderSetup();
     const bots = within(group('How good are the bots?')).getAllByRole(
       'radio',
@@ -275,8 +275,8 @@ describe('Setup: level cards (questions 3 and 4)', () => {
     expect(bots.map((r) => [r.value, r.checked, r.disabled])).toEqual([
       ['easy', true, false],
       ['medium', false, false],
-      ['hard', false, true],
-      ['expert', false, true],
+      ['hard', false, false],
+      ['expert', false, false],
     ]);
     const coach = within(group('How much help do you want?')).getAllByRole(
       'radio',
@@ -287,12 +287,12 @@ describe('Setup: level cards (questions 3 and 4)', () => {
       ['advanced', false, false],
       ['exam', false, false],
     ]);
-    // The card text is the §10.1 / §12.2 text; the caption says why it cannot be picked.
+    // The card text is the §10.1 / §12.2 text, with no "Coming soon" caption on any card.
     expect(bots.map((r) => r.labels?.[0]?.textContent)).toEqual([
       'EasyBots make many mistakes. They call too much and rarely bluff.',
       'MediumBots play okay but are easy to read.',
-      'HardBots play solid poker and read the board. Their style is hidden.Coming soon',
-      'ExpertBots study how you play and adapt.Coming soon',
+      'HardBots play solid poker and read the board. Their style is hidden.',
+      'ExpertBots study how you play and adapt.',
     ]);
     expect(coach.map((r) => r.labels?.[0]?.textContent)).toEqual([
       'BeginnerFull help',
@@ -319,8 +319,26 @@ describe('Setup: level cards (questions 3 and 4)', () => {
     );
   });
 
+  it('Hard and Expert bots can be picked and are sent with Start (chunk 7.1)', () => {
+    for (const [name, level] of [
+      [/^Hard/, 'hard'],
+      [/^Expert/, 'expert'],
+    ] as const) {
+      const { onStartTable, unmount } = renderSetup();
+      fireEvent.click(radio('How good are the bots?', name));
+      fireEvent.click(start());
+      expect(onStartTable).toHaveBeenCalledWith(
+        expect.objectContaining({ botLevel: level }),
+        'beginner',
+      );
+      unmount();
+    }
+  });
+
   it('a disabled card cannot be picked; Advanced and Exam can (6.4)', () => {
-    const { onStartTable } = renderSetup();
+    const { onStartTable } = renderSetup({
+      available: { ...AVAILABLE_LEVELS, bot: ['easy', 'medium'] },
+    });
     fireEvent.click(radio('How good are the bots?', /^Hard/));
     fireEvent.click(radio('How much help do you want?', /^Exam/));
     fireEvent.click(start());
@@ -368,6 +386,11 @@ describe('Setup: level cards (questions 3 and 4)', () => {
   it('a saved Exam coach opens as Exam (6.4)', () => {
     renderSetup({ initial: { ...DEFAULTS, coachLevel: 'exam' } });
     expect(radio('How much help do you want?', /^Exam/).checked).toBe(true);
+  });
+
+  it('a saved Expert level opens as Expert (chunk 7.1)', () => {
+    renderSetup({ initial: { ...DEFAULTS, botLevel: 'expert' } });
+    expect(radio('How good are the bots?', /^Expert/).checked).toBe(true);
   });
 });
 

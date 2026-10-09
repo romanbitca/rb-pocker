@@ -44,12 +44,12 @@ export interface AvailableLevels {
 }
 
 /**
- * What the app offers in Setup and Settings: Easy and Medium bots (Hard and Expert come with
- * Stage 7; the stored settings and the engine already accept all four), and all four coach levels
- * (Advanced and Exam since chunk 6.4, §10.2).
+ * What the app offers in Setup and Settings (§18): all four bot levels (Hard and Expert from
+ * chunk 7.1) and all four coach levels (Advanced and Exam from chunk 6.4, §10.2). The stored
+ * settings and the engine accept all four of each.
  */
 export const AVAILABLE_LEVELS: AvailableLevels = {
-  bot: ['easy', 'medium'],
+  bot: ['easy', 'medium', 'hard', 'expert'],
   coach: ['beginner', 'intermediate', 'advanced', 'exam'],
 };
 
