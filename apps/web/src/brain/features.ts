@@ -55,6 +55,20 @@ export function hudEquity(obs: Observation): number {
   return equity({ hero: obs.hole, board: obs.board, nOpp }).equity;
 }
 
+/**
+ * §8.2 `p`, the per-opponent strength: the hero's chance to beat one average opponent, from its
+ * chance `eRange` to beat all `nOpp` of them, in the Bradley–Terry–Luce model (each hand wins in
+ * proportion to a strength `s`: `eRange = s / (s + nOpp·s̄)`, `p = s / (s + s̄)`). So `p`'s odds are
+ * `nOpp` times `eRange`'s: `p = n·E / (1 + (n − 1)·E)`. Heads-up `p = eRange`; the fair share
+ * `1 / (nOpp + 1)` gives 0.5, so the §8.2 buckets and the §8.10 meter mean the same at every table
+ * size. (Risk R18: the old `eRange^(1/nOpp)` assumed independent duels; before the river the cards
+ * to come tie them together, and 9-handed 7-2 offsuit's 5% read 0.69, "Strong".) 1 with nobody left.
+ */
+export function perOpponentStrength(eRange: number, nOpp: number): number {
+  if (nOpp === 0) return 1;
+  return (nOpp * eRange) / (1 + (nOpp - 1) * eRange);
+}
+
 /** §8.2 bucket from the per-opponent strength `p` (null preflop). */
 export function bucketOf(p: number, outs: number, street: Street): Bucket | null {
   if (street === 'preflop') return null;
@@ -198,7 +212,7 @@ export function features(
           seed,
         });
   const shown = eRandom ?? (profile.id === COACH_ID ? hudEquity(obs) : eRange);
-  const p = nOpp === 0 ? 1 : eRange ** (1 / nOpp);
+  const p = perOpponentStrength(eRange, nOpp);
   const drawStreet = street === 'flop' || street === 'turn';
   const outs = drawStreet ? findOuts(hole, board).length : 0;
   const lastFull = obs.history.filter(

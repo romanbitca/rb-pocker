@@ -7,12 +7,14 @@
 import { describe, expect, it } from 'vitest';
 import { equity } from '../../src/analysis/equity.ts';
 import { preflopEquity } from '../../src/analysis/preflop.ts';
+import { strengthOf } from '../../src/brain/decide.ts';
 import {
   bucketOf,
   coachSeed,
   facingOf,
   features,
   hudEquity,
+  perOpponentStrength,
   showsRangeAdjust,
   textureOf,
   textureScore,
@@ -125,6 +127,30 @@ describe('features (§8.2)', () => {
     expect(textureOf(cards('As Ks Qs'))).toBe('veryWet');
     expect(textureScore(cards('Kc Kd 7h'))).toBe(-1); // paired
     expect(textureScore(cards('9c 7d 5s 3h'))).toBe(2); // three gaps of 2, capped at 2
+  });
+
+  it('p (§8.2, risk R18): per-opponent strength n·E / (1 + (n − 1)·E), 0.5 at the fair share', () => {
+    const grid = [0, 0.01, 0.06, 0.17, 0.3, 0.5, 0.73, 0.99, 1];
+    for (const e of grid) expect(perOpponentStrength(e, 1)).toBeCloseTo(e, 12); // heads-up: p = E
+    for (let n = 1; n <= 8; n++) {
+      expect(perOpponentStrength(1 / (n + 1), n)).toBeCloseTo(0.5, 12);
+      expect(perOpponentStrength(0, n)).toBe(0);
+      expect(perOpponentStrength(1, n)).toBe(1);
+      for (const e of grid.slice(1, -1)) {
+        const p = perOpponentStrength(e, n);
+        // The odds of beating one average opponent are n times the odds of beating all n.
+        expect(p / (1 - p)).toBeCloseTo((n * e) / (1 - e), 9);
+        expect(perOpponentStrength(e + 0.005, n)).toBeGreaterThan(p); // more equity, more p
+        if (n > 1) expect(p).toBeGreaterThan(perOpponentStrength(e, n - 1)); // same E, more rivals
+      }
+    }
+    expect(perOpponentStrength(0.2, 0)).toBe(1); // nobody left
+    // R18's examples, which eRange^(1/nOpp) read as Decent and Strong.
+    expect(strengthOf(perOpponentStrength(0.06, 4))).toBe('weak'); // 5-handed, 6%: was 0.49
+    const e72 = preflopEquity(cards('7c 2d'), 8).equity; // 9-handed 7-2 offsuit: about 5%
+    expect(strengthOf(perOpponentStrength(e72, 8))).toBe('weak'); // was 0.69, Strong
+    const q3s = preflopEquity(cards('Qs 3s'), 5).equity; // 6-handed: 17%, the fair share
+    expect(strengthOf(perOpponentStrength(q3s, 5))).toBe('decent'); // was 0.70, Strong
   });
 
   it('buckets from p (Loki thresholds); Draw only with ≥ 8 outs before the river', () => {

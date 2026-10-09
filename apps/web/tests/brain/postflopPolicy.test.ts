@@ -337,11 +337,12 @@ describe('checked to the hero (§8.5 step 5)', () => {
     const thin = decide({ ...free, hole: '8s 9d', board: 'Kh 8c 4d', E: 0.5 });
     expect(thin.action).toEqual({ type: 'bet', to: 200 });
     expect(main(thin)).toBe('THIN_VALUE');
-    // Multiway on a Wet flop: check; on the river in position with p ≥ 0.6: 1/3.
+    // Multiway on a Wet flop: check; on the river in position with p ≥ 0.6: 1/3. Against two
+    // opponents p = 2E / (1 + E) (§8.2): E 0.45 is p 0.62, E 0.3 is p 0.46.
     expect(decide({ ...free, hole: '8s 9d', board: 'Kh 8h 7d', E: 0.3, nOpp: 2 }).kind).toBe(
       'check',
     );
-    const river = decide({ ...free, hole: '8s 9d', board: 'Kh 8h 7d 2c 2s', E: 0.38, nOpp: 2 });
+    const river = decide({ ...free, hole: '8s 9d', board: 'Kh 8h 7d 2c 2s', E: 0.45, nOpp: 2 });
     expect(river.action).toEqual({ type: 'bet', to: 200 });
     expect(decide({ ...free, hole: '8s 9d', board: 'Kh 8h 7d 2c 2s', E: 0.3, nOpp: 2 }).kind).toBe(
       'check',
@@ -428,7 +429,10 @@ describe('postflopIntent and postflopRead', () => {
 describe('§9.4 hooks: perceived equity and MDF defence', () => {
   it('withEquity moves p and the bucket with the equity (clamped to [0, 1])', () => {
     const { f } = synth({ hole: '8s 9d', board: 'Kh 8c 4d', E: 0.5, pot: 600, nOpp: 2 });
-    expect(withEquity(f, 0.81)).toMatchObject({ eRange: 0.81, p: 0.9, bucket: 'monster' });
+    // §8.2: p = 2E / (1 + E) against two opponents (0.895), a Monster.
+    const seen = withEquity(f, 0.81);
+    expect(seen).toMatchObject({ eRange: 0.81, bucket: 'monster' });
+    expect(seen.p).toBeCloseTo(1.62 / 1.81, 12);
     expect(withEquity(f, -1)).toMatchObject({ eRange: 0, p: 0, bucket: 'air' });
     expect(withEquity(f, 2).eRange).toBe(1);
     expect(withEquity({ ...f, nOpp: 0 }, 0.2).p).toBe(1);
