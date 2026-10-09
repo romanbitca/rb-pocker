@@ -320,7 +320,10 @@ interface FlowView {
 /** In the page: FlowView (the full hand only at a hand end). */
 function readFlowView(): FlowView {
   // The middle of the part a finger can see: clipped by every ancestor that clips or scrolls
-  // (in landscape a long hand-end banner scrolls in its column, under Row A) and the viewport.
+  // (in landscape a long hand-end banner scrolls in its column, under Row A) and the viewport,
+  // and not covered by another element (a tall hand-end banner in the wide layout reaches up
+  // under the top bar: the middle of its clipped box would be a tap on the bar). When the middle
+  // is covered, the nearest point of that part that does hit the element.
   const centre = (el: Element): Spot => {
     const r = el.getBoundingClientRect();
     let [left, top, right, bottom] = [r.left, r.top, r.right, r.bottom];
@@ -333,7 +336,21 @@ function readFlowView(): FlowView {
     }
     [left, top] = [Math.max(left, 0), Math.max(top, 0)];
     [right, bottom] = [Math.min(right, innerWidth), Math.min(bottom, innerHeight)];
-    return { x: (left + right) / 2, y: (top + bottom) / 2 };
+    const middle: Spot = { x: (left + right) / 2, y: (top + bottom) / 2 };
+    const hits = (x: number, y: number): boolean => {
+      const on = document.elementFromPoint(x, y);
+      return on !== null && el.contains(on);
+    };
+    if (hits(middle.x, middle.y)) return middle;
+    let best: Spot | null = null;
+    let nearest = Infinity;
+    for (let y = Math.ceil(top) + 2; y < bottom - 1; y += 4) {
+      for (let x = Math.ceil(left) + 2; x < right - 1; x += 8) {
+        const away = (x - middle.x) ** 2 + (y - middle.y) ** 2;
+        if (away < nearest && hits(x, y)) [best, nearest] = [{ x, y }, away];
+      }
+    }
+    return best ?? middle;
   };
   const s = window.__pc?.state();
   const keep = document.querySelector('[data-feedback-keep]');
