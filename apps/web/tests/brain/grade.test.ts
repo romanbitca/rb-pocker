@@ -14,8 +14,11 @@
  * it. The property test over random decision points is `grade.property.test.ts`.
  */
 import { describe, expect, it } from 'vitest';
+import { deliberate } from '../../src/brain/decide.ts';
 import { feedbackLine, TEMPLATE_KEYS, type FeedbackInput } from '../../src/brain/explain.ts';
-import { candidateKey } from '../../src/brain/ev.ts';
+import { callEndsBetting, candidateKey } from '../../src/brain/ev.ts';
+import { coachSeed } from '../../src/brain/features.ts';
+import { COACH } from '../../src/brain/profiles.ts';
 import {
   capByBB,
   coachAnswer,
@@ -846,5 +849,26 @@ describe('real spots: the grade, the leak and the F.5 reason a player meets', ()
       leak: null,
       feedback: null,
     });
+  });
+
+  it('calling a 10 bb shove with 7-2 in the big blind: the call ends the betting (R = 1)', () => {
+    const spec: SpotSpec = {
+      stacks: [1000, 1000],
+      button: 0,
+      holes: { 1: '7c 2d' },
+      inputs: [raise(0, 1000)],
+    };
+    const s = spot(spec, 1);
+    expect(s.obs.legal.callIsAllIn).toBe(true);
+    const d = deliberate(s.obs, COACH, coachSeed(s.obs), null);
+    expect(callEndsBetting(s.obs, d.f.ranges)).toBe(true);
+    expect(d.R).toBeLessThan(1); // the street's R; the grade's price signal reads 1 instead
+    expect(s.rec).toEqual(FOLD);
+    const g = s.answer.grade(CALL, 1);
+    expect(g.leak).toBe('call-pre-wide');
+    expect(['inaccuracy', 'mistake', 'blunder']).toContain(g.grade);
+    expect(g.feedback).toEqual(
+      feedbackLine({ row: 'pushFold', S: 10, hand: 'Seven-Two offsuit', move: 'fold' }),
+    );
   });
 });
