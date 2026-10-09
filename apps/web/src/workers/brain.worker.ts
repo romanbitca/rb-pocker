@@ -1,7 +1,8 @@
 /**
- * `brain.worker` (PLAN §2.2): bot decisions and coach hints (chunk 5.7), grades later (chunk 6.1).
- * It speaks the Appendix A.6 protocol (`protocol.ts`); `brainService.ts` runs the jobs with the
- * one decision engine of `brain/decide.ts` (§8.1 C1).
+ * `brain.worker` (PLAN §2.2): bot decisions, coach hints (chunk 5.7) and grades (chunk 6.1). It
+ * speaks the Appendix A.6 protocol (`protocol.ts`); `brainService.ts` runs the jobs with the one
+ * decision engine of `brain/decide.ts` (§8.1 C1); hint and grade come from one coach computation
+ * per observation (`brain/grade.ts` `coachAnswer`, §8.11).
  *
  * ⚠️ It receives an `Observation` built by `observe()`, a profile and a seed (or the HUD's win
  * chance), and nothing else about the hand: never a `HandState`, the deck, another seat's hidden
@@ -11,7 +12,8 @@
  * Created with the literal `new Worker(new URL('./brain.worker.ts', import.meta.url),
  * { type: 'module' })` in `spawn.ts` (pitfall 38).
  */
-import { coachHint, decide } from '../brain/decide.ts';
+import { decide } from '../brain/decide.ts';
+import { coachAnswer } from '../brain/grade.ts';
 import { createBrainService } from './brainService.ts';
 import type { BrainReply, BrainRequest } from './protocol.ts';
 
@@ -24,7 +26,7 @@ interface WorkerScope {
 const scope = self as unknown as WorkerScope;
 const service = createBrainService({
   decide,
-  hint: coachHint,
+  coach: coachAnswer,
   post: (reply) => scope.postMessage(reply),
 });
 scope.onmessage = (event) => service.handle(event.data);

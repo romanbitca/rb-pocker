@@ -13,6 +13,7 @@ import {
 } from '../../src/app/workerClient.ts';
 import { simpleDecide } from '../helpers/simpleDecide.ts';
 import { coachHint } from '../../src/brain/decide.ts';
+import { coachAnswer } from '../../src/brain/grade.ts';
 import {
   createBrainService,
   type BrainServiceOptions,
@@ -115,7 +116,7 @@ export function fakeBrainWorker(options: FakeBrainOptions = {}): FakeBrainWorker
  */
 export function testBrain(timers: Timers = realTimers): BrainClient {
   return createBrainClient(
-    fakeBrainWorker({ service: { decide: simpleDecide, hint: coachHint } }).spawn,
+    fakeBrainWorker({ service: { decide: simpleDecide, coach: coachAnswer } }).spawn,
     timers,
   );
 }
