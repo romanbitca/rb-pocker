@@ -51,11 +51,12 @@ export function riverShares(board: readonly Card[], w: Float64Array): Float64Arr
   for (const i of live) total += w[i] as number;
   const out = new Float64Array(COMBOS).fill(-1);
   let below = 0;
-  for (let i = 0; i < live.length; ) {
+  for (let i = 0; i < live.length;) {
     const s = scores[live[i] as number] as number;
     let j = i;
     let equal = 0;
-    while (j < live.length && scores[live[j] as number] === s) equal += w[live[j++] as number] as number;
+    while (j < live.length && scores[live[j] as number] === s)
+      equal += w[live[j++] as number] as number;
     const share = total > 0 ? (below + equal / 2) / total : 0.5;
     for (let t = i; t < j; t++) out[live[t] as number] = share;
     below += equal;

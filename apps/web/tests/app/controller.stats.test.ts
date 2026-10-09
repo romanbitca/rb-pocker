@@ -100,7 +100,9 @@ describe('seat statistics (§9.5)', () => {
     await vi.waitFor(() => expect(h.state().game.hand?.handSeq).toBeGreaterThan(6));
     expect(h.state().game.seatStats).toEqual({ [HERO_ID]: hero });
     const second = await play(h, 1, 'b2');
-    const next = brain.requests.slice(before).find((r) => r.obs.handSeq === second[0]?.hand.handSeq);
+    const next = brain.requests
+      .slice(before)
+      .find((r) => r.obs.handSeq === second[0]?.hand.handSeq);
     expect(next?.obs.seatStats[0]).toEqual(hero);
     expect(next?.obs.seatStats.slice(1)).toEqual([null, null, null]);
   }, 60_000);
