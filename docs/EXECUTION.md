@@ -6,7 +6,7 @@ This is the working checklist for building [PLAN.md](PLAN.md). PLAN.md is the so
 
 Legend: `[ ]` todo · `[~]` in progress (branch exists) · `[x]` merged to `main` · `[H]` waiting on the human
 
-**Current position:** ▶ Autonomous run (owner 10 Oct: 95%/window, stop at 30% weekly; weekly 2%). Stage 5: all merged except **5.11 self-play** ([#51](https://github.com/romanbitca/rb-pocker/pull/51): calibration in progress) (must re-measure after R18); R18 strength meter ✅ [#54](https://github.com/romanbitca/rb-pocker/pull/54); 5.12 [H]. Stage 6 held until 5.11: 6.1 [#52](https://github.com/romanbitca/rb-pocker/pull/52) ready, 6.3 [#48](https://github.com/romanbitca/rb-pocker/pull/48) ready, 6.2 [#49](https://github.com/romanbitca/rb-pocker/pull/49) Playwright specs in progress (stacked on #52). Then 6.4, 6.5, Stage 7.
+**Current position:** ▶ Autonomous run (owner 10 Oct: 95%/window, stop at 30% weekly). **Stage 5 automated criteria ✅** (5.11 [#51](https://github.com/romanbitca/rb-pocker/pull/51) merged, R18 [#54](https://github.com/romanbitca/rb-pocker/pull/54) merged); 5.12 [H]. ⛔ **GitHub Actions stopped starting jobs (billing/spending limit, since ~23:00Z 9 Oct): no merges until CI runs again** (owner). Stage 6: 6.1 [#52](https://github.com/romanbitca/rb-pocker/pull/52) ready, 6.3 [#48](https://github.com/romanbitca/rb-pocker/pull/48) ready, 6.2 [#49](https://github.com/romanbitca/rb-pocker/pull/49) specs in progress (stacked on #52); merge order #52 → #48 → #49. 7.1 in progress (held). Then 6.4, 6.5, 7.2, 7.3.
 
 ---
 
@@ -88,7 +88,7 @@ Legend: `[ ]` todo · `[~]` in progress (branch exists) · `[x]` merged to `main
 - [x] 5.8 `feature/brain-worker` - `brain.worker.ts` replaces `SimpleBot` (moved to `scripts/bots/`).
 - [x] 5.9 `feature/coach-strip-and-sheet` - Beginner/Intermediate UI, recommended ring, "Use coach size", RANGE_ADJUST, glossary popovers.
 - [x] 5.10 `feature/bot-and-coach-level-selectors` - level cards, personality labels, bot card.
-- [~] 5.11 `test/self-play-calibration` - `scripts/selfplay.ts` + baselines; acceptance 5–6.
+- [x] 5.11 `test/self-play-calibration` - `scripts/selfplay.ts` + baselines; acceptance 5–6.
 - [ ] 5.12 [H] **Human gate:** read 10 hints on the phone → announce MVP.
 
 ## Stage 6 - Grading, feedback, Undo, Advanced/Exam (PLAN §8.9, §10.2–10.3, §11)
@@ -133,6 +133,8 @@ needs to do in "Waiting on the human" below, sends a notification, and continues
 If the human's answer later reveals a problem, the fix becomes a new chunk ahead of the current one.
 
 ### Waiting on the human
+
+- **GitHub Actions billing** (9 Oct ~23:00Z): every job fails before starting with "recent account payments have failed or your spending limit needs to be increased". Fix on github.com → Settings → Billing and plans (payment method or the Actions spending limit). Until then nothing is merged (strict plan order needs CI); work continues on branches, verified locally.
 
 - **4.8 — `#bench` on an Android phone**: with the server running, open `http://<Mac LAN IP>:3000/#bench` in Chrome on the phone, wait a few seconds, copy the "results as text" box and paste it into the chat (or into PR #36).
 
@@ -221,3 +223,4 @@ If the human's answer later reveals a problem, the fix becomes a new chunk ahead
 | 1 Oct 20:40–21:55Z | 5.1, 5.2 merged; 5.3, 5.5, 5.8 built | #37 (db1d249), #38 (d5848b7) merged. Ready/held: [#40](https://github.com/romanbitca/rb-pocker/pull/40) guardrails + EV, [#42](https://github.com/romanbitca/rb-pocker/pull/42) brain worker (no HandState/hidden cards in any message; hands finish if the worker dies), [#41](https://github.com/romanbitca/rb-pocker/pull/41) preflop + push/fold (E1–E8, E18 ✅; R16 closed with sources). 5.4 [#39](https://github.com/romanbitca/rb-pocker/pull/39) in progress | weekly 68% → ~79% |
 | 29 Sep 21:05–21:48Z | 4.1, 4.2 (early) | PRs [#27](https://github.com/romanbitca/rb-pocker/pull/27), [#28](https://github.com/romanbitca/rb-pocker/pull/28) ready, held: all D.2, D.3, C.5 exact; brute-force oracle agreement | (same window) |
 | 9 Oct 21:50–22:50Z | R18 fix merged | [PR #54](https://github.com/romanbitca/rb-pocker/pull/54) (4233d52): the meter showed Strong next to Fold in 38% of folds; multiway `p = n·E / (1 + (n−1)·E)` (heads-up unchanged, 0.5 at the fair share) + meter cap (never fired in 2,000 hints); E19–E22 added; 85 of 3,881 hints changed (multiway postflop, fewer value bets) | 5h 8% → 55%, weekly 2% → 8% |
+| 9 Oct 21:50–23:10Z | 5.11 merged | [PR #51](https://github.com/romanbitca/rb-pocker/pull/51) (ad54330): 20,000-hand calibration, 12 failing gates → 0 at Medium and at Easy (biases in units of T, 3.5 T preflop rule bonus, Easy reads the opener's range, 4 §9.1 numbers; TAG untouched); 0 illegal actions in 100,000 hands (2–9 seats); Medium bot p95 3.7 ms; coach +288 ± 58 bb/100 vs Easy; R19 closed. Main's check for ad54330 did not start (GitHub billing) | weekly ~11% |
