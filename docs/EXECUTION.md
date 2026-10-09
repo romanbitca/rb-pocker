@@ -6,7 +6,7 @@ This is the working checklist for building [PLAN.md](PLAN.md). PLAN.md is the so
 
 Legend: `[ ]` todo · `[~]` in progress (branch exists) · `[x]` merged to `main` · `[H]` waiting on the human
 
-**Current position:** ▶ Autonomous run (95%/window, stop at 80% weekly), paused 9 Oct ~23:35Z for the 02:50Z window reset. **Next window, in order:** (0) fix the wide-layout e2e failure: `tests/e2e/layout.spec.ts:126` 'pods never overlap the board, the hero…' at 1280×800 with 6–8 players — pods overlap the hero strip/cards at 'first decision' (seen on PR #50 in WebKit and Chromium; passed in #44's CI; likely 5.9's coach strip in the wide layout or a measure-before-settle race) → `fix/wide-layout-coach-strip-overlap`;  PR #50 (CI speed-up: check 597 s, 25-min timeout) merged 98706d7; (1) finish 5.7 PR #47 (port tests/ui/coach.test.ts, Table.coach, Table.profiler to the real hint; CI; merge); (2) 5.11 self-play calibration (acceptance 5–6; watch R19 bots raise a lot) → Stage 5 complete (5.12 [H]); (3) start 6.1 grading (needs 5.7), finish 6.2 PR #49 (2 Playwright specs), merge 6.3 PR #48 and 6.2 after Stage 5; then 6.4 quiz/Exam, 6.5 e2e. Decide R18 (strength-meter bands). Main JS ~144.6/150 KB: everything new must be lazy.
+**Current position:** ▶ Autonomous run, window from 9 Oct 02:51Z (95%/window, stop at 80% weekly; weekly 45%). In progress: wide-layout e2e fix (`fix/wide-layout-coach-strip-overlap`), finishing 5.7 #47, 5.11 self-play (stacked on #47), 6.1 grading (stacked on #47). Then: Stage 5 complete → merge 6.3 #48, finish + merge 6.2 #49 (needs 6.1), 6.4, 6.5.
 
 ---
 
@@ -88,12 +88,12 @@ Legend: `[ ]` todo · `[~]` in progress (branch exists) · `[x]` merged to `main
 - [x] 5.8 `feature/brain-worker` - `brain.worker.ts` replaces `SimpleBot` (moved to `scripts/bots/`).
 - [x] 5.9 `feature/coach-strip-and-sheet` - Beginner/Intermediate UI, recommended ring, "Use coach size", RANGE_ADJUST, glossary popovers.
 - [x] 5.10 `feature/bot-and-coach-level-selectors` - level cards, personality labels, bot card.
-- [ ] 5.11 `test/self-play-calibration` - `scripts/selfplay.ts` + baselines; acceptance 5–6.
+- [~] 5.11 `test/self-play-calibration` - `scripts/selfplay.ts` + baselines; acceptance 5–6.
 - [ ] 5.12 [H] **Human gate:** read 10 hints on the phone → announce MVP.
 
 ## Stage 6 - Grading, feedback, Undo, Advanced/Exam (PLAN §8.9, §10.2–10.3, §11)
 
-- [ ] 6.1 `feature/decision-grading` - `grade.ts`, leak tags, controller `grading` state, grade chips.
+- [~] 6.1 `feature/decision-grading` - `grade.ts`, leak tags, controller `grading` state, grade chips.
 - [~] 6.2 `feature/mistake-feedback-and-undo` - feedback card, toolbar Undo, `reshuffle`, practice flag, §11.5 tests, `?script=` hook.
 - [~] 6.3 `feature/hand-review-replay` - hand summary and read-only Review.
 - [ ] 6.4 `feature/advanced-quiz-and-exam-level` - quiz, Exam behaviour, full level matrix.
