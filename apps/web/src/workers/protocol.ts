@@ -17,7 +17,8 @@
  *   nothing else about the hand: never a `HandState`, the deck or a value derived from the hand
  *   seed (§2.2, §9.6, pitfall 13). The bot seed comes from the table seed only (§2.4).
  * - Brain replies are single replies: the first one is the last (an `error` reply too). `grade`
- *   answers `error` ("not available yet") until chunk 6.1.
+ *   (chunk 6.1) answers the `GradeResult` of `grade(obs, taken, eRandom, decisionId)`
+ *   (`brain/grade.ts`), echoing the request's `decisionId`; an illegal move answers `error`.
  * - `botDecision` carries the bot's whole `BrainProfile` (`profileFor(personality, level)`, §9.1 ×
  *   §9.2); `hint` the hero's observation and the HUD's final win chance when the main thread
  *   already has it, else null (§8.2 `eRandom`). No coach level is ever sent: the level changes

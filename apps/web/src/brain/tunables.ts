@@ -431,3 +431,34 @@ export const MIX_CALL_STICKINESS = 3;
 /** §9.4 step 3: a bet or raise with Air (a bluff), a Monster's check on a Dry board (a slow-play). */
 export const MIX_BLUFF_BONUS = 2.5;
 export const MIX_SLOWPLAY_BONUS = 2.5;
+
+// --- 6.1 grading (§8.9 "Grade") ---
+
+/**
+ * The §8.9 grade table, by `lossPot` (the EV lost against the recommendation over the pot before
+ * the action): Best ≤ 1%, Good ≤ 5%, Inaccuracy ≤ 15%, Mistake ≤ 40%, above that a Blunder.
+ */
+export const GRADE_BEST_POT = 0.01;
+export const GRADE_GOOD_POT = 0.05;
+export const GRADE_INACCURACY_POT = 0.15;
+export const GRADE_MISTAKE_POT = 0.4;
+/**
+ * The bb floors: a loss below 0.25 bb is at most Good, below 1 bb at most an Inaccuracy; a
+ * Blunder, from any path (the price signal included), needs a loss of at least 5 bb, else Mistake.
+ */
+export const GRADE_GOOD_MAX_BB = 0.25;
+export const GRADE_INACCURACY_MAX_BB = 1;
+export const GRADE_BLUNDER_MIN_BB = 5;
+/**
+ * The price signal: a call with `E·R < need − 0.15` is at least a Mistake and below `need − 0.30`
+ * a Blunder; a fold with `E·R > need + 0.15` at least a Mistake and above `need + 0.30` a Blunder.
+ */
+export const PRICE_SIGNAL_MISTAKE = 0.15;
+export const PRICE_SIGNAL_BLUNDER = 0.3;
+/** A bet or raise whose "to" amount is within ±15% of the recommended one is the recommendation. */
+export const SAME_SIZE_SHARE = 0.15;
+/**
+ * Appendix F.5 "Folded a strong preflop hand": a hand in the top half of starting hands (the cap
+ * of the coach's calls of a raise, §8.3), so "It is strong enough to play" is plainly true.
+ */
+export const FEEDBACK_STRONG_PCT = 50;
