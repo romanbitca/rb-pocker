@@ -558,15 +558,17 @@ const SideCoach = memo(function SideCoach() {
 
 /**
  * The wide screen's inline coach panel (§12.5): the strip's content as its head row, then the
- * sheet's sections while the advice is on show (no sheet on wide screens), scrolling inside.
+ * sheet's sections while the advice is on show (no sheet on wide screens), scrolling inside. Its
+ * grid row has a fixed height, so the table never changes size with what the coach says (§15.3).
  */
 const CoachPanel = memo(function CoachPanel({ coachSize }: { coachSize: CoachSizeRef }) {
   const view = useCoachView();
   const mod = useCoachModule();
   const { onOpen, onHint, onRetry } = useCoachActions();
   const onUseSize = useCallback(() => coachSize.current?.(), [coachSize]);
+  // Nothing to say (or the chunk is still on its way): the panel's box, empty.
   if (mod === null || view === null || (view.strip.kind === 'empty' && view.hint === null)) {
-    return null;
+    return <div className={styles.coachPanel} />;
   }
   const details = view.shown && view.hint !== null;
   // With the sections under it, the head row says the action only (the reason follows below).

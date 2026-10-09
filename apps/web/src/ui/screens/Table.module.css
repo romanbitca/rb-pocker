@@ -43,10 +43,19 @@
 }
 
 /* Wide (§12.5, §13.1): the play column and the rankings column (or its 44 px rail); the inline
-   coach panel sits between the hero strip and the action bar. */
+   coach panel sits between the hero strip and the action bar. Its row has a fixed height,
+   whatever the coach says (§15.3: a row that followed the panel's content resized the table during
+   every hand, and the pods, placed in the measured box one render later, sat over the hero strip
+   in between): 30% of the height, but the table box keeps 320 px (R14; 540 px = top bar 44 + hero
+   strip 112 + action bar 64 + table 320) and the panel its 61 px head row. `wideCoachPanel()` in
+   layout/seats.ts computes the same. dvh like the grid's own height (pitfall 30). */
 .wide {
   grid-template-columns: minmax(0, 1fr) clamp(260px, 24vw, 320px);
-  grid-template-rows: auto minmax(0, 1fr) auto auto auto;
+  grid-template-rows: auto minmax(0, 1fr) auto max(61px, min(30vh, 100vh - 540px)) auto;
+  grid-template-rows:
+    auto minmax(0, 1fr) auto
+    max(61px, min(30dvh, 100dvh - 540px - env(safe-area-inset-top) - env(safe-area-inset-bottom)))
+    auto;
   grid-template-areas: 'top rank' 'table rank' 'hero rank' 'coach rank' 'actions rank';
 }
 .wide.collapsed {
@@ -337,13 +346,14 @@
   margin-right: 80px;
 }
 
-/* Wide: the inline panel (the sheet's sections, always open), at most 30% of the height. */
+/* Wide: the inline panel (the sheet's sections, always open). It fills its reserved row (`.wide`)
+   and scrolls inside; with nothing to say it is drawn empty. */
 .coachPanel {
   grid-area: coach;
   justify-self: center;
   width: 100%;
   max-width: 720px;
-  max-height: 30vh;
+  min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
   padding: 4px max(16px, env(safe-area-inset-right)) 12px max(16px, env(safe-area-inset-left));

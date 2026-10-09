@@ -1,4 +1,5 @@
 import type { Page } from '@playwright/test';
+import { tableFrame } from '../../src/ui/layout/seats.ts';
 import { expect, test } from './fixtures.ts';
 import {
   ACCEPTANCE_SIZES,
@@ -15,9 +16,13 @@ import {
 
 // PLAN §18 Stage 3, acceptance 2: for every player count 2–9 at the five acceptance viewports,
 // the seat pods overlap neither each other, the board, the hero strip nor the Hands edge tab,
-// and stay inside the viewport: measured with bounding boxes at the hero's first decision and
-// again at the hand's end (showdown cards are drawn inside the pods). With the sizing tray open
-// at 375×667, nothing needed for the decision is covered and the page does not scroll.
+// and stay inside the viewport: measured with bounding boxes when the cards are dealt, at the
+// hero's first decision once the coach has answered (on wide screens its advice fills the inline
+// panel) and again at the hand's end (showdown cards are drawn inside the pods). Through all of
+// it the table box keeps its size (§15.3: the pods are placed in the measured box, one render
+// after it changes, so a box that moved with the coach's words put them over the hero strip in
+// between). With the sizing tray open at 375×667, nothing needed for the decision is covered and
+// the page does not scroll.
 
 interface Box {
   x: number;
@@ -27,6 +32,8 @@ interface Box {
 }
 
 interface TableBoxes {
+  /** The table box the pods are placed in (`[data-table-box]`). */
+  table: Box;
   pods: { seat: string; box: Box }[];
   board: Box;
   hero: Box[];
@@ -63,6 +70,8 @@ function measure(page: Page): Promise<TableBoxes> {
       if (pod === null) throw new Error(`seat ${seat.getAttribute('data-seat')} has no pod`);
       return { seat: seat.getAttribute('data-seat') ?? '?', box: union(pod) };
     });
+    const table = document.querySelector('[data-table-box]');
+    if (table === null) throw new Error('no table box');
     const board = document.querySelector('[role="group"][aria-label="Board"]');
     if (board === null) throw new Error('no board');
     const hero = [
@@ -75,6 +84,7 @@ function measure(page: Page): Promise<TableBoxes> {
     // button reaches 16 px into the table on purpose. The face is what must stay clear.
     const tab = document.querySelector('[data-table-box] + div button > span');
     return {
+      table: rect(table),
       pods,
       board: rect(board),
       hero,
@@ -114,6 +124,34 @@ function podProblems(m: TableBoxes, when: string): string[] {
   return problems;
 }
 
+/** A problem when the table box is not the one measured at the deal (`dealt`). */
+function tableProblems(m: TableBoxes, dealt: TableBoxes, when: string): string[] {
+  return fmt(m.table) === fmt(dealt.table)
+    ? []
+    : [`${when}: the table box is ${fmt(m.table)}, it was ${fmt(dealt.table)} at the deal`];
+}
+
+/**
+ * Plays on to the hero's first decision and waits until the coach has answered it (§12.6: the
+ * advice, or "Coach is not available"; on wide screens the answer fills the inline panel). False
+ * when the hand ends first (everyone folds to the hero's big blind) or the hero is out of chips.
+ */
+async function firstDecision(page: Page): Promise<boolean> {
+  if ((await nextFlowPoint(page, true)) !== 'hero') return false;
+  await page.waitForFunction(
+    () => {
+      const s = window.__pc?.state();
+      const hand = s?.game.hand;
+      if (s === undefined || hand === null || hand === undefined) return false;
+      // The decision's key: coachKeyOf(hand) in app/coachViews.ts.
+      return s.coach.key === `${hand.handSeq}:${hand.log.length}` && s.coach.status !== 'idle';
+    },
+    undefined,
+    { timeout: 10_000 },
+  );
+  return true;
+}
+
 test.describe('table layout', () => {
   // eslint-disable-next-line no-empty-pattern -- Playwright reads the fixtures from this pattern
   test.beforeEach(({}, testInfo) => {
@@ -132,10 +170,19 @@ test.describe('table layout', () => {
     const problems: string[] = [];
     for (let players = 2; players <= 9; players++) {
       await newTable(page, { players });
-      const m = await measure(page);
-      expect(m.pods).toHaveLength(players - 1);
-      if (sizeOf(testInfo) !== '1280x800') expect(m.tab, 'the Hands edge tab').not.toBeNull();
-      problems.push(...podProblems(m, `${players} players, first decision`));
+      const dealt = await measure(page);
+      expect(dealt.pods).toHaveLength(players - 1);
+      if (sizeOf(testInfo) !== '1280x800') expect(dealt.tab, 'the Hands edge tab').not.toBeNull();
+      // The box the geometry's unit tests assume (layout/seats.ts) is the one on screen.
+      const frame = tableFrame({ w: dealt.vw, h: dealt.vh }).box;
+      expect(fmt(dealt.table), 'the table box, as tableFrame() has it').toBe(fmt(frame));
+      problems.push(...podProblems(dealt, `${players} players, deal`));
+
+      if (await firstDecision(page)) {
+        const m = await measure(page);
+        const when = `${players} players, first decision`;
+        problems.push(...podProblems(m, when), ...tableProblems(m, dealt, when));
+      }
 
       // Check or call to the end of the hand; measure again with the result on show.
       await playHands(page, {
@@ -143,7 +190,9 @@ test.describe('table layout', () => {
         random: () => 0.5, // check or call
         fast: true,
         onHandEnd: async () => {
-          problems.push(...podProblems(await measure(page), `${players} players, hand end`));
+          const m = await measure(page);
+          const when = `${players} players, hand end`;
+          problems.push(...podProblems(m, when), ...tableProblems(m, dealt, when));
         },
       });
     }
