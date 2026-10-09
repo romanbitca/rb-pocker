@@ -22,7 +22,10 @@ import type { BrainProfile } from './types.ts';
 /** `BrainProfile.id` of the coach (Appendix A.5 `COACH`). */
 export const COACH_ID = 'coach';
 
-/** §9.1: `ln(AF / 2.5) × 0.1`, added to the scores of bets and raises (§9.4 step 3). */
+/**
+ * §9.1: `2.1 × ln(AF / 2.5)`, in units of the level's temperature `T`, added to the scores of bets
+ * and raises (§9.4 step 3: `EV/pot + T × bias`).
+ */
 export function aggressionBias(af: number): number {
   return Math.log(af / AGGRESSION_AF_BASE) * AGGRESSION_SCALE;
 }

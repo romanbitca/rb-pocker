@@ -115,13 +115,17 @@ export interface Personality {
   slowplayFreq: number;
 }
 
-/** The §9.1 table (VPIP/PFR as fractions). */
+/**
+ * The §9.1 table (VPIP/PFR as fractions). The targets are fixed; `looseness`, `pfrRatio` and the
+ * §9.4 biases are calibrated by self-play against them (§9.7, chunk 5.11: Rock's, Station's and
+ * Maniac's looseness, LAG's pfrRatio). TAG's row is also the coach's (`COACH`), so it stays.
+ */
 export const PERSONALITIES: Readonly<Record<PersonalityId, Personality>> = {
   rock: {
     vpip: 0.12,
     pfr: 0.09,
     af: 1.5,
-    looseness: 0.55,
+    looseness: 0.35,
     pfrRatio: 0.75,
     stickiness: 0.8,
     bluffFreq: 0.03,
@@ -144,7 +148,7 @@ export const PERSONALITIES: Readonly<Record<PersonalityId, Personality>> = {
     pfr: 0.26,
     af: 3.5,
     looseness: 1.45,
-    pfrRatio: 0.8,
+    pfrRatio: 1,
     stickiness: 1.1,
     bluffFreq: 0.18,
     bluff3betFreq: 0.08,
@@ -154,7 +158,7 @@ export const PERSONALITIES: Readonly<Record<PersonalityId, Personality>> = {
     vpip: 0.45,
     pfr: 0.07,
     af: 0.7,
-    looseness: 2,
+    looseness: 3.4,
     pfrRatio: 0.15,
     stickiness: 1.4,
     bluffFreq: 0.02,
@@ -165,7 +169,7 @@ export const PERSONALITIES: Readonly<Record<PersonalityId, Personality>> = {
     vpip: 0.6,
     pfr: 0.45,
     af: 5,
-    looseness: 2.7,
+    looseness: 3.5,
     pfrRatio: 0.75,
     stickiness: 1.2,
     bluffFreq: 0.35,
@@ -325,9 +329,12 @@ export const TWO_SIZES_POT_FROM = 3 / 4;
 
 // --- 5.7 profiles / decide ---
 
-/** §9.1 `aggressionBias = ln(AF / 2.5) × 0.1`: the TAG's AF scores no bias. */
+/**
+ * §9.1 `aggressionBias = 2.1 × ln(AF / 2.5)`, like every §9.4 step 3 bias in units of the level's
+ * temperature `T`: the TAG's AF scores no bias. Calibrated by self-play (§9.7, chunk 5.11).
+ */
 export const AGGRESSION_AF_BASE = 2.5;
-export const AGGRESSION_SCALE = 0.1;
+export const AGGRESSION_SCALE = 2.1;
 
 /** The §9.2 parameters of one bot level (`profileFor` adds the §9.1 personality). */
 export interface LevelParams {
@@ -411,9 +418,16 @@ export const LEVEL_PARAMS: Readonly<Record<BotLevel, LevelParams>> = {
  */
 export const STRENGTH_MARGINAL = 0.35;
 
-/** §9.4 step 3 score biases, in pots: the rule action `A*`; a call, per unit of stickiness. */
-export const MIX_RULE_BONUS = 0.1;
-export const MIX_CALL_STICKINESS = 0.05;
+/**
+ * §9.4 step 3 score biases, in units of the level's temperature `T` (a candidate scores
+ * `EV/pot + T × bias`): a bias weighs the same at every level, and only the EVs count for more at
+ * a lower `T`. Calibrated by self-play (§9.7, chunk 5.11). The rule action `A*` after the flop and
+ * before it (where `A*` carries the personality's ranges and the EVs' fold equity rates a raise
+ * with any two cards near break-even); a call, per unit of stickiness above 1.
+ */
+export const MIX_RULE_BONUS = 1;
+export const MIX_RULE_BONUS_PREFLOP = 3.5;
+export const MIX_CALL_STICKINESS = 3;
 /** §9.4 step 3: a bet or raise with Air (a bluff), a Monster's check on a Dry board (a slow-play). */
-export const MIX_BLUFF_BONUS = 0.3;
-export const MIX_SLOWPLAY_BONUS = 0.3;
+export const MIX_BLUFF_BONUS = 2.5;
+export const MIX_SLOWPLAY_BONUS = 2.5;

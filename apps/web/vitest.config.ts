@@ -41,6 +41,7 @@ const VOLUME_TESTS = [
   'tests/brain/decide.property.test.ts', // 1,000 decision points × the 10 Easy/Medium profiles (§9.6)
   'tests/brain/decide.play.test.ts', // 400 hands played by the brain alone
   'tests/brain/decide.benchmark.test.ts', // timing (Stage 5 acceptance 6)
+  'tests/scripts/selfplay.test.ts', // ~1,000 self-play hands (the CI-sized smoke of §9.7)
 ];
 
 const slowRequested =

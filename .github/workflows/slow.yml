@@ -28,6 +28,37 @@ jobs:
       - name: Slow tests (exhaustive, statistical and large property runs)
         run: npm run test:slow
 
+  # PLAN §9.7, Stage 5 acceptance 5 and 6: headless self-play with the real engine and brain
+  # (`scripts/selfplay.ts`), one runner per run. Calibration (seed 1, so the numbers are the same
+  # every week): each personality against its §9.1 targets, 20,000 hands 6-handed at Medium and at
+  # Easy, and the Medium bot decision p95 against the 100 ms budget. Legality: 100,000 hands over
+  # table sizes 2 to 9 with random blinds and stacks, Easy and Medium seats mixed, with a fresh
+  # seed every week (the report's first line prints it; `--seed <it>` reproduces the run). The
+  # report goes to the job summary; a gate that fails fails the job.
+  selfplay:
+    name: selfplay (${{ matrix.run }})
+    runs-on: ubuntu-24.04 # the same image as the e2e job (see e2e.yml)
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - run: medium
+            args: --level medium --players 6 --hands 20000 --seed 1 --calibrate --max-p95 100
+          - run: easy
+            args: --level easy --players 6 --hands 20000 --seed 1 --calibrate
+          - run: legality
+            args: --level mixed --players 2-9 --stacks random --hands 100000 --seed ${{ github.run_id }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - name: Self-play (${{ matrix.run }})
+        run: npm run selfplay -- ${{ matrix.args }} --quiet
+
   # PLAN §7.5: the committed tables are exactly what `npm run gen` makes. Every cell has
   # its own fixed seed, so the bytes are the same on every machine and thread count. About 3
   # minutes on a 10-core laptop; on the 2-vCPU runner expect 15 to 25 minutes (the range and push/fold tables add about 1 minute and 8 to 12).
