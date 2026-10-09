@@ -1,6 +1,6 @@
 import type { Locator, Page, TestInfo } from '@playwright/test';
 import { cardAriaLabel } from '../../src/core/cards.ts';
-import type { HandState, TableState } from '../../src/engine/types.ts';
+import type { HandState, LegalActions, TableState } from '../../src/engine/types.ts';
 import { expect } from './fixtures.ts';
 
 /**
@@ -19,6 +19,16 @@ interface PcState {
     hand: HandState | null;
     next: TableState | null;
     heroBust: boolean;
+    legal: LegalActions | null;
+    /** Stage 6 (§11.3): Undo can be taken now; the open feedback card; this hand's decisions. */
+    canUndo: boolean;
+    feedback: { grade: string; canUndo: boolean } | null;
+    decisions: readonly {
+      decisionId: number;
+      street: string;
+      grade: string | null;
+      undone: boolean;
+    }[];
   };
   ui: { screen: string; overlays: readonly string[]; gates: readonly string[]; layout: string };
   settings: { players: number; speed: string; autoNext: boolean } & Record<string, unknown>;
@@ -33,6 +43,8 @@ interface PcHooks {
   logs(): {
     events: { what: string; detail?: unknown }[];
     errors: { what: string; detail?: unknown }[];
+    /** Brain requests and replies as the controller saw them ('request' = a bot's decision). */
+    brain: { what: string; detail?: unknown }[];
   };
   snapshot(): {
     mode: string;
@@ -40,6 +52,7 @@ interface PcHooks {
     hand: HandState | null;
     next: TableState | null;
     inputs: unknown[];
+    meta: { undoCount: number };
   };
 }
 
@@ -90,9 +103,12 @@ export function collectErrors(page: Page): string[] {
   return errors;
 }
 
-/** Loads the app with `?seed=` and waits until it has booted. */
-export async function openApp(page: Page, seed: string): Promise<void> {
-  await page.goto(`/?seed=${seed}`);
+/**
+ * Loads the app with `?seed=` (and `extra` query parameters, e.g. `&script=river-min-bet`, the
+ * Stage 6 bot scripts) and waits until it has booted.
+ */
+export async function openApp(page: Page, seed: string, extra = ''): Promise<void> {
+  await page.goto(`/?seed=${seed}${extra}`);
   await page.waitForFunction(() => {
     const pc = window.__pc;
     return pc !== undefined && pc.state().game.mode !== 'booting';

@@ -13,12 +13,7 @@ import { brainGrader, GRADE_PAUSE_MS } from '../../src/app/grading.ts';
 import { coachKeyOf } from '../../src/app/hintJobs.ts';
 import { selectUndoButton, type AppState } from '../../src/app/store.ts';
 import { formatCards } from '../../src/core/cards.ts';
-import type {
-  CoachLevel,
-  HandState,
-  LegalActions,
-  PlayerAction,
-} from '../../src/engine/types.ts';
+import type { CoachLevel, HandState, LegalActions, PlayerAction } from '../../src/engine/types.ts';
 import { lineText } from '../../src/i18n/coach.ts';
 import { elapse, flush, makeHarness, tick, type Harness } from './harness.ts';
 import { realCoach, SEED_46, type RealCoach } from './realCoach.ts';
