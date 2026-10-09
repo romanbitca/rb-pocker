@@ -2,8 +2,9 @@
  * The work of headless self-play (PLAN §9.7, `scripts/selfplay.ts`): whole hands played by the
  * real engine (`startHand`, `step`, `nextTable`) and the real brain (`observe` → `decide` / `hint`)
  * in Node, no workers of the game, no UI. A job plays a run of hands at one table and returns the
- * tallies of every profile that sat there; `runSelfPlay` deals the jobs to `worker_threads` and
- * adds the tallies up.
+ * tallies of every profile that sat there; `selfplay.ts` (`runSelfPlay`) deals the jobs to
+ * `worker_threads` and adds the tallies up. This module imports nothing from Node, so tests under
+ * the game's own TypeScript settings can use it too.
  *
  * A job is a pure function of its fields (every seed derives from the run's seed and the job's
  * index), so the tallies never depend on the thread count or the finishing order. Only the decision
@@ -34,7 +35,6 @@
  * the controller would. An `InvariantError` ends that hand and is counted; so is a hand that does
  * not finish within `MAX_INPUTS` inputs.
  */
-import { fileURLToPath } from 'node:url';
 import { decide, hint, kindOf } from '../src/brain/decide.ts';
 import { updateSeatStats } from '../src/brain/opponentStats.ts';
 import { profileFor } from '../src/brain/profiles.ts';
@@ -71,7 +71,6 @@ import { callAlwaysAction } from './bots/callAlways.ts';
 import { potBettorAction } from './bots/potBettor.ts';
 import { raiseAlwaysAction } from './bots/raiseAlways.ts';
 import { simpleBotAction } from './bots/simple.ts';
-import { runPool } from './pool.ts';
 
 // ── Seats ──────────────────────────────────────────────────────────────────────────────────────
 
@@ -596,18 +595,4 @@ export function mergeResults(results: readonly JobResult[]): JobResult {
   }
   total.problems = total.problems.slice(0, 2 * MAX_PROBLEMS);
   return total;
-}
-
-const WORKER = fileURLToPath(new URL('./selfplay-worker.ts', import.meta.url));
-
-/** Plays a run on `spec.threads` threads (one thread: here) and returns the summed result. */
-export async function runSelfPlay(
-  spec: RunSpec,
-  onDone?: (jobsDone: number, jobs: number) => void,
-): Promise<JobResult> {
-  const jobs = jobsOf(spec);
-  const results = await runPool(WORKER, runJob, jobs, spec.threads, (done) =>
-    onDone?.(done, jobs.length),
-  );
-  return mergeResults(results);
 }

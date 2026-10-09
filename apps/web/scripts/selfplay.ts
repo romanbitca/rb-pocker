@@ -1,6 +1,7 @@
 /**
  * Headless self-play (PLAN §9.7): bot calibration, legality and speed, with the real engine and
- * brain in Node (`selfplay-jobs.ts` plays the hands, on `worker_threads`). From apps/web
+ * brain in Node (`selfplay-jobs.ts` plays the hands; `runSelfPlay` deals its jobs to
+ * `worker_threads`, `selfplay-worker.ts`). From apps/web
  * `node scripts/selfplay.ts …`, at the root `npm run selfplay -- …`:
  *
  *   npm run selfplay -- --level medium --players 6 --hands 20000 --seed 1 --calibrate
@@ -29,14 +30,17 @@
  * `--calibrate`, `--max-p95 <ms>`, `--json <file>` (the summary as JSON), `--quiet`.
  */
 import { appendFileSync, writeFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { PERSONALITIES } from '../src/brain/tunables.ts';
 import { deriveSeed, isSeed128, ZERO_SEED, type Seed128 } from '../src/core/rng.ts';
 import { BOT_LEVELS, PERSONALITY_IDS, type PersonalityId } from '../src/engine/types.ts';
-import { defaultThreads } from './pool.ts';
+import { defaultThreads, runPool } from './pool.ts';
 import {
   DEFAULT_LINEUP,
-  runSelfPlay,
+  jobsOf,
+  mergeResults,
+  runJob,
   SEAT_SPECS,
   type Count,
   type JobResult,
@@ -48,6 +52,25 @@ import {
   type SeatSpec,
   type StackMode,
 } from './selfplay-jobs.ts';
+
+// ── A run ──────────────────────────────────────────────────────────────────────────────────────
+
+const WORKER = fileURLToPath(new URL('./selfplay-worker.ts', import.meta.url));
+
+/**
+ * Plays a run on `spec.threads` threads (one thread: here) and returns the summed result. The
+ * tallies do not depend on the thread count (each job is a pure function of its seed).
+ */
+export async function runSelfPlay(
+  spec: RunSpec,
+  onDone?: (jobsDone: number, jobs: number) => void,
+): Promise<JobResult> {
+  const jobs = jobsOf(spec);
+  const results = await runPool(WORKER, runJob, jobs, spec.threads, (done) =>
+    onDone?.(done, jobs.length),
+  );
+  return mergeResults(results);
+}
 
 // ── Statistics ─────────────────────────────────────────────────────────────────────────────────
 
