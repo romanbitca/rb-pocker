@@ -156,6 +156,10 @@ If the human's answer later reveals a problem, the fix becomes a new chunk ahead
 
 - **4.7 acceptance 3 (perf at 6× throttle) in CI** (orchestrator, 1 Oct 00:30Z): CDP cannot throttle workers, and on the shared 2-vCPU runner the modelled 6× worker time is noise (final 539–748 ms in CI vs 270 ms locally). Decision: the two perf checks run **report-only** in the PR e2e job (numbers printed in the job summary), are **enforced locally** (`npm run e2e:perf` or equivalent, run before merging perf-sensitive PRs), and on a **real phone via `#bench`** (4.8 [H]). PLAN Testing strategy already says latency budgets are checked "per stage on a real phone"; write this into §17.5 + risk register.
 
+### Notes for Stage 9 (polish)
+
+- R14 (open): at 1024×768 wide layout with the sizing tray open the table shrinks to 216 px and pods reach the pot/board (since 5.9). Portrait tray open can show one frame of stale pod positions (ResizeObserver lag) — left as is to protect tap→paint.
+
 ### Notes for Stage 6
 
 - 6.2 (PR #49, draft): all built except the Playwright specs for acceptance 2 (scripted blunder: `?seed=46&script=river-min-bet`, 3 players → nut flush on the river of hand 1) and the e2e half of 3. Until 6.1's `grade()` lands, decisions record `grade: null` (no pause yet). Undo slot must be rebased onto #44's coach strip.
@@ -212,5 +216,6 @@ If the human's answer later reveals a problem, the fix becomes a new chunk ahead
 | 1 Oct 20:40–21:00Z | 4.7 | [PR #36](https://github.com/romanbitca/rb-pocker/pull/36) merged (27473f4): all-in TV mode + luck line, `#bench`; perf checks report-only in CI, enforced locally (risk R17). **Stage 4 code complete** | weekly 68% → 71% |
 | 8 Oct 20:25–22:10Z | 5.8, 5.5, 5.3 merged; 5.10, 5.6 ready | #42 (a714b4b), #40 (5445df2), #41 (48b1472) merged; [#45](https://github.com/romanbitca/rb-pocker/pull/45) level selectors + bot card, [#46](https://github.com/romanbitca/rb-pocker/pull/46) explanations + check-copy (1,000 situations) ready. Git rerere disabled (it silently dropped PLAN rows once) | weekly 23% → 34% |
 | 8 Oct 22:10–23:30Z | 5.4, 5.10, 5.6, 5.9 merged; 5.7 nearly done | #43 (35373d8), #45 (bb249e5), #46 (63ae15e), #44 (53cb525). [#47](https://github.com/romanbitca/rb-pocker/pull/47): 18/18 golden spots via hint(), properties + non-cheating ✅, bot p95 3.8 ms; EV-model fix (equity vs one caller) — bots no longer fold aces | 5h → 85%, weekly 44% |
+| 9 Oct 02:51–04:00Z | CI speed-up, wide-layout fix | #50 (98706d7): check job 597 s, 25-min timeout. #53: real bug — wide coach panel had no reserved row, table resized mid-hand and pods lagged one render over the hero strip; reserved row (table min 320 px); WebKit 6/40 → 0/50 failures | weekly 45% → 52% |
 | 1 Oct 20:40–21:55Z | 5.1, 5.2 merged; 5.3, 5.5, 5.8 built | #37 (db1d249), #38 (d5848b7) merged. Ready/held: [#40](https://github.com/romanbitca/rb-pocker/pull/40) guardrails + EV, [#42](https://github.com/romanbitca/rb-pocker/pull/42) brain worker (no HandState/hidden cards in any message; hands finish if the worker dies), [#41](https://github.com/romanbitca/rb-pocker/pull/41) preflop + push/fold (E1–E8, E18 ✅; R16 closed with sources). 5.4 [#39](https://github.com/romanbitca/rb-pocker/pull/39) in progress | weekly 68% → ~79% |
 | 29 Sep 21:05–21:48Z | 4.1, 4.2 (early) | PRs [#27](https://github.com/romanbitca/rb-pocker/pull/27), [#28](https://github.com/romanbitca/rb-pocker/pull/28) ready, held: all D.2, D.3, C.5 exact; brute-force oracle agreement | (same window) |
