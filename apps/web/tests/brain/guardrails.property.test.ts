@@ -14,7 +14,7 @@
  */
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
-import { features } from '../../src/brain/features.ts';
+import { features, perOpponentStrength } from '../../src/brain/features.ts';
 import {
   guardrails,
   guardSpot,
@@ -197,7 +197,7 @@ function consistentFeatures(
     facing: f.facing,
     need: f.need,
     eRange,
-    p: eRange ** (1 / f.nOpp),
+    p: perOpponentStrength(eRange, f.nOpp),
   };
 }
 

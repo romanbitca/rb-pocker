@@ -13,10 +13,21 @@
  *   `E > need`, a call of an all-in `E ≥ need`, a fold of an all-in `E < need`.
  * - A close alternative is another kind of action, offered only in a close spot, within 3% of the
  *   pot of the recommendation (the coach's own sizes only: never an absurd deep all-in).
+ * - §8.10 (risk R18, pitfall 34): the strength meter never argues against the move. Never Strong
+ *   or Monster next to a fold; never Weak next to a bet or raise unless its main reason names a
+ *   bluff (SEMI_BLUFF, CBET_DRY, PUSH_FOLD). The meter is the band of the fair-share `p` (§8.2),
+ *   whose own band almost never needs that limit (at most 1% of the hints).
  */
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
-import { deliberate, hint, kindOf } from '../../src/brain/decide.ts';
+import {
+  BLUFF_REASONS,
+  deliberate,
+  hint,
+  kindOf,
+  meterStrength,
+  strengthOf,
+} from '../../src/brain/decide.ts';
 import { candidateKey } from '../../src/brain/ev.ts';
 import { coachSeed } from '../../src/brain/features.ts';
 import { guardrails, guardSpot, isLegalAction } from '../../src/brain/guardrails.ts';
@@ -33,11 +44,13 @@ const RUNS = 2000;
 
 describe('the coach at random decision points (C2, C3, C6, §9.6)', () => {
   it(
-    'legal, deterministic, blind to hidden cards, guarded, and its reasons agree with its numbers',
+    'legal, deterministic, blind to hidden cards, guarded, its reasons agree with its numbers and its meter with its move',
     { timeout: 600_000 },
     () => {
       const seen = { runs: 0, postflop: 0, nullHud: 0, close: 0, adjust: 0, guarded: 0 };
+      const meter = { multiway: 0, folds: 0, value: 0, limited: 0 };
       const kinds = new Set<string>();
+      const labels = new Set<string>();
       fc.assert(
         fc.property(
           handArb,
@@ -84,6 +97,22 @@ describe('the coach at random decision points (C2, C3, C6, §9.6)', () => {
             }
             if (d.trace.some((r) => r.code === 'RANGE_ADJUST')) seen.adjust++;
 
+            // §8.10: the strength meter never argues against the move (R18, pitfall 34).
+            const mainCode = d.trace[0]?.code;
+            expect(d.strength).toBe(meterStrength(f.p, d.action, mainCode));
+            labels.add(d.strength);
+            if (f.nOpp > 1) meter.multiway++;
+            if (d.strength !== strengthOf(f.p)) meter.limited++;
+            if (d.action.type === 'fold') {
+              meter.folds++;
+              expect(['strong', 'monster']).not.toContain(d.strength);
+            }
+            const aggressive = d.action.type === 'bet' || d.action.type === 'raise';
+            if (aggressive && (mainCode === undefined || !BLUFF_REASONS.has(mainCode))) {
+              meter.value++;
+              expect(d.strength).not.toBe('weak');
+            }
+
             // A close alternative: another kind, in a close spot, within 3% of the pot.
             if (d.alt !== null) {
               seen.close++;
@@ -103,6 +132,11 @@ describe('the coach at random decision points (C2, C3, C6, §9.6)', () => {
       expect(seen.close).toBeGreaterThan(0);
       expect(seen.adjust).toBeGreaterThan(RUNS / 20);
       expect([...kinds].sort()).toEqual(['allin', 'bet', 'call', 'check', 'fold', 'raise']);
+      expect([...labels].sort()).toEqual(['decent', 'marginal', 'monster', 'strong', 'weak']);
+      expect(meter.multiway).toBeGreaterThan(RUNS / 2);
+      expect(meter.folds).toBeGreaterThan(RUNS / 5);
+      expect(meter.value).toBeGreaterThan(RUNS / 20);
+      expect(meter.limited).toBeLessThanOrEqual(RUNS / 100);
     },
   );
 });

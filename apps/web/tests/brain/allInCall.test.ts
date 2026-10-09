@@ -14,12 +14,15 @@ import { bet, call, check, raise } from '../engine/play.ts';
 import { extrasFor, playSpot } from './fixtures.ts';
 import { synth, type SynthSpec } from './postflopFixtures.ts';
 
-/** Three opponents, a wet board, top pair: Strong per opponent at 28% against all three. */
+/**
+ * Five opponents, a wet board, top pair: Strong per opponent at 28% against all five (§8.2:
+ * `p = 5E / (1 + 4E)` = 0.66; the fair share is 17%).
+ */
 const SHORT: SynthSpec = {
   hole: 'Kd Qd',
   board: 'Qh Jh 4c',
   E: 0.28,
-  nOpp: 3,
+  nOpp: 5,
   pot: 2000, // the bet faced included
   toCall: 1000,
   heroStack: 1000, // the call is all-in: no raise is possible

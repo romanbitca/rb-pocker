@@ -29,7 +29,7 @@ import { rankOf, suitOf, type Card } from '../core/cards.ts';
 import type { Observation } from '../engine/types.ts';
 import type { HandInfo } from '../eval/describe.ts';
 import { score7, scoreNibbles, type HandCategory } from '../eval/evaluate.ts';
-import { bucketOf } from './features.ts';
+import { bucketOf, perOpponentStrength } from './features.ts';
 import { liveOpponents } from './ranges.ts';
 import { sizeIntent, type SizedAction } from './sizing.ts';
 import {
@@ -263,7 +263,7 @@ export function callEV(
  */
 export function withEquity(f: Features, e: number): Features {
   const eRange = Math.min(1, Math.max(0, e));
-  const p = f.nOpp === 0 ? 1 : eRange ** (1 / f.nOpp);
+  const p = perOpponentStrength(eRange, f.nOpp);
   return { ...f, eRange, p, bucket: bucketOf(p, f.outs, f.street) };
 }
 

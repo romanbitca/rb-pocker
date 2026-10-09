@@ -113,7 +113,7 @@ export function kindOf(legal: LegalActions, action: PlayerAction): Decision['kin
   return action.type;
 }
 
-/** §8.10 strength meter from `p`: Weak, Marginal (0.35), Decent, Strong, Monster (the buckets). */
+/** §8.10 strength meter band of `p`: Weak, Marginal (0.35), Decent, Strong, Monster (the buckets). */
 export function strengthOf(p: number): Decision['strength'] {
   if (p >= BUCKET_MONSTER) return 'monster';
   if (p >= BUCKET_STRONG) return 'strong';
@@ -123,6 +123,34 @@ export function strengthOf(p: number): Decision['strength'] {
 }
 
 const isAggressive = (a: PlayerAction): boolean => a.type === 'bet' || a.type === 'raise';
+
+/**
+ * The reasons of a bet or raise that say why a weak hand bets (§8.10): a semi-bluff, a
+ * continuation bet, a short stack's push or fold. Only they may sit next to a Weak meter.
+ */
+export const BLUFF_REASONS: ReadonlySet<ReasonCode> = new Set<ReasonCode>([
+  'SEMI_BLUFF',
+  'CBET_DRY',
+  'PUSH_FOLD',
+]);
+
+/**
+ * §8.10 the strength meter of a decision: the band of `p` (`strengthOf`), which never argues
+ * against the move (pitfall 34). Next to a fold it shows at most Decent (the price or the seat
+ * says fold, not the hand); next to a bet or raise at least Marginal, unless the main reason
+ * `main` is one of `BLUFF_REASONS`. With the fair-share `p` (§8.2) these limits rarely act.
+ */
+export function meterStrength(
+  p: number,
+  action: PlayerAction,
+  main: ReasonCode | undefined,
+): Decision['strength'] {
+  const band = strengthOf(p);
+  if (action.type === 'fold' && (band === 'strong' || band === 'monster')) return 'decent';
+  const bluff = main !== undefined && BLUFF_REASONS.has(main);
+  if (isAggressive(action) && band === 'weak' && !bluff) return 'marginal';
+  return band;
+}
 
 // ── §9.4 draws ─────────────────────────────────────────────────────────────────────────────────
 
@@ -648,7 +676,7 @@ export function deliberate(
     eRange: f.eRange,
     need: f.need,
     bucket: f.bucket,
-    strength: strengthOf(f.p),
+    strength: meterStrength(f.p, action, trace[0]?.code),
     confidence: conf,
     alt: alt === null ? null : alt.action,
     trace,

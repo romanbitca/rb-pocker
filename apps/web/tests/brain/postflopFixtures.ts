@@ -6,7 +6,7 @@
  * the hero has more than the call.
  */
 import { countBeaters, findDraws, findOuts } from '../../src/analysis/handinfo.ts';
-import { bucketOf, textureOf } from '../../src/brain/features.ts';
+import { bucketOf, perOpponentStrength, textureOf } from '../../src/brain/features.ts';
 import type { Facing, Features, PostflopSpot, Position } from '../../src/brain/types.ts';
 import { parseCards, type Card } from '../../src/core/cards.ts';
 import type { LegalActions, Street } from '../../src/engine/types.ts';
@@ -95,7 +95,7 @@ export function synth(spec: SynthSpec): Synth {
   const spr = spec.spr ?? 10;
   const streetBets = heroStreetBet + currentBet;
   const effStack = spec.effStack ?? Math.round(spr * Math.max(1, spec.pot - streetBets));
-  const p = nOpp === 0 ? 1 : spec.E ** (1 / nOpp);
+  const p = perOpponentStrength(spec.E, nOpp);
   const draws = street === 'river' ? [] : findDraws(hole, board);
   const outCards = street === 'river' ? [] : findOuts(hole, board);
   const legal = { ...synthLegal(toCall, heroStack, heroStreetBet, currentBet, bb), ...spec.legal };

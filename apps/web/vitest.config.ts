@@ -37,7 +37,7 @@ const VOLUME_TESTS = [
   'tests/engine/benchmark.test.ts', // timing
   'tests/eval/benchmark.test.ts', // timing
   'tests/analysis/*.benchmark.test.ts', // timing
-  'tests/brain/hint.property.test.ts', // 2,000 coach decision points, two hints each (C2, C3, C6, §9.6)
+  'tests/brain/hint.property.test.ts', // 2,000 coach decision points, two hints each (C2, C3, C6, §9.6, §8.10 meter)
   'tests/brain/decide.property.test.ts', // 1,000 decision points × the 10 Easy/Medium profiles (§9.6)
   'tests/brain/decide.play.test.ts', // 400 hands played by the brain alone
   'tests/brain/decide.benchmark.test.ts', // timing (Stage 5 acceptance 6)

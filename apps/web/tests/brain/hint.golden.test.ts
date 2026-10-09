@@ -332,6 +332,82 @@ describe('Appendix E golden spots through hint(obs, null)', () => {
     expect(main(g.d)).toBe('PUSH_FOLD');
   });
 
+  // E19–E22: multiway spots (risk R18). `p` is fair-share relative (§8.2), so a hand is Strong
+  // only well above its share of the pot; the old eRange^(1/nOpp) bet E19 and E20 for value and
+  // raised over E21's all-in "to protect" a draw.
+
+  it('E19: 9 players limp, K♥10♥ on 7♦7♥3♦ checked to the button (8%): check, never a value bet', () => {
+    const limps = [
+      call(3),
+      call(4),
+      call(5),
+      call(6),
+      call(7),
+      call(8),
+      call(0),
+      call(1),
+      check(2),
+    ];
+    const g = postflop(
+      {
+        stacks: new Array<number>(9).fill(10000),
+        hole: { 0: 'Kh Th' },
+        board: '7d 7h 3d',
+        inputs: [...limps, ...[1, 2, 3, 4, 5, 6, 7, 8].map(check)],
+      },
+      0,
+    );
+    expectHintShape(g);
+    expect(g.d.action).toEqual({ type: 'check' });
+    expect(['strong', 'monster']).not.toContain(g.d.strength); // 8% at a 9-handed table
+  });
+
+  it('E20: 4 players, UTG raises to 2.5 bb, three calls, 8♦7♠ on K♠8♣3♥ checked to the button: check (POT_CONTROL)', () => {
+    const g = postflop(
+      {
+        stacks: [10000, 10000, 10000, 10000],
+        hole: { 0: '8d 7s' },
+        board: 'Ks 8c 3h',
+        inputs: [raise(3, 250), call(0), call(1), call(2), check(1), check(2), check(3)],
+      },
+      0,
+    );
+    expectHintShape(g);
+    expect(g.d.action).toEqual({ type: 'check' });
+    expect(main(g.d)).toBe('POT_CONTROL');
+  });
+
+  it('E21: 5 players limp, Q♠J♥9♣, the short big blind goes all-in for 11 bb, A♦10♦ with two behind: fold (FOLD_ALLIN)', () => {
+    const g = postflop(
+      {
+        stacks: [10000, 10000, 1200, 10000, 10000],
+        hole: { 3: 'Ad Td' },
+        board: 'Qs Jh 9c',
+        inputs: [call(3), call(4), call(0), call(1), check(2), check(1), bet(2, 1100)],
+      },
+      3,
+    );
+    expectHintShape(g);
+    expect(g.d.action).toEqual({ type: 'fold' });
+    expect(main(g.d)).toBe('FOLD_ALLIN');
+  });
+
+  it('E22: 4 players limp, 8♥8♦ on 8♠7♠2♣ facing a bet and a call: raise (strong hands still raise multiway)', () => {
+    const g = postflop(
+      {
+        stacks: [10000, 10000, 10000, 10000],
+        hole: { 0: '8h 8d' },
+        board: '8s 7s 2c',
+        inputs: [call(3), call(0), call(1), check(2), check(1), bet(2, 300), call(3)],
+      },
+      0,
+    );
+    expectHintShape(g);
+    expect(g.d.kind).toBe('raise');
+    expect(main(g.d)).toBe('NUTS');
+    expect(g.d.strength).toBe('monster');
+  });
+
   it('the hint is the coach profile`s decide(): extras, EVs and a close alternative only when close', () => {
     const g = preflop({
       players: 6,

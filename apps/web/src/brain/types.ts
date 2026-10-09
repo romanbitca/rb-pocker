@@ -85,7 +85,7 @@ export interface Features {
   eRandom: number;
   /** Equity vs the estimated ranges (§8.6). */
   eRange: number;
-  /** Per-opponent strength eRange^(1/nOpp). */
+  /** Per-opponent strength `n·eRange / (1 + (n − 1)·eRange)`, n = nOpp (§8.2; 0.5 at the fair share). */
   p: number;
   /** null preflop. */
   bucket: Bucket | null;
