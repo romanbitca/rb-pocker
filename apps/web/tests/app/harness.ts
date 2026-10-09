@@ -28,6 +28,7 @@ import {
   type Gate,
   type GameSettings,
 } from '../../src/app/store.ts';
+import type { Grader } from '../../src/app/grading.ts';
 import { fixedSeeds } from '../../src/app/testHooks.ts';
 import {
   createBrainClient,
@@ -71,6 +72,8 @@ export interface HarnessOptions {
   equity?: EquityClient;
   /** Chunk 5.7: ask the brain for the coach's hint at every hero decision. */
   hints?: boolean;
+  /** Chunk 6.2: the grade port (default none: decisions are recorded ungraded at once). */
+  grader?: Grader;
 }
 
 export function makeHarness(options: HarnessOptions = {}): Harness {
@@ -90,6 +93,7 @@ export function makeHarness(options: HarnessOptions = {}): Harness {
     ...(options.storage !== undefined && { storage: options.storage }),
     ...(options.equity !== undefined && { equity: options.equity }),
     ...(options.hints !== undefined && { hints: options.hints }),
+    ...(options.grader !== undefined && { grader: options.grader }),
   });
   controller.boot();
   return {

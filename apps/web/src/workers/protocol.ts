@@ -25,7 +25,8 @@
  *   what is shown, never the advice (C4).
  * - Timeouts (main thread): equity 4,000 ms (above the worker's own 3 s `truncated` cap, so a
  *   truncated reply still lands); bot decision 2,000 ms; hint 4,000 ms (chunk 5.7: the strip says
- *   "Coach is not available" after it, §12.11); grade 1,500 ms.
+ *   "Coach is not available" after it, §12.11); grade: the hand waits 1,500 ms for it, the job
+ *   itself 5,000 ms, then one retry (§11.3 r5, `app/grading.ts`).
  * - The Monte Carlo seed text (§7.3) writes hero cards sorted by `Card` value descending and the
  *   board in deal order.
  * - Timing (§15.3 "worker timing logs", chunk 4.7): `equity`, `equityKnown` and `handInfo` replies
