@@ -11,17 +11,18 @@
  * 3. **Rule action `A*`** (§9.4 step 2): the preflop and push/fold policy (§8.3–8.4) with every
  *    "top X%" threshold × looseness × (1 + U(−j, j)) and the level's position awareness, or the
  *    postflop policy (§8.5) sized by the profile's size set (§8.7, §9.2). A bot that may limp turns
- *    an open raise (not a short-stack shove) into a call (the big blind: a check) with probability
- *    `1 − pfrRatio`.
+ *    an open raise (not a short-stack shove) into a call (the big blind: a check) when its limp
+ *    draw is below `1 − pfrRatio`; that draw also limps an open raise the mix picks (step 4).
  * 4. **The pick.** The coach (`deterministic`) takes `A*`: the recommendation is the rule action
  *    (§8.9 "recommendation from the rule policy"), so σ = 0 and no mixing. A bot scores its
- *    candidates (§9.4 step 3): `EV/pot` (§8.9, with `E'`) + `aggressionBias` for a bet or raise,
- *    `+0.05 × (stickiness − 1)` for a call, `+0.10` for `A*`, `+0.30` for a bet when it bluffs (Air
- *    and the bluff draw below `bluffFreq`; before the flop a raise facing one open with a suited
- *    A5–A2 or 54–T9 and the draw below `bluff3betFreq`), `+0.30` for a check when it slow-plays (a
- *    Monster on a Dry board, the draw below `slowplayFreq`). Facing a bet after the flop it never
- *    folds when `1 − handPct ≤ MDF × defenseFactor` (§9.4 step 4). It picks with
- *    `P(a) ∝ exp(score / T)` (step 5).
+ *    candidates (§9.4 step 3): `EV/pot` (§8.9, with `E'`) + `T ×` biases in units of its level's
+ *    temperature `T`: `aggressionBias` for a bet or raise, `3 × (stickiness − 1)` for a call, `1`
+ *    for `A*` (`3.5` before the flop), `2.5` for a bet when it bluffs (Air and the bluff draw below
+ *    `bluffFreq`; before the flop a raise facing one open with a suited A5–A2 or 54–T9 and the draw
+ *    below `bluff3betFreq`), `2.5` for a check when it slow-plays (a Monster on a Dry board, the
+ *    draw below `slowplayFreq`). Facing a bet after the flop it never folds when
+ *    `1 − handPct ≤ MDF × defenseFactor` (§9.4 step 4). It picks with `P(a) ∝ exp(score / T)`
+ *    (step 5); in limp mode (step 2) an open raise it picks becomes the limp.
  * 5. **Guardrails** (§8.8, step 6) on the true numbers, for every profile.
  * 6. **EVs** (§8.9): every candidate's EV in chips (the coach: the §8.9 candidates plus its own
  *    action), `confidence` from the two best, and for the coach the hint's structured extras: the
@@ -81,6 +82,7 @@ import {
   MIX_BLUFF_BONUS,
   MIX_CALL_STICKINESS,
   MIX_RULE_BONUS,
+  MIX_RULE_BONUS_PREFLOP,
   MIX_SLOWPLAY_BONUS,
   SIZE_HALF,
   SIZE_POT,
@@ -234,7 +236,23 @@ export function ruleAction(
   return profile.neverLimp ? rule : limpInstead(obs, f, rule, profile, draws);
 }
 
-/** §9.4 step 2: an open raise becomes a call (a check in the big blind) with `1 − pfrRatio`. */
+/**
+ * §9.4 step 2, limp mode: a bot that may limp, in an unopened or limped pot that is not a
+ * short-stack push or fold, with its limp draw below `1 − pfrRatio`. Its open raise is then a
+ * call (a check in the big blind), whether `A*` or the mix picked it (§9.4 step 5), so `pfrRatio`
+ * is the share of its opens that raise at every level (chunk 5.11: limping only `A*`, the EVs'
+ * fold equity raised most of a Maniac's limps at Medium and far fewer at Easy).
+ */
+export function limpMode(f: Features, profile: BrainProfile, draws: MixDraws): boolean {
+  return (
+    !profile.neverLimp &&
+    (f.facing === 'none' || f.facing === 'limpers') &&
+    !pushFoldApplies(f) &&
+    draws.limp < 1 - profile.pfrRatio
+  );
+}
+
+/** §9.4 step 2: in limp mode an open raise becomes a call (a check in the big blind). */
 function limpInstead(
   obs: Observation,
   f: Features,
@@ -242,11 +260,7 @@ function limpInstead(
   profile: BrainProfile,
   draws: MixDraws,
 ): PolicyDecision {
-  const open =
-    (f.facing === 'none' || f.facing === 'limpers') &&
-    !pushFoldApplies(f) &&
-    isAggressive(rule.action);
-  if (!open || draws.limp >= 1 - profile.pfrRatio) return rule;
+  if (!isAggressive(rule.action) || !limpMode(f, profile, draws)) return rule;
   const action = obs.legal.canCheck ? CHECK : CALL;
   return { action, kind: action.type, trace: rule.trace };
 }
@@ -390,6 +404,7 @@ export interface BotPick {
   scores: number[];
   /** Fold was taken out by the §9.4 step 4 defence. */
   defended: boolean;
+  /** The softmax pick; in limp mode (§9.4 step 2) an open raise it picked is the limp instead. */
   pick: EvCandidate;
 }
 
@@ -428,16 +443,22 @@ export function botPick(
   const pot = Math.max(f.pot, 1);
   // "Air bucket bet": a bet into the pot after the flop; before it, the bluff 3-bet (a raise).
   const bluffType: PlayerAction['type'] = preflop ? 'raise' : 'bet';
+  // The biases are in units of the temperature T: EV/pot + T × bias (§9.4 step 3, chunk 5.11).
+  const ruleBonus = preflop ? MIX_RULE_BONUS_PREFLOP : MIX_RULE_BONUS;
   const scores = candidates.map((c) => {
-    let s = c.ev / pot;
-    if (isAggressive(c.action)) s += profile.aggressionBias;
-    if (bluffing && c.action.type === bluffType) s += MIX_BLUFF_BONUS;
-    if (c.action.type === 'call') s += MIX_CALL_STICKINESS * (profile.stickiness - 1);
-    if (c.action.type === 'check' && slowplaying) s += MIX_SLOWPLAY_BONUS;
-    if (c.key === ruleKey) s += MIX_RULE_BONUS;
-    return s;
+    let bias = 0;
+    if (isAggressive(c.action)) bias += profile.aggressionBias;
+    if (bluffing && c.action.type === bluffType) bias += MIX_BLUFF_BONUS;
+    if (c.action.type === 'call') bias += MIX_CALL_STICKINESS * (profile.stickiness - 1);
+    if (c.action.type === 'check' && slowplaying) bias += MIX_SLOWPLAY_BONUS;
+    if (c.key === ruleKey) bias += ruleBonus;
+    return c.ev / pot + profile.temperature * bias;
   });
-  const pick = candidates[softmaxIndex(scores, profile.temperature, draws.pick)] as EvCandidate;
+  let pick = candidates[softmaxIndex(scores, profile.temperature, draws.pick)] as EvCandidate;
+  // Limp mode (§9.4 step 2) limps an open raise the mix picked too: `pfrRatio` holds at every level.
+  if (preflop && isAggressive(pick.action) && limpMode(f, profile, draws)) {
+    pick = candidates.find((c) => !isAggressive(c.action) && c.key !== 'fold') as EvCandidate;
+  }
   return { candidates, scores, defended, pick };
 }
 

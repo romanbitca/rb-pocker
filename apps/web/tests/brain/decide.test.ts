@@ -28,7 +28,9 @@ import { aggressionBias, COACH, COACH_ID, profileFor } from '../../src/brain/pro
 import {
   LEVEL_PARAMS,
   MIX_BLUFF_BONUS,
+  MIX_CALL_STICKINESS,
   MIX_RULE_BONUS,
+  MIX_RULE_BONUS_PREFLOP,
   MIX_SLOWPLAY_BONUS,
   PERSONALITIES,
 } from '../../src/brain/tunables.ts';
@@ -84,9 +86,9 @@ describe('profiles (§9.1 × §9.2, Appendix A.5)', () => {
     const p = profileFor('station', 'easy');
     expect(p).toEqual({
       id: 'station/easy',
-      looseness: 2,
+      looseness: 3.4,
       pfrRatio: 0.15,
-      aggressionBias: Math.log(0.7 / 2.5) * 0.1,
+      aggressionBias: Math.log(0.7 / 2.5) * 2.1, // in units of T (§9.4 step 3)
       bluffFreq: 0.05, // Easy: "random 5%" whatever the personality
       bluff3betFreq: 0,
       stickiness: 1.4,
@@ -106,7 +108,7 @@ describe('profiles (§9.1 × §9.2, Appendix A.5)', () => {
     const m = profileFor('maniac', 'medium');
     expect(m).toMatchObject({
       id: 'maniac/medium',
-      looseness: 2.7,
+      looseness: 3.5,
       bluffFreq: 0.35, // Medium: the personality's base
       bluff3betFreq: 0.15,
       mcTrials: 500,
@@ -118,7 +120,7 @@ describe('profiles (§9.1 × §9.2, Appendix A.5)', () => {
       defenseFactor: 0.7,
       preflopJitter: 0.2,
     });
-    expect(m.aggressionBias).toBeCloseTo(Math.log(5 / 2.5) * 0.1, 12);
+    expect(m.aggressionBias).toBeCloseTo(Math.log(5 / 2.5) * 2.1, 12);
   });
 
   it('every personality at every level: the §9.1 row and the §9.2 column', () => {
@@ -460,7 +462,7 @@ describe('the bots (§9.4)', () => {
     ]);
   });
 
-  it('scores: EV/pot + aggression + A* bonus; a bluff adds 0.30 to bets, a slow-play to the check', () => {
+  it('scores: EV/pot + T × (aggression + A* bonus); a bluff adds 2.5 T to bets, a slow-play to the check', () => {
     // Air in position, checked to: the rule bets (a continuation bet) or checks.
     const air = headsUp('5h 4c', 'Kc 9s 2d', [raise(0, 300), call(1), check(1)]);
     const maniac = profileFor('maniac', 'medium');
@@ -469,14 +471,14 @@ describe('the bots (§9.4)', () => {
     const bot = plain.bot as NonNullable<typeof plain.bot>;
     const ruleKey = candidateKey(air.legal, plain.rule.action);
     bot.candidates.forEach((c, i) => {
-      let s = c.ev / air.pot;
-      if (c.action.type === 'bet' || c.action.type === 'raise') s += maniac.aggressionBias;
-      if (c.key === ruleKey) s += MIX_RULE_BONUS;
+      let bias = 0;
+      if (c.action.type === 'bet' || c.action.type === 'raise') bias += maniac.aggressionBias;
+      if (c.key === ruleKey) bias += MIX_RULE_BONUS;
       const bluff = mixDraws(seed(0)).bluff < maniac.bluffFreq && c.action.type === 'bet';
-      if (bluff) s += MIX_BLUFF_BONUS;
-      expect(bot.scores[i]).toBeCloseTo(s, 12);
+      if (bluff) bias += MIX_BLUFF_BONUS;
+      expect(bot.scores[i]).toBeCloseTo(c.ev / air.pot + maniac.temperature * bias, 12);
     });
-    // A Monster on a Dry board: a slow-playing station gets +0.30 on the check.
+    // A Monster on a Dry board: a slow-playing station gets +2.5 T on the check.
     const set = headsUp('7s 7d', 'Kc 7h 2d', [raise(0, 300), call(1), check(1)]);
     const station = profileFor('station', 'easy');
     for (let i = 0; i < 40; i++) {
@@ -487,8 +489,57 @@ describe('the bots (§9.4)', () => {
       const checkKey = candidateKey(set.legal, d.rule.action) === 'check' ? MIX_RULE_BONUS : 0;
       const slow = mixDraws(seed(i)).slowplay < station.slowplayFreq ? MIX_SLOWPLAY_BONUS : 0;
       const ev = (b.candidates[checkAt] as EvCandidate).ev / set.pot;
-      expect(b.scores[checkAt]).toBeCloseTo(ev + checkKey + slow, 12);
+      expect(b.scores[checkAt]).toBeCloseTo(ev + station.temperature * (checkKey + slow), 12);
     }
+  });
+
+  it('before the flop A* scores the larger rule bonus, and a call T × 3 × (stickiness − 1)', () => {
+    // A station facing an open from the cutoff: fold, call, the 3-bet, A* among them.
+    const obs = sixMax(4, 'Kd 9s', [raise(3, 250)]);
+    const station = profileFor('station', 'medium');
+    const d = deliberate(obs, station, seed(2));
+    const b = d.bot as NonNullable<typeof d.bot>;
+    const ruleKey = candidateKey(obs.legal, d.rule.action);
+    b.candidates.forEach((c, i) => {
+      let bias = 0;
+      if (c.action.type === 'raise') bias += station.aggressionBias;
+      if (c.action.type === 'call') bias += MIX_CALL_STICKINESS * (station.stickiness - 1);
+      if (c.key === ruleKey) bias += MIX_RULE_BONUS_PREFLOP;
+      expect(b.scores[i]).toBeCloseTo(c.ev / obs.pot + station.temperature * bias, 12);
+    });
+    expect(MIX_RULE_BONUS_PREFLOP).toBeGreaterThan(MIX_RULE_BONUS);
+  });
+
+  it('limp mode limps an open raise the mix picked too (§9.4 step 2), never facing a raise', () => {
+    // A Maniac first in on the button with a hand it opens: in limp mode no pick is a raise.
+    const obs = sixMax(0, 'Kd 9s', [fold(3), fold(4), fold(5)]);
+    const maniac = profileFor('maniac', 'medium');
+    let limped = 0;
+    let raised = 0;
+    for (let i = 0; i < 300; i++) {
+      const d = deliberate(obs, maniac, seed(i));
+      const b = d.bot as NonNullable<typeof d.bot>;
+      const limpMode = mixDraws(seed(i)).limp < 1 - maniac.pfrRatio;
+      const kind = b.pick.action.type;
+      if (limpMode) {
+        expect(kind === 'raise' || kind === 'bet').toBe(false);
+        if (kind === 'call') limped++;
+      } else if (kind === 'raise') {
+        raised++;
+      }
+    }
+    expect(limped).toBeGreaterThan(0);
+    expect(raised).toBeGreaterThan(0);
+    // Facing an open there is no limp mode: a 3-bet stays a 3-bet.
+    const facing = sixMax(0, 'Ad Ac', [raise(3, 250), fold(4), fold(5)]);
+    const kinds = new Set<string>();
+    for (let i = 0; i < 100; i++) {
+      const b = deliberate(facing, maniac, seed(i)).bot as NonNullable<
+        ReturnType<typeof deliberate>['bot']
+      >;
+      kinds.add(b.pick.action.type);
+    }
+    expect(kinds.has('raise')).toBe(true);
   });
 
   it('defends against a bet: no fold when 1 − handPct ≤ MDF × defenseFactor (§9.4 step 4)', () => {

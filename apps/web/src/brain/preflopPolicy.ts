@@ -271,9 +271,14 @@ function openerPct(spot: Spot): number {
   );
 }
 
-/** The §8.3 range `V` (percent) of the player who made `raise`. */
+/**
+ * The §8.3 range `V` (percent) of the player who made `raise`. Every range model reads it from
+ * the opening table, Easy's `'random'` too (§9.2, chunk 5.11): Easy's equity is against random
+ * hands (its `eRange`, the multiway preflop equity, the EV model), but read as "any two cards" a
+ * raise made every Easy personality, the Rock included, 3-bet about 20% of the opens it faced,
+ * 4-bet 30% of the 3-bets and call 85% of the all-ins.
+ */
 function villainRange(spot: Spot, raise: PreflopRaise): number {
-  if (spot.rangeModel === 'random') return 100;
   const bb = spot.obs.bb;
   if (raise.allIn && raise.to <= PRIOR_PUSH_MAX_BB * bb) {
     return Math.min(100, pushPct(raise.k, raise.to / bb) * looseness(spot, raise.seat));

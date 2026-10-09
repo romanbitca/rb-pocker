@@ -201,13 +201,14 @@ describe('estimates (§9.5)', () => {
     expect(seatModel(seen, prior).af).toBeCloseTo(f / (1 - f), 12);
   });
 
-  it('looseness = clamp(estVPIP / 0.22, 0.5, 3.0); the §9.1 targets reproduce the looseness column', () => {
+  it('looseness = clamp(estVPIP / 0.22, 0.5, 3.0): the coach’s read of a seat, from its VPIP', () => {
     expect(loosenessEstimate(0.22)).toBeCloseTo(1, 12);
     expect(loosenessEstimate(0.05)).toBe(0.5);
     expect(loosenessEstimate(0.9)).toBe(3);
-    for (const p of Object.values(PERSONALITIES)) {
-      expect(Math.abs(loosenessEstimate(p.vpip) - p.looseness)).toBeLessThan(0.06);
-    }
+    // The TAG's target reads as the coach's own ranges. The other §9.1 looseness values are the
+    // bots' own threshold factors, calibrated by self-play (§9.7, chunk 5.11), not VPIP / 0.22:
+    // a Station needs 3.4 for its 45% because its calls facing a raise are bound by EV(call) > 0.
+    expect(loosenessEstimate(PERSONALITIES.tag.vpip)).toBeCloseTo(PERSONALITIES.tag.looseness, 12);
   });
 
   it('a loose seat widens with evidence: 60 of 100 hands played', () => {

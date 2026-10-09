@@ -16,7 +16,7 @@ import {
 } from '../../src/brain/preflopPolicy.ts';
 import { pushOutcome, shoveVsRaise } from '../../src/brain/pushfold.ts';
 import { callPct, pushPct } from '../../src/brain/pushFoldData.ts';
-import { rangeEquity } from '../../src/brain/ranges.ts';
+import { rangeEquity, type RangeModel } from '../../src/brain/ranges.ts';
 import { equityVsTopOfClass, rankPctOfClass } from '../../src/brain/rangesData.ts';
 import type { PreflopDecision, PreflopStyle } from '../../src/brain/types.ts';
 import { deriveSeed, rngFromSeed, type Seed128 } from '../../src/core/rng.ts';
@@ -287,6 +287,23 @@ describe('facing one raise (§8.3)', () => {
     const known = ask({ players: 6, hero: 0, hole: 'Kc Qd', inputs: coOpen, labels: tag }).d;
     const unknown = ask({ players: 6, hero: 0, hole: 'Kc Qd', inputs: coOpen }).d;
     expect(unknown.trace[0]?.data.V as number).toBeGreaterThan(known.trace[0]?.data.V as number);
+  });
+
+  it("Easy's 'random' model reads the raiser from the opening table, as 'static' does (§9.2)", () => {
+    const h = playSpot({
+      stacks: new Array<number>(6).fill(100 * BB),
+      button: 0,
+      holes: { 0: 'Kc Qd' },
+      inputs: coOpen,
+    });
+    const obs = observeSpot(h, 0);
+    const V = (model: RangeModel): unknown => {
+      const f = features(obs, testProfile(model, 200), SEED);
+      return preflopPolicy(obs, f, { rangeModel: model, seed: SEED }).trace[0]?.data.V;
+    };
+    // The cutoff's openPct(3) = 27%, not "any two cards" (chunk 5.11).
+    expect(V('random')).toBeCloseTo(27, 9);
+    expect(V('random')).toBe(V('static'));
   });
 });
 
