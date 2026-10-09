@@ -1,6 +1,15 @@
 import type { Locator, Page } from '@playwright/test';
 import { expect, test } from './fixtures.ts';
-import { newTable, nextFlowPoint, openApp, pageMetrics, pcState, seedFor, sizeOf } from './game.ts';
+import {
+  keepMove,
+  newTable,
+  nextFlowPoint,
+  openApp,
+  pageMetrics,
+  pcState,
+  seedFor,
+  sizeOf,
+} from './game.ts';
 
 // PLAN §18 Stage 3, acceptance 3 (§13.1): the hand rankings are a persistent column at 1280×800
 // and 1024×768; at 390×844 and 844×390 a drawer that the edge tab, the top-bar button and the
@@ -208,11 +217,17 @@ test.describe('the rankings drawer', () => {
     for (let tries = 0; tries < 20 && !opened; tries++) {
       await page.waitForFunction(() => {
         const mode = window.__pc?.state().game.mode;
-        return mode === 'botTurn' || mode === 'heroTurn' || mode === 'handEnd';
+        return (
+          mode === 'botTurn' || mode === 'heroTurn' || mode === 'handEnd' || mode === 'feedback'
+        );
       });
       const mode = (await pcState(page)).game.mode;
       if (mode === 'heroTurn') {
         await page.locator('[data-slot="middle"]').click();
+        continue;
+      }
+      if (mode === 'feedback') {
+        await keepMove(page); // a mistake's feedback card (Stage 6): the hand goes on
         continue;
       }
       if (mode === 'handEnd') {
