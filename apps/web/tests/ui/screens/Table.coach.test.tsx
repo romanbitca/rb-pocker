@@ -1,22 +1,32 @@
 // @vitest-environment jsdom
 /**
- * The coach on the Table (chunk 5.9, PLAN §10.2, §12.3, §12.5–§12.7): a real controller and store,
- * hints from a test source. Beginner shows the advice and rings the button; the strip opens the
- * sheet, which closes with the decision; "Use coach size" opens the tray at the coach's amount;
- * Intermediate waits for "Hint"; the wide panel, the landscape rows and the compact pill; a
- * failure offers to try again.
+ * The coach on the Table (chunks 5.9 and 5.7, PLAN §10.2, §12.3, §12.5–§12.7): a real controller
+ * and store, and the real coach: the test brain answers every hero decision with `coachHint` (the
+ * advice and chunk 5.6's explanation of it), as `brain.worker` does. Beginner shows the advice and
+ * rings the button; the strip opens the sheet, which closes with the decision; "Use coach size"
+ * opens the tray at the coach's amount; Intermediate waits for "Hint"; the wide panel and the
+ * landscape rows; a coach that cannot answer offers to try again.
  */
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
-import type { HintSource } from '../../../src/app/coachJobs.ts';
-import { appStore, initialCoach, initialEquity, type AppState } from '../../../src/app/store.ts';
-import { standInHint } from '../../../src/brain/hintStandIn.ts';
+import { realTimers } from '../../../src/app/controller.ts';
+import {
+  appStore,
+  coachKeyOf,
+  initialCoach,
+  initialEquity,
+  type AppState,
+  type CoachSlice,
+} from '../../../src/app/store.ts';
+import { createBrainClient } from '../../../src/app/workerClient.ts';
 import type { Decision } from '../../../src/brain/types.ts';
-import type { Observation } from '../../../src/engine/types.ts';
 import { coachWords } from '../../../src/i18n/coachUi.ts';
 import { en } from '../../../src/i18n/en.ts';
+import { formatChips } from '../../../src/ui/actionBar.ts';
 import { loadCoach } from '../../../src/ui/coachModule.ts';
 import { Table } from '../../../src/ui/screens/Table.tsx';
+import { simpleDecide } from '../../helpers/simpleDecide.ts';
+import { fakeBrainWorker } from '../../workers/fakeBrainWorker.ts';
 import { playUntil, startTableHarness, type TableHarness } from '../tableHarness.ts';
 
 let h: TableHarness | null = null;
@@ -32,33 +42,40 @@ afterEach(() => {
   appStore.setState({ equity: initialEquity(), coach: initialCoach() });
 });
 
-/** The stand-in coach with a fixed win chance, answering at once (no HUD needed). */
-function source(E: number, asked: Observation[] = []): HintSource {
-  return {
-    waitsForWinChance: false,
-    request: (obs) => {
-      asked.push(obs);
-      return Promise.resolve(standInHint(obs, E));
-    },
-  };
-}
-
 const state = (): AppState => appStore.getState();
 
-/** Lets the hint's promise land and React render it. */
+/** Lets the brain's replies land (a few promise hops) and React render them. */
 async function settle(): Promise<void> {
   await act(async () => {
-    for (let i = 0; i < 5; i++) await Promise.resolve();
+    for (let i = 0; i < 20; i++) await Promise.resolve();
   });
 }
 
-async function heroTurn(where: (s: AppState) => boolean = () => true): Promise<void> {
-  await playUntil(() => state().game.mode === 'heroTurn' && where(state()));
+/** The hero's turn, and the coach has answered this decision (`status`). */
+function answered(s: AppState, status: CoachSlice['status']): boolean {
+  const hand = s.game.hand;
+  return (
+    s.game.mode === 'heroTurn' &&
+    hand !== null &&
+    s.coach.key === coachKeyOf(hand) &&
+    s.coach.status === status
+  );
+}
+
+/**
+ * Plays (the hero checks or calls) until a hero turn whose advice has landed and `where` holds.
+ * The coach is the real one, so `where` picks the spot a test needs from the advice itself.
+ */
+async function heroTurn(
+  where: (s: AppState) => boolean = () => true,
+  status: CoachSlice['status'] = 'ready',
+): Promise<void> {
+  await playUntil(() => answered(state(), status) && where(state()), { beforeHero: settle });
   await settle();
 }
 
-function start(E: number, settings: Partial<AppState['settings']> = {}): void {
-  h = startTableHarness({ hints: source(E), settings: { players: 3, ...settings } });
+function start(settings: Partial<AppState['settings']> = {}): void {
+  h = startTableHarness({ hints: true, settings: { players: 3, ...settings } });
   render(<Table />);
   act(() => state().dispatch({ type: 'play' }));
 }
@@ -74,7 +91,7 @@ const ringed = () => document.querySelector('[data-coach][data-slot]');
 
 describe('Beginner (§10.2 "Full help")', () => {
   it('the strip says the advice; the recommended button has the ring and badge', async () => {
-    start(0.9);
+    start();
     await heroTurn();
     expect(strip().getAttribute('data-coach-strip')).toBe('advice');
     expect(strip().textContent).toContain(coachWords.prefix);
@@ -88,7 +105,7 @@ describe('Beginner (§10.2 "Full help")', () => {
   }, 20_000);
 
   it('the strip opens the sheet; it closes with Esc, and with the decision when the hero acts', async () => {
-    start(0.9);
+    start();
     await heroTurn();
     fireEvent.click(within(strip()).getByRole('button'));
     const dialog = screen.getByRole('dialog', { name: en.coachUi.title });
@@ -117,17 +134,18 @@ describe('Beginner (§10.2 "Full help")', () => {
   }, 20_000);
 
   it('"Use coach size" opens the tray at the coach’s bet, ringed', async () => {
-    start(0.95);
-    // After the flop, checked to the hero: a strong hand bets half the pot.
-    await heroTurn((s) => s.game.legal?.canCheck === true && s.game.hand?.street !== 'preflop');
+    start();
+    // The first spot where the coach bets (checked to the hero after the flop, not all-in).
+    await heroTurn((s) => s.coach.decision?.kind === 'bet');
     const d = decision();
-    expect(d.action.type).toBe('bet');
-    const to = d.action.type === 'bet' ? d.action.to : 0;
+    if (d.action.type !== 'bet') throw new Error('not a bet');
     fireEvent.click(within(strip()).getByRole('button'));
     fireEvent.click(screen.getByRole('button', { name: coachWords.useSize }));
     expect(screen.queryByRole('dialog')).toBeNull();
     const slider = screen.getByRole('slider');
-    expect(slider.getAttribute('aria-valuetext')).toMatch(new RegExp(`^Bet ${to},`));
+    expect(slider.getAttribute('aria-valuetext')).toMatch(
+      new RegExp(`^Bet ${formatChips(d.action.to)},`),
+    );
     expect(
       document.querySelector('[role="group"][aria-label="Choose your bet"] [data-coach]'),
     ).not.toBeNull();
@@ -136,7 +154,7 @@ describe('Beginner (§10.2 "Full help")', () => {
 
 describe('Intermediate (§10.2 "Help on tap")', () => {
   it('"Hint" first (helped), then the advice, the ring and "Why?"', async () => {
-    start(0.9, { coachLevel: 'intermediate' });
+    start({ coachLevel: 'intermediate' });
     await heroTurn();
     expect(strip().getAttribute('data-coach-strip')).toBe('hint');
     expect(ringed()).toBeNull();
@@ -153,7 +171,7 @@ describe('Intermediate (§10.2 "Help on tap")', () => {
 
 describe('the layouts (§12.3, §12.5)', () => {
   it('wide: the inline panel shows the sections, no sheet', async () => {
-    start(0.9);
+    start();
     act(() => state().dispatch({ type: 'layout', layout: 'wide' }));
     await heroTurn();
     const panel = document.querySelector('[data-coach-panel]') as HTMLElement;
@@ -164,7 +182,7 @@ describe('the layouts (§12.3, §12.5)', () => {
   }, 20_000);
 
   it('landscape: at a hand end the column holds the banner, no empty coach rows', async () => {
-    start(0.9);
+    start();
     act(() => state().dispatch({ type: 'layout', layout: 'landscape' }));
     await playUntil(() => state().game.mode === 'handEnd');
     await settle();
@@ -173,7 +191,7 @@ describe('the layouts (§12.3, §12.5)', () => {
   }, 20_000);
 
   it('landscape: the coach rows in the column, gone while the tray is open', async () => {
-    start(0.95);
+    start();
     act(() => state().dispatch({ type: 'layout', layout: 'landscape' }));
     await heroTurn((s) => s.game.legal?.bet !== null || s.game.legal?.raise !== null);
     expect(document.querySelector('aside [data-coach-strip]')).not.toBeNull();
@@ -187,18 +205,25 @@ describe('the layouts (§12.3, §12.5)', () => {
 describe('a coach that cannot answer (§12.11)', () => {
   it('"Coach is not available. Tap to try again." asks again', async () => {
     let calls = 0;
-    const failing: HintSource = {
-      waitsForWinChance: false,
-      request: () => {
-        calls++;
-        return Promise.reject(new Error('worker failed'));
-      },
-    };
-    h = startTableHarness({ hints: failing, settings: { players: 3 } });
+    // The worker's coach throws: `brainService` answers the job with an `error` reply.
+    const brain = createBrainClient(
+      fakeBrainWorker({
+        service: {
+          decide: simpleDecide,
+          hint: () => {
+            calls++;
+            throw new Error('coach failed');
+          },
+        },
+      }).spawn,
+      realTimers,
+    );
+    h = startTableHarness({ hints: true, brain, settings: { players: 3 } });
     render(<Table />);
     act(() => state().dispatch({ type: 'play' }));
-    await heroTurn();
+    await heroTurn(() => true, 'failed');
     expect(calls).toBe(1);
+    expect(strip().getAttribute('data-coach-strip')).toBe('failed');
     fireEvent.click(screen.getByRole('button', { name: coachWords.failed }));
     await settle();
     expect(calls).toBe(2);

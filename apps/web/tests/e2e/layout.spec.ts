@@ -9,6 +9,7 @@ import {
   openApp,
   pcState,
   playHands,
+  reloadAfterBust,
   seedFor,
   sizeOf,
   slot,
@@ -217,7 +218,10 @@ test.describe('table layout', () => {
         await page.locator('[data-hand-end]').click();
         continue;
       }
-      if (point === 'bust') throw new Error('out of chips while checking and calling');
+      if (point === 'bust') {
+        await reloadAfterBust(page);
+        continue;
+      }
       const state = await pcState(page);
       const opensTray =
         (await right.count()) === 1 &&

@@ -3,10 +3,10 @@
  * The Table with the HUD on (PLAN §7.6, §12.3, §13.2, §15.3): nine players on a wide screen with
  * the rankings column, every step fed an `equity` slice as the equity jobs (chunk 4.5) write it
  * (a final estimate, the hand analysis with draws, and chances for all ten rows). The win badge,
- * the price chip, the draw chips and the "By river" column all show, the coach (chunk 5.9, its
- * stand-in answering from that slice) shows its inline panel at the hero's turns, and the screen
- * stays within 600 DOM nodes at every step, showdowns included. In portrait the coach strip is on
- * and its sheet is opened at every hero turn.
+ * the price chip, the draw chips and the "By river" column all show, the coach (chunks 5.9 and
+ * 5.7: the test brain's real `coachHint`) shows its inline panel at the hero's turns, and the
+ * screen stays within 600 DOM nodes at every step, showdowns included. In portrait the coach strip
+ * is on and its sheet is opened at every hero turn.
  */
 import { act, cleanup, render } from '@testing-library/react';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
@@ -71,10 +71,10 @@ function sliceFor(hand: HandState | null): EquitySlice {
   };
 }
 
-/** Lets a hint's promise land (the stand-in answers once the slice has the win chance). */
+/** Lets the coach's reply land (the test brain answers in a few promise hops). */
 async function settle(): Promise<void> {
   await act(async () => {
-    for (let i = 0; i < 5; i++) await Promise.resolve();
+    for (let i = 0; i < 20; i++) await Promise.resolve();
   });
 }
 
@@ -84,7 +84,7 @@ describe('the Table with the win badge, price chip, draw chips, "By river" and t
   });
 
   it('stays within 600 DOM nodes with nine players on a wide screen, the coach panel open', async () => {
-    h = startTableHarness({ settings: { players: 9 } });
+    h = startTableHarness({ hints: true, settings: { players: 9 } });
     render(<App />);
     act(() => h?.state().dispatch({ type: 'play' }));
     act(() => h?.state().dispatch({ type: 'layout', layout: 'wide' }));
@@ -117,10 +117,10 @@ describe('the Table with the win badge, price chip, draw chips, "By river" and t
     expect(seen.shown).toBeGreaterThanOrEqual(3);
     expect(seen.coach).toBeGreaterThan(5);
     expect(most).toBeLessThanOrEqual(600);
-  }, 90_000);
+  }, 120_000);
 
   it('stays within 600 DOM nodes with nine players in portrait, the strip on, the sheet open', async () => {
-    h = startTableHarness({ settings: { players: 9 } });
+    h = startTableHarness({ hints: true, settings: { players: 9 } });
     render(<App />);
     act(() => h?.state().dispatch({ type: 'play' }));
     const seen = { strip: 0, sheet: 0 };
@@ -146,5 +146,5 @@ describe('the Table with the win badge, price chip, draw chips, "By river" and t
     expect(seen.strip).toBeGreaterThan(0);
     expect(seen.sheet).toBeGreaterThan(3);
     expect(most).toBeLessThanOrEqual(600);
-  }, 90_000);
+  }, 120_000);
 });

@@ -12,7 +12,7 @@ import {
   type Line,
 } from '../../src/brain/explain.ts';
 import { EN_COACH, type CoachStrings, type GlossaryEntry } from '../../src/i18n/coach.ts';
-import { en } from '../../src/i18n/en.ts';
+import { enCoach } from '../../src/i18n/enCoach.ts';
 import {
   candidateDecisions,
   DEFAULT_SEED,
@@ -66,7 +66,7 @@ describe('passing fixtures: the real copy', () => {
   });
 
   it('every template renders with sample values in each form', () => {
-    for (const key of Object.keys(en.coach.templates) as Line['key'][]) {
+    for (const key of Object.keys(enCoach.coach.templates) as Line['key'][]) {
       expect(checkLine(sampleLine(key, 1))).toEqual([]);
       expect(checkLine(sampleLine(key, 2))).toEqual([]);
     }
@@ -155,7 +155,7 @@ describe('failing fixtures: templates', () => {
 });
 
 describe('failing fixtures: glossary', () => {
-  const real: readonly GlossaryEntry[] = en.glossary;
+  const real: readonly GlossaryEntry[] = enCoach.glossary;
   it('a missing key, a key defined twice, an unknown key, a long definition', () => {
     const without = real.filter((g) => g.term !== 'set');
     expect(checkGlossary(without)).toContain('glossary: no entry for "set"');

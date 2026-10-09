@@ -1,8 +1,10 @@
 /**
- * Coach test fixtures (chunk 5.9): decisions in the Appendix A.5 shape, the coach data the store
- * would select, and action-bar inputs for the spots they belong to.
+ * Coach test fixtures (chunks 5.9 and 5.7): decisions in the Appendix A.5 shape, `explain()` of
+ * them as the worker sends it with the hint, the coach data the store would select, and
+ * action-bar inputs for the spots they belong to.
  */
 import type { CoachData, NarrationData } from '../../src/app/store.ts';
+import { explain, type ExplainInput, type Explanation } from '../../src/brain/explain.ts';
 import type { Decision, Reason, ReasonCode } from '../../src/brain/types.ts';
 import type { LegalActions, SeatState } from '../../src/engine/types.ts';
 import type { ActionBarInput } from '../../src/ui/actionBar.ts';
@@ -81,12 +83,51 @@ export function input(
   };
 }
 
+/**
+ * `explain()` (chunk 5.6) of a fixture decision in the fixtures' spot: heads-up flop, pot 120, a
+ * Pair of Kings, facing a 40 bet when there is something to call (as the worker sends it). `over`
+ * changes the spot (e.g. draws for the rule of 2 and 4).
+ */
+export function explanationOf(d: Decision, over: Partial<ExplainInput> = {}): Explanation {
+  const facing = d.action.type === 'call' || d.action.type === 'fold' || d.need > 0;
+  const legal = facing ? FACING : CHECKED;
+  return explain({
+    action: d.action,
+    trace: d.trace,
+    confidence: d.confidence,
+    alt: d.alt,
+    eRandom: d.eRandom,
+    eRange: d.eRange,
+    need: d.need,
+    pot: 120,
+    winPot: 120,
+    toCall: legal.callAmount,
+    bb: 20,
+    legal,
+    street: 'flop',
+    facing: facing ? 'bet' : 'none',
+    position: 'IP',
+    nOpp: 1,
+    k: 0,
+    rankPct: 10,
+    handName: 'Pair of Kings',
+    handCategory: 'pair',
+    preflopName: 'King-Queen suited',
+    draws: [],
+    outs: 0,
+    villain: facing ? 'bets' : null,
+    ...over,
+  });
+}
+
 export function coachData(over: Partial<CoachData> = {}): CoachData {
+  const d = over.decision === undefined ? decision() : over.decision;
   return {
     level: 'beginner',
     state: 'ready',
     key: '7:12',
-    decision: decision(),
+    decision: d,
+    explanation: d === null ? null : explanationOf(d),
     opened: false,
     ...over,
   };
@@ -101,7 +142,10 @@ export const NARRATION: NarrationData = {
   allIn: false,
 };
 
-/** A RANGE_ADJUST hint (§8.10): any cards 62%, their likely hands 20%; fold to `FACING` (need 25%). */
+/**
+ * A RANGE_ADJUST hint (§8.10): any cards 62%, their likely hands 20%; fold to `FACING` (need 25%).
+ * The trace as `hint()` writes it (RANGE_ADJUST with both numbers); `explain` words it.
+ */
 export function rangeAdjusted(): Decision {
   return decision({
     action: { type: 'fold' },
@@ -110,7 +154,7 @@ export function rangeAdjusted(): Decision {
     eRange: 0.2,
     need: 0.25,
     trace: [
-      r('RANGE_ADJUST', { actionDescription: 'betBig' }),
+      r('RANGE_ADJUST', { eRandom: 0.62, eRange: 0.2, need: 0.25 }),
       r('FOLD_PRICE', { E: 0.2, need: 0.25 }),
       r('WHY_NOT_CALL', { E: 0.2, need: 0.25 }),
     ],

@@ -21,6 +21,7 @@
  * chunk (`ui/coachEntry.ts`, §15.3); the ring and the tray's amount come from `coachAdvice.ts`.
  */
 import type { CoachData, CoachState, NarrationData } from '../app/store.ts';
+import type { Explanation } from '../brain/explain.ts';
 import type { Decision } from '../brain/types.ts';
 import { coachWords } from '../i18n/coachUi.ts';
 import {
@@ -96,6 +97,8 @@ export interface StrengthView {
 /** The advice, as the sheet and the inline panels show it. */
 export interface HintView extends HintText {
   readonly confidence: Decision['confidence'];
+  /** The numbers the words show (`explain`): the HUD's, the labelled range number, the win. */
+  readonly shown: Explanation['shown'];
   readonly numbers: NumbersView;
   /** Beginner only. */
   readonly strength: StrengthView | null;
@@ -153,19 +156,19 @@ export function narrationText(n: NarrationData, bb: number, amounts: AmountUnit)
 /** §12.6 (3): the HUD's number, the labelled range number (RANGE_ADJUST only), the price. */
 export function numbersView(
   decision: Decision,
-  text: HintText,
+  shown: Explanation['shown'],
   price: PriceView | null,
   pot: number,
   ctx: TextContext,
 ): NumbersView {
   const money = (chips: number) => formatAmount(chips, ctx.bb, ctx.amounts);
   const c = coachWords;
-  const ranged = text.rangeAdjust !== null;
   const facing = price !== null && price.toCall > 0;
   const win = c.winAny(pctText(decision.eRandom));
-  const likely = ranged ? c.winLikely(pctText(decision.eRange)) : null;
-  // The bar fills to the coach's own number, and its name says which one it is (pitfall 35).
-  const winNumber = ranged ? decision.eRange : decision.eRandom;
+  const likely = shown.eRange !== null ? c.winLikely(pctText(shown.eRange)) : null;
+  // The bar fills to the number the reasons compare with the price (`explain`'s `win`), and
+  // its name says which one it is (pitfall 35).
+  const winNumber = shown.win;
   return {
     win,
     winValue: decision.eRandom,
@@ -189,12 +192,13 @@ export function numbersView(
 /** The advice for the sheet and the inline panels. */
 export function hintView(
   decision: Decision,
+  explanation: Explanation,
   level: CoachUiLevel,
   input: ActionBarInput | null,
 ): HintView {
   const legal = input?.legal ?? null;
   const ctx: TextContext = { bb: input?.bb ?? 1, amounts: input?.amounts ?? 'chips', legal };
-  const text = hintText(decision, ctx);
+  const text = hintText(decision, explanation, ctx);
   const price =
     input !== null && legal !== null && legal.canCall
       ? priceOf(input.seats, legal.seat, legal.callAmount)
@@ -205,7 +209,8 @@ export function hintView(
   return {
     ...text,
     confidence: decision.confidence,
-    numbers: numbersView(decision, text, price, pot, ctx),
+    shown: explanation.shown,
+    numbers: numbersView(decision, explanation.shown, price, pot, ctx),
     strength:
       level === 'beginner' && index >= 0
         ? {
@@ -221,7 +226,10 @@ export function hintView(
 function adviceLine(decision: Decision, hint: HintView, level: CoachUiLevel): string {
   // Pitfall 35: with RANGE_ADJUST, only the labelled pair.
   if (hint.rangeAdjust !== null) {
-    return coachWords.pair(pctText(decision.eRandom), pctText(decision.eRange));
+    return coachWords.pair(
+      pctText(decision.eRandom),
+      pctText(hint.shown.eRange ?? decision.eRange),
+    );
   }
   // Beginner facing a bet: the two numbers that decide it ("You win about 45%. You need 25%.").
   if (level === 'beginner' && hint.numbers.needValue !== null) {
@@ -263,7 +271,7 @@ export function coachView(
       };
     case 'ready': {
       const decision = data.decision as Decision;
-      const hint = hintView(decision, level, input);
+      const hint = hintView(decision, data.explanation as Explanation, level, input);
       const { shown, ring, size } = coachAdvice(data);
       return {
         ...base,

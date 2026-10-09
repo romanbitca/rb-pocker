@@ -7,6 +7,7 @@ import {
   openApp,
   pcState,
   prng,
+  reloadAfterBust,
   seedFor,
   sizeOf,
   slot,
@@ -53,7 +54,10 @@ test.describe('resume', () => {
         await page.locator('[data-hand-end]').click();
         continue;
       }
-      if (point === 'bust') throw new Error('out of chips while checking and calling');
+      if (point === 'bust') {
+        await reloadAfterBust(page);
+        continue;
+      }
       if ((await pcState(page)).game.hand?.street !== 'preflop') break;
       await heroAct(page, () => 0.3 + random() * 0.4); // check or call
     }
@@ -80,22 +84,28 @@ test.describe('resume', () => {
   test('without a saved game, Play starts a new table with the last-used settings', async ({
     page,
   }, testInfo) => {
+    // An installed clock still runs in real time (Playwright pauses it only on `pauseAt`).
+    await page.clock.install();
     await openApp(page, seedFor(testInfo));
     await newTable(page, { players: 4 });
-    // Drop the saved session (the profile with the settings stays), as after "Change table".
-    await page.evaluate(() => localStorage.removeItem('pc.v1.session'));
+    const old = (await pcState(page)).game.table?.tableId;
+    // Drop the saved session (the profile with the settings stays), as after "Change table". The
+    // old page plays on until it unloads and saves the session after every step (the real bots
+    // can even finish the hand), so the session goes as the new page loads, before the app.
+    await page.addInitScript(() => localStorage.removeItem('pc.v1.session'));
     await page.goto('/');
     const play = page.getByRole('button', { name: 'Play', exact: true });
     await expect(play).toBeVisible();
+    // Paused, no bot acts: the first hand cannot end (a walk) before the test reads it. Play
+    // deals at once (the click runs the controller); no timer has to run for it.
+    await page.clock.pauseAt((await page.evaluate(() => Date.now())) + 1000);
     await play.click();
-    await page.waitForFunction(() => {
-      const hand = window.__pc?.state().game.hand;
-      return hand !== null && hand !== undefined && hand.phase !== 'complete';
-    });
+    await expect.poll(async () => (await pcState(page)).game.hand?.phase).toBe('betting');
     const s = await pcState(page);
     expect(s.ui.screen).toBe('table');
+    expect(s.game.table?.tableId, 'a new table').not.toBe(old);
     expect(s.game.hand?.seats).toHaveLength(4);
-    expect(s.game.table?.handsDealt, 'a new table').toBe(0);
+    expect(s.game.table?.handsDealt, 'its first hand').toBe(0);
     expect(s.settings.players).toBe(4);
   });
 

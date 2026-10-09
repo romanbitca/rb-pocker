@@ -1,11 +1,9 @@
 /**
  * Bot think time (PLAN §9.8): `t = 450 ms + 900 ms × closeness + U(0, 400 ms)`, clamped to
- * 300–3,000 ms, all-in decisions ≥ 1,500 ms, `U` from the bot's decision seed. The stand-in
- * `decide` has no EVs, so its decisions are clear ones (closeness 0): the numbers SimpleBot's
- * think time always had.
+ * 300–3,000 ms, all-in decisions ≥ 1,500 ms, `U` the first draw of `deriveSeed(seed, 'think')`,
+ * a stream of the bot's decision seed that `decide()` never draws from (chunk 5.7).
  */
 import { describe, expect, it } from 'vitest';
-import { decide } from '../../src/brain/standIn.ts';
 import {
   closeness,
   isAllInAction,
@@ -15,9 +13,14 @@ import {
   THINK_MIN_MS,
 } from '../../src/brain/think.ts';
 import type { Decision } from '../../src/brain/types.ts';
-import { deriveSeed, type Seed128 } from '../../src/core/rng.ts';
+import { deriveSeed, randInt, rngFromSeed, type Seed128 } from '../../src/core/rng.ts';
 import { observe } from '../../src/engine/observe.ts';
-import type { HandState, Observation, ObserveExtras } from '../../src/engine/types.ts';
+import type {
+  HandState,
+  Observation,
+  ObserveExtras,
+  PlayerAction,
+} from '../../src/engine/types.ts';
 import { deal, rigDeck, tableWith } from '../engine/helpers.ts';
 
 const extras = (n: number): ObserveExtras => ({
@@ -36,14 +39,30 @@ function sixMax(holes: Record<number, string>, stacks?: number[]): HandState {
 
 const seed = (i: number): Seed128 => deriveSeed('0123456789abcdef0123456789abcdef', 'think', i);
 
-/** A decision with the given candidate EVs (the rest is neutral). */
-const withEv = (obs: Observation, ev: Decision['ev']): Decision => ({ ...decide(obs), ev });
+/** A decision to take `action` with the given candidate EVs (the rest is neutral). */
+function decisionOf(action: PlayerAction, ev: Decision['ev'] = {}): Decision {
+  return {
+    action,
+    kind: action.type,
+    ev,
+    eRandom: 0.5,
+    eRange: 0.5,
+    need: 0,
+    bucket: null,
+    strength: 'marginal',
+    confidence: 'clear',
+    alt: null,
+    trace: [],
+  };
+}
 
-describe('think time of the stand-in decide', () => {
+const withEv = (_obs: Observation, ev: Decision['ev']): Decision =>
+  decisionOf({ type: 'call' }, ev);
+
+describe('think time', () => {
   it('is 450 ms + U(0, 400 ms) for a clear decision, the same for the same seed', () => {
     const obs = obsOf(sixMax({ 3: '8h 3d' }), 3);
-    const decision = decide(obs);
-    expect(decision.action).toEqual({ type: 'call' });
+    const decision = decisionOf({ type: 'call' });
     const times = Array.from({ length: 500 }, (_, i) => thinkMs(obs, decision, seed(i)));
     expect(Math.min(...times)).toBeGreaterThanOrEqual(450);
     expect(Math.max(...times)).toBeLessThanOrEqual(850);
@@ -51,12 +70,20 @@ describe('think time of the stand-in decide', () => {
     expect(thinkMs(obs, decision, seed(7))).toBe(times[7]);
   });
 
+  it("draws U from deriveSeed(seed, 'think'), a stream decide() does not use", () => {
+    const obs = obsOf(sixMax({ 3: '8h 3d' }), 3);
+    const decision = decisionOf({ type: 'call' });
+    for (let i = 0; i < 50; i++) {
+      const u = randInt(rngFromSeed(deriveSeed(seed(i), 'think')), 401);
+      expect(thinkMs(obs, decision, seed(i))).toBe(450 + u);
+    }
+  });
+
   it('takes at least 1,500 ms for an all-in decision', () => {
     const h = sixMax({ 3: 'Ac Ad' }, [10000, 10000, 10000, 250, 10000, 10000]);
     const obs = obsOf(h, 3);
-    const decision = decide(obs);
-    expect(decision.action).toEqual({ type: 'raise', to: 250 });
-    expect(decision.kind).toBe('allin');
+    const decision = { ...decisionOf({ type: 'raise', to: 250 }), kind: 'allin' as const };
+    expect(obs.legal.raise?.max).toBe(250);
     for (let i = 0; i < 50; i++) {
       expect(thinkMs(obs, decision, seed(i))).toBeGreaterThanOrEqual(THINK_ALL_IN_MS);
     }

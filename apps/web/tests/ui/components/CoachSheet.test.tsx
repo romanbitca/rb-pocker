@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 // The coach sheet (chunk 5.9, PLAN §12.6, §8.10, §12.12): its sections per level, the labelled
 // numbers and price bar, RANGE_ADJUST first, glossary popovers, "Your hand" with out cards, "Use
-// coach size", and the sheet as a modal dialog that never covers the action bar.
+// coach size", and the sheet as a modal dialog that never covers the action bar. The words are
+// chunk 5.6's `explain()` of the fixture decisions (chunk 5.7).
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { analyzeHand } from '../../../src/analysis/handinfo.ts';
@@ -65,6 +66,7 @@ describe('CoachDetails (§12.6)', () => {
       'Pot 120',
       'To call 40',
       'Why not fold? You win more often than you need to.',
+      'Why not raise? Worse hands fold, and better hands call.',
     ]);
     const bar = screen.getByRole('img', { name: 'Win chance 45% (any cards). Need 25%.' });
     expect(bar.getAttribute('data-good')).toBe('true');
@@ -117,7 +119,7 @@ describe('CoachDetails (§12.6)', () => {
     const why = container.querySelectorAll('section')[1] as HTMLElement;
     const lines = [...why.querySelectorAll('p')].map((p) => p.textContent);
     expect(lines).toEqual([
-      'Against any cards you win 62%. This player bets big only with good hands. Against those, you win about 20%.',
+      'Against any cards you win 62%. This player bets only with good hands. Against those, you win about 20%.',
       'You need 25% to call. You win only about 20%. Folding saves chips.',
     ]);
     const numbers = [...container.querySelectorAll('li')].map((li) => li.textContent);

@@ -5,7 +5,7 @@
  * lower-case ("big blind (BB)" gives `big blind` and `bb`). A plural "s" after the braces
  * (`{g:big blind}s`) stays plain text: the link covers the key only.
  */
-import { glossary } from '../i18n/coachUi.ts';
+import { enCoach } from '../i18n/enCoach.ts';
 
 /** A piece of coach text: plain, or a glossary term (`key` is its lower-case glossary key). */
 export type TextPart =
@@ -34,7 +34,10 @@ export function glossaryKeys(term: string): string[] {
 
 /** Every key → its entry. */
 export const GLOSSARY: ReadonlyMap<string, GlossaryEntry> = new Map(
-  glossary.flatMap((entry) => glossaryKeys(entry.term).map((key) => [key, entry] as const)),
+  enCoach.glossary.flatMap((g) => {
+    const entry: GlossaryEntry = { term: g.term, text: g.definition };
+    return glossaryKeys(g.term).map((key) => [key, entry] as const);
+  }),
 );
 
 /** The entry for a key (case-insensitive), or null. */

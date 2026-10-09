@@ -21,6 +21,7 @@ import { useStore } from 'zustand';
 import { useShallow } from 'zustand/react/shallow';
 import { createStore, type StoreApi } from 'zustand/vanilla';
 import type { EquityResult, HandAnalysis } from '../analysis/types.ts';
+import type { Explanation } from '../brain/explain.ts';
 import type { Decision } from '../brain/types.ts';
 import type { Card } from '../core/cards.ts';
 import type { HandState, LegalActions, PlayerAction, TableState } from '../engine/types.ts';
@@ -232,9 +233,10 @@ export function initialEquity(): EquitySlice {
 }
 
 /**
- * The coach's hint for the hero's decision (§8.10, §10.2, §12.6). `CoachJobs` (app/coachJobs.ts)
- * writes `key`, `status` and `decision` and nothing else (pitfall 37: a hint re-renders only the
- * coach's places); the `showHint` command writes `opened`. Grades join it in Stage 6.
+ * The coach's hint for the hero's decision (§8.10, §10.2, §12.6). The controller's hint jobs
+ * (`app/hintJobs.ts`, chunk 5.7) write `key`, `status` and `decision` and nothing else (pitfall 37:
+ * a hint re-renders only the coach's places); the `showHint` command writes `opened`. Grades join
+ * it in Stage 6.
  */
 export interface CoachSlice {
   /** `coachKeyOf(hand)` of the decision `status` and `decision` are for; null before the first. */
@@ -242,6 +244,8 @@ export interface CoachSlice {
   /** 'ready': `decision` is the advice; 'failed': the coach could not answer (§12.11). */
   status: 'idle' | 'ready' | 'failed';
   decision: Decision | null;
+  /** `explain()` of `decision` (chunk 5.6), from the worker: `i18n/coach.ts` renders it. */
+  explanation: Explanation | null;
   /**
    * The decision whose hint the player opened (Intermediate's "Hint", §10.2), by its key. Above
    * Beginner, opening it marks the decision as helped (stats, Stage 6).
@@ -250,7 +254,7 @@ export interface CoachSlice {
 }
 
 export function initialCoach(): CoachSlice {
-  return { key: null, status: 'idle', decision: null, opened: null };
+  return { key: null, status: 'idle', decision: null, explanation: null, opened: null };
 }
 
 export interface UiSlice {

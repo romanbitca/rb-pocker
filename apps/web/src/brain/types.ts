@@ -280,6 +280,12 @@ export interface PostflopSpot {
   nuts: boolean;
   /** Earlier postflop streets of this hand on which the hero bet or raised (§8.5 rule 6). */
   heroBetStreets: number;
+  /**
+   * A call ends the hero's betting: it puts the hero all-in, or every live opponent is all-in.
+   * Then nobody can bet the hero off its equity: `R = 1` and no implied odds (§8.4, as the EV
+   * model does; chunk 5.7).
+   */
+  callEndsBetting: boolean;
 }
 
 /** A rule action before sizing (§8.2 `act = policy(f)`): the kind, and for a bet or raise its row. */

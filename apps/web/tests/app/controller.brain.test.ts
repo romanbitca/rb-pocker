@@ -2,13 +2,14 @@
  * The controller's bot path through `brain.worker` (PLAN §2.2, §2.4, §9.6, §9.8, §12.14,
  * Appendix A.6; chunk 5.8): what is posted to the worker, the bot seed, stale replies, think time,
  * and what happens when the worker is killed, silent or gone. A fake worker runs the production job
- * runner (`brainService.ts`) with the stand-in brain, or answers only when the test says so.
+ * runner (`brainService.ts`) with SimpleBot as its brain (`tests/helpers/simpleDecide.ts`), or answers only when the test says so.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { botSeed, HERO, realTimers, TIMING } from '../../src/app/controller.ts';
 import type { SeedSource } from '../../src/app/controller.ts';
 import { createBrainClient } from '../../src/app/workerClient.ts';
-import { decide as standInDecide } from '../../src/brain/standIn.ts';
+import { simpleDecide } from '../helpers/simpleDecide.ts';
+import { profileFor } from '../../src/brain/profiles.ts';
 import { thinkMs } from '../../src/brain/think.ts';
 import type { Card } from '../../src/core/cards.ts';
 import { deriveSeed, type Seed128 } from '../../src/core/rng.ts';
@@ -18,6 +19,7 @@ import type {
   EngineInput,
   HandState,
   LegalActions,
+  PersonalityId,
   PlayerAction,
   TableState,
 } from '../../src/engine/types.ts';
@@ -150,7 +152,7 @@ interface Seen {
 }
 
 describe('what is posted to brain.worker (§2.2, §9.6, pitfall 13; Stage 5 acceptance 4 part)', () => {
-  it('over 40 seeded hands, nothing but an Observation, a profile id and a table-only seed goes out', async () => {
+  it('over 40 seeded hands, nothing but an Observation, a profile and a table-only seed goes out', async () => {
     const seen: Seen[] = [];
     let h: Harness | null = null;
     const spy = spyBrain((msg) => {
@@ -181,8 +183,10 @@ describe('what is posted to brain.worker (§2.2, §9.6, pitfall 13; Stage 5 acce
 
     for (const { msg, hand, table } of seen) {
       expect(Object.keys(msg).sort()).toEqual(['epoch', 'jobId', 'kind', 'obs', 'profile', 'seed']);
-      expect(Object.keys(msg.profile)).toEqual(['id']);
-      expect(msg.profile.id).toBe(`${table.slots[msg.obs.seat]?.personality}/easy`);
+      // The bot's whole profile (§9.1 × §9.2): its personality at its level, nothing else.
+      const personality = table.slots[msg.obs.seat]?.personality as PersonalityId;
+      expect(msg.profile).toEqual(profileFor(personality, 'easy'));
+      expect(msg.profile.id).toBe(`${personality}/easy`);
       expect(Object.keys(msg.obs).sort()).toEqual(OBS_KEYS);
 
       // No HandState field at any depth, and nothing that is the hand seed or contains it.
@@ -345,7 +349,7 @@ describe('think time (§9.8): computed in the worker, applied by the controller'
     for (const entry of replies) {
       const { jobId, thinkMs: got } = entry.detail as { jobId: number; thinkMs: number };
       const req = byJob.get(jobId) as BotDecisionMsg;
-      expect(got).toBe(thinkMs(req.obs, standInDecide(req.obs), req.seed));
+      expect(got).toBe(thinkMs(req.obs, simpleDecide(req.obs), req.seed));
       expect(got).toBeGreaterThanOrEqual(450);
       expect(got).toBeLessThanOrEqual(1750);
     }
@@ -446,7 +450,7 @@ describe('the worker is killed, silent or gone (§12.14: the hand always finishe
   }, 60_000);
 
   it('a worker that cannot start at all: bots take the safest legal action from the first hand', async () => {
-    const fake = fakeBrainWorker({ service: { decide: standInDecide } });
+    const fake = fakeBrainWorker({ service: { decide: simpleDecide } });
     fake.failSpawns = 2; // the first start and its one retry
     const client = createBrainClient(fake.spawn, realTimers);
     expect(client.status).toBe('failed');
@@ -465,7 +469,7 @@ describe('the worker is killed, silent or gone (§12.14: the hand always finishe
   }, 60_000);
 
   it('the headless finish of a new table works with a dead worker too (§3.1)', async () => {
-    const fake = fakeBrainWorker({ service: { decide: standInDecide } });
+    const fake = fakeBrainWorker({ service: { decide: simpleDecide } });
     fake.failSpawns = 2;
     const h = makeHarness({ brain: createBrainClient(fake.spawn, realTimers) });
     h.dispatch({ type: 'play' });

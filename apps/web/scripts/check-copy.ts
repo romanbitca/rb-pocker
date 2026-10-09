@@ -3,12 +3,13 @@
  * pitfalls 35 and 39; §18 Stage 5 acceptance 7). The rules are in `copy-rules.ts`; this script
  * runs them on:
  *
- * 1. every template of `en.coach.templates` and the glossary (`checkTemplates`, `checkGlossary`);
+ * 1. every template of `enCoach.coach.templates` and the glossary (`checkTemplates`, `checkGlossary`);
  * 2. the hints of generated situations (1,000 by default): random tables and random legal play
  *    with the real engine (only here: the brain never runs the engine), every hero decision
- *    observed and its §8.2 features computed; then every reason the spot allows, with the data
- *    the policies put in `Reason.data` (chunks 5.3–5.5) and the guardrail reasons, is explained
- *    (`explain`), rendered and checked (`checkHint`).
+ *    observed and its §8.2 features computed; then the coach's own advice there (`hint`'s
+ *    pipeline, chunk 5.7) and every other reason the spot allows, with the data the policies put
+ *    in `Reason.data` (chunks 5.3–5.5) and the guardrail reasons, is explained (`explain`),
+ *    rendered and checked (`checkHint`).
  *
  * Usage (from apps/web): `npm run check:copy` (= `node scripts/check-copy.ts`), optional
  * `--situations <n>`, `--seed <32 hex>` and `--print <n>` (prints n hints for a reader). Exits
@@ -24,11 +25,13 @@ import {
   type Line,
   type TemplateKey,
 } from '../src/brain/explain.ts';
+import { deliberate } from '../src/brain/decide.ts';
 import { candidateEVs, confidence } from '../src/brain/ev.ts';
 import { coachSeed, features } from '../src/brain/features.ts';
 import { preflopPolicy, realisation as preflopRealisation } from '../src/brain/preflopPolicy.ts';
 import { guardrails, guardSpot } from '../src/brain/guardrails.ts';
 import { liveOpponents } from '../src/brain/ranges.ts';
+import { COACH } from '../src/brain/profiles.ts';
 import { openPct } from '../src/brain/tunables.ts';
 import type { BrainProfile, Decision, EvCandidate, Features, Reason } from '../src/brain/types.ts';
 import { classOf, className, rankOf } from '../src/core/cards.ts';
@@ -459,8 +462,14 @@ export function runCheckCopy(
   const every = Math.max(1, Math.floor((6 * count) / Math.max(1, print)));
   let hints = 0;
   for (const s of situations) {
-    for (const d of candidateDecisions(s, rng)) {
-      const input = explainInput(s.obs, s.f, d);
+    // The coach's own advice (`hint`, chunk 5.7), then every other reason the spot allows.
+    const coach = deliberate(s.obs, COACH, coachSeed(s.obs), s.f.eRandom);
+    const decisions: [CheckDecision, Features][] = [
+      [coach.decision, coach.f],
+      ...candidateDecisions(s, rng).map((d): [CheckDecision, Features] => [d, s.f]),
+    ];
+    for (const [d, f] of decisions) {
+      const input = explainInput(s.obs, f, d);
       let found: string[];
       try {
         const e = explain(input);

@@ -4,7 +4,7 @@
  * (`ui/coach.ts` builds the text); `app/store.ts` re-exports this module.
  *
  * - `coachKeyOf(hand)` names one hero decision: the hand and how far its log has gone. A hint
- *   (the `coach` slice, written by `CoachJobs`) belongs to the decision of its key, so a reply
+ *   (the `coach` slice, written by the controller's `HintJobs`) belongs to the decision of its key, so a reply
  *   that lands late, or a hint from before an action, is never shown for another decision.
  * - `selectCoach`: the strip's state for the hero's decision (pending, ready, failed) or, while
  *   someone else acts, 'waiting' (the strip narrates the last action, `selectNarration`).
@@ -12,6 +12,7 @@
  * Every selector is memoized on the fields it reads and returns the same object while its view
  * is unchanged, so an equity write never re-renders the coach (pitfall 37).
  */
+import type { Explanation } from '../brain/explain.ts';
 import type { Decision } from '../brain/types.ts';
 import type { HandState, LegalActions, PlayerAction, TableState } from '../engine/types.ts';
 import type { AppState, CoachSlice, ControllerMode } from './store.ts';
@@ -53,6 +54,8 @@ export interface CoachData {
   readonly key: string | null;
   /** The advice ('ready' only). */
   readonly decision: Decision | null;
+  /** `explain()` of the advice (chunk 5.6), from the worker ('ready' only). */
+  readonly explanation: Explanation | null;
   /** The player opened this decision's hint ("Hint", §10.2); a Beginner's is always on show. */
   readonly opened: boolean;
 }
@@ -86,6 +89,7 @@ export function coachDataOf(
     state,
     key: null,
     decision: null,
+    explanation: null,
     opened: false,
   });
   if (hand === null || hand.phase === 'complete') return off('off');
@@ -93,12 +97,19 @@ export function coachDataOf(
   if (key === null) return off('waiting');
   const opened = coach.opened === key;
   if (coach.key !== key || coach.status === 'idle') {
-    return { level, state: 'pending', key, decision: null, opened };
+    return { level, state: 'pending', key, decision: null, explanation: null, opened };
   }
-  if (coach.status === 'failed' || coach.decision === null) {
-    return { level, state: 'failed', key, decision: null, opened };
+  if (coach.status === 'failed' || coach.decision === null || coach.explanation === null) {
+    return { level, state: 'failed', key, decision: null, explanation: null, opened };
   }
-  return { level, state: 'ready', key, decision: coach.decision, opened };
+  return {
+    level,
+    state: 'ready',
+    key,
+    decision: coach.decision,
+    explanation: coach.explanation,
+    opened,
+  };
 }
 
 /** The narration of `hand`'s last action on its current street; null when there is none yet. */

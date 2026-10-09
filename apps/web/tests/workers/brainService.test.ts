@@ -1,17 +1,28 @@
 /**
- * The job runner of `brain.worker` (PLAN §2.2, §9.8, Appendix A.6): `botDecision` answers with the
- * decision and its think time, echoing the job's id and epoch; `hint`, `grade` and `bench` answer
- * "not available yet" until chunks 5.7, 6.1 and the #bench hint row; a throwing brain gives an
- * `error` reply and the runner goes on. Node, no worker globals.
+ * The job runner of `brain.worker` (PLAN §2.2, §8.11, §9.8, Appendix A.6): `botDecision` answers
+ * with the decision and its think time, echoing the job's id and epoch; `hint` answers with the
+ * coach's advice, cached by observation (LRU of 32); `grade` and `bench` answer "not available
+ * yet" until chunk 6.1 and the #bench hint row; a throwing brain gives an `error` reply and the
+ * runner goes on. Node, no worker globals. The last block runs the real brain (`brain/decide.ts`)
+ * through the runner, as `brain.worker.ts` does.
  */
 import { describe, expect, it } from 'vitest';
-import { decide as standInDecide } from '../../src/brain/standIn.ts';
+import { simpleDecide } from '../helpers/simpleDecide.ts';
+import { coachHint, decide, hint } from '../../src/brain/decide.ts';
+import type { Explanation } from '../../src/brain/explain.ts';
+import { isLegalAction } from '../../src/brain/guardrails.ts';
+import { profileFor } from '../../src/brain/profiles.ts';
 import { thinkMs } from '../../src/brain/think.ts';
 import type { Decision } from '../../src/brain/types.ts';
 import { deriveSeed } from '../../src/core/rng.ts';
 import { observe } from '../../src/engine/observe.ts';
 import type { Observation, ObserveExtras } from '../../src/engine/types.ts';
-import { createBrainService, type DecideFn } from '../../src/workers/brainService.ts';
+import {
+  createBrainService,
+  HINT_CACHE_SIZE,
+  type DecideFn,
+  type HintFn,
+} from '../../src/workers/brainService.ts';
 import type { BrainReply, BrainRequest } from '../../src/workers/protocol.ts';
 import { deal, rigDeck, tableWith } from '../engine/helpers.ts';
 
@@ -30,16 +41,44 @@ const OBS: Observation = observe(
   extras(6),
 );
 const SEED = deriveSeed('0123456789abcdef0123456789abcdef', 'bot', 1, 3, 2);
-const PROFILE = { id: 'station/easy' };
+const PROFILE = profileFor('station', 'easy');
 
-function rig(decide: DecideFn = standInDecide, think?: typeof thinkMs) {
+function rig(decide: DecideFn = simpleDecide, think?: typeof thinkMs, coach?: HintFn) {
   const replies: BrainReply[] = [];
   const service = createBrainService({
     decide,
     ...(think !== undefined && { thinkMs: think }),
+    ...(coach !== undefined && { hint: coach }),
     post: (reply) => replies.push(reply),
   });
   return { service, replies };
+}
+
+/** A fake coach: SimpleBot's action, with `eRandom` echoed so a test can tell calls apart. */
+const fakeHint: HintFn = (obs, eRandom) => ({
+  decision: { ...simpleDecide(obs), eRandom: eRandom ?? -1 },
+  explanation: { headline: { key: 'headline.check', params: {} } } as unknown as Explanation,
+});
+/** The reply the runner posts for a coach answer. */
+const hintReply = (jobId: number, epoch: number, answer: ReturnType<HintFn>) => ({
+  kind: 'hint',
+  jobId,
+  epoch,
+  decision: answer.decision,
+  explanation: answer.explanation,
+});
+
+/** The same table with the hero's cards changed: another observation. */
+function otherObs(i: number): Observation {
+  const ranks = '23456789TJQKA';
+  const hole = `${ranks[i % 13]}c ${ranks[(i + 1 + Math.floor(i / 13)) % 13]}d`;
+  return observe(
+    rigDeck(deal(tableWith([10000, 10000, 10000, 10000, 10000, 10000], { button: 0 })), {
+      holes: { 3: hole },
+    }),
+    3,
+    extras(6),
+  );
 }
 
 const botDecision = (jobId: number, epoch: number): BrainRequest => ({
@@ -55,7 +94,7 @@ describe('botDecision', () => {
   it('answers with the decision and its think time, echoing the job id and the epoch', () => {
     const { service, replies } = rig();
     service.handle(botDecision(7, 3));
-    const decision = standInDecide(OBS);
+    const decision = simpleDecide(OBS);
     expect(replies).toEqual([
       {
         kind: 'botDecision',
@@ -73,7 +112,7 @@ describe('botDecision', () => {
     const calls: unknown[][] = [];
     const { service } = rig((...args) => {
       calls.push(args);
-      return standInDecide(OBS);
+      return simpleDecide(OBS);
     });
     service.handle(botDecision(1, 1));
     expect(calls).toEqual([[OBS, PROFILE, SEED]]);
@@ -81,12 +120,12 @@ describe('botDecision', () => {
 
   it('takes the think time from the injected function, given the decision, the observation and the seed', () => {
     const seen: unknown[][] = [];
-    const { service, replies } = rig(standInDecide, (obs, decision, seed) => {
+    const { service, replies } = rig(simpleDecide, (obs, decision, seed) => {
       seen.push([obs, decision, seed]);
       return 1234;
     });
     service.handle(botDecision(2, 5));
-    expect(seen).toEqual([[OBS, standInDecide(OBS), SEED]]);
+    expect(seen).toEqual([[OBS, simpleDecide(OBS), SEED]]);
     expect(replies[0]).toMatchObject({ kind: 'botDecision', thinkMs: 1234 });
   });
 
@@ -106,7 +145,7 @@ describe('botDecision', () => {
     let calls = 0;
     const { service, replies } = rig((obs) => {
       if (++calls === 1) throw new Error('boom');
-      return standInDecide(obs);
+      return simpleDecide(obs);
     });
     service.handle(botDecision(1, 4));
     service.handle(botDecision(2, 4));
@@ -123,7 +162,7 @@ describe('botDecision', () => {
   });
 
   it('turns a throwing think time into an error reply too', () => {
-    const { service, replies } = rig(standInDecide, () => {
+    const { service, replies } = rig(simpleDecide, () => {
       throw new Error('no clock');
     });
     service.handle(botDecision(9, 2));
@@ -132,7 +171,7 @@ describe('botDecision', () => {
 
   it('passes the decision through unchanged, whatever it holds', () => {
     const custom: Decision = {
-      ...standInDecide(OBS),
+      ...simpleDecide(OBS),
       ev: { call: 12, fold: 0 },
       trace: [{ code: 'OPEN_RANGE', data: { pct: 22 } }],
     };
@@ -142,15 +181,63 @@ describe('botDecision', () => {
   });
 });
 
-describe('what is not there yet', () => {
-  it('answers hint with an error (chunk 5.7)', () => {
-    const { service, replies } = rig();
+describe('hint', () => {
+  it('answers with the coach`s advice for the observation and the HUD number, echoing id and epoch', () => {
+    const { service, replies } = rig(simpleDecide, undefined, fakeHint);
     service.handle({ kind: 'hint', jobId: 4, epoch: 2, obs: OBS, eRandom: 0.5 });
-    expect(replies).toEqual([
-      { kind: 'error', jobId: 4, epoch: 2, message: 'hint: not available yet' },
-    ]);
+    expect(replies).toEqual([hintReply(4, 2, fakeHint(OBS, 0.5))]);
   });
 
+  it('computes each observation once: the same job again answers from the cache (§8.11)', () => {
+    const calls: unknown[][] = [];
+    const counting: HintFn = (obs, eRandom) => {
+      calls.push([obs, eRandom]);
+      return fakeHint(obs, eRandom);
+    };
+    const { service, replies } = rig(simpleDecide, undefined, counting);
+    service.handle({ kind: 'hint', jobId: 1, epoch: 1, obs: OBS, eRandom: null });
+    service.handle({ kind: 'hint', jobId: 2, epoch: 2, obs: structuredClone(OBS), eRandom: null });
+    expect(calls).toHaveLength(1);
+    expect(replies[1]).toEqual(hintReply(2, 2, fakeHint(OBS, null)));
+    // Another HUD number is another job.
+    service.handle({ kind: 'hint', jobId: 3, epoch: 2, obs: OBS, eRandom: 0.25 });
+    expect(calls).toHaveLength(2);
+  });
+
+  it('keeps the 32 most recently used hints', () => {
+    let calls = 0;
+    const counting: HintFn = (obs, eRandom) => {
+      calls++;
+      return fakeHint(obs, eRandom);
+    };
+    const { service } = rig(simpleDecide, undefined, counting);
+    const ask = (i: number): void =>
+      service.handle({ kind: 'hint', jobId: i, epoch: 1, obs: otherObs(i), eRandom: null });
+    for (let i = 0; i <= HINT_CACHE_SIZE; i++) ask(i); // 33 observations: the first is dropped
+    expect(calls).toBe(HINT_CACHE_SIZE + 1);
+    ask(HINT_CACHE_SIZE); // the newest: cached
+    expect(calls).toBe(HINT_CACHE_SIZE + 1);
+    ask(1); // still cached; it becomes the newest
+    expect(calls).toBe(HINT_CACHE_SIZE + 1);
+    ask(0); // dropped: computed again
+    expect(calls).toBe(HINT_CACHE_SIZE + 2);
+  });
+
+  it('turns a throwing coach into an error reply, and a worker without one answers an error', () => {
+    const { service, replies } = rig(simpleDecide, undefined, () => {
+      throw new Error('no table');
+    });
+    service.handle({ kind: 'hint', jobId: 4, epoch: 2, obs: OBS, eRandom: 0.5 });
+    expect(replies).toEqual([{ kind: 'error', jobId: 4, epoch: 2, message: 'no table' }]);
+    const bare = rig();
+    bare.service.handle({ kind: 'hint', jobId: 5, epoch: 3, obs: OBS, eRandom: null });
+    expect(bare.replies).toEqual([
+      { kind: 'error', jobId: 5, epoch: 3, message: 'hint: no coach in this worker' },
+    ]);
+  });
+});
+
+describe('what is not there yet', () => {
   it('answers grade with an error (chunk 6.1)', () => {
     const { service, replies } = rig();
     service.handle({
@@ -175,15 +262,38 @@ describe('what is not there yet', () => {
     ]);
   });
 
-  it('never calls the brain for them', () => {
+  it('never calls decide for a hint, a grade or a bench', () => {
     let calls = 0;
-    const { service } = rig(() => {
-      calls++;
-      return standInDecide(OBS);
-    });
+    const { service } = rig(
+      () => {
+        calls++;
+        return simpleDecide(OBS);
+      },
+      undefined,
+      fakeHint,
+    );
     service.handle({ kind: 'hint', jobId: 1, epoch: 1, obs: OBS, eRandom: null });
     service.handle({ kind: 'bench', jobId: 2 });
     expect(calls).toBe(0);
+  });
+});
+
+describe('the real brain through the runner (brain.worker.ts)', () => {
+  it('a bot decision is decide(obs, profile, seed), legal, with its think time', () => {
+    const { service, replies } = rig(decide);
+    service.handle(botDecision(1, 1));
+    const decision = decide(OBS, PROFILE, SEED);
+    expect(replies).toEqual([
+      { kind: 'botDecision', jobId: 1, epoch: 1, decision, thinkMs: thinkMs(OBS, decision, SEED) },
+    ]);
+    expect(isLegalAction(OBS.legal, decision.action)).toBe(true);
+  });
+
+  it('a hint is hint(obs, eRandom), the same through a structured clone of the message', () => {
+    const { service, replies } = rig(decide, undefined, coachHint);
+    service.handle(structuredClone({ kind: 'hint', jobId: 1, epoch: 1, obs: OBS, eRandom: null }));
+    expect(replies).toEqual([hintReply(1, 1, coachHint(OBS, null))]);
+    expect(coachHint(OBS, null).decision).toEqual(hint(OBS, null));
   });
 });
 

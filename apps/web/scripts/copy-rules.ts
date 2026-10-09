@@ -2,13 +2,13 @@
  * The rules of the coach's words (PLAN §8.10 "Language rules", Appendix F.1, F.5, F.9; Known
  * pitfalls 35 and 39), used by `check-copy.ts` and by the tests. Pure: no engine, no Node APIs.
  *
- * 1. **Templates** (`en.coach.templates` against `TEMPLATES` in `brain/explain.ts`): one template
+ * 1. **Templates** (`enCoach.coach.templates` against `TEMPLATES` in `brain/explain.ts`): one template
  *    per key and no other; every sentence at most 15 words (a placeholder counts as one word, a
  *    glossary link as its own words, symbols such as "·" and "×" as none); the placeholders are
  *    exactly the key's (none missing, none unused, in every plural form); every `{g:term}` is one
  *    the key declares and one the glossary defines; no decimal number and no stray brace in the
  *    words. Each template is rendered once with sample values (both plural forms).
- * 2. **Glossary** (`en.glossary`, F.9): its keys are exactly `GLOSSARY_KEYS`, each defined once;
+ * 2. **Glossary** (`enCoach.glossary`, F.9): its keys are exactly `GLOSSARY_KEYS`, each defined once;
  *    every definition sentence at most 15 words (a " / " definition is one part per key).
  * 3. **Hints** (`checkHint`): every line renders with exactly its template's values and glossary
  *    keys, no "{" left and sentences of at most 15 words; the numbers line shows the HUD's
@@ -48,7 +48,7 @@ import {
   type GlossaryEntry,
   type Segment,
 } from '../src/i18n/coach.ts';
-import { en } from '../src/i18n/en.ts';
+import { enCoach } from '../src/i18n/enCoach.ts';
 
 /** §8.10: at most 15 words a sentence. */
 export const MAX_WORDS = 15;
@@ -142,7 +142,7 @@ export function sampleLine(key: TemplateKey, n = 2): Line {
 /** Every problem of the templates (see the header, part 1). */
 export function checkTemplates(
   strings: CoachStrings = EN_COACH,
-  glossary: readonly GlossaryEntry[] = en.glossary,
+  glossary: readonly GlossaryEntry[] = enCoach.glossary,
 ): string[] {
   const problems: string[] = [];
   const known = new Set(glossary.flatMap((g) => glossaryKeys(g.term)));
@@ -200,7 +200,7 @@ export function checkTemplates(
 // ── 2. Glossary ────────────────────────────────────────────────────────────────────────────────
 
 /** Every problem of the glossary (see the header, part 2). */
-export function checkGlossary(glossary: readonly GlossaryEntry[] = en.glossary): string[] {
+export function checkGlossary(glossary: readonly GlossaryEntry[] = enCoach.glossary): string[] {
   const problems: string[] = [];
   const seen = new Map<string, string>();
   for (const entry of glossary) {

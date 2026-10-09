@@ -16,10 +16,15 @@
  * - ⚠️ `brain.worker` receives an `Observation` built by `observe()`, a profile and a seed, and
  *   nothing else about the hand: never a `HandState`, the deck or a value derived from the hand
  *   seed (§2.2, §9.6, pitfall 13). The bot seed comes from the table seed only (§2.4).
- * - Brain replies are single replies: the first one is the last (an `error` reply too). `hint` and
- *   `grade` answer `error` ("not available yet") until chunks 5.7 and 6.1.
+ * - Brain replies are single replies: the first one is the last (an `error` reply too). `grade`
+ *   answers `error` ("not available yet") until chunk 6.1.
+ * - `botDecision` carries the bot's whole `BrainProfile` (`profileFor(personality, level)`, §9.1 ×
+ *   §9.2); `hint` the hero's observation and the HUD's final win chance when the main thread
+ *   already has it, else null (§8.2 `eRandom`). No coach level is ever sent: the level changes
+ *   what is shown, never the advice (C4).
  * - Timeouts (main thread): equity 4,000 ms (above the worker's own 3 s `truncated` cap, so a
- *   truncated reply still lands); bot decision 2,000 ms; grade 1,500 ms.
+ *   truncated reply still lands); bot decision 2,000 ms; hint 4,000 ms (chunk 5.7: the strip says
+ *   "Coach is not available" after it, §12.11); grade 1,500 ms.
  * - The Monte Carlo seed text (§7.3) writes hero cards sorted by `Card` value descending and the
  *   board in deal order.
  * - Timing (§15.3 "worker timing logs", chunk 4.7): `equity`, `equityKnown` and `handInfo` replies
@@ -28,6 +33,7 @@
  * - `bench` (§15.4, the `#bench` screen): the worker measures itself and answers once.
  */
 import type { EquityResult, HandAnalysis } from '../analysis/types.ts';
+import type { Explanation } from '../brain/explain.ts';
 import type { BrainProfile, Decision, GradeResult } from '../brain/types.ts';
 import type { Card } from '../core/cards.ts';
 import type { Seed128 } from '../core/rng.ts';
@@ -98,20 +104,13 @@ export type EquityReply =
   | { kind: 'bench'; jobId: number; result: EquityBenchResult }
   | { kind: 'error'; jobId: number; epoch: number; message: string };
 
-/**
- * Which brain profile a bot plays. Appendix A.6 sends the full `BrainProfile`; until `profileFor`
- * exists (chunk 5.7) the controller sends only its id, "personality/level" (e.g. "station/easy"),
- * which every `BrainProfile` has too. Chunk 5.7 changes this field back to `BrainProfile`.
- */
-export type BotProfileRef = Pick<BrainProfile, 'id'>;
-
 export type BrainRequest =
   | {
       kind: 'botDecision';
       jobId: number;
       epoch: number;
       obs: Observation;
-      profile: BotProfileRef;
+      profile: BrainProfile;
       seed: Seed128;
     }
   | { kind: 'hint'; jobId: number; epoch: number; obs: Observation; eRandom: number | null }
@@ -129,7 +128,8 @@ export type BrainRequest =
 
 export type BrainReply =
   | { kind: 'botDecision'; jobId: number; epoch: number; decision: Decision; thinkMs: number }
-  | { kind: 'hint'; jobId: number; epoch: number; decision: Decision }
+  /** The coach's advice and `explain()` of it (chunk 5.7; the main thread renders the lines). */
+  | { kind: 'hint'; jobId: number; epoch: number; decision: Decision; explanation: Explanation }
   | { kind: 'grade'; jobId: number; epoch: number; result: GradeResult }
   | { kind: 'bench'; jobId: number; result: { hintP50Ms: number; hintP95Ms: number } }
   | { kind: 'error'; jobId: number; epoch: number; message: string };

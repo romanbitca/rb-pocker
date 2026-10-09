@@ -6,6 +6,7 @@ import {
   nextFlowPoint,
   openApp,
   pcState,
+  reloadAfterBust,
   seedFor,
   sizeOf,
   slot,
@@ -32,6 +33,10 @@ test('with checking free, Fold is disabled and a tap on it shows why', async ({
       await page.locator('[data-hand-end]').click();
       continue;
     }
+    if (point === 'bust') {
+      await reloadAfterBust(page);
+      continue;
+    }
     if ((await middle.getAttribute('aria-label')) === 'Check') break;
     await heroAct(page, () => 0.5);
   }
@@ -40,6 +45,10 @@ test('with checking free, Fold is disabled and a tap on it shows why', async ({
   await expect(fold).toHaveAttribute('aria-disabled', 'true');
   const tip = page.getByRole('group', { name: 'Your actions' }).getByRole('status');
   await expect(tip).toHaveText('');
+  // At Instant speed the next street can come with no page time passing since the hero's last
+  // tap, inside the action bar's 250 ms double-tap guard (§12.7), which would swallow this tap.
+  // Nothing runs while the hero decides, so the clock can move on.
+  await page.clock.runFor(300);
   const before = await pcState(page);
   // A real tap; `force` only skips Playwright's own wait for an enabled button (aria-disabled).
   await fold.click({ force: true });
@@ -128,7 +137,10 @@ test('every control is big enough to tap', async ({ page }, testInfo) => {
       await page.locator('[data-hand-end]').click();
       continue;
     }
-    if (point === 'bust') throw new Error('out of chips');
+    if (point === 'bust') {
+      await reloadAfterBust(page);
+      continue;
+    }
     if (
       (await right.count()) === 1 &&
       (await right.getAttribute('aria-disabled')) === null &&

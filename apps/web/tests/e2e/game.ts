@@ -186,6 +186,18 @@ export async function nextFlowPoint(page: Page, fast = false): Promise<FlowPoint
   throw new Error('no hero turn, hand end or out-of-chips dialog within 120 s of game time');
 }
 
+/**
+ * The out-of-chips dialog's "Reload …" (§3.1): the hero gets the starting stack back and the next
+ * hand starts. A hero who checks and calls everything busts now and then against the real bots
+ * (chunk 5.7), so the loops that play on to a kind of decision reload and go on.
+ */
+export async function reloadAfterBust(page: Page): Promise<void> {
+  await page
+    .getByRole('alertdialog')
+    .getByRole('button', { name: /^Reload / })
+    .click();
+}
+
 /** Row A (§12.7): the enabled slots, from the DOM. */
 async function enabledSlots(page: Page): Promise<string[]> {
   return page.evaluate(() =>

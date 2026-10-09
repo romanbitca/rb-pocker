@@ -21,6 +21,7 @@ import {
   type EquityClient,
   type JobEvent,
 } from '../../src/app/workerClient.ts';
+import { profileFor } from '../../src/brain/profiles.ts';
 import type { Decision } from '../../src/brain/types.ts';
 import type { Observation } from '../../src/engine/types.ts';
 import type {
@@ -456,7 +457,7 @@ describe('the brain client (chunk 5.8)', () => {
         jobId,
         epoch,
         obs: { ...OBS, seat },
-        profile: { id: 'station/easy' },
+        profile: profileFor('station', 'easy'),
         seed: '0123456789abcdef0123456789abcdef',
       }),
       onEvent: rec.onEvent,
@@ -493,7 +494,7 @@ describe('the brain client (chunk 5.8)', () => {
         jobId: 1,
         epoch: 4,
         obs: { seat: 3 },
-        profile: { id: 'station/easy' },
+        profile: profileFor('station', 'easy'),
         seed: '0123456789abcdef0123456789abcdef',
       },
     ]);
@@ -604,7 +605,7 @@ describe('the brain client (chunk 5.8)', () => {
           jobId,
           epoch: 1,
           obs: OBS,
-          profile: { id: 'x/easy' },
+          profile: profileFor('tag', 'easy'),
           seed: '0'.repeat(32),
         }),
         onEvent: () => {},
