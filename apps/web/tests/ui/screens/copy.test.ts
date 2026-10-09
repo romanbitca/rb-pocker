@@ -65,6 +65,16 @@ const PLAN_WORDS: Record<string, string> = {
   'dialog.newTable buttons': `"${en.dialog.newTable.confirm}" · "${en.dialog.newTable.cancel}"`,
   'menu.resume': en.menu.resume,
   'menu.newTable': en.menu.newTable,
+  // The mistake feedback card and Undo (§11, §12.6, Appendix F.4, F.5, F.10; chunk 6.2).
+  'toast.undone': `Undo: "${en.toast.undone}"`,
+  'feedback buttons': `Buttons: "${en.feedback.undo}" · "${en.feedback.keep}". Small print: "${en.feedback.smallPrint}"`,
+  'feedback.coachMove': `"${en.feedback.coachMove('Call 40')}"`,
+  ...Object.fromEntries(
+    (['inaccuracy', 'mistake', 'blunder'] as const).map((grade) => [
+      `feedback.title.${grade}`,
+      `| "${en.feedback.title[grade]}" |`,
+    ]),
+  ),
   ...Object.fromEntries(
     Object.entries(en.levels.botText).map(([level, text]) => [`levels.botText.${level}`, text]),
   ),

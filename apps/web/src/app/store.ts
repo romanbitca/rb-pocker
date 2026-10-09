@@ -26,8 +26,9 @@ import type { Decision } from '../brain/types.ts';
 import type { Card } from '../core/cards.ts';
 import type { HandState, LegalActions, PlayerAction, TableState } from '../engine/types.ts';
 import { defaultSettings } from '../persist/schema.ts';
-import type { Settings } from '../persist/schema.ts';
+import type { DecisionRecord, Settings } from '../persist/schema.ts';
 import { heroDecisionKey } from './coachViews.ts';
+import { UNDO_POLICY, type FeedbackView } from './undo.ts';
 import {
   currentScreen,
   initialNav,
@@ -52,6 +53,8 @@ export * from './runoutViews.ts';
 export * from './botCardViews.ts';
 // The coach strip, sheet and recommendation (§10.2, §12.6, chunk 5.9): the same, for the coach.
 export * from './coachViews.ts';
+// Undo and the feedback card (§10.2, §11, chunk 6.2): the level rules and the card's shapes.
+export { UNDO_POLICY, type FeedbackView, type MoveView, type UndoPolicy } from './undo.ts';
 
 // ---------------------------------------------------------------------------------------------
 // Appendix A.8 (the controller's modes and gates; `app/controller.ts` re-exports them)
@@ -61,8 +64,8 @@ export type ControllerMode =
   | 'idle' // no hand: between hands, bust dialog, or Table not open
   | 'botTurn'
   | 'heroTurn'
-  | 'grading' // ≤ 1,500 ms after a hero act (§11.3 r5; Stage 6)
-  | 'feedback' // mistake card open (Stage 6)
+  | 'grading' // ≤ 1,500 ms after a hero act, waiting for its grade (§11.3 r5)
+  | 'feedback' // the mistake card is open: nothing moves until Undo or Keep my move (§11.1)
   | 'advancing' // animation pause before an `advance`
   | 'handEnd'; // banner / summary; then commit (§14.3) and next hand
 
@@ -113,7 +116,9 @@ export type Toast =
   /** "Your last hand could not be restored. Chips were returned." (§14.3 load table) */
   | { id: number; kind: 'handNotRestored' }
   /** "Your saved data was damaged. We started fresh and kept a copy." (§12.11) */
-  | { id: number; kind: 'dataRecovered' };
+  | { id: number; kind: 'dataRecovered' }
+  /** "Move taken back. The unseen cards were shuffled again." (§11.3 r3, Appendix F.10) */
+  | { id: number; kind: 'undone' };
 
 /** An explicit gate close by `owner` (e.g. a first-table tip); the gate stays closed while any hold exists. */
 export interface GateHold {
@@ -141,6 +146,19 @@ export interface GameSlice {
   heroBust: boolean;
   /** Settings → Diagnostics counters (§4.5, §12.14). */
   diag: Diagnostics;
+  /**
+   * Undo can be taken now (§11.3 r2, r5; the decision's coach level, §10.2). Where it shows comes
+   * from the level (`UNDO_POLICY`): the toolbar Undo at Beginner and Intermediate, only inside the
+   * feedback card at Advanced, nowhere at Exam.
+   */
+  canUndo: boolean;
+  /** The feedback card's content while it is open (mode `feedback`), else null (§11.1, §12.6). */
+  feedback: FeedbackView | null;
+  /**
+   * This hand's hero decisions as recorded so far (A.7), the undone ones included: grade chips
+   * (chunk 6.1) and the hand summary (6.3) read them.
+   */
+  decisions: readonly DecisionRecord[];
 }
 
 export interface Diagnostics {
@@ -352,7 +370,14 @@ export type GameCommand =
   /** From `app/lifecycle.ts`: `pagehide` (flush storage, §14.6). */
   | { type: 'pagehide' }
   /** "Coach is not available. Tap to try again." (§12.11): ask the coach again. */
-  | { type: 'retryCoach' };
+  | { type: 'retryCoach' }
+  /**
+   * Undo (§11.3): the toolbar Undo, the feedback card's [Undo: try again], the U key. The
+   * controller ignores it unless Undo is possible (`game.canUndo`).
+   */
+  | { type: 'undo' }
+  /** The feedback card's [Keep my move] (also Esc and Back): the hand goes on (§11.1). */
+  | { type: 'keepMove' };
 
 /**
  * Commands the store applies to the `coach` slice itself: the player opened the hint of the
@@ -416,6 +441,9 @@ export function initialGame(): GameSlice {
     legal: null,
     heroBust: false,
     diag: { engineErrors: 0, botFallbacks: 0, voidedHands: 0 },
+    canUndo: false,
+    feedback: null,
+    decisions: [],
   };
 }
 
@@ -598,6 +626,19 @@ export const selectNextTable = (s: AppState): TableState | null => s.game.next;
 export const selectLegal = (s: AppState): LegalActions | null => s.game.legal;
 export const selectHeroBust = (s: AppState): boolean => s.game.heroBust;
 export const selectDiagnostics = (s: AppState): Diagnostics => s.game.diag;
+export const selectCanUndo = (s: AppState): boolean => s.game.canUndo;
+export const selectFeedback = (s: AppState): FeedbackView | null => s.game.feedback;
+export const selectDecisions = (s: AppState): readonly DecisionRecord[] => s.game.decisions;
+/**
+ * The toolbar Undo (§10.2, §12.3): 'hidden' unless the coach level shows it (Beginner and
+ * Intermediate), then 'enabled' when Undo is possible, else 'disabled' (shown, not hidden).
+ */
+export const selectUndoButton = (s: AppState): 'hidden' | 'disabled' | 'enabled' =>
+  UNDO_POLICY[s.settings.coachLevel].undo !== 'toolbar'
+    ? 'hidden'
+    : s.game.canUndo
+      ? 'enabled'
+      : 'disabled';
 /** The navigation state for `ScreenSwitcher` (ui/screens). */
 export const selectNav = (s: AppState): Nav => s.ui.nav;
 export const selectScreen = (s: AppState): Screen => s.ui.screen;
