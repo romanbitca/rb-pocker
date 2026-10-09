@@ -17,6 +17,7 @@ import {
   type GameSettings,
 } from '../../src/app/store.ts';
 import { fixedSeeds } from '../../src/app/testHooks.ts';
+import type { BrainClient } from '../../src/app/workerClient.ts';
 import type { Seed128 } from '../../src/core/rng.ts';
 import type { LegalActions, PlayerAction } from '../../src/engine/types.ts';
 import { testBrain } from '../workers/fakeBrainWorker.ts';
@@ -32,11 +33,16 @@ export interface TableHarness {
 
 /**
  * A fresh store on Home and a booted controller; `play` is not sent yet. `hints`: ask the brain
- * for the coach's hint at every hero decision (chunk 5.7); the test brain's coach is the real
- * `coachHint` (`testBrain`), its bots SimpleBot.
+ * for the coach's hint at every hero decision (chunk 5.7). `brain`: the brain client (default
+ * `testBrain()`: SimpleBot bots and the real coach, `coachHint`; `coachBrain` holds or fails it).
  */
 export function startTableHarness(
-  options: { seed?: Seed128; settings?: Partial<GameSettings>; hints?: boolean } = {},
+  options: {
+    seed?: Seed128;
+    settings?: Partial<GameSettings>;
+    hints?: boolean;
+    brain?: BrainClient;
+  } = {},
 ): TableHarness {
   vi.useFakeTimers();
   window.history.replaceState(null, '');
@@ -47,7 +53,7 @@ export function startTableHarness(
   appStore.setState({ game: initialGame(), ui: initialUi(false), coach: initialCoach(), settings });
   const controller = createTableController({
     store: appStore,
-    brain: testBrain(),
+    brain: options.brain ?? testBrain(),
     heroName: 'You',
     seeds: fixedSeeds(options.seed ?? TABLE_SEED),
     ...(options.hints !== undefined && { hints: options.hints }),
@@ -86,7 +92,8 @@ export async function elapse(ms: number): Promise<void> {
 /**
  * Plays until `done()` holds: the hero acts with `hero` on its turns, timers run otherwise.
  * `onStep` runs after every step (DOM checks); `beforeHero` on each hero turn, before the hero
- * acts (e.g. to let a coach hint land, or open the coach sheet). Throws after `maxSteps`.
+ * acts (e.g. to let a coach hint land, or open the coach sheet), and `done()` is asked again
+ * after it. Throws after `maxSteps`.
  */
 export async function playUntil(
   done: () => boolean,
@@ -104,6 +111,7 @@ export async function playUntil(
     const before = appStore.getState();
     if (before.game.mode === 'heroTurn' && before.game.legal !== null && options.beforeHero) {
       await options.beforeHero();
+      if (done()) return;
     }
     const s = appStore.getState();
     if (s.game.mode === 'heroTurn' && s.game.legal !== null) {

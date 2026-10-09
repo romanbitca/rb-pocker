@@ -13,7 +13,11 @@ import {
 } from '../../src/app/workerClient.ts';
 import { simpleDecide } from '../helpers/simpleDecide.ts';
 import { coachHint } from '../../src/brain/decide.ts';
-import { createBrainService, type BrainServiceOptions } from '../../src/workers/brainService.ts';
+import {
+  createBrainService,
+  type BrainServiceOptions,
+  type HintFn,
+} from '../../src/workers/brainService.ts';
 import type { BrainReply, BrainRequest } from '../../src/workers/protocol.ts';
 
 export interface FakeBrainInstance {
@@ -114,4 +118,73 @@ export function testBrain(timers: Timers = realTimers): BrainClient {
     fakeBrainWorker({ service: { decide: simpleDecide, hint: coachHint } }).spawn,
     timers,
   );
+}
+
+/** A `hint` request, as the worker receives it. */
+export type HintMsg = Extract<BrainRequest, { kind: 'hint' }>;
+
+export interface CoachBrain {
+  client: BrainClient;
+  /** Every hint request, as the worker received it. */
+  hints: HintMsg[];
+  /** The job ids of every `cancel` posted. */
+  cancelled: number[];
+  /** Hint jobs held unanswered (`hold`). */
+  held: Map<number, { msg: HintMsg; instance: FakeBrainInstance }>;
+  /** Answers a held hint job: with `reply`, else with the coach's answer. */
+  answer(jobId: number, reply?: BrainReply): void;
+}
+
+/**
+ * A brain client whose bots are SimpleBot (answered at once, no think time) and whose coach is
+ * `coach` (default: the real `coachHint`); with `hold`, hint requests wait for `answer` (a hint
+ * on its way, a late one, an `error` reply). `failSpawns`: no worker can start.
+ */
+export function coachBrain(
+  options: { coach?: HintFn; hold?: boolean; failSpawns?: number; timers?: Timers } = {},
+): CoachBrain {
+  const coach = options.coach ?? coachHint;
+  const hints: HintMsg[] = [];
+  const cancelled: number[] = [];
+  const held = new Map<number, { msg: HintMsg; instance: FakeBrainInstance }>();
+  const fake = fakeBrainWorker({
+    onReceive: (msg, instance) => {
+      if (msg.kind === 'botDecision') {
+        const decision = simpleDecide(msg.obs);
+        const { jobId, epoch } = msg;
+        void Promise.resolve().then(() =>
+          instance.reply({ kind: 'botDecision', jobId, epoch, decision, thinkMs: 0 }),
+        );
+      } else if (msg.kind === 'hint') {
+        hints.push(msg);
+        if (options.hold === true) {
+          held.set(msg.jobId, { msg, instance });
+        } else {
+          const { decision, explanation } = coach(msg.obs, msg.eRandom);
+          const { jobId, epoch } = msg;
+          void Promise.resolve().then(() =>
+            instance.reply({ kind: 'hint', jobId, epoch, decision, explanation }),
+          );
+        }
+      } else if (msg.kind === 'cancel') {
+        cancelled.push(msg.jobId);
+      }
+    },
+  });
+  fake.failSpawns = options.failSpawns ?? 0;
+  return {
+    client: createBrainClient(fake.spawn, options.timers ?? realTimers),
+    hints,
+    cancelled,
+    held,
+    answer(jobId, reply) {
+      const job = held.get(jobId);
+      if (job === undefined) throw new Error(`no held hint ${jobId}`);
+      held.delete(jobId);
+      const { msg, instance } = job;
+      instance.reply(
+        reply ?? { kind: 'hint', jobId, epoch: msg.epoch, ...coach(msg.obs, msg.eRandom) },
+      );
+    },
+  };
 }

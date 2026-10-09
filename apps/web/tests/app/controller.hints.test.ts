@@ -7,9 +7,8 @@
  * C4: the coach level changes nothing the coach is asked, so nothing it answers.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { HERO, realTimers } from '../../src/app/controller.ts';
+import { HERO } from '../../src/app/controller.ts';
 import { coachKeyOf, HINT_TIMEOUT_MS } from '../../src/app/hintJobs.ts';
-import { createBrainClient } from '../../src/app/workerClient.ts';
 import { coachHint, hint } from '../../src/brain/decide.ts';
 import type { Explanation } from '../../src/brain/explain.ts';
 import type { Decision } from '../../src/brain/types.ts';
@@ -24,9 +23,8 @@ import {
   type PlayerAction,
 } from '../../src/engine/types.ts';
 import type { HintFn } from '../../src/workers/brainService.ts';
-import type { BrainReply, BrainRequest } from '../../src/workers/protocol.ts';
 import { simpleDecide } from '../helpers/simpleDecide.ts';
-import { fakeBrainWorker, type FakeBrainInstance } from '../workers/fakeBrainWorker.ts';
+import { coachBrain, type HintMsg } from '../workers/fakeBrainWorker.ts';
 import { elapse, flush, makeHarness, tick, type Harness } from './harness.ts';
 
 beforeEach(() => {
@@ -35,72 +33,6 @@ beforeEach(() => {
 afterEach(() => {
   vi.useRealTimers();
 });
-
-type HintMsg = Extract<BrainRequest, { kind: 'hint' }>;
-
-interface CoachBrain {
-  client: ReturnType<typeof createBrainClient>;
-  /** Every hint request, as the worker received it. */
-  hints: HintMsg[];
-  /** The job ids of every `cancel` posted. */
-  cancelled: number[];
-  /** Hint jobs held unanswered (`hold`). */
-  held: Map<number, { msg: HintMsg; instance: FakeBrainInstance }>;
-  answer(jobId: number, reply?: BrainReply): void;
-}
-
-/**
- * A brain whose bots are SimpleBot (answered at once, no think time) and whose coach is `coach`
- * (default: the real `hint`); with `hold`, hint requests wait for `answer`.
- */
-function coachBrain(
-  options: { coach?: HintFn; hold?: boolean; failSpawns?: number } = {},
-): CoachBrain {
-  const coach = options.coach ?? coachHint;
-  const hints: HintMsg[] = [];
-  const cancelled: number[] = [];
-  const held = new Map<number, { msg: HintMsg; instance: FakeBrainInstance }>();
-  const fake = fakeBrainWorker({
-    onReceive: (msg, instance) => {
-      if (msg.kind === 'botDecision') {
-        const decision = simpleDecide(msg.obs);
-        const { jobId, epoch } = msg;
-        void Promise.resolve().then(() =>
-          instance.reply({ kind: 'botDecision', jobId, epoch, decision, thinkMs: 0 }),
-        );
-      } else if (msg.kind === 'hint') {
-        hints.push(msg);
-        if (options.hold === true) {
-          held.set(msg.jobId, { msg, instance });
-        } else {
-          const { decision, explanation } = coach(msg.obs, msg.eRandom);
-          const { jobId, epoch } = msg;
-          void Promise.resolve().then(() =>
-            instance.reply({ kind: 'hint', jobId, epoch, decision, explanation }),
-          );
-        }
-      } else if (msg.kind === 'cancel') {
-        cancelled.push(msg.jobId);
-      }
-    },
-  });
-  fake.failSpawns = options.failSpawns ?? 0;
-  return {
-    client: createBrainClient(fake.spawn, realTimers),
-    hints,
-    cancelled,
-    held,
-    answer(jobId, reply) {
-      const job = held.get(jobId);
-      if (job === undefined) throw new Error(`no held hint ${jobId}`);
-      held.delete(jobId);
-      const { msg, instance } = job;
-      instance.reply(
-        reply ?? { kind: 'hint', jobId, epoch: msg.epoch, ...coach(msg.obs, msg.eRandom) },
-      );
-    },
-  };
-}
 
 const passive = (legal: LegalActions): PlayerAction =>
   legal.canCheck ? { type: 'check' } : { type: 'call' };
