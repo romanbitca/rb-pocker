@@ -6,7 +6,7 @@ This is the working checklist for building [PLAN.md](PLAN.md). PLAN.md is the so
 
 Legend: `[ ]` todo · `[~]` in progress (branch exists) · `[x]` merged to `main` · `[H]` waiting on the human
 
-**Current position:** ▶ Autonomous run (owner 10 Oct: 95%/window, stop at 30% weekly). **Stage 5 automated criteria ✅** (5.11 [#51](https://github.com/romanbitca/rb-pocker/pull/51) merged, R18 [#54](https://github.com/romanbitca/rb-pocker/pull/54) merged); 5.12 [H]. ⛔ **GitHub Actions stopped starting jobs (billing/spending limit, since ~23:00Z 9 Oct): no merges until CI runs again** (owner). Stage 6: 6.1 [#52](https://github.com/romanbitca/rb-pocker/pull/52) ready, 6.3 [#48](https://github.com/romanbitca/rb-pocker/pull/48) ready, 6.2 [#49](https://github.com/romanbitca/rb-pocker/pull/49) done (all local checks green; Beginner pauses on every Inaccuracy, as §10.2 says). Being restacked on main as one chain: #52 ← #49 ← #48; **merge order #52 → #49 → #48** (6.4 stacks on #48). Grade chips (in 6.1's scope) were built by neither 6.1 nor 6.2 → 6.4. 7.1 in progress (held). Then 6.4, 6.5, 7.2, 7.3.
+**Current position:** ▶ Autonomous run (owner 10 Oct: 95%/window, stop at 30% weekly). **Stage 5 automated criteria ✅** (5.11 [#51](https://github.com/romanbitca/rb-pocker/pull/51) merged, R18 [#54](https://github.com/romanbitca/rb-pocker/pull/54) merged); 5.12 [H]. ⛔ **GitHub Actions stopped starting jobs (billing/spending limit, since ~23:00Z 9 Oct): no merges until CI runs again** (owner). Stage 6: 6.1 [#52](https://github.com/romanbitca/rb-pocker/pull/52) ready, 6.3 [#48](https://github.com/romanbitca/rb-pocker/pull/48) ready, 6.2 [#49](https://github.com/romanbitca/rb-pocker/pull/49) done (all local checks green; Beginner pauses on every Inaccuracy, as §10.2 says). Being restacked on main as one chain: #52 ← #49 ← #48; **merge order #52 → #49 → #48** (6.4 stacks on #48). Grade chips (in 6.1's scope) were built by neither 6.1 nor 6.2 → 6.4. 7.1 [#55](https://github.com/romanbitca/rb-pocker/pull/55) ready, held (local checks green; Expert p95 7.6 ms; R20: Hard/Expert far too loose, e.g. TAG 34/28 Hard, 46/43 Expert → 7.3 calibrates). Next: 6.4 (on #48), 7.2 + 7.3 (on #55), 6.5.
 
 ---
 
@@ -101,7 +101,7 @@ Legend: `[ ]` todo · `[~]` in progress (branch exists) · `[x]` merged to `main
 
 ## Stage 7 - Hard and Expert bots (PLAN §9.5, §10.1)
 
-- [ ] 7.1 `feature/hard-expert-bot-profiles` - range model on for bots, exploits (n ≥ 30), balanced river bluffs, hidden labels, observed-stats card.
+- [~] 7.1 `feature/hard-expert-bot-profiles` - range model on for bots, exploits (n ≥ 30), balanced river bluffs, hidden labels, observed-stats card.
 - [ ] 7.2 `feature/per-seat-bot-levels` - per-seat override from next hand.
 - [ ] 7.3 `test/hard-expert-self-play` - acceptance 1–5.
 
@@ -224,3 +224,4 @@ If the human's answer later reveals a problem, the fix becomes a new chunk ahead
 | 29 Sep 21:05–21:48Z | 4.1, 4.2 (early) | PRs [#27](https://github.com/romanbitca/rb-pocker/pull/27), [#28](https://github.com/romanbitca/rb-pocker/pull/28) ready, held: all D.2, D.3, C.5 exact; brute-force oracle agreement | (same window) |
 | 9 Oct 21:50–22:50Z | R18 fix merged | [PR #54](https://github.com/romanbitca/rb-pocker/pull/54) (4233d52): the meter showed Strong next to Fold in 38% of folds; multiway `p = n·E / (1 + (n−1)·E)` (heads-up unchanged, 0.5 at the fair share) + meter cap (never fired in 2,000 hints); E19–E22 added; 85 of 3,881 hints changed (multiway postflop, fewer value bets) | 5h 8% → 55%, weekly 2% → 8% |
 | 9 Oct 21:50–23:10Z | 5.11 merged | [PR #51](https://github.com/romanbitca/rb-pocker/pull/51) (ad54330): 20,000-hand calibration, 12 failing gates → 0 at Medium and at Easy (biases in units of T, 3.5 T preflop rule bonus, Easy reads the opener's range, 4 §9.1 numbers; TAG untouched); 0 illegal actions in 100,000 hands (2–9 seats); Medium bot p95 3.7 ms; coach +288 ± 58 bb/100 vs Easy; R19 closed. Main's check for ad54330 did not start (GitHub billing) | weekly ~11% |
+| 9 Oct 23:05–23:50Z | 7.1 built (held) | [PR #55](https://github.com/romanbitca/rb-pocker/pull/55): range model on for Hard/Expert bots, exploits from n ≥ 30, balanced river bluffs, hidden labels, observed-stats card; non-cheating for all 20 profiles + coach; Expert p95 7.6 ms; initial JS 143.0 KB; R20 (Hard/Expert too loose) for 7.3. 6.2 #49 finished (300/300 on a 5× e2e repeat) | 5h → ~85%, weekly 12% |
