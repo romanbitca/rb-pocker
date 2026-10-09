@@ -210,7 +210,7 @@ describe('a coach that cannot answer (§12.11)', () => {
       fakeBrainWorker({
         service: {
           decide: simpleDecide,
-          hint: () => {
+          coach: () => {
             calls++;
             throw new Error('coach failed');
           },
