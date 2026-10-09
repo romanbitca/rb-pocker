@@ -354,12 +354,19 @@ export interface LevelParams {
   preflopJitter: number;
   /** §9.2 "Bluffs": Easy bluffs a flat 5% whatever its personality; null = the personality's. */
   bluffFreq: number | null;
+  /**
+   * §9.2 "Bluffs" at Hard and Expert: a river bluff is balanced by its size (`B / (pot + 2B)` of
+   * the river bets are bluffs, `brain/bluffs.ts`); on the flop and turn the personality's.
+   */
+  balancedBluffs: boolean;
+  /** §9.5 Expert exploits of the hero's leaks (`brain/exploits.ts`). */
   exploit: boolean;
 }
 
 /**
- * §9.2 difficulty → engine parameters. Hard and Expert come from the same table so that
- * `profileFor` is total; Stage 7 adds their balanced bluffs and the Expert exploits.
+ * §9.2 difficulty → engine parameters. Hard and Expert (chunk 7.1): the Loki re-weighting with
+ * generic priors (Hard) and with each seat's statistics (Expert), balanced river bluffs, and at
+ * Expert the §9.5 exploits.
  */
 export const LEVEL_PARAMS: Readonly<Record<BotLevel, LevelParams>> = {
   easy: {
@@ -372,6 +379,7 @@ export const LEVEL_PARAMS: Readonly<Record<BotLevel, LevelParams>> = {
     defenseFactor: 0.55,
     preflopJitter: 0.4,
     bluffFreq: 0.05,
+    balancedBluffs: false,
     exploit: false,
   },
   medium: {
@@ -384,6 +392,7 @@ export const LEVEL_PARAMS: Readonly<Record<BotLevel, LevelParams>> = {
     defenseFactor: 0.7,
     preflopJitter: 0.2,
     bluffFreq: null,
+    balancedBluffs: false,
     exploit: false,
   },
   hard: {
@@ -396,6 +405,7 @@ export const LEVEL_PARAMS: Readonly<Record<BotLevel, LevelParams>> = {
     defenseFactor: 0.85,
     preflopJitter: 0.1,
     bluffFreq: null,
+    balancedBluffs: true,
     exploit: false,
   },
   expert: {
@@ -408,6 +418,7 @@ export const LEVEL_PARAMS: Readonly<Record<BotLevel, LevelParams>> = {
     defenseFactor: 0.95,
     preflopJitter: 0.05,
     bluffFreq: null,
+    balancedBluffs: true,
     exploit: true,
   },
 };
@@ -462,3 +473,21 @@ export const SAME_SIZE_SHARE = 0.15;
  * of the coach's calls of a raise, §8.3), so "It is strong enough to play" is plainly true.
  */
 export const FEEDBACK_STRONG_PCT = 50;
+
+// --- 7.1 Hard and Expert bots ---
+
+/**
+ * §9.5 Expert exploits: each one reads what the hero has shown (`x / n` of one of its §9.5
+ * statistics) and is active only once that statistic has at least this many opportunities.
+ */
+export const EXPLOIT_MIN_OBSERVATIONS = 30;
+/** Hero folds to more than this share of c-bets → c-bet heads-up flops at 1/3 with any two cards. */
+export const EXPLOIT_FOLD_TO_CBET = 0.6;
+/** Hero VPIP above this → value-bet Medium hands and halve bluffs. */
+export const EXPLOIT_LOOSE_VPIP = 0.4;
+/** Hero AF above this → stickiness + 0.2 and `defenseFactor = 1.0` (§9.2 "1.0 vs a hero with AF > 3.5"). */
+export const EXPLOIT_AGGRESSIVE_AF = 3.5;
+export const EXPLOIT_STICKINESS_BONUS = 0.2;
+export const EXPLOIT_DEFENSE_FACTOR = 1;
+/** "Halve bluffs": every bluff chance (the flop and turn bluff draw, the bluff 3-bet, the river). */
+export const EXPLOIT_BLUFF_FACTOR = 0.5;
