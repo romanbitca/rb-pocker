@@ -6,7 +6,7 @@ This is the working checklist for building [PLAN.md](PLAN.md). PLAN.md is the so
 
 Legend: `[ ]` todo · `[~]` in progress (branch exists) · `[x]` merged to `main` · `[H]` waiting on the human
 
-**Current position:** ▶ Autonomous run, window from 9 Oct 02:51Z (95%/window, stop at 80% weekly; weekly 45%). In progress: wide-layout e2e fix (`fix/wide-layout-coach-strip-overlap`), finishing 5.7 #47, 5.11 self-play (stacked on #47), 6.1 grading (stacked on #47). Then: Stage 5 complete → merge 6.3 #48, finish + merge 6.2 #49 (needs 6.1), 6.4, 6.5.
+**Current position:** ▶ Autonomous run (95%/window, stop at 80% weekly; weekly 52%). Stage 5: all merged except 5.11 self-play (#51, in progress); 5.12 [H]. Fixing R18 (strength meter vs advice). Stage 6: 6.1 grading (#52), 6.2 (#49, needs 6.1 + 2 e2e specs), 6.3 (#48 ready) — merge after 5.11.
 
 ---
 
@@ -84,7 +84,7 @@ Legend: `[ ]` todo · `[~]` in progress (branch exists) · `[x]` merged to `main
 - [x] 5.4 `feature/postflop-policy-and-bet-sizing` - `postflopPolicy.ts`, `sizing.ts`.
 - [x] 5.5 `feature/coach-guardrails-and-ev-model` - `guardrails.ts`, `ev.ts`; each guardrail has a test that fails without it.
 - [x] 5.6 `feature/coach-explanations` - `explain.ts`, `i18n/en.ts` templates, `check-copy.ts`.
-- [~] 5.7 `feature/bot-personalities-easy-medium` - `profiles.ts`, `decide.ts`, `hint`, think time, non-cheating property test, Appendix E golden spots.
+- [x] 5.7 `feature/bot-personalities-easy-medium` - `profiles.ts`, `decide.ts`, `hint`, think time, non-cheating property test, Appendix E golden spots.
 - [x] 5.8 `feature/brain-worker` - `brain.worker.ts` replaces `SimpleBot` (moved to `scripts/bots/`).
 - [x] 5.9 `feature/coach-strip-and-sheet` - Beginner/Intermediate UI, recommended ring, "Use coach size", RANGE_ADJUST, glossary popovers.
 - [x] 5.10 `feature/bot-and-coach-level-selectors` - level cards, personality labels, bot card.
@@ -217,5 +217,6 @@ If the human's answer later reveals a problem, the fix becomes a new chunk ahead
 | 8 Oct 20:25–22:10Z | 5.8, 5.5, 5.3 merged; 5.10, 5.6 ready | #42 (a714b4b), #40 (5445df2), #41 (48b1472) merged; [#45](https://github.com/romanbitca/rb-pocker/pull/45) level selectors + bot card, [#46](https://github.com/romanbitca/rb-pocker/pull/46) explanations + check-copy (1,000 situations) ready. Git rerere disabled (it silently dropped PLAN rows once) | weekly 23% → 34% |
 | 8 Oct 22:10–23:30Z | 5.4, 5.10, 5.6, 5.9 merged; 5.7 nearly done | #43 (35373d8), #45 (bb249e5), #46 (63ae15e), #44 (53cb525). [#47](https://github.com/romanbitca/rb-pocker/pull/47): 18/18 golden spots via hint(), properties + non-cheating ✅, bot p95 3.8 ms; EV-model fix (equity vs one caller) — bots no longer fold aces | 5h → 85%, weekly 44% |
 | 9 Oct 02:51–04:00Z | CI speed-up, wide-layout fix | #50 (98706d7): check job 597 s, 25-min timeout. #53: real bug — wide coach panel had no reserved row, table resized mid-hand and pods lagged one render over the hero strip; reserved row (table min 320 px); WebKit 6/40 → 0/50 failures | weekly 45% → 52% |
+| 9 Oct 02:51–04:20Z | 5.7 merged | [#47](https://github.com/romanbitca/rb-pocker/pull/47) (a03f9d6): real hints with explanations; 18/18 golden spots; C2–C4/C6/C7 + non-cheating; initial JS 141.6 KB | weekly ~53% |
 | 1 Oct 20:40–21:55Z | 5.1, 5.2 merged; 5.3, 5.5, 5.8 built | #37 (db1d249), #38 (d5848b7) merged. Ready/held: [#40](https://github.com/romanbitca/rb-pocker/pull/40) guardrails + EV, [#42](https://github.com/romanbitca/rb-pocker/pull/42) brain worker (no HandState/hidden cards in any message; hands finish if the worker dies), [#41](https://github.com/romanbitca/rb-pocker/pull/41) preflop + push/fold (E1–E8, E18 ✅; R16 closed with sources). 5.4 [#39](https://github.com/romanbitca/rb-pocker/pull/39) in progress | weekly 68% → ~79% |
 | 29 Sep 21:05–21:48Z | 4.1, 4.2 (early) | PRs [#27](https://github.com/romanbitca/rb-pocker/pull/27), [#28](https://github.com/romanbitca/rb-pocker/pull/28) ready, held: all D.2, D.3, C.5 exact; brute-force oracle agreement | (same window) |
