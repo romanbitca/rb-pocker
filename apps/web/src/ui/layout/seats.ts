@@ -67,9 +67,15 @@ export const SHELL = {
   landscapeColumn: 280,
   /** Landscape: the hero's cards, inset at the bottom centre of the felt. */
   landscapeHero: { w: 128, h: 98 },
-  /** Wide: the rankings column `clamp(260px, 24vw, 320px)`; the inline coach panel is ≤ 30vh. */
+  /** Wide: the rankings column `clamp(260px, 24vw, 320px)`. */
   wideColumn: { min: 260, vw: 0.24, max: 320 },
+  /**
+   * Wide: the inline coach panel's row has a fixed height (`wideCoachPanel`): 30% of the height,
+   * but the table box keeps 320 px (R14), and the panel keeps its 61 px head row.
+   */
   wideCoachMax: 0.3,
+  wideCoachMin: 61,
+  wideTableMin: 320,
 } as const;
 
 const pt = (x: number, y: number): Point => ({ x, y });
@@ -131,9 +137,19 @@ export interface TableFrame {
   readonly tab: Rect | null;
 }
 
+/**
+ * The wide screen's inline coach panel (§12.5): the fixed height of its row for a viewport
+ * `height`, as Table.module.css computes it (safe-area insets taken as 0). Whatever the coach
+ * says, the table box keeps its size (§15.3).
+ */
+export function wideCoachPanel(height: number): number {
+  const room = height - SHELL.topBar - SHELL.heroStrip - SHELL.actionBar - SHELL.wideTableMin;
+  return Math.round(Math.max(SHELL.wideCoachMin, Math.min(SHELL.wideCoachMax * height, room)));
+}
+
 /** Wide-layout options for `tableFrame`. */
 export interface FrameOptions {
-  /** The inline coach panel's height (default: its 30vh maximum, the tightest case). */
+  /** The inline coach panel's height (default: its row, `wideCoachPanel`). */
   readonly coachPanel?: number;
   /** The rankings column is collapsed to its 44 px rail (`settings.handsPanel`, §13.1). */
   readonly handsCollapsed?: boolean;
@@ -156,7 +172,7 @@ export function tableFrame(viewport: Size, options: FrameOptions = {}): TableFra
       const { min, vw, max } = SHELL.wideColumn;
       const column =
         options.handsCollapsed === true ? HANDS_RAIL : Math.min(max, Math.max(min, vw * W));
-      const coach = options.coachPanel ?? Math.round(SHELL.wideCoachMax * H);
+      const coach = options.coachPanel ?? wideCoachPanel(H);
       const h = H - SHELL.topBar - SHELL.heroStrip - coach - SHELL.actionBar;
       return { layout, box: { x: 0, y: SHELL.topBar, w: W - column, h }, tab: null };
     }

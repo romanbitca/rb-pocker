@@ -22,6 +22,8 @@ interface PcState {
   };
   ui: { screen: string; overlays: readonly string[]; gates: readonly string[]; layout: string };
   settings: { players: number; speed: string; autoNext: boolean } & Record<string, unknown>;
+  /** The coach's answer for the hero decision `key` (`CoachSlice`, app/store.ts). */
+  coach: { key: string | null; status: 'idle' | 'ready' | 'failed' };
 }
 
 interface PcHooks {

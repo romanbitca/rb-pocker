@@ -10,6 +10,7 @@ import {
   seatCentres,
   tableFrame,
   tableGeometry,
+  wideCoachPanel,
   type FrameOptions,
   type Rect,
   type Size,
@@ -23,9 +24,15 @@ const TARGETS: Size[] = [
   { w: 844, h: 390 },
   { w: 1280, h: 800 },
 ];
-/** More real screens: tablet landscape (§13.1), iPhone SE in Safari (compact), big phones. */
+/**
+ * More real screens: tablet landscape (§13.1), short wide windows (R14: the coach panel's row
+ * gives way down to its head row), iPhone SE in Safari (compact), big phones.
+ */
 const EXTRA: Size[] = [
   { w: 1024, h: 768 },
+  { w: 1280, h: 720 },
+  { w: 1366, h: 600 },
+  { w: 900, h: 560 },
   { w: 375, h: 548 },
   { w: 430, h: 932 },
   { w: 768, h: 1024 },
@@ -163,6 +170,21 @@ describe('layouts and the table box (PLAN §12.3, §12.5)', () => {
     expect(tableFrame({ w: 1280, h: 800 }, { coachPanel: 0 }).box.h).toBe(800 - 44 - 112 - 64);
   });
 
+  it('reserves the wide coach panel’s row: 30% of the height, a 320 px table first (R14)', () => {
+    const tableH = (w: number, h: number): number => tableFrame({ w, h }).box.h;
+    expect(wideCoachPanel(800)).toBe(240);
+    expect(tableH(1280, 800)).toBe(340);
+    expect(wideCoachPanel(1080)).toBe(324);
+    // 30% of 768 px would leave a 318 px table.
+    expect(wideCoachPanel(768)).toBe(228);
+    expect(tableH(1024, 768)).toBe(320);
+    expect(tableH(1280, 720)).toBe(320);
+    // Down to the panel's 61 px head row: below 601 px the table gives way.
+    expect(wideCoachPanel(600)).toBe(61);
+    expect(tableH(1366, 600)).toBe(319);
+    expect(tableH(900, 560)).toBe(279);
+  });
+
   it('sizes board cards by §12.3, leaving room for the side pods', () => {
     expect(boardCardSize('wide', { w: 973, h: 340 })).toEqual({ w: 48, h: 67 });
     expect(boardCardSize('portrait', { w: 332, h: 472 })).toEqual({ w: 34, h: 48 });
@@ -200,20 +222,24 @@ describe('pods (Stage 3 acceptance 2)', () => {
 describe('pods with the sizing tray open (§12.7: inline, the table row is 104 px shorter)', () => {
   const TRAY = 104;
   // Portrait and wide place the tray above Row A (compact overlays it, landscape puts it in the
-  // right column: neither changes the table). Wide as built in Stage 3: no inline coach panel yet.
-  // Acceptance 2 asks that nothing needed for the decision is covered: the board, the pot and the
-  // hero's cards. (Side pods of an 8- or 9-player table may touch each other while sizing at
-  // 375×667: the box is 295 px tall for four 72 px pods a side.)
+  // right column: neither changes the table). Wide: with the coach panel's reserved row at
+  // 1280×800, and as built in Stage 3 (no panel row: `coachPanel: 0`). With its 228 px row a
+  // 1024×768 table is 216 px tall while sizing, and the top pods reach the pot and the board
+  // (R14, open). Acceptance 2 asks that nothing needed for the decision is covered: the board,
+  // the pot and the hero's cards. (Side pods of an 8- or 9-player table may touch each other
+  // while sizing at 375×667: the box is 295 px tall for four 72 px pods a side.)
   const CASES: { viewport: Size; options?: FrameOptions }[] = [
     { viewport: { w: 375, h: 667 } },
     { viewport: { w: 360, h: 740 } },
     { viewport: { w: 390, h: 844 } },
     { viewport: { w: 768, h: 1024 } },
+    { viewport: { w: 1280, h: 800 } },
     { viewport: { w: 1280, h: 800 }, options: { coachPanel: 0 } },
     { viewport: { w: 1024, h: 768 }, options: { coachPanel: 0 } },
   ];
   for (const { viewport, options } of CASES) {
-    it(`never cover the board, the pot or the hero strip at ${name(viewport)}`, () => {
+    const panel = options?.coachPanel === 0 ? ' without the coach panel row' : '';
+    it(`never cover the board, the pot or the hero strip at ${name(viewport)}${panel}`, () => {
       const frame = tableFrame(viewport, options);
       const box = { w: frame.box.w, h: frame.box.h - TRAY };
       for (let opponents = 1; opponents <= 8; opponents++) {
