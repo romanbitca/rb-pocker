@@ -399,11 +399,25 @@ const POSTFLOP: readonly [Street, number][] = [
 
 /** Cards the observer can see: its own hole cards, the board and every face-up hand. */
 export function visibleCards(obs: Observation): Uint8Array {
-  const seen = new Uint8Array(52);
+  const seen = publicCards(obs);
   for (const c of obs.hole) seen[c] = 1;
+  return seen;
+}
+
+/** Cards every player can see: the board and every face-up hand (not the observer's own cards). */
+export function publicCards(obs: Observation): Uint8Array {
+  const seen = new Uint8Array(52);
   for (const c of obs.board) seen[c] = 1;
   for (const h of obs.revealedHoles) if (h !== null) for (const c of h) seen[c] = 1;
   return seen;
+}
+
+/** Cards left out of the HS population besides the street's board (§8.6): face-up hands and `hole`. */
+function deadCards(obs: Observation, hole: readonly Card[]): Uint8Array {
+  const dead = new Uint8Array(52);
+  for (const c of hole) dead[c] = 1;
+  for (const h of obs.revealedHoles) if (h !== null) for (const c of h) dead[c] = 1;
+  return dead;
 }
 
 /**
@@ -416,8 +430,41 @@ export function opponentRanges(
   model: RangeModel,
   tables: RangeTables = RANGE_TABLES,
 ): OpponentRange[] {
-  const seen = visibleCards(obs);
-  const seats = liveOpponents(obs);
+  // The HS population leaves out the observer's own cards and face-up hands (and the board).
+  const dead = deadCards(obs, obs.hole);
+  return buildRanges(obs, liveOpponents(obs), model, visibleCards(obs), dead, tables);
+}
+
+/**
+ * The range of `seat` as the other players can read it (§8.6), the observer's own seat included:
+ * the prior and the re-weighting of `opponentRanges`, with only the public cards (the board and
+ * face-up hands) blocked and left out of the HS population, never the observer's hole cards,
+ * which the others cannot see. Chunk 7.1: a Hard or Expert bot balances its river bluffs against
+ * the range its own play shows (§9.2 "Bluffs", `brain/bluffs.ts`).
+ */
+export function publicRange(
+  obs: Observation,
+  seat: number,
+  model: RangeModel,
+  tables: RangeTables = RANGE_TABLES,
+): OpponentRange {
+  const ranges = buildRanges(obs, [seat], model, publicCards(obs), deadCards(obs, []), tables);
+  return ranges[0] as OpponentRange;
+}
+
+/**
+ * The ranges of `seats` (§8.6): every combo with a `blocked` card weighs 0, and after the flop
+ * the Loki re-weighting reads each combo's hand strength among the combos that use neither the
+ * street's board nor a `dead` card.
+ */
+function buildRanges(
+  obs: Observation,
+  seats: readonly number[],
+  model: RangeModel,
+  blocked: Uint8Array,
+  dead: Uint8Array,
+  tables: RangeTables,
+): OpponentRange[] {
   const reads = model === 'random' ? [] : preflopReads(obs);
   const headsUp = obs.dealtIn.filter(Boolean).length === 2;
   const ranges = seats.map((seat): OpponentRange => {
@@ -429,7 +476,7 @@ export function opponentRanges(
     }
     if (model === 'random') {
       weights.fill(1);
-      normalise(weights, seen);
+      normalise(weights, blocked);
       return { seat, prior: 'random', topPct: 100, looseness: 1, af: null, weights };
     }
     const stats = model === 'reweight+stats' ? observedSeatModel(obs, seat) : null;
@@ -438,7 +485,7 @@ export function opponentRanges(
     const topPct = Math.min(100, readPct(read, headsUp, looseness, tables));
     const byClass = priorClassWeights(topPct, trapPct(read.kind), tables);
     for (let i = 0; i < COMBOS; i++) weights[i] = byClass[COMBO_CLASS[i] as number] as number;
-    normalise(weights, seen);
+    normalise(weights, blocked);
     return {
       seat,
       prior: read.kind,
@@ -448,18 +495,19 @@ export function opponentRanges(
       weights,
     };
   });
-  if (model === 'reweight' || model === 'reweight+stats') reweight(obs, ranges, seen);
+  if (model === 'reweight' || model === 'reweight+stats') reweight(obs, ranges, blocked, dead);
   return ranges;
 }
 
-/** Loki re-weighting of every live opponent after each of its postflop actions (§8.6). */
-function reweight(obs: Observation, ranges: OpponentRange[], seen: Uint8Array): void {
+/** Loki re-weighting of every given range after each of its seat's postflop actions (§8.6). */
+function reweight(
+  obs: Observation,
+  ranges: OpponentRange[],
+  blocked: Uint8Array,
+  dead: Uint8Array,
+): void {
   const bySeat = new Map<number, OpponentRange>();
   for (const r of ranges) if (r.prior !== 'known') bySeat.set(r.seat, r);
-  // The HS population excludes the observer's own cards and face-up hands (and the street's board).
-  const dead = new Uint8Array(52);
-  for (const c of obs.hole) dead[c] = 1;
-  for (const h of obs.revealedHoles) if (h !== null) for (const c of h) dead[c] = 1;
   for (const [street, boardLen] of POSTFLOP) {
     if (obs.board.length < boardLen) break;
     const actions = obs.history.filter((a) => a.street === street && bySeat.has(a.seat));
@@ -473,7 +521,7 @@ function reweight(obs: Observation, ranges: OpponentRange[], seen: Uint8Array): 
         const e = ehs[i] as number;
         if ((w[i] as number) > 0 && e >= 0) w[i] = (w[i] as number) * actionFactor(a, e, shift);
       }
-      normalise(w, seen);
+      normalise(w, blocked);
     }
   }
 }

@@ -60,6 +60,7 @@ export function profileFor(personality: PersonalityId, level: BotLevel): BrainPr
     temperature: l.temperature,
     defenseFactor: l.defenseFactor,
     preflopJitter: l.preflopJitter,
+    balancedBluffs: l.balancedBluffs,
     exploit: l.exploit,
     deterministic: false,
     neverLimp: false,
@@ -69,8 +70,8 @@ export function profileFor(personality: PersonalityId, level: BotLevel): BrainPr
 /**
  * The coach (Appendix A.5): the 'tag' row of §9.1 with id 'coach', no noise, `eRange` from 4,000
  * trials, the full range model, full position awareness, the §8.7 texture sizes, argmax picks
- * (`temperature` 0, `deterministic`), full defence, no jitter, no bluffs, no slow-plays, no
- * exploits, and never a limp. It bets without value only by the §8.5 semi-bluff and c-bet rules.
+ * (`temperature` 0, `deterministic`), full defence, no jitter, no bluffs (balanced or not), no
+ * slow-plays, no exploits, and never a limp. It bets without value only by the §8.5 semi-bluff and c-bet rules.
  */
 export const COACH: BrainProfile = Object.freeze({
   ...profileFor('tag', 'hard'),
@@ -86,6 +87,7 @@ export const COACH: BrainProfile = Object.freeze({
   bluffFreq: 0,
   bluff3betFreq: 0,
   slowplayFreq: 0,
+  balancedBluffs: false,
   exploit: false,
   deterministic: true,
   neverLimp: true,

@@ -49,6 +49,8 @@ export interface BrainProfile {
   temperature: number;
   defenseFactor: number;
   preflopJitter: number;
+  /** Hard and Expert: river bluffs balanced by size, `B / (pot + 2B)` (§9.2, chunk 7.1). */
+  balancedBluffs: boolean;
   exploit: boolean;
   deterministic: boolean;
   neverLimp: boolean;
