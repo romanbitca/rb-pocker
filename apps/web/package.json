@@ -21,6 +21,7 @@
     "test": "vitest run --project unit",
     "test:coverage": "vitest run --project unit --coverage",
     "test:slow": "vitest run --project slow",
+    "test:volume": "vitest run --project volume",
     "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.node.json && tsc -p tsconfig.e2e.json"
   },
   "dependencies": {
