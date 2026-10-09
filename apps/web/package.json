@@ -17,6 +17,7 @@
     "gen:icons": "node scripts/gen-icons.ts",
     "gen:pushfold": "node scripts/gen-pushfold.ts",
     "gen:ranges": "node scripts/gen-ranges.ts",
+    "selfplay": "node scripts/selfplay.ts",
     "size": "node scripts/size-budget.ts",
     "test": "vitest run --project unit",
     "test:coverage": "vitest run --project unit --coverage",

@@ -26,6 +26,7 @@
     "gen": "npm run gen -w @rb/web",
     "gen:check": "npm run gen:check -w @rb/web",
     "typecheck": "npm run typecheck -w @rb/web -w @rb/server",
+    "selfplay": "npm run selfplay -w @rb/web --",
     "size": "npm run size -w @rb/web",
     "lint": "eslint .",
     "format": "prettier --write .",
