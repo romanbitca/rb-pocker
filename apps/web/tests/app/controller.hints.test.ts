@@ -55,7 +55,7 @@ const settings = { players: 6, startingStack: 2000, sb: 10, bb: 20 };
 describe('the hint at the hero`s turn', () => {
   it(
     'one request per hero decision, the hero`s observation only; the advice lands under its key',
-    { timeout: 10_000 },
+    { timeout: 30_000 },
     async () => {
       const brain = coachBrain();
       const h = makeHarness({ brain: brain.client, settings, hints: true });

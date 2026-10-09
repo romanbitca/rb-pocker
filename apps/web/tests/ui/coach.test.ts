@@ -450,14 +450,16 @@ const arbDecision: fc.Arbitrary<Decision> = fc
   });
 
 /**
- * A range number in `text` (sentences) without a label. The price ("Need 25%", "You need 25%")
- * is another number that may be equal: it is taken out first.
+ * A range number in `text` (sentences) without a label. The price ("Need 25%", "You need 25%",
+ * "45% is more than 25%") is another number that may be equal: it is taken out first.
  */
 function bareRange(text: string, d: Decision): boolean {
   const range = `${pctText(d.eRange)}%`;
   if (pctText(d.eRange) === pctText(d.eRandom)) return false;
   return sentences(text).some((s) => {
-    const rest = s.replace(/\b[Nn]eed (about )?[<>]?\d+%/g, '');
+    const rest = s
+      .replace(/\b[Nn]eed (about )?[<>]?\d+%/g, '')
+      .replace(/\bthan [<>]?\d+%/g, '');
     return rest.includes(range) && !LABELS.some((l) => rest.includes(l));
   });
 }
@@ -467,6 +469,7 @@ it('the pitfall-35 check finds a bare range number', () => {
   expect(bareRange('You win only about 20%.', d)).toBe(true);
   expect(bareRange('Against their likely hands: about 20%. Need 25%.', d)).toBe(false);
   expect(bareRange('You need 20% to call.', { ...d, need: 0.2 })).toBe(false);
+  expect(bareRange('62% is more than 20%, so calling wins over time.', d)).toBe(false);
 });
 
 describe('pitfall 35: a range number always has its label', () => {
