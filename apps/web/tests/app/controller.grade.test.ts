@@ -5,6 +5,10 @@
  * the bots follow the `river-min-bet` script, and the table is the E2E spec's (`?seed=46`, 3
  * players): the hero, big blind with A♣3♣, has the nut flush on the river of hand 1 (8♣5♥2♣ J♦ T♣)
  * and faces the small blind's minimum bet there. Fake timers throughout.
+ *
+ * The coach's exact grades are its own business (6.1's tests; they move when the coach is tuned):
+ * here only what the flow owes them is fixed. Folding the nuts there is at least a Mistake; the
+ * level never changes a grade (C4); a card shows exactly when §10.2's threshold says so.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { HERO, realTimers } from '../../src/app/controller.ts';
@@ -44,6 +48,27 @@ function table(level: CoachLevel, coach: RealCoach = realCoach()): Harness {
 
 const handOf = (h: Harness): HandState => h.state().game.hand as HandState;
 
+/** §10.2 "Pause + Undo offer", written out here (the oracle; `app/undo.ts` has its own copy). */
+const GRADES = ['best', 'good', 'inaccuracy', 'mistake', 'blunder'] as const;
+const PAUSE_FROM: Record<CoachLevel, (typeof GRADES)[number] | null> = {
+  beginner: 'inaccuracy',
+  intermediate: 'mistake',
+  advanced: 'mistake',
+  exam: null,
+};
+const pauses = (level: CoachLevel, grade: string | null): boolean => {
+  const from = PAUSE_FROM[level];
+  if (grade === null || from === null) return false;
+  return GRADES.indexOf(grade as (typeof GRADES)[number]) >= GRADES.indexOf(from);
+};
+const atLeastMistake = (grade: string | null | undefined): boolean =>
+  grade === 'mistake' || grade === 'blunder';
+
+/** After an act: a feedback card on show is answered with Keep my move. */
+function keepIfCard(h: Harness): void {
+  if (h.state().game.mode === 'feedback') h.dispatch({ type: 'keepMove' });
+}
+
 /** The hero's turn, with the coach's hint for it in. */
 async function heroTurn(h: Harness): Promise<AppState> {
   for (let i = 0; i < 400; i++) {
@@ -76,7 +101,7 @@ async function toRiverBet(
     if (hand.street === 'river' && (s.game.legal as LegalActions).callAmount > 0) return s;
     h.dispatch({ type: 'act', action: before(s) });
     await graded();
-    if (h.state().game.mode === 'feedback') h.dispatch({ type: 'keepMove' });
+    keepIfCard(h);
   }
   throw new Error('no river bet to face');
 }
@@ -103,7 +128,7 @@ describe('the E2E table (`?seed=46&script=river-min-bet`, 3 players)', () => {
 });
 
 describe('real grades (chunk 6.1) through the flow (§11.3 r5)', () => {
-  it('following the hint is Best at every decision; folding the nuts is a Big mistake with its card', async () => {
+  it('following the hint is Best at every decision; folding the nuts is at least a Mistake, with its card', async () => {
     const h = table('beginner');
     const s = await toRiverBet(h, coachMove);
     expect(s.game.decisions.length).toBeGreaterThan(0);
@@ -120,12 +145,15 @@ describe('real grades (chunk 6.1) through the flow (§11.3 r5)', () => {
     expect(h.controller.snapshot().inputs).toHaveLength(before + 1);
     expect(handOf(h).log.at(-1)).toMatchObject({ e: 'act', seat: HERO, action: { type: 'fold' } });
     const card = after.game.feedback;
-    expect(card).toMatchObject({ grade: 'blunder', canUndo: true });
+    const grade = card?.grade;
+    expect(atLeastMistake(grade), `the grade: ${grade}`).toBe(true);
+    expect(card?.canUndo).toBe(true);
     expect(card?.coachMove.kind).toBe(coachMove(s).type);
+    expect(card?.coachMove.kind).not.toBe('fold');
     expect(card?.reason).not.toBeNull();
     expect(lineText(card?.reason ?? (null as never))).toMatch(/^You folded with /);
     expect(after.game.decisions.at(-1)).toMatchObject({
-      grade: 'blunder',
+      grade,
       leak: 'overfold',
       street: 'river',
       undone: false,
@@ -142,13 +170,13 @@ describe('real grades (chunk 6.1) through the flow (§11.3 r5)', () => {
     expect(handOf(h).log.at(-1)).toMatchObject({ e: 'reshuffle' });
     expect(back.game.canUndo).toBe(false);
     expect(selectUndoButton(back)).toBe('disabled');
-    expect(back.game.decisions.at(-1)).toMatchObject({ grade: 'blunder', undone: true });
+    expect(back.game.decisions.at(-1)).toMatchObject({ grade, undone: true });
 
     // The same mistake again: the card again, its Undo disabled now.
     await heroTurn(h);
     h.dispatch({ type: 'act', action: { type: 'fold' } });
     await graded();
-    expect(h.state().game.feedback).toMatchObject({ grade: 'blunder', canUndo: false });
+    expect(h.state().game.feedback).toMatchObject({ grade, canUndo: false });
     h.dispatch({ type: 'undo' });
     expect(h.state().game.mode).toBe('feedback');
     expect(h.controller.snapshot().meta.undoCount).toBe(1);
@@ -157,8 +185,8 @@ describe('real grades (chunk 6.1) through the flow (§11.3 r5)', () => {
   });
 
   it('the pause per level (§10.2): Beginner from Inaccuracy, Intermediate and Advanced from Mistake, Exam never', async () => {
-    // The flop check is an Inaccuracy (the coach bets), the river fold a Big mistake.
-    const seen: Record<CoachLevel, string[]> = {
+    // The same decisions at each level (check or call, then fold the nuts to the river bet).
+    const graded4: Record<CoachLevel, (string | null)[]> = {
       beginner: [],
       intermediate: [],
       advanced: [],
@@ -173,20 +201,19 @@ describe('real grades (chunk 6.1) through the flow (§11.3 r5)', () => {
         h.dispatch({ type: 'act', action: riverBet ? { type: 'fold' } : passive(legal) });
         await graded();
         const after = h.state();
-        const record = after.game.decisions.at(-1);
-        if (after.game.mode === 'feedback') {
-          seen[level].push(`${record?.street}:${after.game.feedback?.grade}`);
-          if (!riverBet) h.dispatch({ type: 'keepMove' });
+        const grade = after.game.decisions.at(-1)?.grade ?? null;
+        expect(grade, `${level}: every decision gets its grade`).not.toBeNull();
+        graded4[level].push(grade);
+        // The card shows exactly when the level's threshold says so, before anything moves.
+        const card = after.game.mode === 'feedback';
+        expect(card, `${level}, decision ${decisions}: ${grade}`).toBe(pauses(level, grade));
+        if (card) expect(after.game.feedback?.grade).toBe(grade);
+        if (riverBet) {
+          expect(atLeastMistake(grade), `${level}: folding the nuts`).toBe(true);
+          break;
         }
-        if (riverBet) break;
+        keepIfCard(h);
       }
-      const grades = h.state().game.decisions.map((d) => `${d.street}:${d.grade}`);
-      expect(grades, level).toEqual([
-        'preflop:best',
-        'flop:inaccuracy',
-        'turn:inaccuracy',
-        'river:blunder',
-      ]);
       // Advanced: only the card offers Undo; Exam: no Undo at all.
       if (level === 'advanced') {
         expect(selectUndoButton(h.state())).toBe('hidden');
@@ -195,20 +222,19 @@ describe('real grades (chunk 6.1) through the flow (§11.3 r5)', () => {
       if (level === 'exam') {
         expect(selectUndoButton(h.state())).toBe('hidden');
         expect(h.state().game.canUndo).toBe(false);
+        expect(h.state().game.feedback).toBeNull();
       }
     }
-    expect(seen).toEqual({
-      beginner: ['flop:inaccuracy', 'turn:inaccuracy', 'river:blunder'],
-      intermediate: ['river:blunder'],
-      advanced: ['river:blunder'],
-      exam: [],
-    });
+    // C4: the level changes what is shown, never the grade.
+    expect(graded4.intermediate).toEqual(graded4.beginner);
+    expect(graded4.advanced).toEqual(graded4.beginner);
+    expect(graded4.exam).toEqual(graded4.beginner);
   });
 
   it('the toolbar Undo waits for the real grade, then takes the move back', async () => {
     const h = table('beginner', realCoach({ gradeDelayMs: () => 1000 }));
     await heroTurn(h);
-    h.dispatch({ type: 'act', action: { type: 'check' } }); // the big blind's check: Best
+    h.dispatch({ type: 'act', action: { type: 'check' } }); // the big blind's check
     await elapse(999);
     expect(h.state().game.mode).toBe('grading');
     expect(h.state().game.canUndo).toBe(false);
@@ -217,16 +243,16 @@ describe('real grades (chunk 6.1) through the flow (§11.3 r5)', () => {
     await elapse(1);
     await graded();
     expect(h.state().game.decisions).toEqual([
-      expect.objectContaining({ decisionId: 0, grade: 'best' }),
+      expect.objectContaining({ decisionId: 0, grade: expect.any(String) }),
     ]);
-    expect(h.state().game.canUndo).toBe(true);
+    expect(h.state().game.canUndo).toBe(true); // the toolbar's, or the card's if the check paused
     h.dispatch({ type: 'undo' });
     expect(h.controller.snapshot().meta.undoCount).toBe(1);
     expect(h.state().game.mode).toBe('heroTurn');
   });
 
   it('a real grade later than 1,500 ms does not block the game: no pause, no card; recorded when it lands', async () => {
-    // Only the flop check's grade (decision 1, an Inaccuracy) is slow.
+    // Only the flop check's grade (decision 1) is slow.
     const h = table('beginner', realCoach({ gradeDelayMs: (id) => (id === 1 ? 2500 : 0) }));
     for (let i = 0; i < 2; i++) {
       const s = await heroTurn(h);
@@ -234,6 +260,7 @@ describe('real grades (chunk 6.1) through the flow (§11.3 r5)', () => {
       h.dispatch({ type: 'act', action: passive(s.game.legal as LegalActions) });
       if (i === 0) {
         await graded();
+        keepIfCard(h);
         continue;
       }
       expect(h.state().game.mode).toBe('grading');
@@ -248,7 +275,8 @@ describe('real grades (chunk 6.1) through the flow (§11.3 r5)', () => {
       expect(h.state().game.canUndo).toBe(false);
       await elapse(200);
       const s2 = h.state();
-      expect(s2.game.decisions.map((d) => d.grade)).toEqual(['best', 'inaccuracy']);
+      expect(s2.game.decisions).toHaveLength(2);
+      expect(s2.game.decisions.every((d) => d.grade !== null)).toBe(true);
       expect(s2.game.mode).not.toBe('feedback');
       expect(s2.game.feedback).toBeNull();
       expect(s2.ui.overlays).not.toContain('feedback');
@@ -294,9 +322,10 @@ describe('a hint opened above Beginner (§10.2 "on your own")', () => {
     h.dispatch({ type: 'showHint' });
     h.dispatch({ type: 'act', action: { type: 'check' } });
     await graded();
+    keepIfCard(h);
     await heroTurn(h);
     h.dispatch({ type: 'act', action: { type: 'check' } }); // the flop: the hint not opened
-    await graded();
+    await graded(); // a card, if any, stays: its Undo is the one taken below
     expect(h.state().game.decisions.map((d) => d.hintSeen)).toEqual([true, false]);
     // Undo the flop check, open the hint this time, act again.
     h.dispatch({ type: 'undo' });
