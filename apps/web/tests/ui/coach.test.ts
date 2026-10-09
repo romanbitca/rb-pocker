@@ -457,9 +457,7 @@ function bareRange(text: string, d: Decision): boolean {
   const range = `${pctText(d.eRange)}%`;
   if (pctText(d.eRange) === pctText(d.eRandom)) return false;
   return sentences(text).some((s) => {
-    const rest = s
-      .replace(/\b[Nn]eed (about )?[<>]?\d+%/g, '')
-      .replace(/\bthan [<>]?\d+%/g, '');
+    const rest = s.replace(/\b[Nn]eed (about )?[<>]?\d+%/g, '').replace(/\bthan [<>]?\d+%/g, '');
     return rest.includes(range) && !LABELS.some((l) => rest.includes(l));
   });
 }
