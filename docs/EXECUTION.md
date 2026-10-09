@@ -6,7 +6,7 @@ This is the working checklist for building [PLAN.md](PLAN.md). PLAN.md is the so
 
 Legend: `[ ]` todo · `[~]` in progress (branch exists) · `[x]` merged to `main` · `[H]` waiting on the human
 
-**Current position:** ▶ Autonomous run (95%/window, stop at 80% weekly; weekly 52%). Stage 5: all merged except 5.11 self-play (#51, in progress); 5.12 [H]. Fixing R18 (strength meter vs advice). Stage 6: 6.1 grading (#52), 6.2 (#49, needs 6.1 + 2 e2e specs), 6.3 (#48 ready) — merge after 5.11.
+**Current position:** ▶ Autonomous run (95%/window, stop at 80% weekly; weekly 55%). Stage 5: all merged except 5.11 self-play (#51, in progress); 5.12 [H]. R18 strength-meter fix in progress. Stage 6 ready/held: 6.1 grading [#52](https://github.com/romanbitca/rb-pocker/pull/52) (C8 ✅, grade p95 0.23 ms), 6.3 review #48. **Next window (07:50Z):** finish 6.2 #49 stacked on #52 (rebase onto feature/decision-grading 05e0d76; the 2 Playwright specs with real grades; `?seed=46&script=river-min-bet`); after 5.11 → merge #48, #52, #49; then 6.4 quiz/Exam, 6.5 e2e.
 
 ---
 
