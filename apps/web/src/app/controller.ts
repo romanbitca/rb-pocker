@@ -684,6 +684,7 @@ export class TableController {
       return;
     }
     this.ensureSnapshot(h);
+    this.noteHintOpened(h);
     const decision = this.decisionAt(h, action);
     this.hand = next;
     this.inputs.push(input);
@@ -1136,6 +1137,18 @@ export class TableController {
     this.undoSnapshot = snapshotAt(h, this.meta, this.inputs.length);
   }
 
+  /**
+   * §10.2 "Counts as on your own": the player opened the hint of the decision `h` ("Hint", the
+   * coach sheet: the `coach` slice's `opened`, chunk 5.9) before acting. Kept in the hand's meta
+   * (A.7 `hintShown`, by decisionId), so it outlives an Undo and a reload.
+   */
+  private noteHintOpened(h: HandState): void {
+    if (this.store.getState().coach.opened !== coachKeyOf(h)) return;
+    const decisionId = heroDecisionsTaken(h);
+    if (this.meta.hintShown[decisionId] === true) return;
+    this.meta = { ...this.meta, hintShown: { ...this.meta.hintShown, [decisionId]: true } };
+  }
+
   /** What a hero decision at `h` is, before the act changes anything (§8.2: the HUD's number). */
   private decisionAt(h: HandState, action: PlayerAction): PendingGrade {
     const level = this.settings().coachLevel;
@@ -1156,7 +1169,7 @@ export class TableController {
         taken: action,
         eRandom: hud.latest,
         need: priceNeed(h),
-        // §10.2: the hint is always on show at Beginner; opening it above Beginner comes with 6.4.
+        // §10.2: the hint is always on show at Beginner; above it, the player opened it.
         hintSeen: level === 'beginner' || this.meta.hintShown[decisionId] === true,
       },
       level,
@@ -1229,7 +1242,8 @@ export class TableController {
       this.hold = null;
       if (result !== null && pausesAt(g.level, result.grade)) this.openFeedback(g, result);
     }
-    // A late grade (after the pause) shows as a chip only (chunk 6.1); nothing else changes.
+    // A late grade (after the pause) is only recorded: nothing else changes (r5; its grade chip is
+    // the §12.6 chip's, not built yet).
     this.saveSession();
     this.pump();
     this.publish();

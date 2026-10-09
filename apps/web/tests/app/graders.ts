@@ -1,7 +1,7 @@
 /**
  * Graders for tests (the grade port, `app/grading.ts`, chunk 6.2): a fixed grade per decision,
  * answered on the next microtask or after a delay on the (fake) clock, an error, or no answer at
- * all. The real `grade()` is chunk 6.1's; these stand in for it.
+ * all. They stand in for chunk 6.1's real `grade()`, which `controller.grade.test.ts` runs.
  */
 import type { GradeAsk, Grader, GradeOutcome } from '../../src/app/grading.ts';
 import { feedbackLine, type FeedbackInput } from '../../src/brain/explain.ts';

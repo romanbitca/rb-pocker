@@ -31,7 +31,8 @@ export function startApp(options: StartOptions): TableController {
   const win = options.win ?? window;
   const hooks = options.hooks;
   const seed = hooks?.seedFromSearch(win.location.search) ?? null;
-  // Development and E2E builds: `?script=<name>` puts scripted bots and grades in its place.
+  // Development and E2E builds: `?script=<name>` puts scripted bots in front of it (the coach's
+  // hints and grades still come from brain.worker).
   const script = hooks?.scriptFromSearch(win.location.search) ?? null;
   // Warmed at start like the equity worker, never awaited (§12.14, §15.3): the bots decide in
   // brain.worker; without module workers it is `failed` and the bots take the safest action.
@@ -42,8 +43,8 @@ export function startApp(options: StartOptions): TableController {
   const controller = createTableController({
     store: appStore,
     brain,
-    // Every hero decision is graded in brain.worker too (§11.3 r5; `grade()` arrives with chunk
-    // 6.1: until then the worker answers `error` and decisions are recorded with `grade: null`).
+    // Every hero decision is graded in brain.worker too (§11.3 r5): chunk 6.1's `grade()`, from
+    // the same deliberation as the decision's hint (§8.11).
     grader: brainGrader(brain),
     heroName: options.heroName,
     seeds: hooks !== undefined && seed !== null ? hooks.fixedSeeds(seed) : randomSeeds(),

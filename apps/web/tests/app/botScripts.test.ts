@@ -1,15 +1,18 @@
 /**
  * The `?script=<name>` hook (PLAN §18 Stage 6, `app/botScripts.ts`): which names it takes, and a
- * scripted table: bots follow the script, the hero's grades too, through the real brain client.
- * That it never reaches a production build is tests/app/testHooks.bundle.test.ts.
+ * scripted table through the real brain client: the bots follow the script, while the coach's
+ * hints and grades still go to brain.worker (here its job runner with chunk 6.1's coach, in a fake
+ * worker: `realCoach`). That the hook never reaches a production build is
+ * tests/app/testHooks.bundle.test.ts; the real grades through the flow are
+ * `controller.grade.test.ts`.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { HERO, realTimers } from '../../src/app/controller.ts';
 import { BOT_SCRIPTS, scriptedBrain, scriptFromSearch } from '../../src/app/botScripts.ts';
 import { brainGrader } from '../../src/app/grading.ts';
-import { lineText } from '../../src/i18n/coach.ts';
 import type { HandState, LegalActions, PlayerAction } from '../../src/engine/types.ts';
 import { makeHarness, tick } from './harness.ts';
+import { realCoach, SEED_46 } from './realCoach.ts';
 
 beforeEach(() => {
   vi.useFakeTimers();
@@ -29,46 +32,72 @@ describe('?script=<name>', () => {
     expect(scriptFromSearch('?script=toString')).toBeNull(); // not an inherited name
     expect(scriptFromSearch('')).toBeNull();
     expect(Object.keys(BOT_SCRIPTS).sort()).toEqual(['passive', 'river-min-bet']);
+    expect(() => scriptedBrain('nope', realTimers, realCoach().spawn)).toThrow(/no bot script/);
   });
 
-  it('river-min-bet: bots check and call, bet the minimum on the river; a fold there is a Big mistake', async () => {
-    const brain = scriptedBrain('river-min-bet', realTimers);
+  it('river-min-bet: the bots check and call and bet the minimum on the river; the coach is brain.worker', async () => {
+    const coach = realCoach();
+    const brain = scriptedBrain('river-min-bet', realTimers, coach.spawn);
     const h = makeHarness({
       brain,
       grader: brainGrader(brain),
-      settings: { players: 3, coachLevel: 'beginner', speed: 'normal' },
+      hints: true,
+      seed: SEED_46,
+      settings: { players: 3, coachLevel: 'intermediate', speed: 'normal' },
     });
     h.dispatch({ type: 'play' });
-    let folded = false;
-    for (let i = 0; i < 3000 && !folded; i++) {
+    let hands = 0;
+    const grades: (string | null)[] = [];
+    for (let i = 0; i < 6000 && hands < 3; i++) {
       const s = h.state();
-      if (s.game.mode === 'feedback') break;
       if (s.game.mode === 'heroTurn' && s.game.legal !== null) {
-        const legal = s.game.legal;
+        h.dispatch({ type: 'act', action: passive(s.game.legal) });
+      } else if (s.game.mode === 'feedback') {
+        h.dispatch({ type: 'keepMove' });
+      } else if (s.game.mode === 'handEnd') {
+        hands++;
+        grades.push(...s.game.decisions.map((d) => d.grade));
+        // Every bot action followed the script: check or call, the river's minimum bet.
         const hand = s.game.hand as HandState;
-        const facingRiverBet = hand.street === 'river' && legal.callAmount > 0;
-        h.dispatch({ type: 'act', action: facingRiverBet ? { type: 'fold' } : passive(legal) });
-        folded = facingRiverBet;
+        for (const e of hand.log) {
+          if (e.e !== 'act' || e.seat === HERO) continue;
+          expect(['check', 'call', 'bet']).toContain(e.action.type);
+          if (e.action.type === 'bet') {
+            expect(e.street).toBe('river');
+            expect(e.action.to).toBe(hand.bb);
+          }
+        }
+        h.dispatch({ type: 'nextHand' });
       } else {
         await tick();
       }
     }
-    await tick();
-    expect(folded).toBe(true);
-    const s = h.state();
-    expect(s.game.mode).toBe('feedback');
-    expect(s.game.feedback).toMatchObject({ grade: 'blunder', coachMove: { kind: 'call' } });
-    expect(lineText(s.game.feedback?.reason ?? (null as never))).toMatch(
-      /^You folded with a .+% win chance\. You needed only \d+% to call\.$/,
-    );
-    // Every bot action followed the script: check or call, the river's minimum bet.
-    const hand = s.game.hand as HandState;
-    for (const e of hand.log) {
-      if (e.e !== 'act' || e.seat === HERO) continue;
-      if (e.action.type === 'bet') expect(e.street).toBe('river');
-      expect(['check', 'call', 'bet']).toContain(e.action.type);
+    expect(hands).toBe(3);
+    // The bots never reached brain.worker; the coach's jobs all did, and were answered.
+    const kinds = new Set(coach.received.map((m) => m.kind));
+    expect(kinds.has('botDecision')).toBe(false);
+    expect(kinds.has('hint')).toBe(true);
+    expect(kinds.has('grade')).toBe(true);
+    expect(grades.length).toBeGreaterThan(0);
+    expect(grades.every((g) => g !== null)).toBe(true);
+  });
+
+  it('passive: everyone checks or calls', async () => {
+    const brain = scriptedBrain('passive', realTimers, realCoach().spawn);
+    const h = makeHarness({ brain, settings: { players: 4, speed: 'normal' } });
+    h.dispatch({ type: 'play' });
+    for (let i = 0; i < 3000 && h.state().game.mode !== 'handEnd'; i++) {
+      const s = h.state();
+      if (s.game.mode === 'heroTurn' && s.game.legal !== null) {
+        h.dispatch({ type: 'act', action: passive(s.game.legal) });
+      } else {
+        await tick();
+      }
     }
-    // The earlier decisions were Best.
-    expect(s.game.decisions.slice(0, -1).every((d) => d.grade === 'best')).toBe(true);
+    const hand = h.state().game.hand as HandState;
+    expect(hand.phase).toBe('complete');
+    const bots = hand.log.filter((e) => e.e === 'act' && e.seat !== HERO);
+    expect(bots.length).toBeGreaterThan(0);
+    for (const e of bots) if (e.e === 'act') expect(['check', 'call']).toContain(e.action.type);
   });
 });

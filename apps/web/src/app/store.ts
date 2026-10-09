@@ -155,8 +155,8 @@ export interface GameSlice {
   /** The feedback card's content while it is open (mode `feedback`), else null (§11.1, §12.6). */
   feedback: FeedbackView | null;
   /**
-   * This hand's hero decisions as recorded so far (A.7), the undone ones included: grade chips
-   * (chunk 6.1) and the hand summary (6.3) read them.
+   * This hand's hero decisions as recorded so far (A.7), the undone ones included: the grade chips
+   * (§12.6) and the hand summary (6.3) read them.
    */
   decisions: readonly DecisionRecord[];
 }
