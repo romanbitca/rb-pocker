@@ -6,7 +6,7 @@ This is the working checklist for building [PLAN.md](PLAN.md). PLAN.md is the so
 
 Legend: `[ ]` todo · `[~]` in progress (branch exists) · `[x]` merged to `main` · `[H]` waiting on the human
 
-**Current position:** ⏸ Paused by the owner (9 Oct ~04:40Z; weekly 55%). Stages 0–4 ✅. Stage 5: everything merged except **5.11 self-play** — PR [#51](https://github.com/romanbitca/rb-pocker/pull/51) (draft; runner, baselines, CI smoke and weekly jobs pushed; next: run the calibration, tune tunables.ts if needed, acceptance 5–6, CI, merge); 5.12 [H]. R18 strength-meter fix: not started (decision: meter never contradicts the advice, see 5.7 notes). Stage 6 held until 5.11: 6.1 [#52](https://github.com/romanbitca/rb-pocker/pull/52) ready, 6.3 [#48](https://github.com/romanbitca/rb-pocker/pull/48) ready, 6.2 [#49](https://github.com/romanbitca/rb-pocker/pull/49) needs its 2 Playwright specs (stack on #52; `?seed=46&script=river-min-bet`). Resume: `/loop` + re-enable the watchdog (`.loop/watchdog.json` enabled true + scheduled task).
+**Current position:** ▶ Autonomous run (owner 10 Oct: 95%/window, stop at 30% weekly; weekly 2%). Stage 5: all merged except **5.11 self-play** ([#51](https://github.com/romanbitca/rb-pocker/pull/51): calibration in progress) and the R18 strength-meter fix (`fix/strength-meter-consistency`, in progress); 5.12 [H]. Stage 6 held until 5.11: 6.1 [#52](https://github.com/romanbitca/rb-pocker/pull/52) ready, 6.3 [#48](https://github.com/romanbitca/rb-pocker/pull/48) ready, 6.2 [#49](https://github.com/romanbitca/rb-pocker/pull/49) Playwright specs in progress (stacked on #52). Then 6.4, 6.5, Stage 7.
 
 ---
 

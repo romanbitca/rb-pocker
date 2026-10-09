@@ -52,6 +52,10 @@ fixed slice of the Claude plan.
   task `rb-poker-watchdog` (hourly) that messages this session if `.loop/heartbeat` (Unix seconds,
   written every orchestrator turn) is older than 40 min. Disable the watchdog by writing
   `{"enabled": false}` to `.loop/watchdog.json`.
+- **Weekly cap (owner, 2026-10-09 21:46Z = 10 Oct local, "continue working. use max 30% of weekly"):**
+  same as the autonomous run above (each 5-hour window up to **95%**, wait for the reset, continue),
+  but **stop all work when the weekly all-models limit reaches 30%** (it was 2%; resets
+  2026-10-16 18:00Z). Then pause until the owner writes again.
 - **Order (owner, 2026-09-27): strict plan order.** Every acceptance criterion of a stage passes in
   CI before the next stage is merged. Development of the next stage MAY overlap (parallel branches),
   but merges happen in stage order and never onto a red `main`. Human gates `[H]` still don't block.
