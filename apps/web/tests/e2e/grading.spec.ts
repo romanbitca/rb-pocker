@@ -6,6 +6,7 @@ import {
   nextFlowPoint,
   pcState,
   seedFor,
+  sizeOf,
   slot,
   startTable,
   tapNextHand,
@@ -35,6 +36,13 @@ import {
 //   (the late grade), 5,000 ms (a job's timeout) are exact, whatever the runner's speed. A reply of
 //   the worker arrives in real time, so a spec waits until the layer holds it before it moves the
 //   clock (otherwise the hold would start at the moved time).
+// - The flows are the controller's and the worker's, the same at every size: one phone size per
+//   browser (the layouts' own Undo slots and cards are undo.spec.ts and levels.spec.ts).
+
+// eslint-disable-next-line no-empty-pattern -- Playwright reads the fixtures from this pattern
+test.beforeEach(({}, testInfo) => {
+  test.skip(sizeOf(testInfo) !== '390x844', 'one phone size per browser');
+});
 
 type Setup = {
   delayGrade?: number | null;
@@ -356,8 +364,17 @@ async function finishHand(page: Page): Promise<void> {
   throw new Error('the hand does not end');
 }
 
-const killWorker = (page: Page): Promise<boolean> =>
-  page.evaluate(() => window.__pc?.faults?.kill() ?? false);
+/**
+ * Kills the worker. With `botsOnTime` the held-back bot replies are released in the same breath,
+ * so that the worker that replaces it answers the next bot at once.
+ */
+const killWorker = (page: Page, botsOnTime = false): Promise<boolean> =>
+  page.evaluate((botsOnTime) => {
+    const faults = window.__pc?.faults;
+    const killed = faults?.kill() ?? false;
+    if (botsOnTime) faults?.delay('botDecision', null);
+    return killed;
+  }, botsOnTime);
 
 const workerLog = (page: Page) => page.evaluate(() => window.__pc?.logs().brainWorker ?? []);
 
@@ -377,8 +394,7 @@ test.describe('Stage 6 acceptance 4: killing brain.worker mid-hand (§12.14)', (
     const handSeq = (await pcState(page)).game.hand?.handSeq;
     const fallbacks = await botFallbacks(page);
 
-    expect(await killWorker(page)).toBe(true); // ...when the worker dies
-    await setup(page, { delayBot: null });
+    expect(await killWorker(page, true)).toBe(true); // ...when the worker dies
     const log = (await workerLog(page)).map((e) => e.what);
     expect(log).toEqual(expect.arrayContaining(['crash', 'restart']));
     expect(log).not.toContain('failed'); // recreated once (§12.14)
@@ -389,12 +405,25 @@ test.describe('Stage 6 acceptance 4: killing brain.worker mid-hand (§12.14)', (
     const end = await pcState(page);
     expect(end.game.hand).toMatchObject({ handSeq, phase: 'complete' });
     expect(end.game.diag).toMatchObject({ engineErrors: 0, voidedHands: 0 });
+    expect((await workerLog(page)).map((e) => e.what)).not.toContain('failed');
+
+    // The next hand: the new worker gives the coach's hint and the grade of the hero's move.
+    await tapNextHand(page);
+    await toHeroTurn(page);
+    await expect.poll(() => pcState(page).then((s) => s.coach.status)).toBe('ready');
+    const graded = (await decisions(page)).length;
+    await tapAct(page, 'middle');
+    await expect
+      .poll(async () => {
+        const now = await decisions(page);
+        return now.length > graded ? (now.at(-1)?.grade ?? null) : null;
+      })
+      .not.toBeNull();
     const after = await workerLog(page);
-    expect(after.map((e) => e.what)).not.toContain('failed');
     const restarted = after.findIndex((e) => e.what === 'restart');
-    expect(after.slice(restarted).some((e) => e.what === 'in' && e.kind === 'botDecision')).toBe(
-      true,
-    );
+    for (const kind of ['hint', 'grade']) {
+      expect(after.slice(restarted).some((e) => e.what === 'in' && e.kind === kind)).toBe(true);
+    }
     expect(errors).toEqual([]);
   });
 

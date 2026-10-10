@@ -382,16 +382,42 @@ test.describe('Stage 6 acceptance 5: the level matrix (§10.2)', () => {
 
 // ---------------------------------------------------------------------------------------------
 // The Advanced quiz (§10.3): which decisions roll one is `fnv1a32('quiz|' + observationKey) % 4 ===
-// 0` where the pot is at least 10 big blinds, so it is a fixed function of the game. The spec plays
-// real hands at Advanced against the real bots with a hero who checks and calls everything (the
-// same game every run: the bots and the deck are seeded), reads at each hero decision whether the
-// controller rolled a quiz (`coach.quiz`) and whether the pot was 10 bb or more, and checks the
-// rate. The first decisions that roll one are also looked at on the page: the quiz is up, and the
-// badge and the price chip are gone until it is answered or skipped (Skip is tapped by the flow
-// helper). The exact rate over thousands of decisions is tests/app/quiz.test.ts (21.5-28.5%).
+// 0` where the pot is at least 10 big blinds, so it is a function of the game. The spec plays real
+// hands at Advanced against the real bots with a hero who checks and calls everything, reads at
+// each hero decision whether the controller rolled a quiz (`coach.quiz`) and whether the pot was
+// 10 bb or more, and checks the rate. (The game is seeded, but a bot that is too slow under load
+// takes the safest action, §12.14, so the count differs a little from run to run: the band is
+// statistical.) The page is watched from inside while it is played: every time a quiz asks, the
+// badge and the price chip must be gone, and once the flow helper has skipped it the badge is back.
+// The exact rate over thousands of decisions is tests/app/quiz.test.ts (21.5-28.5%).
 
 const QUIZ_SEED = '9f3a51c0de';
 const QUIZ_HANDS = 40;
+
+declare global {
+  interface Window {
+    /** The quiz watch (`watchQuiz`): what the page showed while a quiz asked. */
+    __quizWatch?: { asked: number; withBadge: number; withPriceChip: number };
+  }
+}
+
+/** A MutationObserver in the page: no race with the flow helper, which skips a quiz at once. */
+async function watchQuiz(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    const watch = { asked: 0, withBadge: 0, withPriceChip: 0 };
+    window.__quizWatch = watch;
+    let asking = false;
+    new MutationObserver(() => {
+      // `data-quiz="done"` is the result after the answers: the badge may be back then.
+      const now = document.querySelector('[data-quiz]:not([data-quiz="done"])') !== null;
+      if (now && !asking) watch.asked++;
+      asking = now;
+      if (!now) return;
+      if (document.querySelector('[data-win-badge]') !== null) watch.withBadge++;
+      if (document.querySelector('[data-price-chip]') !== null) watch.withPriceChip++;
+    }).observe(document.body, { subtree: true, childList: true, attributes: true });
+  });
+}
 
 interface Sample {
   key: string;
@@ -400,6 +426,8 @@ interface Sample {
   bb: number;
   /** The controller rolled a quiz for this decision. */
   rolled: boolean;
+  /** It was skipped already (the flow helper does it as soon as the quiz shows). */
+  skipped: boolean;
 }
 
 /** In the page: the hero's decision, once its hint has landed (the quiz is rolled with the hint job). */
@@ -411,11 +439,13 @@ function readDecision(): Sample | null {
   }
   const key = `${hand.handSeq}:${hand.log.length}`;
   if (s.coach.key !== key || s.coach.status === 'idle') return null;
+  const quiz = s.coach.quiz !== null && s.coach.quiz.key === key ? s.coach.quiz : null;
   return {
     key,
     pot: hand.seats.reduce((sum, seat) => sum + seat.totalBet, 0),
     bb: hand.bb,
-    rolled: s.coach.quiz !== null && s.coach.quiz.key === key,
+    rolled: quiz !== null,
+    skipped: quiz?.skipped === true,
   };
 }
 
@@ -435,9 +465,10 @@ test.describe('Stage 6 acceptance 5: the Advanced quiz (§10.3)', () => {
       window.__pc?.dispatch({ type: 'settings', patch: { coachLevel: 'advanced' } });
     });
     await newTable(page, { players: 6 });
+    await watchQuiz(page);
 
     const samples = new Map<string, Sample>();
-    let looked = 0;
+    let skippedBack = 0;
     const hands = await playHands(page, {
       hands: QUIZ_HANDS,
       random: () => 0.5, // always check or call
@@ -445,19 +476,16 @@ test.describe('Stage 6 acceptance 5: the Advanced quiz (§10.3)', () => {
       beforeHeroAct: async () => {
         const handle = await page.waitForFunction(readDecision, undefined, { timeout: 15_000 });
         const sample = (await handle.jsonValue()) as Sample;
-        if (samples.has(sample.key)) return;
-        samples.set(sample.key, sample);
-        if (!sample.rolled || looked >= 3) return;
-        // The quiz is on the page (its code is a lazy chunk): the badge and the price chip are not.
-        looked++;
-        await page.waitForSelector('[data-quiz]', { timeout: 15_000 });
-        const hud = await page.evaluate(readHud);
-        expect(hud, `a quiz at ${sample.key}`).toMatchObject({
-          quiz: true,
-          badge: false,
-          priceChip: false,
-          handLabel: true,
-        });
+        if (!samples.has(sample.key)) samples.set(sample.key, sample);
+        // A quiz that was skipped (by the flow helper, before the hero's tap) gives the badge back.
+        if (sample.skipped && skippedBack < 5) {
+          skippedBack++;
+          expect(await page.evaluate(readHud), `after the quiz at ${sample.key}`).toMatchObject({
+            quiz: false,
+            badge: true,
+            handLabel: true,
+          });
+        }
       },
     });
     expect(hands).toHaveLength(QUIZ_HANDS);
@@ -478,7 +506,11 @@ test.describe('Stage 6 acceptance 5: the Advanced quiz (§10.3)', () => {
     const sigma = Math.sqrt(n * (3 / 16));
     expect(fired).toBeGreaterThan(n / 4 - 3.5 * sigma);
     expect(fired).toBeLessThan(n / 4 + 3.5 * sigma);
-    expect(looked, 'the page showed a quiz').toBeGreaterThan(0);
+
+    // Every time a quiz asked on the page, the badge and the price chip were gone.
+    const watch = await page.evaluate(() => window.__quizWatch);
+    expect(watch?.asked ?? 0, 'the page showed quizzes').toBeGreaterThan(0);
+    expect(watch).toMatchObject({ withBadge: 0, withPriceChip: 0 });
     expect(errors).toEqual([]);
   });
 });
