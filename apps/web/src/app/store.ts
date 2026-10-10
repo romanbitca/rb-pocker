@@ -25,6 +25,7 @@ import type { Explanation } from '../brain/explain.ts';
 import type { Decision } from '../brain/types.ts';
 import type { Card } from '../core/cards.ts';
 import type {
+  BotLevel,
   CoachLevel,
   HandState,
   LegalActions,
@@ -86,14 +87,21 @@ export * from './coachViews.ts';
 export { UNDO_POLICY, type FeedbackView, type MoveView, type UndoPolicy } from './undo.ts';
 // "Which hand wins?" (§13.2): two random hands that do not tie (the quiz is a lazy chunk).
 export { dealPair, type WhichPair } from './whichWins.ts';
-// The coach levels as data (§10.2, chunk 6.4) and the Advanced quiz (§10.3).
+// The level rules: the coach levels as data (§10.2, chunk 6.4) and, per bot seat, which level it
+// plays at and whether it shows its label (§9.2, §9.3, chunk 7.2); then the Advanced quiz (§10.3).
 export {
   atLeast,
   chipShows,
   decisionScore,
+  labelVisible,
   LEVEL_RULES,
+  levelsOf,
+  nextLevels,
+  sameSeatLevels,
+  seatLevelOf,
   summaryShows,
   type LevelRules,
+  type TableLevels,
 } from './levels.ts';
 export {
   choiceCount,
@@ -391,10 +399,22 @@ export type { Settings };
 /** First-launch values (§3.2, §12.1): you + 5 bots, 2,000 chips, blinds 10/20, Easy, Beginner. */
 export const defaultGameSettings: () => Settings = defaultSettings;
 
-/** Setup's four questions (§12.2): what a new table is made from. */
+/**
+ * Setup's four questions and its "More options" (§12.2, chunk 7.2): what a new table is made from.
+ * `seatLevels` are the per-seat overrides ("Set each bot's level"); `speed` and `fourColour` are
+ * the other two More options.
+ */
 export type TableSetup = Pick<
   Settings,
-  'players' | 'startingStack' | 'sb' | 'bb' | 'botLevel' | 'coachLevel' | 'seatLevels'
+  | 'players'
+  | 'startingStack'
+  | 'sb'
+  | 'bb'
+  | 'botLevel'
+  | 'coachLevel'
+  | 'seatLevels'
+  | 'speed'
+  | 'fourColour'
 >;
 
 // ---------------------------------------------------------------------------------------------
@@ -443,6 +463,12 @@ export type GameCommand =
   /** Out of chips → Change table: Setup; the old table's session ends (§3.1). */
   | { type: 'changeTable' }
   | { type: 'settings'; patch: Partial<GameSettings> }
+  /**
+   * A bot's own level (§9.3, chunk 7.2), from its card: `level` for the bot in `seat` (1..), or null
+   * for the table's. It is saved with the settings at once and the table follows it from the next
+   * hand; the hand in play keeps the table it was dealt from.
+   */
+  | { type: 'seatLevel'; seat: number; level: BotLevel | null }
   /** From `app/lifecycle.ts`: `visibilitychange` (§12.13). */
   | { type: 'visibility'; hidden: boolean }
   /** From `app/lifecycle.ts`: `pagehide` (flush storage, §14.6). */

@@ -77,7 +77,7 @@ import {
   type TableState,
 } from '../engine/types.ts';
 import { loadProfile, saveSettings } from '../persist/profile.ts';
-import { emptyHandMeta, settingsProblem } from '../persist/schema.ts';
+import { emptyHandMeta, isBotLevel, settingsProblem } from '../persist/schema.ts';
 import type {
   DecisionRecord,
   HandMeta,
@@ -94,7 +94,15 @@ import type { BrainProfile, GradeResult } from '../brain/types.ts';
 import type { BrainReply, BrainRequest } from '../workers/protocol.ts';
 import { EquityJobs } from './equityJobs.ts';
 import { coachKeyOf, finalHudEquity, HintJobs, type HintAsk } from './hintJobs.ts';
-import { LEVEL_RULES, summaryShows } from './levels.ts';
+import {
+  labelVisible,
+  LEVEL_RULES,
+  levelsOf,
+  nextLevels,
+  sameSeatLevels,
+  seatLevelOf,
+  summaryShows,
+} from './levels.ts';
 import { quizRolls, quizScore } from './quiz.ts';
 import {
   GRADE_ATTEMPTS,
@@ -647,6 +655,9 @@ export class TableController {
       case 'settings':
         this.changeSettings(cmd.patch);
         break;
+      case 'seatLevel':
+        this.setSeatLevel(cmd.seat, cmd.level);
+        break;
       case 'visibility':
         this.visibility(cmd.hidden);
         break;
@@ -862,6 +873,32 @@ export class TableController {
     this.pump();
   }
 
+  /**
+   * A bot's own level, chosen on its card (§9.3, chunk 7.2). It is kept in the settings' per-seat
+   * overrides (saved 250 ms later, §14.2), like the table level, and the table follows it when the
+   * next hand is dealt (`withSettingsLevels`): the hand in play keeps the table it was dealt from,
+   * and the seated bot keeps its name, personality and stack. A seat that is not a bot of this
+   * table, or a level that is not one, is ignored.
+   */
+  private setSeatLevel(seat: number, level: BotLevel | null): void {
+    const table = this.next ?? this.table;
+    if (
+      table === null ||
+      !Number.isSafeInteger(seat) ||
+      table.slots[seat]?.kind !== 'bot' ||
+      (level !== null && !isBotLevel(level))
+    ) {
+      this.trace('seat level ignored', { seat, level });
+      return;
+    }
+    const settings = this.settings();
+    const { seatLevels } = nextLevels(settings, table);
+    if (seatLevels[seat] === level && settings.players === table.config.seatCount) return;
+    seatLevels[seat] = level;
+    // `players` too: the settings keep one override per seat of the table in play (A.7).
+    this.changeSettings({ players: table.config.seatCount, seatLevels });
+  }
+
   /** §12.13: hidden → the `hidden` gate closes and the bot job stops; visible → resume after 300 ms. */
   private visibility(hidden: boolean): void {
     const token = ++this.visibleSeq;
@@ -930,10 +967,10 @@ export class TableController {
     }
   }
 
-  /** Deals the next hand at `table` (§2.3 `startNextHand`), at the bot level the settings name now. */
+  /** Deals the next hand at `table` (§2.3 `startNextHand`), at the bot levels the settings name now. */
   private startHandAt(table: TableState): void {
     this.bumpEpoch();
-    const levelled = this.withSettingsLevel(table);
+    const levelled = this.withSettingsLevels(table);
     const t =
       levelled.nextHandSeq < this.handSeqFloor
         ? { ...levelled, nextHandSeq: this.handSeqFloor }
@@ -961,6 +998,7 @@ export class TableController {
       handSeq: hand.handSeq,
       button: hand.button,
       seats: hand.seats.length,
+      levels: levelsOf(t).slice(1), // the levels in force, per bot seat (§10, §14.4)
     });
     this.saveSession();
     if (this.newcomers.length > 0) {
@@ -976,8 +1014,8 @@ export class TableController {
     const table = this.table as TableState;
     let next: TableState;
     try {
-      // The bots that sit down for the next hand are picked at the level it will be played at.
-      next = nextTable(this.withSettingsLevel(table), h);
+      // The bots that sit down for the next hand are picked at the levels it will be played at.
+      next = nextTable(this.withSettingsLevels(table), h);
     } catch (e) {
       this.voidHand(e, null);
       return;
@@ -1882,16 +1920,20 @@ export class TableController {
   }
 
   /**
-   * §10: a bot level chosen in Settings starts with the next hand. `table` keeps its seated bots
-   * (names, personalities, stacks) and its per-seat overrides and gets the settings' table level;
-   * the hand dealt from it reads that level for its pods' labels and its bots' profiles. A hand
-   * that is already being played is not touched: its table is the one it was dealt from.
+   * §10, §9.3: a bot level chosen in Settings, in Setup or on a bot's card starts with the next
+   * hand. `table` keeps its seated bots (names, personalities, stacks) and gets the settings'
+   * table level and per-seat overrides (`nextLevels`); the hand dealt from it reads those for its
+   * pods' labels and its bots' profiles, and it is the table the hand records (§14.3), so a hand
+   * records the levels in force, per seat. A hand that is already being played is not touched: its
+   * table is the one it was dealt from.
    */
-  private withSettingsLevel(table: TableState): TableState {
-    const level = this.settings().botLevel;
-    if (table.config.botLevel === level) return table;
+  private withSettingsLevels(table: TableState): TableState {
+    const { botLevel, seatLevels } = nextLevels(this.settings(), table);
+    if (table.config.botLevel === botLevel && sameSeatLevels(table.config.seatLevels, seatLevels)) {
+      return table;
+    }
     try {
-      return withLevels(table, level, table.config.seatLevels);
+      return withLevels(table, botLevel, seatLevels);
     } catch (e) {
       this.refused(e, null);
       return table;
@@ -1908,13 +1950,11 @@ export class TableController {
    * the labels a seat's level shows, and the levels.
    */
   private extras(table: TableState): ObserveExtras {
-    const levels = table.slots.map((_, i) => table.config.seatLevels[i] ?? table.config.botLevel);
+    const levels = levelsOf(table);
     return {
       seatStats: statsBySeat(this.seatStats, table),
       visiblePersonality: table.slots.map((slot, i) =>
-        slot.kind === 'bot' && (levels[i] === 'easy' || levels[i] === 'medium')
-          ? slot.personality
-          : null,
+        slot.kind === 'bot' && labelVisible(levels[i] as BotLevel) ? slot.personality : null,
       ),
       seatLevels: levels,
     };
@@ -1922,8 +1962,7 @@ export class TableController {
 
   /** The seat's brain profile (§9.1 × §9.2): its personality at its effective level. */
   private profileOf(table: TableState, seat: number): BrainProfile {
-    const level = table.config.seatLevels[seat] ?? table.config.botLevel;
-    return profileFor(table.slots[seat]?.personality ?? 'tag', level);
+    return profileFor(table.slots[seat]?.personality ?? 'tag', seatLevelOf(table, seat));
   }
 
   /**
