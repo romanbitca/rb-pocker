@@ -17,6 +17,7 @@ import {
   mixDraws,
   perceive,
   ruleAction,
+  ruleBonusUnit,
   softmaxIndex,
   strengthOf,
   type MixDraws,
@@ -31,6 +32,7 @@ import {
   MIX_CALL_STICKINESS,
   MIX_RULE_BONUS,
   MIX_RULE_BONUS_PREFLOP,
+  MIX_RULE_BONUS_UNIT_MIN,
   MIX_SLOWPLAY_BONUS,
   PERSONALITIES,
 } from '../../src/brain/tunables.ts';
@@ -510,6 +512,47 @@ describe('the bots (§9.4)', () => {
       expect(b.scores[i]).toBeCloseTo(c.ev / obs.pot + station.temperature * bias, 12);
     });
     expect(MIX_RULE_BONUS_PREFLOP).toBeGreaterThan(MIX_RULE_BONUS);
+  });
+
+  it("below Medium's T, A*'s bonus keeps its Medium value in pots; the other biases stay × T (R20)", () => {
+    expect([0.25, 0.12, 0.06, 0.04].map(ruleBonusUnit)).toEqual([0.25, 0.12, 0.12, 0.12]);
+    expect(MIX_RULE_BONUS_UNIT_MIN).toBe(LEVEL_PARAMS.medium.temperature);
+    // The station of the test above, at Hard and at Expert.
+    const obs = sixMax(4, 'Kd 9s', [raise(3, 250)]);
+    for (const level of ['hard', 'expert'] as const) {
+      const station = profileFor('station', level);
+      const d = deliberate(obs, station, seed(2));
+      const b = d.bot as NonNullable<typeof d.bot>;
+      const ruleKey = candidateKey(obs.legal, d.rule.action);
+      b.candidates.forEach((c, i) => {
+        let bias = 0;
+        if (c.action.type === 'raise') bias += station.aggressionBias;
+        if (c.action.type === 'call') bias += MIX_CALL_STICKINESS * (station.stickiness - 1);
+        const rule = c.key === ruleKey ? MIX_RULE_BONUS_PREFLOP * MIX_RULE_BONUS_UNIT_MIN : 0;
+        expect(b.scores[i]).toBeCloseTo(c.ev / obs.pot + station.temperature * bias + rule, 12);
+      });
+    }
+  });
+
+  it('a Hard or Expert TAG rarely re-raises a hand its rule folds (R20: once 25–65% of the time)', () => {
+    // Facing an open from under the gun, and the opener facing a 3-bet: the rule folds J♣6♦ and
+    // 9♠4♠, and the §8.9 fold-equity heuristic rates the re-raise at break-even or better.
+    const spots = [
+      sixMax(0, 'Jc 6d', [raise(3, 250), fold(4), fold(5)]),
+      sixMax(3, '9s 4s', [raise(3, 250), fold(4), fold(5), raise(0, 750), fold(1), fold(2)]),
+    ];
+    for (const obs of spots) {
+      for (const level of ['hard', 'expert'] as const) {
+        const tag = profileFor('tag', level);
+        let raised = 0;
+        for (let i = 0; i < 200; i++) {
+          const d = deliberate(obs, tag, seed(i));
+          expect(d.rule.action.type).toBe('fold');
+          if (d.decision.action.type === 'raise') raised++;
+        }
+        expect(raised).toBeLessThan(20);
+      }
+    }
   });
 
   it('limp mode limps an open raise the mix picked too (§9.4 step 2), never facing a raise', () => {

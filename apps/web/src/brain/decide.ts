@@ -83,7 +83,7 @@ import {
   CLOSE_SPOT_POT,
   E_CALLED_TRIALS,
   EXPLOIT_BLUFF_FACTOR,
-  MIX_BIAS_UNIT_MIN,
+  MIX_RULE_BONUS_UNIT_MIN,
   MIX_BLUFF_BONUS,
   MIX_CALL_STICKINESS,
   MIX_RULE_BONUS,
@@ -418,16 +418,16 @@ export function bluff3betHand(hole: readonly [Card, Card] | readonly Card[]): bo
 }
 
 /**
- * §9.4 step 3: the pot value of one unit of bias at temperature `T`, `max(T, 0.12)`. At Easy and
- * Medium it is `T` itself (chunk 5.11: a bias weighs the same against the other candidates at
- * both); below Medium's `T` it stays at Medium's value (chunk 7.3), so the scores of a Hard or
- * Expert bot are a Medium bot's and its lower `T` only makes the same choice more often (`P` ∝
- * Medium's odds to the power 0.12 / `T`: 2 at Hard, 3 at Expert). With `T` as the unit, the §9.4
- * biases shrank in pots while the §8.9 EVs did not, and the preflop fold-equity heuristic, which
- * rates a re-raise with any two cards at break-even or better, drowned the personalities (R20).
+ * §9.4 step 3: the pot value of one unit of `A*`'s bonus at temperature `T`, `max(T, 0.12)`. At
+ * Easy and Medium it is `T`, like every other bias (chunk 5.11); below Medium's `T` it keeps
+ * Medium's value in pots (chunk 7.3, risk R20). The bonus anchors the rule policy against the
+ * error of the §8.9 EV heuristic, which is a share of the pot at every level: before the flop its
+ * fold equity (each opponent continues with `MDF` of its range) rates a re-raise with any two
+ * cards at break-even or better. In units of `T` the bonus shrank to 0.21 pot at Hard and 0.14 at
+ * Expert, and their bots 3-bet and 4-bet hands their rules fold a third of the time.
  */
-export function biasUnit(T: number): number {
-  return Math.max(T, MIX_BIAS_UNIT_MIN);
+export function ruleBonusUnit(T: number): number {
+  return Math.max(T, MIX_RULE_BONUS_UNIT_MIN);
 }
 
 /** Index picked by `P(i) ∝ exp(score_i / T)` with the uniform draw `u` (argmax when T ≤ 0). */
@@ -550,9 +550,9 @@ export function botPick(
   const pot = Math.max(f.pot, 1);
   // "Air bucket bet": a bet into the pot after the flop; before it, the bluff 3-bet (a raise).
   const bluffType: PlayerAction['type'] = preflop ? 'raise' : 'bet';
-  // The biases are in units of max(T, 0.12): EV/pot + unit × bias (§9.4 step 3, chunks 5.11, 7.3).
+  // EV/pot + T × biases; A*'s bonus in units of max(T, 0.12) (§9.4 step 3, chunks 5.11 and 7.3).
   const ruleBonus = preflop ? MIX_RULE_BONUS_PREFLOP : MIX_RULE_BONUS;
-  const unit = biasUnit(profile.temperature);
+  const unit = ruleBonusUnit(profile.temperature);
   const scores = candidates.map((c) => {
     let bias = 0;
     if (isAggressive(c.action)) bias += profile.aggressionBias;

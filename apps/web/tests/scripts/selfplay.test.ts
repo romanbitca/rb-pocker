@@ -331,6 +331,15 @@ describe('gates', () => {
       'tag/medium AF': true,
     });
     expect(rows.find((r) => r.key === 'coach')?.target).toBeNull();
+    // `--calibrate-stats vpip,pfr` (Stage 7 acceptance 2 at Hard): no AF gates.
+    expect(calibrationGates(rows, ['vpip', 'pfr']).map((g) => g.name)).toEqual([
+      'lag/easy VPIP',
+      'lag/easy PFR',
+      'rock/medium VPIP',
+      'rock/medium PFR',
+      'tag/medium VPIP',
+      'tag/medium PFR',
+    ]);
   });
 
   it('legality: any illegal action, invariant violation or unfinished hand fails', () => {
@@ -437,6 +446,9 @@ describe('options', () => {
       loses: ['potBettor'],
     });
     expect(parseOptions([]).wins).toEqual([]);
+    expect(parseOptions([]).calibrateStats).toEqual(['vpip', 'pfr', 'af']);
+    expect(parseOptions(['--calibrate-stats', 'vpip,pfr']).calibrateStats).toEqual(['vpip', 'pfr']);
+    expect(() => parseOptions(['--calibrate-stats', 'wtsd'])).toThrow(/unknown statistic "wtsd"/);
     expect(() => parseOptions(['--wins', 'tag'])).toThrow(/unknown side "tag"/);
     expect(() => parseOptions(['--level', 'pro'])).toThrow(RangeError);
     expect(() => parseOptions(['--stacks', 'deep'])).toThrow(RangeError);

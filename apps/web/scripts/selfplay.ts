@@ -17,7 +17,8 @@
  * (p50, p95, max) per class, and each side's result: the seats of one level, the coach, a baseline
  * (bb/100 per seat with its interval). Exit code 1 when a gate fails: always an illegal action, an
  * invariant violation or a hand that does not finish; with `--calibrate` a personality off its §9.1
- * target (VPIP and PFR within ±4 points, Easy's VPIP within ±8, AF within ±0.7); with
+ * target (VPIP and PFR within ±4 points, Easy's VPIP within ±8, AF within ±0.7; `--calibrate-stats
+ * vpip,pfr` checks only those, as Stage 7 acceptance 2 asks at Hard); with
  * `--max-p95 <ms>` a bot level whose decision p95 is above it; with `--wins <sides>` or
  * `--loses <sides>` a side whose bb/100 interval is not wholly above (below) 0 (§9.7 win rates).
  *
@@ -31,10 +32,10 @@
  * `--seed` (a number, a word or 32 hex characters; default 1), `--lineup` (who sits in seats 0, 1,
  * …, cycled: personalities, `coach`, `simple`, `raiseAlways`, `callAlways`, `potBettor`, or a
  * personality at a level of its own, `tag@expert`; default the §9.3 Medium list, which holds all
- * five personalities in its first six seats), `--stacks`
- * reset|carry|random (default reset), `--bb` (default 20) and `--stack-bb` (default 100: the game's
- * default 2,000 chips at 10/20), `--threads` (default one per core), `--job-hands` (default 250),
- * `--calibrate`, `--max-p95 <ms>`, `--wins <sides>` and `--loses <sides>` (comma-separated: a level,
+ * five personalities in its first six seats), `--stacks` reset|carry|random (default reset), `--bb`
+ * (default 20) and `--stack-bb` (default 100: the game's default 2,000 chips at 10/20), `--threads`
+ * (default one per core), `--job-hands` (default 250), `--calibrate`, `--calibrate-stats` (default
+ * vpip,pfr,af), `--max-p95 <ms>`, `--wins <sides>` and `--loses <sides>` (comma-separated: a level,
  * `coach` or a baseline), `--json <file>` (the summary as JSON), `--quiet`.
  */
 import { appendFileSync, writeFileSync } from 'node:fs';
@@ -250,19 +251,28 @@ export function legalityGates(result: JobResult): Gate[] {
   ];
 }
 
-/** §9.7 calibration: every personality row against its §9.1 target. */
-export function calibrationGates(rows: readonly ProfileRow[]): Gate[] {
+/** The statistics `--calibrate` checks (`--calibrate-stats`). */
+export const CALIBRATION_STATS = ['vpip', 'pfr', 'af'] as const;
+export type CalibrationStat = (typeof CALIBRATION_STATS)[number];
+
+/** §9.7 calibration: every personality row against its §9.1 target, for each of `stats`. */
+export function calibrationGates(
+  rows: readonly ProfileRow[],
+  stats: readonly CalibrationStat[] = CALIBRATION_STATS,
+): Gate[] {
   const gates: Gate[] = [];
   const pts = (x: number): string => (100 * x).toFixed(1);
   for (const row of rows) {
     if (row.target === null) continue;
     const vpipTol = row.level === 'easy' ? TOLERANCE.vpipEasy : TOLERANCE.vpip;
-    const checks: [string, Estimate, number, number, (x: number) => string][] = [
-      ['VPIP', row.vpip, row.target.vpip, vpipTol, pts],
-      ['PFR', row.pfr, row.target.pfr, TOLERANCE.pfr, pts],
-      ['AF', row.af, row.target.af, TOLERANCE.af, (x) => x.toFixed(2)],
+    const checks: [CalibrationStat, Estimate, number, number, (x: number) => string][] = [
+      ['vpip', row.vpip, row.target.vpip, vpipTol, pts],
+      ['pfr', row.pfr, row.target.pfr, TOLERANCE.pfr, pts],
+      ['af', row.af, row.target.af, TOLERANCE.af, (x) => x.toFixed(2)],
     ];
-    for (const [stat, est, target, tol, show] of checks) {
+    for (const [id, est, target, tol, show] of checks) {
+      if (!stats.includes(id)) continue;
+      const stat = id.toUpperCase();
       const off = est.value - target;
       gates.push({
         name: `${row.key} ${stat}`,
@@ -427,6 +437,8 @@ const SIDES: readonly string[] = [
 export interface Options extends RunSpec {
   seedText: string;
   calibrate: boolean;
+  /** What `--calibrate` checks (default VPIP, PFR and AF). */
+  calibrateStats: CalibrationStat[];
   maxP95: number | null;
   /** Sides that must win (lose): a level, `coach` or a baseline (§9.7 win rates). */
   wins: string[];
@@ -483,6 +495,7 @@ export function parseOptions(argv: readonly string[]): Options {
       threads: { type: 'string' },
       'job-hands': { type: 'string', default: '250' },
       calibrate: { type: 'boolean', default: false },
+      'calibrate-stats': { type: 'string', default: CALIBRATION_STATS.join(',') },
       'max-p95': { type: 'string' },
       wins: { type: 'string' },
       loses: { type: 'string' },
@@ -520,6 +533,12 @@ export function parseOptions(argv: readonly string[]): Options {
     }
     return list;
   };
+  const calibrateStats = values['calibrate-stats'].split(',');
+  for (const stat of calibrateStats) {
+    if (!(CALIBRATION_STATS as readonly string[]).includes(stat)) {
+      throw new RangeError(`--calibrate-stats: unknown statistic "${stat}" (vpip, pfr, af)`);
+    }
+  }
   const bb = positiveInt(values.bb, '--bb');
   if (bb < 2 || bb % 2 !== 0) throw new RangeError(`--bb must be even and ≥ 2, got ${bb}`);
   const stackBB = positiveInt(values['stack-bb'], '--stack-bb');
@@ -540,6 +559,7 @@ export function parseOptions(argv: readonly string[]): Options {
     threads:
       values.threads === undefined ? defaultThreads() : positiveInt(values.threads, '--threads'),
     calibrate: values.calibrate,
+    calibrateStats: calibrateStats as CalibrationStat[],
     maxP95,
     wins: sides(values.wins, '--wins'),
     loses: sides(values.loses, '--loses'),
@@ -561,7 +581,7 @@ export async function selfPlay(
   const times = timeRows(result);
   const gates = [
     ...legalityGates(result),
-    ...(options.calibrate ? calibrationGates(profiles) : []),
+    ...(options.calibrate ? calibrationGates(profiles, options.calibrateStats) : []),
     ...(options.maxP95 === null ? [] : speedGates(times, options.maxP95)),
     ...winRateGates(sides, options.wins, options.loses),
   ];
