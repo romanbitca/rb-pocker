@@ -101,23 +101,28 @@ describe('Settings: coach level and bot level (PLAN §10, §12.1)', () => {
     ).toEqual(['Coach level', 'Bot level', 'Speed', 'Show amounts as']);
   });
 
-  it('coach level: Beginner and Intermediate can be picked; Advanced and Exam say "Coming soon"', () => {
+  it('coach level: all four can be picked (Advanced and Exam since chunk 6.4)', () => {
     const { onChangeSettings } = renderSettings();
     expect(state('Coach level')).toEqual([
       ['beginner', true, false],
       ['intermediate', false, false],
-      ['advanced', false, true],
-      ['exam', false, true],
+      ['advanced', false, false],
+      ['exam', false, false],
     ]);
     expect(radios('Coach level').map((r) => r.labels?.[0]?.textContent)).toEqual([
       'BeginnerFull help',
       'IntermediateHelp on tap',
-      'AdvancedMistakes onlyComing soon',
-      'ExamTest yourselfComing soon',
+      'AdvancedMistakes only',
+      'ExamTest yourself',
     ]);
     fireEvent.click(radios('Coach level')[1] as HTMLInputElement);
-    expect(onChangeSettings).toHaveBeenCalledTimes(1);
-    expect(onChangeSettings).toHaveBeenCalledWith({ coachLevel: 'intermediate' });
+    fireEvent.click(radios('Coach level')[2] as HTMLInputElement);
+    fireEvent.click(radios('Coach level')[3] as HTMLInputElement);
+    expect(onChangeSettings.mock.calls).toEqual([
+      [{ coachLevel: 'intermediate' }],
+      [{ coachLevel: 'advanced' }],
+      [{ coachLevel: 'exam' }],
+    ]);
   });
 
   it('bot level: Easy and Medium can be picked; Hard and Expert say "Coming soon"', () => {
@@ -143,7 +148,11 @@ describe('Settings: coach level and bot level (PLAN §10, §12.1)', () => {
     const { onChangeSettings } = renderSettings();
     fireEvent.click(radios('Bot level')[2] as HTMLInputElement);
     fireEvent.click(radios('Bot level')[3] as HTMLInputElement);
-    fireEvent.click(radios('Coach level')[2] as HTMLInputElement);
+    expect(onChangeSettings).not.toHaveBeenCalled();
+  });
+
+  it('a coach level missing from `available` sends nothing either', () => {
+    const { onChangeSettings } = renderSettings(GAME, { bot: ['easy'], coach: ['beginner'] });
     fireEvent.click(radios('Coach level')[3] as HTMLInputElement);
     expect(onChangeSettings).not.toHaveBeenCalled();
   });

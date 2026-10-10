@@ -10,6 +10,7 @@ import {
   seedFor,
   sizeOf,
   slot,
+  tapNextHand,
 } from './game.ts';
 
 // PLAN §18 Stage 3, acceptance 5 (a free check disables Fold, and a tap on it says why) and
@@ -30,7 +31,7 @@ test('with checking free, Fold is disabled and a tap on it shows why', async ({
     expect(decisions, 'a free check comes up').toBeLessThan(60);
     const point = await nextFlowPoint(page, true);
     if (point === 'end') {
-      await page.locator('[data-hand-end]').click();
+      await tapNextHand(page);
       continue;
     }
     if (point === 'bust') {
@@ -134,7 +135,7 @@ test('every control is big enough to tap', async ({ page }, testInfo) => {
     expect(decisions, 'a decision with the tray').toBeLessThan(60);
     const point = await nextFlowPoint(page, true);
     if (point === 'end') {
-      await page.locator('[data-hand-end]').click();
+      await tapNextHand(page);
       continue;
     }
     if (point === 'bust') {

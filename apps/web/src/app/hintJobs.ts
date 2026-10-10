@@ -16,6 +16,9 @@
  *   again). Hints never count toward the bots' fallbacks.
  * - ⚠️ Non-cheating (§9.6, pitfall 13): the request carries the hero's own observation (built by
  *   `observe()`), never a `HandState` or another seat's hidden cards.
+ * - The Advanced quiz (§10.3, chunk 6.4): when the controller says the decision rolled one, the
+ *   jobs write it into the `coach` slice as they ask (its answers empty), so the win badge hides
+ *   from the start of the decision; it starts once the hint is ready.
  */
 import type { CoachHint } from '../brain/decide.ts';
 import type { HandState, Observation } from '../engine/types.ts';
@@ -64,8 +67,11 @@ export function finalHudEquity(equity: EquitySlice, hand: HandState): number | n
 export interface HintAsk {
   key: string;
   epoch: number;
-  /** The hero's observation and the HUD's final number (or null), built only when asked. */
-  build(): { obs: Observation; eRandom: number | null };
+  /**
+   * The hero's observation and the HUD's final number (or null), built only when asked; `quiz`:
+   * the decision rolled the Advanced quiz (§10.3; absent = no quiz).
+   */
+  build(): { obs: Observation; eRandom: number | null; quiz?: boolean };
 }
 
 export class HintJobs {
@@ -114,7 +120,7 @@ export class HintJobs {
   }
 
   private send(ask: HintAsk): void {
-    let request: { obs: Observation; eRandom: number | null };
+    let request: ReturnType<HintAsk['build']>;
     try {
       request = ask.build();
     } catch {
@@ -122,6 +128,7 @@ export class HintJobs {
       return;
     }
     const { obs, eRandom } = request;
+    this.startQuiz(ask.key, request.quiz === true);
     const jobId = this.brain.request({
       slot: 'hint',
       epoch: ask.epoch,
@@ -141,6 +148,15 @@ export class HintJobs {
         ? { decision: event.reply.decision, explanation: event.reply.explanation }
         : null;
     this.land(ask, answer);
+  }
+
+  /** The decision's quiz, fresh (no answers yet), or none; kept when it is already this one's. */
+  private startQuiz(key: string, quiz: boolean): void {
+    const coach = this.store.getState().coach;
+    if (quiz && coach.quiz?.key === key) return; // a retry: the quiz goes on
+    const next = quiz ? { key, answers: [], skipped: false } : null;
+    if (next === null && coach.quiz === null) return;
+    this.store.setState({ coach: { ...coach, quiz: next } });
   }
 
   /** Writes the answer (null: failed) while its decision is still the one asked about. */

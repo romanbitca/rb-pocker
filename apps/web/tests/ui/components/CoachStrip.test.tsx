@@ -51,13 +51,13 @@ describe('CoachStrip (§12.6)', () => {
   });
 
   it('Intermediate before the tap: "Hint", disabled until the hint is ready', () => {
-    const pending = strip({ kind: 'hint', ready: false });
+    const pending = strip({ kind: 'hint', ready: false, countsAsHelp: false });
     const hint = screen.getByRole('button', { name: coachWords.hint });
     expect(hint.getAttribute('aria-disabled')).toBe('true');
     fireEvent.click(hint);
     expect(pending.onHint).not.toHaveBeenCalled();
     cleanup();
-    const ready = strip({ kind: 'hint', ready: true });
+    const ready = strip({ kind: 'hint', ready: true, countsAsHelp: false });
     fireEvent.click(screen.getByRole('button', { name: coachWords.hint }));
     expect(ready.onHint).toHaveBeenCalledOnce();
     expect(ready.onOpen).not.toHaveBeenCalled();
@@ -101,7 +101,7 @@ describe('the compact "Coach" pill (§12.3)', () => {
   });
 
   it('at Intermediate it opens the hint, then the sheet', () => {
-    const { onOpen, onHint } = strip({ kind: 'hint', ready: true }, 'pill');
+    const { onOpen, onHint } = strip({ kind: 'hint', ready: true, countsAsHelp: false }, 'pill');
     fireEvent.click(screen.getByRole('button', { name: coachWords.hint }));
     expect(onHint).toHaveBeenCalledOnce();
     expect(onOpen).toHaveBeenCalledOnce();

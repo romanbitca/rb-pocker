@@ -14,12 +14,18 @@
  *
  * The narration ("Ben raises to 60.") is plain text: the live announcements of §12.12 (one polite
  * log, throttled) are their own chunk. DOM: 1–5 elements (§15.3); the "›" is CSS.
+ *
+ * After the hero acts (§10.2, §12.6, chunk 6.4) the strip shows the decision's grade chip for
+ * 1.5 s in place of the narration (`chip`, when the level shows that grade); the hero's next turn
+ * takes the strip back at once. In compact mode the chip takes the pill's place.
  */
 import { memo } from 'react';
+import type { Grade } from '../../brain/types.ts';
 import { en } from '../../i18n/en.ts';
 import { coachWords } from '../../i18n/coachUi.ts';
 import type { StripView } from '../coach.ts';
 import styles from './CoachStrip.module.css';
+import { GradeChip } from './GradeChip.tsx';
 
 export type StripVariant = 'strip' | 'header' | 'pill';
 
@@ -34,6 +40,8 @@ export interface CoachStripProps {
   readonly onRetry: () => void;
   /** The lines may wrap and the strip grow (the landscape column, §12.5). */
   readonly wrap?: boolean;
+  /** The grade chip of the decision just graded, while it shows (§12.6); else null. */
+  readonly chip?: Grade | null | undefined;
   readonly className?: string | undefined;
 }
 
@@ -51,11 +59,18 @@ function Advice({ headline, line }: { headline: string; line: string }) {
   );
 }
 
-function Pill({ view, onOpen, onHint, onRetry }: Omit<CoachStripProps, 'variant'>) {
+const hintLabel = (view: { countsAsHelp: boolean }): string =>
+  view.countsAsHelp ? coachWords.hintExam : coachWords.hint;
+
+function Pill({ view, onOpen, onHint, onRetry, chip }: Omit<CoachStripProps, 'variant'>) {
   switch (view.kind) {
     case 'empty':
     case 'narration':
-      return null;
+      return chip == null ? null : (
+        <span className={styles.pillChip}>
+          <GradeChip grade={chip} />
+        </span>
+      );
     case 'failed':
       return (
         <button
@@ -83,7 +98,7 @@ function Pill({ view, onOpen, onHint, onRetry }: Omit<CoachStripProps, 'variant'
         <button
           type="button"
           className={styles.pill}
-          aria-label={coachWords.hint}
+          aria-label={hintLabel(view)}
           aria-disabled={view.ready ? undefined : true}
           onClick={() => {
             if (!view.ready) return;
@@ -116,18 +131,25 @@ export const CoachStrip = memo(function CoachStrip({
   onHint,
   onRetry,
   wrap = false,
+  chip = null,
   className,
 }: CoachStripProps) {
   if (variant === 'pill') {
-    return <Pill view={view} onOpen={onOpen} onHint={onHint} onRetry={onRetry} />;
+    return <Pill view={view} onOpen={onOpen} onHint={onHint} onRetry={onRetry} chip={chip} />;
   }
   const header = variant === 'header';
   let body: React.ReactNode = null;
   switch (view.kind) {
     case 'empty':
+      if (chip !== null) body = <GradeChip grade={chip} />;
       break;
     case 'narration':
-      body = <p className={styles.narration}>{view.text}</p>;
+      body =
+        chip === null ? (
+          <p className={styles.narration}>{view.text}</p>
+        ) : (
+          <GradeChip grade={chip} />
+        );
       break;
     case 'thinking':
       body = <p className={styles.muted}>{coachWords.thinking}</p>;
@@ -150,7 +172,7 @@ export const CoachStrip = memo(function CoachStrip({
             if (view.ready) onHint();
           }}
         >
-          {coachWords.hint}
+          {hintLabel(view)}
         </button>
       );
       break;

@@ -81,6 +81,7 @@ describe('coachDataOf (§12.6 states)', () => {
       decision: DECISION,
       explanation,
       opened: null,
+      quiz: null,
     };
     expect(coachDataOf('heroTurn', hand, legal, ready, 'intermediate')).toMatchObject({
       level: 'intermediate',
@@ -98,6 +99,7 @@ describe('coachDataOf (§12.6 states)', () => {
       decision: null,
       explanation: null,
       opened: key,
+      quiz: null,
     };
     expect(coachDataOf('heroTurn', hand, legal, failed, 'beginner')).toMatchObject({
       state: 'failed',

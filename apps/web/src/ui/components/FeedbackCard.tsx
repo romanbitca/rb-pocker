@@ -13,18 +13,8 @@ import type { FeedbackView } from '../../app/store.ts';
 import { en } from '../../i18n/en.ts';
 import { feedbackTexts } from '../feedback.ts';
 import styles from './FeedbackCard.module.css';
+import { GradeMark } from './GradeChip.tsx';
 import { isUndoKey } from './UndoButton.tsx';
-
-type Grade = FeedbackView['grade'];
-
-/** The F.4 marks as SVG paths (never text glyphs): ✓✓ ✓ ~ ✗ ✗✗. */
-const MARK: Readonly<Record<Grade, string>> = {
-  best: 'M1.5 12.5l3.5 3.5 7-8M9.5 13.5l2.5 2.5 9.5-10.5',
-  good: 'M5 12.5l4.5 4.5 10-11',
-  inaccuracy: 'M3.5 14c2.5-4 5-4 8.5-1s6 3 8.5-1',
-  mistake: 'M6.5 6.5l11 11M17.5 6.5l-11 11',
-  blunder: 'M2.5 7l7 10M9.5 7l-7 10M14.5 7l7 10M21.5 7l-7 10',
-};
 
 export interface FeedbackCardProps {
   readonly view: FeedbackView;
@@ -85,9 +75,7 @@ export const FeedbackCard = memo(function FeedbackCard({
       onKeyDown={onKeyDown}
     >
       <h2 id={titleId} className={styles.title}>
-        <svg className={styles.mark} viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-          <path d={MARK[view.grade]} />
-        </svg>
+        <GradeMark grade={view.grade} className={styles.mark} />
         {texts.title}
       </h2>
       <p id={reasonId} className={styles.reason}>
