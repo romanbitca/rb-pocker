@@ -1,9 +1,4 @@
-/* Setup's "More options" (PLAN §12.2, chunk 7.2). Chips, switches and sections are Screen.module.css. */
-
-.options {
-  display: grid;
-  gap: var(--space-5);
-}
+/* Setup's "More options" (PLAN §12.2, chunk 7.2). Rows, chips, switches and sections are Screen.module.css. */
 
 /* "Set each bot's level": a label and a select on each row. */
 .rows {

@@ -87,21 +87,17 @@ export * from './coachViews.ts';
 export { UNDO_POLICY, type FeedbackView, type MoveView, type UndoPolicy } from './undo.ts';
 // "Which hand wins?" (§13.2): two random hands that do not tie (the quiz is a lazy chunk).
 export { dealPair, type WhichPair } from './whichWins.ts';
-// The level rules: the coach levels as data (§10.2, chunk 6.4) and, per bot seat, which level it
-// plays at and whether it shows its label (§9.2, §9.3, chunk 7.2); then the Advanced quiz (§10.3).
+// The bot level of each seat from the next hand on (§9.3, chunk 7.2). `seatLevelOf` and
+// `labelVisible` come with `tableViews.ts` above.
+export { levelsOf, nextLevels, sameSeatLevels, type TableLevels } from './botLevels.ts';
+// The coach levels as data (§10.2, chunk 6.4) and the Advanced quiz (§10.3).
 export {
   atLeast,
   chipShows,
   decisionScore,
-  labelVisible,
   LEVEL_RULES,
-  levelsOf,
-  nextLevels,
-  sameSeatLevels,
-  seatLevelOf,
   summaryShows,
   type LevelRules,
-  type TableLevels,
 } from './levels.ts';
 export {
   choiceCount,

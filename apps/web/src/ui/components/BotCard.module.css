@@ -112,8 +112,9 @@
 
 /*
  * The per-seat level picker (PLAN §9.3, chunk 7.2): "Same as table (Easy)" across the top, then the
- * four levels in a row. Native radios lie invisibly over their faces, so a tap anywhere on a chip
- * picks it (the Settings chips, drawn for the sheet's own background).
+ * four levels in a row. The chips are the Settings chips (Screen.module.css: native radios lie
+ * invisibly over their faces, so a tap anywhere on a chip picks it); only the row and the faces'
+ * colour for the sheet's own background are set here.
  */
 .level {
   display: grid;
@@ -130,70 +131,15 @@
   font-weight: 700;
 }
 
-.choices {
-  display: grid;
+.level .picker {
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: var(--space-2);
 }
 
-.choice,
-.choiceWide {
-  position: relative;
-  display: grid;
-  min-width: var(--tap-min);
-  min-height: var(--tap-min);
-  cursor: pointer;
-  touch-action: manipulation;
-  -webkit-tap-highlight-color: transparent;
-  user-select: none;
-}
-
-.choiceWide {
+.level .wide {
   grid-column: 1 / -1;
 }
 
-.choice input,
-.choiceWide input {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  margin: 0;
-  opacity: 0;
-  cursor: pointer;
-}
-
-.face {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-height: var(--tap-min);
+.level .face {
   padding: 0 var(--space-1);
-  border: 2px solid rgb(242 245 243 / 22%);
-  border-radius: var(--radius-2);
   background: var(--bg);
-  color: var(--text);
-  font-weight: 600;
-  text-align: center;
-}
-
-/* Chosen: a filled chip, a strong change of lightness and not only of hue (§12.12). */
-.choice input:checked + .face,
-.choiceWide input:checked + .face {
-  border-color: var(--accent);
-  background: var(--accent);
-  color: var(--bg);
-  font-weight: 700;
-}
-
-.choice input:focus-visible + .face,
-.choiceWide input:focus-visible + .face {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
-}
-
-.levelHint {
-  margin: 0;
-  color: var(--muted);
-  font-size: 0.875rem;
 }

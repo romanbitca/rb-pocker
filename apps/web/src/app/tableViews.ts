@@ -19,6 +19,7 @@ import { describe, type HandInfo } from '../eval/describe.ts';
 import type { HandCategory } from '../eval/evaluate.ts';
 import { sidePots } from '../engine/settle.ts';
 import type {
+  BotLevel,
   HandState,
   LegalActions,
   PersonalityId,
@@ -26,7 +27,6 @@ import type {
   Street,
   TableState,
 } from '../engine/types.ts';
-import { labelVisible, seatLevelOf } from './levels.ts';
 import type { AppState } from './store.ts';
 
 const HERO = 0;
@@ -201,6 +201,20 @@ function cardsOf(hand: HandState, seat: number): SeatCardsData {
   const face = (card: Card): CardViewData =>
     best5 === null ? { card } : { card, highlight: best5.includes(card) ? 'core' : 'off' };
   return { kind: 'revealed', cards: [face(s.hole[0]), face(s.hole[1])] };
+}
+
+/** The level that decides a seat's play and label: its own override, else the table's (§9.3). */
+export function seatLevelOf(table: TableState, seat: number): BotLevel {
+  return table.config.seatLevels[seat] ?? table.config.botLevel;
+}
+
+/**
+ * Whether a bot at `level` shows its personality (§9.2 "Personality label visible"): Easy and
+ * Medium yes, Hard and Expert no ("Read their stats"). The one rule for the pod's badge, the bot
+ * card and the `visiblePersonality` that the brain sees.
+ */
+export function labelVisible(level: BotLevel): boolean {
+  return level === 'easy' || level === 'medium';
 }
 
 /** One opponent's pod from the hand and the table it was dealt from. */

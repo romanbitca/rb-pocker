@@ -8,6 +8,7 @@
  * bot (`seatLevels` has one entry per seat, the hero's first); a row's first choice, "Same as
  * table", leaves that bot at the level chosen above.
  */
+import { useId } from 'react';
 import type { BotLevel } from '../../engine/types.ts';
 import { en } from '../../i18n/en.ts';
 import { Choice, SwitchRow } from './Controls.tsx';
@@ -16,8 +17,6 @@ import styles from './Screen.module.css';
 import { BOT_LEVEL_ORDER, type Speed } from './setupForm.ts';
 
 export interface MoreOptionsProps {
-  /** Unique on the page: the prefix of every id and radio group name here. */
-  id: string;
   speed: Speed;
   onSpeed: (speed: Speed) => void;
   /** The table's bot level (Setup's question 3): what "Same as table" means. */
@@ -34,7 +33,6 @@ export interface MoreOptionsProps {
 const SPEEDS: readonly Speed[] = ['normal', 'fast', 'instant'];
 
 export function MoreOptions({
-  id,
   speed,
   onSpeed,
   botLevel,
@@ -44,9 +42,12 @@ export function MoreOptions({
   fourColour,
   onFourColour,
 }: MoreOptionsProps) {
+  // The prefix of every id and radio group name here. (Importing from `react` also keeps this lazy
+  // chunk from splitting the runtime helpers off the entry: PLAN pitfall 47.)
+  const id = useId();
   const hintId = `${id}-bots-hint`;
   return (
-    <div className={s.options}>
+    <div className={styles.rows}>
       <Choice
         name={`${id}-speed`}
         label={en.settings.speed.label}
