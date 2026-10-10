@@ -442,6 +442,13 @@ export const MIX_CALL_STICKINESS = 3;
 /** §9.4 step 3: a bet or raise with Air (a bluff), a Monster's check on a Dry board (a slow-play). */
 export const MIX_BLUFF_BONUS = 2.5;
 export const MIX_SLOWPLAY_BONUS = 2.5;
+/**
+ * §9.4 step 3, chunk 7.3: the unit of a bias is `max(T, MIX_BIAS_UNIT_MIN)` pots. Medium's `T`
+ * (0.12), where chunk 5.11 calibrated the biases: below it a bias keeps its Medium value in pots,
+ * so a lower `T` (Hard, Expert) sharpens the same preferences, Medium's odds squared and cubed,
+ * instead of shrinking the personality against the §8.9 EVs (risk R20).
+ */
+export const MIX_BIAS_UNIT_MIN = 0.12;
 
 // --- 6.1 grading (§8.9 "Grade") ---
 
