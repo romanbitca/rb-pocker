@@ -125,15 +125,23 @@ function spawnScript(
 }
 
 /**
- * The brain client for `?script=<name>`: the script's bots, and the coach of `coach` (default: a
- * real `brain.worker`; tests pass a fake one).
+ * The worker of `?script=<name>`: the script's bots, and the coach of `coach` (default: a real
+ * `brain.worker`; tests pass a fake one) for everything else.
  */
+export function scriptedSpawn(
+  name: string,
+  coach: SpawnWorker<BrainRequest, BrainReply> = fromWorker(spawnBrainWorker),
+): SpawnWorker<BrainRequest, BrainReply> {
+  const script = BOT_SCRIPTS[name];
+  if (script === undefined) throw new Error(`no bot script "${name}"`);
+  return spawnScript(script, coach);
+}
+
+/** The brain client for `?script=<name>` (see `scriptedSpawn`). */
 export function scriptedBrain(
   name: string,
   timers: ClientTimers,
   coach: SpawnWorker<BrainRequest, BrainReply> = fromWorker(spawnBrainWorker),
 ): BrainClient {
-  const script = BOT_SCRIPTS[name];
-  if (script === undefined) throw new Error(`no bot script "${name}"`);
-  return createBrainClient(spawnScript(script, coach), timers);
+  return createBrainClient(scriptedSpawn(name, coach), timers);
 }

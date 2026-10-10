@@ -9,6 +9,7 @@
 import { build, type Rolldown } from 'vite';
 import { describe, expect, it } from 'vitest';
 import { SCRIPT_HOOK_MARKER } from '../../src/app/botScripts.ts';
+import { FAULT_HOOK_MARKER, INJECTED_ERROR } from '../../src/app/testFaults.ts';
 import { TEST_HOOKS_MARKER } from '../../src/app/testHooks.ts';
 
 const ROOT = decodeURIComponent(new URL('../../', import.meta.url).pathname);
@@ -54,6 +55,10 @@ describe('test hooks and the production bundle', () => {
     // The `?script=` hook and its scripts (Stage 6) are stripped too.
     expect(hits(files, SCRIPT_HOOK_MARKER)).toEqual([]);
     expect(hits(files, 'river-min-bet')).toEqual([]);
+    // So are the brain.worker faults of Stage 6 acceptance 4 (`window.__pc.faults`, chunk 6.5).
+    expect(hits(files, FAULT_HOOK_MARKER)).toEqual([]);
+    expect(hits(files, INJECTED_ERROR)).toEqual([]);
+    expect([...files.keys()].filter((name) => /testFaults/i.test(name))).toEqual([]);
   }, 120_000);
 
   it('an E2E build (--mode e2e) has them (the control for the check above)', async () => {
@@ -62,5 +67,7 @@ describe('test hooks and the production bundle', () => {
     expect(hits(files, '__pc').length).toBeGreaterThan(0);
     expect(hits(files, SCRIPT_HOOK_MARKER).length).toBeGreaterThan(0);
     expect(hits(files, 'river-min-bet').length).toBeGreaterThan(0);
+    expect(hits(files, FAULT_HOOK_MARKER).length).toBeGreaterThan(0);
+    expect(hits(files, INJECTED_ERROR).length).toBeGreaterThan(0);
   }, 120_000);
 });
