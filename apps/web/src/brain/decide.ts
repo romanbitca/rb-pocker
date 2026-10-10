@@ -16,7 +16,8 @@
  *    draw is below `1 − pfrRatio`; that draw also limps an open raise the mix picks (step 4).
  * 4. **The pick.** The coach (`deterministic`) takes `A*`: the recommendation is the rule action
  *    (§8.9 "recommendation from the rule policy"), so σ = 0 and no mixing. A bot scores its
- *    candidates (§9.4 step 3): `EV/pot` (§8.9, with `E'`) + `T ×` biases in units of its level's
+ *    candidates (§9.4 step 3): `EV/pot` (§8.9, with `E'`; at Expert the fold equity after the flop
+ *    read from each seat's fold to c-bet, `readsFoldStats`) + `T ×` biases in units of its level's
  *    temperature `T`: `aggressionBias` for a bet or raise, `3 × (stickiness − 1)` for a call, `1`
  *    for `A*` (`3.5` before the flop), `2.5` for a bet when it bluffs (Air and the bluff draw below
  *    `bluffFreq`; before the flop a raise facing one open with a suited A5–A2 or 54–T9 and the draw
@@ -305,9 +306,19 @@ export function realisationOf(obs: Observation, f: Features, spot: PostflopSpot 
 }
 
 /**
+ * §8.9 at Expert (chunk 7.3, risk R20): a bot with the per-seat statistics range model (§9.2
+ * "re-weighting + per-seat stats") reads its fold equity after the flop from each seat's fold to
+ * c-bet (`readContinueFraction`). The coach shares that range model but keeps the model's fold
+ * equity: its EVs only explain its advice, which takes `A*` (and does not change).
+ */
+export function readsFoldStats(profile: BrainProfile): boolean {
+  return !profile.deterministic && profile.rangeModel === 'reweight+stats';
+}
+
+/**
  * The EV model of the decision with equity `E` (the coach: `eRange`; a bot: `E'`): the policy's
  * realisation and implied odds (§8.3 steps 3–4, §8.5 steps 2–3), `E_called` trials capped at the
- * profile's own `mcTrials`.
+ * profile's own `mcTrials`; Expert reads its fold equity after the flop (`readsFoldStats`).
  */
 function evModelOf(
   obs: Observation,
@@ -331,6 +342,7 @@ function evModelOf(
     implied,
     seed,
     trials: Math.min(E_CALLED_TRIALS, profile.mcTrials),
+    readsFolds: readsFoldStats(profile),
   });
   // Each action's EV once per decision (a bet's E_called is a Monte Carlo of its own).
   const memo = new Map<CandidateKey, number>();

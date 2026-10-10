@@ -52,6 +52,11 @@ import { observeSpot, playSpot } from './fixtures.ts';
 const SEED: Seed128 = '0000000000000000000000000000d3c1';
 const seed = (i: number): Seed128 => deriveSeed(SEED, 'test', i);
 const BB = 100;
+/**
+ * Tests that play hundreds of whole decisions: about 1 s (the limp-mode test) and 4 s (the R20
+ * test, Hard and Expert) on a loaded laptop, so ≥ 5× that (AGENT_RULES; it timed out at 5 s once).
+ */
+const HEAVY = { timeout: 60_000 };
 
 /** 6-max, 100 bb, button 0: seat 3 is first to act. */
 const sixMax = (
@@ -534,7 +539,7 @@ describe('the bots (§9.4)', () => {
     }
   });
 
-  it('a Hard or Expert TAG rarely re-raises a hand its rule folds (R20: once 25–65% of the time)', () => {
+  it('a Hard or Expert TAG rarely re-raises a hand its rule folds (R20: once 25–65% of the time)', HEAVY, () => {
     // Facing an open from under the gun, and the opener facing a 3-bet: the rule folds J♣6♦ and
     // 9♠4♠, and the §8.9 fold-equity heuristic rates the re-raise at break-even or better.
     const spots = [
@@ -555,7 +560,7 @@ describe('the bots (§9.4)', () => {
     }
   });
 
-  it('limp mode limps an open raise the mix picked too (§9.4 step 2), never facing a raise', () => {
+  it('limp mode limps an open raise the mix picked too (§9.4 step 2), never facing a raise', HEAVY, () => {
     // A Maniac first in on the button with a hand it opens: in limp mode no pick is a raise.
     const obs = sixMax(0, 'Kd 9s', [fold(3), fold(4), fold(5)]);
     const maniac = profileFor('maniac', 'medium');

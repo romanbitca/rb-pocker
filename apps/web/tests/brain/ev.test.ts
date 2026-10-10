@@ -20,14 +20,16 @@ import {
   evModel,
   foldEquity,
   mdf,
+  readContinueFraction,
   seatStickiness,
   type EvSpot,
 } from '../../src/brain/ev.ts';
+import { emptySeatStats } from '../../src/brain/opponentStats.ts';
 import { coachSeed, features } from '../../src/brain/features.ts';
 import { isLegalAction } from '../../src/brain/guardrails.ts';
 import { COMBOS } from '../../src/brain/ranges.ts';
 import type { Features } from '../../src/brain/types.ts';
-import type { Observation, PlayerAction } from '../../src/engine/types.ts';
+import type { Observation, PlayerAction, SeatStats } from '../../src/engine/types.ts';
 import { bet, call, check, raise } from '../engine/play.ts';
 import { COACH_LIKE, observeSpot, playSpot, type ExtrasSpec, type SpotSpec } from './fixtures.ts';
 
@@ -228,6 +230,36 @@ describe('§8.9 EV model on spots played through the engine', () => {
       expect(eCalled[i] as number).toBeLessThanOrEqual((eCalled[i - 1] as number) + 1e-12);
     }
     expect(eCalled[0] as number).toBeGreaterThan(eCalled[eCalled.length - 1] as number);
+  });
+
+  it('Expert: c read from fold to c-bet, shrunk (k = 20) toward the model at a ½-pot c-bet (7.3)', () => {
+    const seen = (folds: number, chances: number): SeatStats => ({
+      ...emptySeatStats(),
+      foldToCbet: [folds, chances],
+    });
+    // Nothing seen: the model's c against a ½-pot c-bet (MDF ⅔ × stickiness), clamped like c.
+    expect(readContinueFraction(null, 1)).toBeCloseTo(2 / 3, 12);
+    expect(readContinueFraction(null, 1.4)).toBeCloseTo((2 / 3) * 1.4, 12);
+    expect(readContinueFraction(seen(0, 0), 0.1)).toBeCloseTo(0.15, 12);
+    // Seen: est = (x + 20 · 1/3) / (n + 20), c = 1 − est; lots of evidence wins, clamped.
+    expect(readContinueFraction(seen(10, 100), 1)).toBeCloseTo(1 - (10 + 20 / 3) / 120, 12);
+    expect(readContinueFraction(seen(0, 1000), 1)).toBe(0.95);
+    expect(readContinueFraction(seen(1000, 1000), 1)).toBe(0.15);
+    // The nuts on the river (closed form, R = 1): a caller seen never to fold pays more often.
+    const caller = { stats: [null, seen(0, 180)] };
+    const { spot } = modelAt(royal(), { R: 1, stickiness: 1, extras: caller });
+    const read = { ...spot, readsFolds: true };
+    // c = 0.95 at every size: EV = 0.05·pot + 0.95·(pot + T); the model's c = MDF.
+    for (const T of [300, 600]) {
+      const c = 600 / (600 + T);
+      expect(actionEV(spot, { type: 'bet', to: T })).toBeCloseTo((1 - c) * 600 + c * (600 + T), 9);
+      expect(actionEV(read, { type: 'bet', to: T })).toBeCloseTo(0.05 * 600 + 0.95 * (600 + T), 9);
+    }
+    // Before the flop the model stands.
+    const pre: SpotSpec = { stacks: HU, button: 0, holes: { 0: '7c 2d' }, inputs: [] };
+    const p = modelAt(pre, { R: 0.9, stickiness: 1, extras: caller }).spot;
+    const open = { type: 'raise', to: 250 } as const;
+    expect(actionEV({ ...p, readsFolds: true }, open)).toBe(actionEV(p, open));
   });
 
   it('stickiness: the visible personality’s, else the mean of the seat level’s list (§9.1, §9.5)', () => {
