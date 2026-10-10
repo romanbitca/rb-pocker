@@ -12,6 +12,7 @@ import {
   seedFor,
   sizeOf,
   slot,
+  tapNextHand,
 } from './game.ts';
 
 // PLAN §9.3, §12.2, Stage 7 acceptance 6 (chunk 7.2), in the real build: a bot's own level, picked
@@ -51,7 +52,7 @@ async function toHeroTurn(page: Page): Promise<void> {
   for (let i = 0; i < 30; i++) {
     const point = await nextFlowPoint(page);
     if (point === 'hero') return;
-    if (point === 'end') await page.locator('[data-hand-end]').click();
+    if (point === 'end') await tapNextHand(page);
     else await reloadAfterBust(page);
   }
   throw new Error('no hero turn in 30 tries');
@@ -155,7 +156,7 @@ test.describe('a bot’s own level starts with the next hand', () => {
     }
 
     // The next hand is dealt at the new level: seat 2 hides its label, seats 1 and 3 keep theirs.
-    await page.locator('[data-hand-end]').click();
+    await tapNextHand(page);
     await page.waitForFunction(
       (hand) => window.__pc?.state().game.hand?.handSeq === hand + 1,
       first.hand,
@@ -212,7 +213,7 @@ test.describe('a bot’s own level starts with the next hand', () => {
 
     await playOut(page);
     await expect(badge(page, 1), 'and so is the table at its end').toHaveCount(0);
-    await page.locator('[data-hand-end]').click();
+    await tapNextHand(page);
     await page.waitForFunction(
       () => window.__pc?.state().game.table?.config.seatLevels[1] === null,
     );
