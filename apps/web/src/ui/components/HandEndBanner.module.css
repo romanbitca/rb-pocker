@@ -108,3 +108,23 @@
 .side .review {
   margin-top: -2px;
 }
+
+/* Wide screens: the table box is only ~340 px tall, so the link shares the "Next hand ›" row (44 px
+   for both) instead of taking a row of its own under the card, which made the card taller than
+   the room above the hero's cards. The Table positions the holder (absolute), so the link can sit
+   over the card's bottom-right corner; the banner itself stays one button (§12.9). */
+.wide .banner {
+  padding-bottom: 0;
+}
+.wide .next {
+  align-self: flex-start;
+  min-height: 44px;
+  margin-top: 0;
+}
+.wide .review {
+  position: absolute;
+  right: 13px;
+  bottom: 1px;
+  margin: 0;
+  text-shadow: none;
+}

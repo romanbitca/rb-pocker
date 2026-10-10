@@ -4,6 +4,8 @@
  * whole banner is one button, so it is easy to hit on a phone; "Next hand ›" says what it does.
  * A polite live region announces the result. Under it, "Review this hand" (§12.10) opens the
  * replay of the hand that just ended; leaving the table pauses the game, so the 3 s wait stops.
+ * On wide screens the link sits in the "Next hand ›" row, not under the card: the table there is
+ * only about 340 px tall, and a link row of its own would not fit above the hero's cards.
  */
 import { memo, type CSSProperties } from 'react';
 import { en } from '../../i18n/en.ts';
@@ -18,6 +20,8 @@ export interface HandEndBannerProps {
   onReview?: (() => void) | undefined;
   /** Landscape's right column (§12.5): less room, so less padding. */
   side?: boolean | undefined;
+  /** Wide screens (§12.5): the link shares the "Next hand ›" row (a card 22 px shorter). */
+  wide?: boolean | undefined;
   style?: CSSProperties | undefined;
   className?: string | undefined;
 }
@@ -27,12 +31,20 @@ export const HandEndBanner = memo(function HandEndBanner({
   onNext,
   onReview,
   side,
+  wide,
   style,
   className,
 }: HandEndBannerProps) {
   return (
     <div
-      className={[styles.holder, side === true && styles.side, className].filter(Boolean).join(' ')}
+      className={[
+        styles.holder,
+        side === true && styles.side,
+        wide === true && styles.wide,
+        className,
+      ]
+        .filter(Boolean)
+        .join(' ')}
       style={style}
     >
       <div role="status">
