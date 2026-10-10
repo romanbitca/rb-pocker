@@ -539,58 +539,66 @@ describe('the bots (§9.4)', () => {
     }
   });
 
-  it('a Hard or Expert TAG rarely re-raises a hand its rule folds (R20: once 25–65% of the time)', HEAVY, () => {
-    // Facing an open from under the gun, and the opener facing a 3-bet: the rule folds J♣6♦ and
-    // 9♠4♠, and the §8.9 fold-equity heuristic rates the re-raise at break-even or better.
-    const spots = [
-      sixMax(0, 'Jc 6d', [raise(3, 250), fold(4), fold(5)]),
-      sixMax(3, '9s 4s', [raise(3, 250), fold(4), fold(5), raise(0, 750), fold(1), fold(2)]),
-    ];
-    for (const obs of spots) {
-      for (const level of ['hard', 'expert'] as const) {
-        const tag = profileFor('tag', level);
-        let raised = 0;
-        for (let i = 0; i < 200; i++) {
-          const d = deliberate(obs, tag, seed(i));
-          expect(d.rule.action.type).toBe('fold');
-          if (d.decision.action.type === 'raise') raised++;
+  it(
+    'a Hard or Expert TAG rarely re-raises a hand its rule folds (R20: once 25–65% of the time)',
+    HEAVY,
+    () => {
+      // Facing an open from under the gun, and the opener facing a 3-bet: the rule folds J♣6♦ and
+      // 9♠4♠, and the §8.9 fold-equity heuristic rates the re-raise at break-even or better.
+      const spots = [
+        sixMax(0, 'Jc 6d', [raise(3, 250), fold(4), fold(5)]),
+        sixMax(3, '9s 4s', [raise(3, 250), fold(4), fold(5), raise(0, 750), fold(1), fold(2)]),
+      ];
+      for (const obs of spots) {
+        for (const level of ['hard', 'expert'] as const) {
+          const tag = profileFor('tag', level);
+          let raised = 0;
+          for (let i = 0; i < 200; i++) {
+            const d = deliberate(obs, tag, seed(i));
+            expect(d.rule.action.type).toBe('fold');
+            if (d.decision.action.type === 'raise') raised++;
+          }
+          expect(raised).toBeLessThan(20);
         }
-        expect(raised).toBeLessThan(20);
       }
-    }
-  });
+    },
+  );
 
-  it('limp mode limps an open raise the mix picked too (§9.4 step 2), never facing a raise', HEAVY, () => {
-    // A Maniac first in on the button with a hand it opens: in limp mode no pick is a raise.
-    const obs = sixMax(0, 'Kd 9s', [fold(3), fold(4), fold(5)]);
-    const maniac = profileFor('maniac', 'medium');
-    let limped = 0;
-    let raised = 0;
-    for (let i = 0; i < 300; i++) {
-      const d = deliberate(obs, maniac, seed(i));
-      const b = d.bot as NonNullable<typeof d.bot>;
-      const limpMode = mixDraws(seed(i)).limp < 1 - maniac.pfrRatio;
-      const kind = b.pick.action.type;
-      if (limpMode) {
-        expect(kind === 'raise' || kind === 'bet').toBe(false);
-        if (kind === 'call') limped++;
-      } else if (kind === 'raise') {
-        raised++;
+  it(
+    'limp mode limps an open raise the mix picked too (§9.4 step 2), never facing a raise',
+    HEAVY,
+    () => {
+      // A Maniac first in on the button with a hand it opens: in limp mode no pick is a raise.
+      const obs = sixMax(0, 'Kd 9s', [fold(3), fold(4), fold(5)]);
+      const maniac = profileFor('maniac', 'medium');
+      let limped = 0;
+      let raised = 0;
+      for (let i = 0; i < 300; i++) {
+        const d = deliberate(obs, maniac, seed(i));
+        const b = d.bot as NonNullable<typeof d.bot>;
+        const limpMode = mixDraws(seed(i)).limp < 1 - maniac.pfrRatio;
+        const kind = b.pick.action.type;
+        if (limpMode) {
+          expect(kind === 'raise' || kind === 'bet').toBe(false);
+          if (kind === 'call') limped++;
+        } else if (kind === 'raise') {
+          raised++;
+        }
       }
-    }
-    expect(limped).toBeGreaterThan(0);
-    expect(raised).toBeGreaterThan(0);
-    // Facing an open there is no limp mode: a 3-bet stays a 3-bet.
-    const facing = sixMax(0, 'Ad Ac', [raise(3, 250), fold(4), fold(5)]);
-    const kinds = new Set<string>();
-    for (let i = 0; i < 100; i++) {
-      const b = deliberate(facing, maniac, seed(i)).bot as NonNullable<
-        ReturnType<typeof deliberate>['bot']
-      >;
-      kinds.add(b.pick.action.type);
-    }
-    expect(kinds.has('raise')).toBe(true);
-  });
+      expect(limped).toBeGreaterThan(0);
+      expect(raised).toBeGreaterThan(0);
+      // Facing an open there is no limp mode: a 3-bet stays a 3-bet.
+      const facing = sixMax(0, 'Ad Ac', [raise(3, 250), fold(4), fold(5)]);
+      const kinds = new Set<string>();
+      for (let i = 0; i < 100; i++) {
+        const b = deliberate(facing, maniac, seed(i)).bot as NonNullable<
+          ReturnType<typeof deliberate>['bot']
+        >;
+        kinds.add(b.pick.action.type);
+      }
+      expect(kinds.has('raise')).toBe(true);
+    },
+  );
 
   it('defends against a bet: no fold when 1 − handPct ≤ MDF × defenseFactor (§9.4 step 4)', () => {
     // Top pair facing a half-pot bet: handPct is high, MDF 2/3: fold is out of the candidates.
