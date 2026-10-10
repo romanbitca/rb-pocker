@@ -92,17 +92,10 @@ import { updateSeatStats } from '../brain/opponentStats.ts';
 import { profileFor } from '../brain/profiles.ts';
 import type { BrainProfile, GradeResult } from '../brain/types.ts';
 import type { BrainReply, BrainRequest } from '../workers/protocol.ts';
+import { levelsOf, nextLevels, sameSeatLevels } from './botLevels.ts';
 import { EquityJobs } from './equityJobs.ts';
 import { coachKeyOf, finalHudEquity, HintJobs, type HintAsk } from './hintJobs.ts';
-import {
-  labelVisible,
-  LEVEL_RULES,
-  levelsOf,
-  nextLevels,
-  sameSeatLevels,
-  seatLevelOf,
-  summaryShows,
-} from './levels.ts';
+import { LEVEL_RULES, summaryShows } from './levels.ts';
 import { quizRolls, quizScore } from './quiz.ts';
 import {
   GRADE_ATTEMPTS,
@@ -112,7 +105,7 @@ import {
   type GradeOutcome,
 } from './grading.ts';
 import { addHand, type ReviewHand } from './review.ts';
-import { handEndViewOf } from './tableViews.ts';
+import { handEndViewOf, labelVisible, seatLevelOf } from './tableViews.ts';
 import {
   NO_SEAT_STATS,
   updateUi,

@@ -180,7 +180,6 @@ export function Setup({ initial, available, onStartTable, onBack, onOpenPrivacy 
               <LoadBoundary onError={() => setMoreOpen(false)}>
                 <Suspense fallback={null}>
                   <MoreOptionsPanel
-                    id={moreId}
                     speed={form.speed}
                     onSpeed={(speed) => update({ speed })}
                     botLevel={form.botLevel}

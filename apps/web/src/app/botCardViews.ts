@@ -11,8 +11,12 @@
  * §9.5 seat statistics (public: every player saw the same actions). A hole card is never in it.
  */
 import type { BotLevel, HandState, PersonalityId, SeatStats, TableState } from '../engine/types.ts';
-import { labelVisible, nextLevels, seatLevelOf } from './levels.ts';
+import { nextLevels } from './botLevels.ts';
 import type { AppState } from './store.ts';
+// ⚠️ The pods' level rules stay in tableViews.ts. This module read them from a small module of
+// their own once, and the bundler cut the whole store graph out of the entry chunk: initial JS
+// +3.3 KB and CSS +1.1 KB gzip (PLAN pitfall 47).
+import { labelVisible, seatLevelOf } from './tableViews.ts';
 
 /** How often a bot bets or raises after the flop, from what was seen (§9.3 "Bets often"). */
 export type SeenAggression = 'betsOften' | 'betsSometimes' | 'mostlyCalls';

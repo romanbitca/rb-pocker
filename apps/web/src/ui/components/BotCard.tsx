@@ -14,6 +14,7 @@
  */
 import { useId, type CSSProperties } from 'react';
 import { en } from '../../i18n/en.ts';
+import chips from '../screens/Screen.module.css';
 import { BOT_LEVEL_ORDER } from '../screens/setupForm.ts';
 import { formatChips } from '../format.ts';
 import type { BotCardView, BotLevelName } from '../views.ts';
@@ -103,9 +104,12 @@ function LevelPicker({
       <p id={legendId} className={s.levelLegend}>
         {en.botCard.level.legend}
       </p>
-      <div className={s.choices}>
+      <div className={`${chips.choices} ${s.picker}`}>
         {options.map((level) => (
-          <label key={level ?? 'table'} className={level === null ? s.choiceWide : s.choice}>
+          <label
+            key={level ?? 'table'}
+            className={level === null ? `${chips.choice} ${s.wide}` : chips.choice}
+          >
             <input
               type="radio"
               name={name}
@@ -113,7 +117,7 @@ function LevelPicker({
               checked={choice.own === level}
               onChange={() => onLevel(level)}
             />
-            <span className={s.face}>
+            <span className={`${chips.face} ${s.face}`}>
               {level === null
                 ? en.botCard.level.sameAsTable(en.levels.bot[choice.table])
                 : en.levels.bot[level]}
@@ -121,7 +125,7 @@ function LevelPicker({
           </label>
         ))}
       </div>
-      <p id={hintId} className={s.levelHint}>
+      <p id={hintId} className={chips.hint}>
         {en.botCard.level.hint}
       </p>
     </div>
