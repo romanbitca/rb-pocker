@@ -1,16 +1,34 @@
 /**
- * The coach levels as data (PLAN §10.2, chunk 6.4): what each level shows and does, row by row of
- * the §10.2 table. The controller (pause, Undo, the hand summary), the selectors (win badge, price
- * chip, draw chips, "By river", grade chips) and the UI (coach strip, rankings panel) all read it,
- * so a level never shows one thing in one place and another elsewhere. `tests/app/levels.test.ts`
- * holds it against the table.
+ * The level rules (PLAN §9.2, §9.3, §10, §10.2): the coach levels as data (chunk 6.4) and the bot
+ * levels of each seat (chunk 7.2). Pure; no timers, no store.
+ *
+ * **Coach levels (chunk 6.4).** What each level shows and does, row by row of the §10.2 table. The
+ * controller (pause, Undo, the hand summary), the selectors (win badge, price chip, draw chips,
+ * "By river", grade chips) and the UI (coach strip, rankings panel) all read it, so a level never
+ * shows one thing in one place and another elsewhere. `tests/app/levels.test.ts` holds it against
+ * the table.
  *
  * The level that counts is the one in force for the decision (§10: a change applies from the next
  * hero decision): the controller fixes it when the decision starts (`game.coachLevel`), and
  * `selectCoachLevel` falls back to the settings before the hero's first decision of a hand.
+ *
+ * **Bot levels (chunk 7.2).** Which level decides a seat, whether that level shows the bot's
+ * personality, and which levels the next hand is dealt at. The pods, the bot card, the observation
+ * the brain gets (`visiblePersonality`, `seatLevels`) and the controller all read these functions,
+ * so they cannot disagree.
+ *
+ * Per-seat overrides. A seat's level is its own override in `TableConfig.seatLevels`, else the
+ * table's `botLevel`. The table a hand is dealt from is never changed while the hand is played; a
+ * new level reaches the table through `withLevels` when the next hand is dealt, and the levels it
+ * takes are `nextLevels`: the settings' table level and the settings' per-seat overrides (the same
+ * way a new table level has always reached the table, §10).
  */
 import type { Grade } from '../brain/types.ts';
-import type { CoachLevel } from '../engine/types.ts';
+import type { BotLevel, CoachLevel, TableState } from '../engine/types.ts';
+import type { Settings } from '../persist/schema.ts';
+
+// ---------------------------------------------------------------------------------------------
+// Coach levels (chunk 6.4)
 
 /** The grades from best to worst (§8.9). */
 export const GRADE_ORDER: readonly Grade[] = ['best', 'good', 'inaccuracy', 'mistake', 'blunder'];
@@ -163,4 +181,68 @@ export function decisionScore(grades: readonly (Grade | null)[]): number | null 
     n++;
   }
   return n === 0 ? null : Math.round(sum / n);
+}
+
+// ---------------------------------------------------------------------------------------------
+// Bot levels, per seat (chunk 7.2)
+
+/** The level that decides a seat's play and label: its own override, else the table's (§9.3). */
+export function seatLevelOf(table: TableState, seat: number): BotLevel {
+  return table.config.seatLevels[seat] ?? table.config.botLevel;
+}
+
+/**
+ * Whether a bot at `level` shows its personality (§9.2 "Personality label visible"): Easy and
+ * Medium yes, Hard and Expert no ("Read their stats"). The one rule for the pod's badge, the bot
+ * card and the `visiblePersonality` that the brain sees.
+ */
+export function labelVisible(level: BotLevel): boolean {
+  return level === 'easy' || level === 'medium';
+}
+
+/**
+ * The level of every seat of `table`, index = seat (the hero's entry is the table level and is
+ * never used). These are the levels in force for a hand dealt from `table`, so the table a hand
+ * records (§14.3, `ReplayRecord.table`) holds them per seat.
+ */
+export function levelsOf(table: TableState): BotLevel[] {
+  return table.slots.map((_, seat) => seatLevelOf(table, seat));
+}
+
+/** A table level and the per-seat overrides that go with it (`TableConfig`'s two level fields). */
+export interface TableLevels {
+  botLevel: BotLevel;
+  /** Index = seat; null = the table's level; [0] (the hero) is always null. */
+  seatLevels: (BotLevel | null)[];
+}
+
+/**
+ * The levels the next hand at `table` is dealt at (§9.3, §10): the settings' table level and the
+ * settings' per-seat overrides, so a level picked on a bot's card, in Settings or in Setup is
+ * saved with the settings and followed by the table from the next hand.
+ *
+ * The settings' overrides are one per seat of the table they were made for (`Settings.players`,
+ * A.7). Should they belong to another seat count (a profile that does not match the saved table),
+ * the table keeps its own overrides rather than take some that belong to other seats.
+ */
+export function nextLevels(
+  settings: Pick<Settings, 'botLevel' | 'players' | 'seatLevels'>,
+  table: TableState,
+): TableLevels {
+  const seats = table.config.seatCount;
+  const own = settings.players === seats ? settings.seatLevels : table.config.seatLevels;
+  return {
+    botLevel: settings.botLevel,
+    seatLevels: Array.from({ length: seats }, (_, seat) =>
+      seat === 0 ? null : (own[seat] ?? null),
+    ),
+  };
+}
+
+/** Two lists of overrides are the same. */
+export function sameSeatLevels(
+  a: readonly (BotLevel | null)[],
+  b: readonly (BotLevel | null)[],
+): boolean {
+  return a.length === b.length && a.every((level, seat) => level === b[seat]);
 }

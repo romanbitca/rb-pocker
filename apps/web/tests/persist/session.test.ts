@@ -314,6 +314,75 @@ describe('persist/session discarding what has no usable table (§14.6)', () => {
   });
 });
 
+describe('persist/session with per-seat bot levels (§9.3, chunk 7.2)', () => {
+  /** The stored text of a mid-hand session whose table plays at Medium, with these overrides. */
+  function sessionWith(seatLevels: unknown[]): string {
+    return stored(midHandSession(), (c) => {
+      c.table.config.botLevel = 'medium';
+      c.table.config.seatLevels = seatLevels as typeof c.table.config.seatLevels;
+    });
+  }
+  const seats = midHandSession().table.config.seatCount;
+  const own = (...levels: ('easy' | 'medium' | 'hard' | 'expert' | null)[]) =>
+    Array.from({ length: seats }, (_, i) => levels[i] ?? null);
+
+  it('keeps the levels in force: the table of the hand in play comes back as it was saved', () => {
+    const original = bigSession();
+    original.table.config.botLevel = 'medium';
+    original.table.config.seatLevels = [
+      null,
+      'expert',
+      null,
+      'easy',
+      null,
+      'hard',
+      null,
+      null,
+      'medium',
+    ];
+    expect(isSessionState(original)).toBe(true);
+    const { load } = reload(original);
+    expect(load).toStrictEqual({ status: 'ok', session: original });
+    if (load.status === 'ok') {
+      expect(load.session.table.config.botLevel).toBe('medium');
+      expect(load.session.table.config.seatLevels).toEqual(original.table.config.seatLevels);
+    }
+  });
+
+  it('a table between hands keeps its levels too', () => {
+    const between = idleSession(tableFor(handAtStart({ stacks: [2000, 2000, 2000], button: 1 })));
+    between.table.config.seatLevels = [null, 'hard', null];
+    const { load } = reload(between);
+    expect(load).toStrictEqual({ status: 'ok', session: between });
+  });
+
+  it.each([
+    ['one level too few', (l: unknown[]) => l.slice(0, -1), 'session.table.config.seatLevels'],
+    ['one level too many', (l: unknown[]) => [...l, null], 'session.table.config.seatLevels'],
+    [
+      'a level for the hero',
+      (l: unknown[]) => ['hard', ...l.slice(1)],
+      'session.table.config.seatLevels[0]',
+    ],
+    [
+      'a level that is not one',
+      (l: unknown[]) => l.map((x, i) => (i === 1 ? 'legend' : x)),
+      'session.table.config.seatLevels[1]',
+    ],
+    [
+      'a level as a number',
+      (l: unknown[]) => l.map((x, i) => (i === 1 ? 3 : x)),
+      'session.table.config.seatLevels[1]',
+    ],
+  ])('%s: discarded, never thrown', (_, damage, problem) => {
+    const { fake, launch } = setup({ [KEY]: sessionWith(damage(own(null, 'hard', null, 'easy'))) });
+    const load = loadSession(launch(), OPTIONS);
+    expect(load.status).toBe('discarded');
+    if (load.status === 'discarded') expect(load.problem).toContain(problem);
+    expect(fake.data.has(KEY)).toBe(false);
+  });
+});
+
 describe('persist/session when storage fails (§14.6 rule 3, §14.9)', () => {
   it('missing localStorage: unavailable, no exception; saves keep the session in memory', () => {
     const store = createSafeStorage(() => null);
