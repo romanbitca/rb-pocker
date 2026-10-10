@@ -74,6 +74,8 @@ export interface HarnessOptions {
   hints?: boolean;
   /** Chunk 6.2: the grade port (default none: decisions are recorded ungraded at once). */
   grader?: Grader;
+  /** Chunk 6.4: open the end-of-hand summary when the coach level shows one. */
+  summaries?: boolean;
 }
 
 export function makeHarness(options: HarnessOptions = {}): Harness {
@@ -94,6 +96,7 @@ export function makeHarness(options: HarnessOptions = {}): Harness {
     ...(options.equity !== undefined && { equity: options.equity }),
     ...(options.hints !== undefined && { hints: options.hints }),
     ...(options.grader !== undefined && { grader: options.grader }),
+    ...(options.summaries !== undefined && { summaries: options.summaries }),
   });
   controller.boot();
   return {

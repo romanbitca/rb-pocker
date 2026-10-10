@@ -1,0 +1,180 @@
+/* The coach levels' lazy UI (PLAN §10.2, §10.3, §12.6, §12.9, §13.2; chunk 6.4) in one file, shared
+   by its chunks: the grade chip, the Advanced quiz, the hand summary and "Which hand wins?". The
+   focus ring is global.css's; the summary's buttons are Screen.module.css's (already loaded).
+   Every control is a 44 px tap target (§12.12); colour is never the only cue. */
+
+/* ---- Grade chip (F.4): the grade's colour on the mark and the border ---- */
+.chip {
+  --grade: var(--grade-best);
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 4px;
+  min-height: 28px;
+  padding: 2px 10px 2px 6px;
+  border: 2px solid var(--grade);
+  border-radius: 999px;
+  background: var(--surface);
+  font-size: 0.875rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.good {
+  --grade: var(--grade-good);
+}
+.inaccuracy {
+  --grade: var(--grade-slightly-off);
+}
+.mistake {
+  --grade: var(--grade-mistake);
+}
+.blunder {
+  --grade: var(--grade-big-mistake);
+}
+.mark {
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: var(--grade);
+  stroke-width: 2.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* ---- Shared ---- */
+.button {
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0 12px;
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-2);
+  background: var(--control-bg);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.button:active {
+  background: var(--control-bg-pressed);
+}
+.muted {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+.bold {
+  margin: 0;
+  font-weight: 700;
+}
+.nowrap {
+  white-space: nowrap;
+}
+
+/* ---- The Advanced quiz (§10.3), in the coach's place ---- */
+.quiz {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding: 4px max(8px, env(safe-area-inset-right)) 4px max(8px, env(safe-area-inset-left));
+}
+/* Compact (§12.3): over the bottom of the table, right above the hero's cards, like the tray. */
+.overlay {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + var(--hero-strip) + var(--hero-overlap));
+  left: 0;
+  border-top: 1px solid var(--control-border);
+  background: var(--surface);
+}
+.column,
+.panel {
+  padding-inline: 0;
+}
+.row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.grow {
+  flex: 1;
+  min-width: 0;
+}
+.choices {
+  display: grid;
+  grid-template-columns: repeat(var(--choices), minmax(0, 1fr));
+  gap: 6px;
+}
+/* The 280 px landscape column: two to a row. */
+.column .choices {
+  grid-template-columns: 1fr 1fr;
+}
+
+/* ---- The hand summary (§12.9) ---- */
+.summary {
+  display: grid;
+  gap: var(--space-3);
+}
+.summary h2 {
+  display: grid;
+  margin: 0;
+  font-size: 1.125rem;
+}
+.exam {
+  color: var(--accent);
+  font-size: 0.875rem;
+}
+.rows {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.rows li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px 8px;
+  padding: var(--space-2) 0;
+  border-top: 1px solid var(--control-border);
+}
+.rows li > :last-child:nth-child(3) {
+  flex-basis: 100%;
+}
+/* The buttons stay in view while the rows scroll (a landscape phone is 390 px tall). */
+.stick {
+  position: sticky;
+  bottom: 0;
+  padding-top: var(--space-2);
+  background: var(--surface);
+}
+
+/* ---- "Which hand wins?" (§13.2), inside the rankings panel ---- */
+.which {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0 0 var(--space-2);
+  padding: var(--space-2);
+  border: 1px solid var(--control-border);
+  border-radius: var(--radius-2);
+}
+.hand {
+  display: grid;
+  justify-items: start;
+  gap: 4px;
+  padding: 6px;
+  border-width: 2px;
+  border-color: var(--control-border);
+}
+.cards {
+  display: flex;
+  gap: 3px;
+}
+.winner {
+  border-color: var(--grade-best);
+}
+.picked {
+  box-shadow: 0 0 0 2px var(--accent);
+}

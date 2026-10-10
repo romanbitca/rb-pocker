@@ -10,6 +10,7 @@ import {
   sizeOf,
   slot,
   startTable,
+  tapNextHand,
 } from './game.ts';
 
 /**
@@ -77,7 +78,7 @@ async function nextHand(page: Page, point: string): Promise<void> {
       .locator('[role="dialog"] button, [role="alertdialog"] button', { hasText: /^Reload/ })
       .click();
   } else {
-    await page.locator('[data-hand-end]').click();
+    await tapNextHand(page);
   }
 }
 

@@ -267,7 +267,7 @@ describe('Setup: level cards (questions 3 and 4)', () => {
     coach: ['beginner', 'intermediate', 'advanced', 'exam'],
   };
 
-  it('Stage 5: Easy and Medium bots, Beginner and Intermediate coach; the rest say "Coming soon"', () => {
+  it('Easy and Medium bots, all four coach levels (6.4); Hard and Expert say "Coming soon"', () => {
     renderSetup();
     const bots = within(group('How good are the bots?')).getAllByRole(
       'radio',
@@ -284,8 +284,8 @@ describe('Setup: level cards (questions 3 and 4)', () => {
     expect(coach.map((r) => [r.value, r.checked, r.disabled])).toEqual([
       ['beginner', true, false],
       ['intermediate', false, false],
-      ['advanced', false, true],
-      ['exam', false, true],
+      ['advanced', false, false],
+      ['exam', false, false],
     ]);
     // The card text is the §10.1 / §12.2 text; the caption says why it cannot be picked.
     expect(bots.map((r) => r.labels?.[0]?.textContent)).toEqual([
@@ -297,8 +297,8 @@ describe('Setup: level cards (questions 3 and 4)', () => {
     expect(coach.map((r) => r.labels?.[0]?.textContent)).toEqual([
       'BeginnerFull help',
       'IntermediateHelp on tap',
-      'AdvancedMistakes onlyComing soon',
-      'ExamTest yourselfComing soon',
+      'AdvancedMistakes only',
+      'ExamTest yourself',
     ]);
   });
 
@@ -319,14 +319,14 @@ describe('Setup: level cards (questions 3 and 4)', () => {
     );
   });
 
-  it('a disabled card cannot be picked', () => {
+  it('a disabled card cannot be picked; Advanced and Exam can (6.4)', () => {
     const { onStartTable } = renderSetup();
     fireEvent.click(radio('How good are the bots?', /^Hard/));
     fireEvent.click(radio('How much help do you want?', /^Exam/));
     fireEvent.click(start());
     expect(onStartTable).toHaveBeenCalledWith(
       expect.objectContaining({ botLevel: 'easy' }),
-      'beginner',
+      'exam',
     );
   });
 
@@ -356,10 +356,18 @@ describe('Setup: level cards (questions 3 and 4)', () => {
   });
 
   it('a saved level that is not available yet opens as the first available one', () => {
-    renderSetup({ initial: { ...DEFAULTS, botLevel: 'expert', coachLevel: 'exam' } });
+    renderSetup({
+      initial: { ...DEFAULTS, botLevel: 'expert', coachLevel: 'exam' },
+      available: { bot: ['easy', 'medium'], coach: ['beginner', 'intermediate'] },
+    });
     expect(radio('How good are the bots?', /^Easy/).checked).toBe(true);
     expect(radio('How much help do you want?', /^Beginner/).checked).toBe(true);
     expect(start().disabled).toBe(false);
+  });
+
+  it('a saved Exam coach opens as Exam (6.4)', () => {
+    renderSetup({ initial: { ...DEFAULTS, coachLevel: 'exam' } });
+    expect(radio('How much help do you want?', /^Exam/).checked).toBe(true);
   });
 });
 

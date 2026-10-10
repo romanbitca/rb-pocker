@@ -44,6 +44,8 @@ export function startTableHarness(
     hints?: boolean;
     brain?: BrainClient;
     grader?: Grader;
+    /** Chunk 6.4: open the end-of-hand summary when the coach level shows one. */
+    summaries?: boolean;
   } = {},
 ): TableHarness {
   vi.useFakeTimers();
@@ -60,6 +62,7 @@ export function startTableHarness(
     seeds: fixedSeeds(options.seed ?? TABLE_SEED),
     ...(options.hints !== undefined && { hints: options.hints }),
     ...(options.grader !== undefined && { grader: options.grader }),
+    ...(options.summaries !== undefined && { summaries: options.summaries }),
   });
   controller.boot();
   const unhook = installBackHandler(window, appStore);

@@ -11,6 +11,7 @@ import {
   pcState,
   seedFor,
   sizeOf,
+  tapNextHand,
 } from './game.ts';
 
 // PLAN §9.3, §10, §12.1, §12.2 (chunk 5.10), in the real build: a tap on a seat opens that bot's
@@ -151,7 +152,7 @@ test.describe('the bot card', () => {
         continue;
       }
       if (mode === 'handEnd') {
-        await page.locator('[data-hand-end]').click();
+        await tapNextHand(page);
         continue;
       }
       await pod(page, 2).click();
@@ -271,13 +272,14 @@ test.describe('the level cards', () => {
     await expect(cards(page, coach).nth(0)).toBeChecked();
     for (const [group, open] of [
       [bots, [true, true, false, false]],
-      [coach, [true, true, false, false]],
+      [coach, [true, true, true, true]],
     ] as const) {
       for (const [i, enabled] of open.entries()) {
         await expect(cards(page, group).nth(i)).toBeEnabled({ enabled });
       }
     }
-    await expect(page.getByText('Coming soon')).toHaveCount(4);
+    // Hard and Expert bots (Stage 7); every coach level is open since chunk 6.4.
+    await expect(page.getByText('Coming soon')).toHaveCount(2);
     await pick(page, bots, 1);
     await pick(page, coach, 1);
     await page.getByRole('button', { name: 'Start game', exact: true }).click();
@@ -294,7 +296,7 @@ test.describe('the level cards', () => {
     await expect(cards(page, 'Bot level').nth(1)).toBeChecked();
     await expect(cards(page, 'Coach level').nth(1)).toBeChecked();
     await expect(cards(page, 'Bot level').nth(2)).toBeDisabled();
-    await expect(cards(page, 'Coach level').nth(3)).toBeDisabled();
+    await expect(cards(page, 'Coach level').nth(3)).toBeEnabled(); // Exam, since chunk 6.4
 
     // A new bot level is saved at once, and the hand in play keeps its table (§10).
     await pick(page, 'Bot level', 0);

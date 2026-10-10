@@ -9,8 +9,11 @@
  * accent background, a "You" badge and a second line with the hero's actual best five; rows above
  * say "beats you", rows below "you beat"; after a fold the row turns grey with "You folded".
  * Tapping a row shows its details (Appendix F.7).
+ *
+ * At Advanced and Exam (`whichWins`, §10.2, §13.2) a "Which hand wins?" button sits above the
+ * rows; it opens the quiz in place, from a lazy chunk loaded on the first tap.
  */
-import { memo, useId, useState, type Ref } from 'react';
+import { lazy, memo, Suspense, useId, useState, type Ref } from 'react';
 import { RANKINGS } from '../../data/rankings.ts';
 import { en } from '../../i18n/en.ts';
 import { byRiverCell } from '../equity.ts';
@@ -26,7 +29,12 @@ import {
 } from '../rankings.ts';
 import type { ByRiverView, HeroHandView } from '../views.ts';
 import { Card } from './Card.tsx';
+import { LoadBoundary } from './LoadBoundary.tsx';
 import styles from './RankingsList.module.css';
+
+const WhichHandWins = lazy(() =>
+  import('./WhichHandWins.tsx').then((m) => ({ default: m.WhichHandWins })),
+);
 
 export interface RankingsListProps {
   hero: HeroHandView | null;
@@ -38,6 +46,8 @@ export interface RankingsListProps {
   currentRowRef?: Ref<HTMLLIElement> | undefined;
   /** The "By river" column (§13.2); null or absent = no column. */
   byRiver?: ByRiverView | null | undefined;
+  /** The "Which hand wins?" button (Advanced and Exam, §10.2). */
+  whichWins?: boolean | undefined;
 }
 
 const join = (...names: (string | false | null | undefined)[]): string =>
@@ -72,9 +82,11 @@ export const RankingsList = memo(function RankingsList({
   showTips = true,
   currentRowRef,
   byRiver = null,
+  whichWins = false,
 }: RankingsListProps) {
   const [openRow, setOpenRow] = useState<number | null>(null);
   const [info, setInfo] = useState(false);
+  const [quiz, setQuiz] = useState(false);
   const infoId = useId();
   const pulses = useImprovementPulse(hero);
   return (
@@ -109,6 +121,23 @@ export const RankingsList = memo(function RankingsList({
           {en.rankings.byRiverInfo}
         </p>
       )}
+      {whichWins &&
+        (quiz ? (
+          <LoadBoundary onError={() => setQuiz(false)}>
+            <Suspense fallback={null}>
+              <WhichHandWins onClose={() => setQuiz(false)} />
+            </Suspense>
+          </LoadBoundary>
+        ) : (
+          <button
+            type="button"
+            className={styles.whichWins}
+            onClick={() => setQuiz(true)}
+            data-which-wins-open=""
+          >
+            {en.rankings.whichWins}
+          </button>
+        ))}
       <ol className={styles.rows}>
         {RANKINGS.map((row, i) => {
           const status = rowStatus(i, hero);

@@ -24,10 +24,17 @@ import type { EquityResult, HandAnalysis } from '../analysis/types.ts';
 import type { Explanation } from '../brain/explain.ts';
 import type { Decision } from '../brain/types.ts';
 import type { Card } from '../core/cards.ts';
-import type { HandState, LegalActions, PlayerAction, TableState } from '../engine/types.ts';
+import type {
+  CoachLevel,
+  HandState,
+  LegalActions,
+  PlayerAction,
+  TableState,
+} from '../engine/types.ts';
 import { defaultSettings } from '../persist/schema.ts';
 import type { DecisionRecord, Settings } from '../persist/schema.ts';
-import { heroDecisionKey } from './coachViews.ts';
+import { heroDecisionKey, levelInForce } from './coachViews.ts';
+import { choiceCount, quizQuestions } from './quiz.ts';
 import { UNDO_POLICY, type FeedbackView } from './undo.ts';
 import {
   currentScreen,
@@ -76,6 +83,27 @@ export * from './botCardViews.ts';
 export * from './coachViews.ts';
 // Undo and the feedback card (§10.2, §11, chunk 6.2): the level rules and the card's shapes.
 export { UNDO_POLICY, type FeedbackView, type MoveView, type UndoPolicy } from './undo.ts';
+// "Which hand wins?" (§13.2): two random hands that do not tie (the quiz is a lazy chunk).
+export { dealPair, type WhichPair } from './whichWins.ts';
+// The coach levels as data (§10.2, chunk 6.4) and the Advanced quiz (§10.3).
+export {
+  atLeast,
+  chipShows,
+  decisionScore,
+  LEVEL_RULES,
+  summaryShows,
+  type LevelRules,
+} from './levels.ts';
+export {
+  choiceCount,
+  NEED_BANDS,
+  quizQuestions,
+  quizScore,
+  rightAnswers,
+  WIN_BANDS,
+  type QuizQuestion,
+  type QuizScore,
+} from './quiz.ts';
 
 // ---------------------------------------------------------------------------------------------
 // Appendix A.8 (the controller's modes and gates; `app/controller.ts` re-exports them)
@@ -180,6 +208,13 @@ export interface GameSlice {
    * (§12.6) and the hand summary (6.3) read them.
    */
   decisions: readonly DecisionRecord[];
+  /**
+   * The coach level in force (§10, chunk 6.4): fixed when a hero decision starts, so a change in
+   * Settings applies from the next decision; it stays the latest decision's until the hand ends.
+   * Null before the hero's first decision of the hand: the settings' level is in force then
+   * (`selectCoachLevel`).
+   */
+  coachLevel: CoachLevel | null;
 }
 
 export interface Diagnostics {
@@ -290,10 +325,25 @@ export interface CoachSlice {
    * Beginner, opening it marks the decision as helped (stats, Stage 6).
    */
   opened: string | null;
+  /**
+   * The Advanced quiz of a decision (§10.3, chunk 6.4): written by the hint jobs when they ask
+   * about a decision that rolled one (null: this decision has none), then by the `quizAnswer` and
+   * `quizSkip` commands.
+   */
+  quiz: CoachQuiz | null;
+}
+
+/** One decision's quiz: its answers so far (indices into each question's choices, in order). */
+export interface CoachQuiz {
+  /** `coachKeyOf(hand)` of the decision. */
+  readonly key: string;
+  readonly answers: readonly number[];
+  /** "Skip": the quiz ends; the answers given so far still count (A.7 `quiz`). */
+  readonly skipped: boolean;
 }
 
 export function initialCoach(): CoachSlice {
-  return { key: null, status: 'idle', decision: null, explanation: null, opened: null };
+  return { key: null, status: 'idle', decision: null, explanation: null, opened: null, quiz: null };
 }
 
 export interface UiSlice {
@@ -402,9 +452,14 @@ export type GameCommand =
 
 /**
  * Commands the store applies to the `coach` slice itself: the player opened the hint of the
- * hero's decision ("Hint", §10.2; the coach sheet). Nothing happens when it is not the hero's turn.
+ * hero's decision ("Hint", §10.2; the coach sheet), answered the Advanced quiz's question or
+ * skipped the quiz (§10.3). Nothing happens when it is not the hero's turn, or there is no quiz.
  */
-export type CoachCommand = { type: 'showHint' };
+export type CoachCommand =
+  | { type: 'showHint' }
+  /** The answer to the quiz's next question: an index into its choices. */
+  | { type: 'quizAnswer'; choice: number }
+  | { type: 'quizSkip' };
 
 export type Command = UiCommand | GameCommand | CoachCommand | ReviewCommand;
 
@@ -423,16 +478,43 @@ const UI_COMMANDS: ReadonlySet<string> = new Set([
 
 export const isUiCommand = (cmd: Command): cmd is UiCommand => UI_COMMANDS.has(cmd.type);
 
-export const isCoachCommand = (cmd: Command): cmd is CoachCommand => cmd.type === 'showHint';
+export const isCoachCommand = (cmd: Command): cmd is CoachCommand =>
+  cmd.type === 'showHint' || cmd.type === 'quizAnswer' || cmd.type === 'quizSkip';
 
-/** `showHint`: marks the hero's current decision as opened; `coach` itself when nothing changes. */
-export function reduceCoach(s: Pick<AppState, 'game' | 'coach'>, cmd: CoachCommand): CoachSlice {
-  switch (cmd.type) {
-    case 'showHint': {
-      const key = heroDecisionKey(s.game.mode, s.game.hand, s.game.legal);
-      return key === null || s.coach.opened === key ? s.coach : { ...s.coach, opened: key };
-    }
+/**
+ * `showHint`: marks the hero's current decision as opened. `quizAnswer`, `quizSkip`: the quiz of
+ * the hero's current decision, while it asks (Advanced, the hint ready, not finished or skipped).
+ * Returns `coach` itself when nothing changes.
+ */
+export function reduceCoach(
+  s: Pick<AppState, 'game' | 'coach' | 'settings'>,
+  cmd: CoachCommand,
+): CoachSlice {
+  const key = heroDecisionKey(s.game.mode, s.game.hand, s.game.legal);
+  if (key === null) return s.coach;
+  if (cmd.type === 'showHint') {
+    return s.coach.opened === key ? s.coach : { ...s.coach, opened: key };
   }
+  const { coach } = s;
+  const quiz = coach.quiz;
+  if (
+    levelInForce(s) !== 'advanced' ||
+    quiz === null ||
+    quiz.key !== key ||
+    quiz.skipped ||
+    coach.key !== key ||
+    coach.status !== 'ready' ||
+    coach.decision === null
+  ) {
+    return coach;
+  }
+  const questions = quizQuestions(coach.decision);
+  const q = questions[quiz.answers.length];
+  if (q === undefined) return coach; // finished: the result shows until the hero acts
+  if (cmd.type === 'quizSkip') return { ...coach, quiz: { ...quiz, skipped: true } };
+  const { choice } = cmd;
+  if (!Number.isSafeInteger(choice) || choice < 0 || choice >= choiceCount(q)) return coach;
+  return { ...coach, quiz: { ...quiz, answers: [...quiz.answers, choice] } };
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -467,6 +549,7 @@ export function initialGame(): GameSlice {
     canUndo: false,
     feedback: null,
     decisions: [],
+    coachLevel: null,
   };
 }
 
@@ -663,11 +746,12 @@ export const selectCanUndo = (s: AppState): boolean => s.game.canUndo;
 export const selectFeedback = (s: AppState): FeedbackView | null => s.game.feedback;
 export const selectDecisions = (s: AppState): readonly DecisionRecord[] => s.game.decisions;
 /**
- * The toolbar Undo (§10.2, §12.3): 'hidden' unless the coach level shows it (Beginner and
- * Intermediate), then 'enabled' when Undo is possible, else 'disabled' (shown, not hidden).
+ * The toolbar Undo (§10.2, §12.3): 'hidden' unless the coach level in force shows it (Beginner and
+ * Intermediate), then 'enabled' when Undo is possible, else 'disabled' (shown, not hidden). The
+ * level is the latest decision's (§10), the one Undo would take back.
  */
 export const selectUndoButton = (s: AppState): 'hidden' | 'disabled' | 'enabled' =>
-  UNDO_POLICY[s.settings.coachLevel].undo !== 'toolbar'
+  UNDO_POLICY[levelInForce(s)].undo !== 'toolbar'
     ? 'hidden'
     : s.game.canUndo
       ? 'enabled'

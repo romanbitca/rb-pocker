@@ -31,6 +31,7 @@ import type {
 } from '../engine/types.ts';
 import type { DecisionRecord, HandMeta, UndoSnapshot } from '../persist/schema.ts';
 import type { EquitySlice } from './store.ts';
+import { atLeast, GRADE_ORDER, LEVEL_RULES } from './levels.ts';
 
 /** The hero's seat (§0.3). */
 const HERO = 0;
@@ -69,21 +70,25 @@ export interface UndoPolicy {
   pauseFrom: Grade | null;
 }
 
+/** The §10.2 rows "Pause + Undo offer" and "Toolbar Undo" (`app/levels.ts`, chunk 6.4). */
 export const UNDO_POLICY: Readonly<Record<CoachLevel, UndoPolicy>> = {
-  beginner: { undo: 'toolbar', pauseFrom: 'inaccuracy' },
-  intermediate: { undo: 'toolbar', pauseFrom: 'mistake' },
-  advanced: { undo: 'feedback', pauseFrom: 'mistake' },
-  exam: { undo: 'none', pauseFrom: null },
+  beginner: policyOf('beginner'),
+  intermediate: policyOf('intermediate'),
+  advanced: policyOf('advanced'),
+  exam: policyOf('exam'),
 };
 
-/** The grades from best to worst (§8.9). */
-export const GRADE_ORDER: readonly Grade[] = ['best', 'good', 'inaccuracy', 'mistake', 'blunder'];
+function policyOf(level: CoachLevel): UndoPolicy {
+  const { undo, pauseFrom } = LEVEL_RULES[level];
+  return { undo, pauseFrom };
+}
+
+export { GRADE_ORDER };
 
 /** §11.1: this grade pauses the game with the feedback card at this level. */
 export function pausesAt(level: CoachLevel, grade: Grade | null): boolean {
   const from = UNDO_POLICY[level].pauseFrom;
-  if (grade === null || from === null) return false;
-  return GRADE_ORDER.indexOf(grade) >= GRADE_ORDER.indexOf(from);
+  return from !== null && atLeast(grade, from);
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -109,6 +114,11 @@ export interface DecisionFacts {
   need: number | null;
   /** The hint was on show (Beginner) or opened (§10.2 "Counts as on your own"). */
   hintSeen: boolean;
+  /**
+   * The Advanced quiz of this decision (§10.3): its score over the questions answered; null when
+   * there was none, or it was skipped before the first answer.
+   */
+  quiz?: { correct: number; of: number } | null;
 }
 
 /** A.7: the record of a decision, graded or not (`result` null: grading failed twice, r5). */
@@ -125,7 +135,7 @@ export function decisionRecord(f: DecisionFacts, result: GradeResult | null): De
     hintSeen: f.hintSeen,
     undone: false,
     leak: result?.leak ?? null,
-    quiz: null,
+    quiz: f.quiz ?? null,
   };
 }
 
