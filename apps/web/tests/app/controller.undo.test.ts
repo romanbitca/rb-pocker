@@ -29,6 +29,7 @@ import type {
   ObserveExtras,
   PlayerAction,
   ReplayRecord,
+  SeatStats,
 } from '../../src/engine/types.ts';
 import type { SessionState } from '../../src/persist/schema.ts';
 import { createSafeStorage, STORAGE_KEYS } from '../../src/persist/storage.ts';
@@ -752,6 +753,40 @@ describe('the session (§11.3 r7)', () => {
     expect(second.state().game.mode).not.toBe('feedback');
     expect(second.state().game.mode).not.toBe('grading');
     expect(second.state().game.canUndo).toBe(true);
+  });
+
+  it('the grade asked again after a reload carries the saved seat statistics (§9.5)', async () => {
+    const backend = new FakeStorage();
+    const first = launch(backend, stubGrader({ answer: () => 'never' }));
+    first.dispatch({ type: 'play' });
+    await toHeroTurn(first);
+    first.dispatch({ type: 'act', action: passive(legalOf(first)) });
+    expect(first.state().game.mode).toBe('grading');
+    first.controller.dispose();
+
+    // As if earlier hands had been played: the saved session holds numbers for the bots' seats.
+    const seen: SeatStats = {
+      hands: 12,
+      vpip: [6, 12],
+      pfr: [3, 12],
+      threeBet: [1, 10],
+      foldTo3bet: [2, 4],
+      cbet: [2, 3],
+      foldToCbet: [1, 4],
+      wtsd: [3, 6],
+      aggActions: 5,
+      passiveActions: 7,
+    };
+    const session = stored(backend);
+    session.seatStats = session.seatStats.map((s, seat) => (seat === HERO ? s : seen));
+    backend.data.set(STORAGE_KEYS.session, JSON.stringify(session));
+
+    // The late grade is asked at boot, with the observation the decision had: the same numbers.
+    const grader = stubGrader({ answer: () => 'mistake' });
+    launch(backend, grader);
+    expect(grader.asks).toHaveLength(1);
+    expect(grader.asks[0]?.obs.seatStats).toEqual(session.seatStats);
+    expect(session.seatStats.slice(1).every((s) => s === seen)).toBe(true);
   });
 });
 

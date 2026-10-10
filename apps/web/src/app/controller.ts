@@ -1748,6 +1748,16 @@ export class TableController {
   /** A saved session back in play (§14.5): exactly its table, hand and inputs. */
   private resume(session: SessionState): void {
     this.sessionStart = session.sessionStart;
+    const t = session.table;
+    // §9.5: the saved statistics, so a resumed hand has the same observations (and hints); the
+    // hero model the profile holds when the session has none for the hero. They come first: the
+    // grade that `resumeDecision` asks again below is made from the decision's observation.
+    const stats: Record<string, SeatStats> = { ...heroOnly(this.seatStats) };
+    t.slots.forEach((slot, i) => {
+      const s = session.seatStats[i];
+      if (s !== null && s !== undefined) stats[slot.playerId] = s;
+    });
+    this.seatStats = stats;
     if (session.hand === null) {
       this.table = null;
       this.hand = null;
@@ -1762,15 +1772,6 @@ export class TableController {
       this.undoSnapshot = session.undoSnapshot;
       this.resumeDecision();
     }
-    const t = session.table;
-    // §9.5: the saved statistics, so a resumed hand has the same observations (and hints); the
-    // hero model the profile holds when the session has none for the hero.
-    const stats: Record<string, SeatStats> = { ...heroOnly(this.seatStats) };
-    t.slots.forEach((slot, i) => {
-      const s = session.seatStats[i];
-      if (s !== null && s !== undefined) stats[slot.playerId] = s;
-    });
-    this.seatStats = stats;
     this.handSeqFloor = Math.max(
       this.handSeqFloor,
       t.nextHandSeq,
