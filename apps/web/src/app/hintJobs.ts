@@ -100,11 +100,15 @@ export class HintJobs {
     this.send(ask);
   }
 
-  /** "Tap to try again" (§12.11): asks again for the current decision. */
+  /**
+   * "Tap to try again" (§12.11): asks again for the current decision. A worker that has failed for
+   * good (§12.14) is started again first: [Try again] recreates it.
+   */
   retry(): void {
     const ask = this.asked;
     if (ask === null) return;
     this.cancelJob();
+    if (this.brain.status === 'failed') this.brain.retry();
     this.send(ask);
   }
 

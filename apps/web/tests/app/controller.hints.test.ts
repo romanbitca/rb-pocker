@@ -155,6 +155,23 @@ describe('the hint at the hero`s turn', () => {
     expect(brain.hints).toEqual([]);
   });
 
+  it('Try again after the worker failed for good starts a new worker and asks again (§12.14)', async () => {
+    // The first start and its one retry fail: the client has failed (as after two kills).
+    const brain = coachBrain({ failSpawns: 2 });
+    expect(brain.client.status).toBe('failed');
+    const h = makeHarness({ brain: brain.client, settings, hints: true });
+    h.dispatch({ type: 'play' });
+    const hand = await toHeroTurn(h);
+    await flush();
+    expect(h.state().coach).toMatchObject({ key: coachKeyOf(hand), status: 'failed' });
+
+    h.dispatch({ type: 'retryCoach' }); // "Coach is not available. Tap to try again."
+    await flush();
+    expect(brain.client.status).toBe('ready');
+    expect(h.state().coach).toMatchObject({ key: coachKeyOf(hand), status: 'ready' });
+    expect(brain.hints).toHaveLength(1);
+  });
+
   it('off by default: a controller without hints posts none', async () => {
     const brain = coachBrain();
     const h = makeHarness({ brain: brain.client, settings });
