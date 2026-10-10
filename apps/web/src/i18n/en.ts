@@ -109,6 +109,22 @@ export const en = {
     bots: { question: 'How good are the bots?' },
     coach: { question: 'How much help do you want?' },
     start: 'Start game',
+    /**
+     * "More options" (§12.2, chunk 7.2): bot speed (the Settings words), a level for each bot, and
+     * the four-colour deck. While it is closed, a line says how many bots have a level of their own.
+     */
+    more: {
+      title: 'More options',
+      ownLevels: (bots: number) =>
+        bots === 1 ? '1 bot has its own level.' : `${bots} bots have their own level.`,
+      bots: {
+        legend: "Set each bot's level",
+        hint: 'Bots are numbered clockwise, from your left.',
+        bot: (n: number) => `Bot ${n}`,
+        sameAsTable: (level: string) => `Same as table (${level})`,
+      },
+      fourColour: { label: 'Four-colour cards', hint: 'Each suit has its own colour.' },
+    },
   },
 
   /** Settings: the Game section (PLAN §12.1; §18 Stages 3 and 5). Later stages add rows and sections. */
@@ -117,7 +133,15 @@ export const en = {
     game: 'Game',
     /** The two level rows are the Setup cards (§10, §12.1); when a change starts is in the hint. */
     coachLevel: { label: 'Coach level', hint: 'Changes start with your next decision.' },
-    botLevel: { label: 'Bot level', hint: 'Changes start with the next hand.' },
+    botLevel: {
+      label: 'Bot level',
+      hint: 'Changes start with the next hand.',
+      /** Added under the hint while some bots have a level of their own (§9.3, chunk 7.2). */
+      own: (bots: number) =>
+        bots === 1
+          ? '1 bot has its own level. Tap that bot at the table to change it.'
+          : `${bots} bots have their own level. Tap a bot at the table to change it.`,
+    },
     speed: {
       label: 'Speed',
       hint: 'How fast the bots play and the cards move.',
@@ -340,6 +364,12 @@ export const en = {
     /** Joins the parts of the stats line. */
     separator: ' · ',
     handsSeen: (hands: string) => `Hands seen: ${hands}`,
+    /** The level picker of the per-seat override (§9.3, chunk 7.2). */
+    level: {
+      legend: "This bot's level",
+      sameAsTable: (level: string) => `Same as table (${level})`,
+      hint: 'Changes start with the next hand.',
+    },
   },
 
   /** Seat pods (PLAN §12.4, §12.12). */

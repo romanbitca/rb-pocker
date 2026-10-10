@@ -1,0 +1,45 @@
+/* Setup's "More options" (PLAN §12.2, chunk 7.2). Chips, switches and sections are Screen.module.css. */
+
+.options {
+  display: grid;
+  gap: var(--space-5);
+}
+
+/* "Set each bot's level": a label and a select on each row. */
+.rows {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.rowLabel {
+  flex: none;
+  min-width: 4.5rem;
+  font-weight: 600;
+}
+
+/* 16 px text: iOS zooms into smaller fields (pitfall 30). */
+.select {
+  flex: 1;
+  min-width: var(--tap-min);
+  min-height: var(--tap-min);
+  padding: 0 var(--space-3);
+  border: 2px solid var(--muted);
+  border-radius: var(--radius-2);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 16px;
+  touch-action: manipulation;
+}
+
+.select:focus-visible {
+  border-color: var(--accent);
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}

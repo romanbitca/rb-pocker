@@ -36,7 +36,9 @@ const DEFAULTS: SetupValues & GameSettings = {
   bb: 20,
   botLevel: 'easy',
   coachLevel: 'beginner',
+  seatLevels: [null, null, null, null, null, null],
   speed: 'normal',
+  fourColour: true,
   autoNext: true,
   amounts: 'chips',
 };

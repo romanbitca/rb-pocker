@@ -177,6 +177,52 @@ describe('Settings: coach level and bot level (PLAN §10, §12.1)', () => {
     expect(hint('Bot level')).toBe('Changes start with the next hand.');
   });
 
+  describe('bots with a level of their own (§9.3, chunk 7.2)', () => {
+    const hintOf = () =>
+      document.getElementById(
+        screen.getByRole('group', { name: 'Bot level' }).getAttribute('aria-describedby') ?? '',
+      )?.textContent;
+    const withOwn = (ownLevels?: number) => {
+      const props = {
+        settings: GAME,
+        available: AVAILABLE_LEVELS,
+        onChangeSettings: vi.fn(),
+        onBack: vi.fn(),
+        ownLevels,
+      };
+      return render(<Settings {...props} />);
+    };
+
+    it('says nothing while no bot has one', () => {
+      withOwn(0);
+      expect(hintOf()).toBe('Changes start with the next hand.');
+      cleanup();
+      withOwn(undefined);
+      expect(hintOf()).toBe('Changes start with the next hand.');
+    });
+
+    it('says how many do, and where to change them', () => {
+      withOwn(1);
+      expect(hintOf()).toBe(
+        'Changes start with the next hand. 1 bot has its own level. Tap that bot at the table to change it.',
+      );
+      cleanup();
+      withOwn(3);
+      expect(hintOf()).toBe(
+        'Changes start with the next hand. 3 bots have their own level. Tap a bot at the table to change it.',
+      );
+    });
+
+    it('the Coach level row is not touched', () => {
+      withOwn(2);
+      expect(
+        document.getElementById(
+          screen.getByRole('group', { name: 'Coach level' }).getAttribute('aria-describedby') ?? '',
+        )?.textContent,
+      ).toBe('Changes start with your next decision.');
+    });
+  });
+
   it('later stages open more cards through `available`', () => {
     const { onChangeSettings } = renderSettings(GAME, {
       bot: ['easy', 'medium', 'hard', 'expert'],

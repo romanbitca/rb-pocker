@@ -43,13 +43,17 @@ const card = (extra: Partial<BotCardView> = {}): BotCardView => ({
   personality: 'rock',
   stack: 1250,
   seen: null,
+  nextLevel: { own: null, table: 'easy' },
   ...extra,
 });
 
 function renderCard(extra: Partial<BotCardView> = {}, props: Partial<BotCardProps> = {}) {
   const onClose = vi.fn();
-  const view = render(<BotCard card={card(extra)} onClose={onClose} {...props} />);
-  return { onClose, ...view };
+  const onLevel = vi.fn<BotCardProps['onLevel']>();
+  const view = render(
+    <BotCard card={card(extra)} onLevel={onLevel} onClose={onClose} {...props} />,
+  );
+  return { onClose, onLevel, ...view };
 }
 
 const sheet = () => screen.getByRole('dialog');
@@ -189,9 +193,89 @@ describe('BotCard closing and focus', () => {
     opener.remove();
   });
 
-  it('✕ is at least 44×44 px (§12.12), and it is the only control', () => {
+  it('✕ and the five level choices are at least 44×44 px (§12.12), and they are the only controls', () => {
     const { container } = renderCard();
-    expect(controlCount(container)).toBe(1);
+    expect(controlCount(container)).toBe(1 + 5);
     expect(smallTargets(container, () => false)).toEqual([]);
+  });
+});
+
+describe('BotCard level picker (§9.3 per-seat override, chunk 7.2)', () => {
+  const picker = () => within(sheet()).getByRole('group', { name: "This bot's level" });
+  const choices = () => within(picker()).getAllByRole('radio') as HTMLInputElement[];
+
+  it('is a group of five radios: Same as table (the table level), then Easy to Expert', () => {
+    renderCard({ nextLevel: { own: null, table: 'medium' } });
+    expect(choices().map((r) => [r.value, r.labels?.[0]?.textContent])).toEqual([
+      ['', 'Same as table (Medium)'],
+      ['easy', 'Easy'],
+      ['medium', 'Medium'],
+      ['hard', 'Hard'],
+      ['expert', 'Expert'],
+    ]);
+    expect(within(picker()).getByText('Changes start with the next hand.')).toBeTruthy();
+  });
+
+  it('has exactly one choice checked: the bot’s own level, or "Same as table"', () => {
+    const checked = () => choices().map((r) => r.checked);
+    const { rerender, onClose, onLevel } = renderCard({ nextLevel: { own: null, table: 'easy' } });
+    expect(checked()).toEqual([true, false, false, false, false]);
+    const again = (own: BotCardView['nextLevel']['own']) =>
+      rerender(
+        <BotCard
+          card={card({ nextLevel: { own, table: 'easy' } })}
+          onLevel={onLevel}
+          onClose={onClose}
+        />,
+      );
+    again('easy');
+    expect(checked()).toEqual([false, true, false, false, false]);
+    again('expert');
+    expect(checked()).toEqual([false, false, false, false, true]);
+  });
+
+  it('a pick is sent at once: a level, or null for "Same as table"', () => {
+    const { onLevel } = renderCard({ nextLevel: { own: 'hard', table: 'easy' } });
+    fireEvent.click(within(picker()).getByRole('radio', { name: 'Expert' }));
+    expect(onLevel).toHaveBeenLastCalledWith('expert');
+    fireEvent.click(within(picker()).getByRole('radio', { name: 'Same as table (Easy)' }));
+    expect(onLevel).toHaveBeenLastCalledWith(null);
+    fireEvent.click(within(picker()).getByRole('radio', { name: 'Medium' }));
+    expect(onLevel).toHaveBeenLastCalledWith('medium');
+    expect(onLevel).toHaveBeenCalledTimes(3);
+  });
+
+  it('is a controlled group: nothing changes until the card is given the new level', () => {
+    renderCard({ nextLevel: { own: null, table: 'easy' } });
+    fireEvent.click(within(picker()).getByRole('radio', { name: 'Hard' }));
+    expect(choices()[0]?.checked).toBe(true);
+    expect(choices()[3]?.checked).toBe(false);
+  });
+
+  it('shows at every level: the personality card and the unknown-style card both have it', () => {
+    for (const personality of [...PERSONALITIES, null]) {
+      const { unmount } = renderCard({ personality });
+      expect(choices()).toHaveLength(5);
+      unmount();
+    }
+  });
+
+  it('"Same as table" names the table level, not the bot’s own', () => {
+    renderCard({ nextLevel: { own: 'expert', table: 'hard' } });
+    expect(choices()[0]?.labels?.[0]?.textContent).toBe('Same as table (Hard)');
+  });
+
+  it('tells nothing the pod does not: the hint names no personality and no hole card', () => {
+    renderCard({ personality: null, nextLevel: { own: 'expert', table: 'easy' } });
+    for (const personality of PERSONALITIES) {
+      const [label, description, tip] = F6[personality];
+      for (const text of [label, description, tip]) expect(sheet().textContent).not.toContain(text);
+    }
+  });
+
+  it('is one radio group (arrow keys move through it), and the focus still starts on ✕', () => {
+    renderCard();
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Close' }));
+    expect(new Set(choices().map((r) => r.name)).size).toBe(1); // one radio group
   });
 });

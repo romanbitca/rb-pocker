@@ -41,7 +41,7 @@ import { ScreenSwitcher } from './screens/ScreenSwitcher.tsx';
 import screenStyles from './screens/Screen.module.css';
 import { Settings } from './screens/Settings.tsx';
 import { Setup } from './screens/Setup.tsx';
-import { AVAILABLE_LEVELS } from './screens/setupForm.ts';
+import { AVAILABLE_LEVELS, ownLevelCount, type MoreChoices } from './screens/setupForm.ts';
 import { Table } from './screens/Table.tsx';
 import { Welcome } from './screens/Welcome.tsx';
 
@@ -90,8 +90,11 @@ function SetupScreen() {
     bb: s.settings.bb,
     botLevel: s.settings.botLevel,
     coachLevel: s.settings.coachLevel,
+    seatLevels: s.settings.seatLevels,
+    speed: s.settings.speed,
+    fourColour: s.settings.fourColour,
   }));
-  const start = (config: TableConfig, coachLevel: CoachLevel) =>
+  const start = (config: TableConfig, coachLevel: CoachLevel, more: MoreChoices) =>
     dispatch({
       type: 'newTable',
       setup: {
@@ -102,6 +105,8 @@ function SetupScreen() {
         botLevel: config.botLevel,
         seatLevels: config.seatLevels,
         coachLevel,
+        speed: more.speed,
+        fourColour: more.fourColour,
       },
     });
   return (
@@ -123,9 +128,12 @@ function SettingsScreen() {
     autoNext: s.settings.autoNext,
     amounts: s.settings.amounts,
   }));
+  // How many bots have a level of their own (§9.3): the Bot level row says so.
+  const ownLevels = useAppStore((s) => ownLevelCount(s.settings.seatLevels));
   return (
     <Settings
       settings={settings}
+      ownLevels={ownLevels}
       available={AVAILABLE_LEVELS}
       onChangeSettings={(patch) => dispatch({ type: 'settings', patch })}
       onBack={() => dispatch({ type: 'back' })}
@@ -269,7 +277,11 @@ function BotCardOverlay() {
   return (
     <LoadBoundary onError={close}>
       <Suspense fallback={null}>
-        <BotCardSheet card={card} onClose={close} />
+        <BotCardSheet
+          card={card}
+          onLevel={(level) => dispatch({ type: 'seatLevel', seat: card.seat, level })}
+          onClose={close}
+        />
       </Suspense>
     </LoadBoundary>
   );
