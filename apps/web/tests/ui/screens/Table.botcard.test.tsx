@@ -8,7 +8,7 @@
  * Hard and Expert, per seat when a seat has its own level, and a new bot level starts with the next
  * hand.
  */
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { GameSettings } from '../../../src/app/store.ts';
 import type { BotLevel, HandState, TableState } from '../../../src/engine/types.ts';
@@ -281,4 +281,94 @@ describe('the personality label follows the level rules (§9.2)', () => {
     expect(table().config.botLevel).toBe('hard');
     expect(badges()).toBe(0);
   }, 30_000);
+});
+
+describe('the level picker on the card (§9.3 per-seat override, chunk 7.2)', () => {
+  const NONE = [null, null, null, null, null, null];
+  const radio = (name: string | RegExp) =>
+    within(card()).getByRole('radio', { name }) as HTMLInputElement;
+  const pick = (name: string | RegExp) => fireEvent.click(radio(name));
+  const close = () => fireEvent.click(screen.getByRole('button', { name: en.botCard.close }));
+
+  it('a pick is kept at once, shown on the card, and reaches the pod with the next hand only', async () => {
+    renderTable();
+    expect(badges()).toBe(5);
+    const first = hand().handSeq;
+    await tap(3);
+    expect(radio('Same as table (Easy)').checked).toBe(true);
+    pick('Expert');
+    // Kept with the settings, and shown in the picker.
+    expect(state().settings.seatLevels).toEqual([null, null, null, 'expert', null, null]);
+    expect(radio('Expert').checked).toBe(true);
+    expect(radio('Same as table (Easy)').checked).toBe(false);
+    // The rest of the card, and the table in play, are the hand’s: still Easy, personality shown.
+    expect(card().textContent).toContain(en.botCard.howToBeat);
+    expect(card().textContent).not.toContain(en.botCard.unknownStyle);
+    expect(table().config.seatLevels).toEqual(NONE);
+    close();
+    expect(badges()).toBe(5);
+    expect(state().game.hand).toBe(hand());
+
+    await playUntil(() => hand().handSeq === first + 1);
+    expect(table().config.seatLevels).toEqual([null, null, null, 'expert', null, null]);
+    expect(badges(pod(3).parentElement as ParentNode)).toBe(0);
+    for (const seat of [1, 2, 4, 5]) {
+      expect(badges(pod(seat).parentElement as ParentNode), `seat ${seat}`).toBe(1);
+    }
+    expect(badges()).toBe(4);
+    // Its card now says what the player has seen, and the picker still says Expert.
+    await tap(3);
+    expect(card().textContent).toContain(en.botCard.unknownStyle);
+    expect(card().textContent).not.toContain(en.botCard.howToBeat);
+    expect(radio('Expert').checked).toBe(true);
+  }, 30_000);
+
+  it('"Same as table" puts a bot back on the table’s level from the next hand', async () => {
+    renderTable({ players: 4, seatLevels: [null, 'hard', null, null] });
+    expect(badges(pod(1).parentElement as ParentNode)).toBe(0);
+    const first = hand().handSeq;
+    await tap(1);
+    expect(radio('Hard').checked).toBe(true);
+    pick('Same as table (Easy)');
+    expect(radio('Same as table (Easy)').checked).toBe(true);
+    expect(state().settings.seatLevels).toEqual([null, null, null, null]);
+    close();
+    expect(badges(pod(1).parentElement as ParentNode)).toBe(0); // this hand is still Hard
+    await playUntil(() => hand().handSeq === first + 1);
+    expect(table().config.seatLevels).toEqual([null, null, null, null]);
+    expect(badges(pod(1).parentElement as ParentNode)).toBe(1);
+  }, 30_000);
+
+  it('the picker names the table’s level, which the Settings can change', async () => {
+    renderTable();
+    act(() => state().dispatch({ type: 'settings', patch: { botLevel: 'medium' } }));
+    await tap(2);
+    expect(radio('Same as table (Medium)').checked).toBe(true);
+  });
+
+  it('the bots keep waiting while a level is picked, and play on once the card closes', async () => {
+    renderTable();
+    await playUntil(() => state().game.mode === 'botTurn');
+    const before = inputs();
+    await tap(2);
+    pick('Hard');
+    pick('Expert');
+    await elapse(30_000);
+    expect(inputs()).toBe(before);
+    expect(state().ui.gates).toEqual(['sheet']);
+    close();
+    await elapse(4000);
+    expect(inputs()).toBeGreaterThan(before);
+    expect(state().game.diag).toEqual({ engineErrors: 0, botFallbacks: 0, voidedHands: 0 });
+  }, 30_000);
+
+  it('adds nothing to the Table when the card is closed, and the picker leaves nothing behind', async () => {
+    renderTable();
+    const nodes = document.querySelectorAll('*').length;
+    await tap(1);
+    pick('Hard');
+    close();
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(document.querySelectorAll('*').length).toBe(nodes);
+  });
 });

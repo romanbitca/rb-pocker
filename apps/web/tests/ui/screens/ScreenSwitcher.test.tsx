@@ -63,6 +63,9 @@ function App({ firstLaunch, onPlay }: { firstLaunch: boolean; onPlay: () => void
               bb: 20,
               botLevel: 'easy',
               coachLevel: 'beginner',
+              seatLevels: [null, null, null, null, null, null],
+              speed: 'normal',
+              fourColour: true,
             }}
             available={{ bot: ['easy'], coach: ['beginner'] }}
             onStartTable={() => go('table')}

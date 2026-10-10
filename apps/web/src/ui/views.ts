@@ -25,6 +25,9 @@ export interface CardView {
 /** Bot personality ids, the same strings as `PersonalityId` (PLAN Appendix A.3). */
 export type SeatPersonality = 'rock' | 'tag' | 'lag' | 'station' | 'maniac';
 
+/** Bot level ids, the same strings as `BotLevel` (PLAN Appendix A.3). */
+export type BotLevelName = 'easy' | 'medium' | 'hard' | 'expert';
+
 /** The seat's last action this street, for the pod's status tag (PLAN §12.4). */
 export type SeatAction = 'check' | 'call' | 'bet' | 'raise';
 
@@ -83,6 +86,18 @@ export interface BotCardView {
   readonly stack: number;
   /** Hard and Expert: what it was seen doing; null before its first preflop decision. */
   readonly seen: SeenPlayView | null;
+  /**
+   * The level picker's value (PLAN §9.3, chunk 7.2): this seat's level from the next hand on, which
+   * is not always the level of the hand in play that the rest of the card describes.
+   */
+  readonly nextLevel: SeatLevelView;
+}
+
+/** A seat's own level from the next hand on, and the table's level that "Same as table" means. */
+export interface SeatLevelView {
+  /** The seat's own level; null = the table's. */
+  readonly own: BotLevelName | null;
+  readonly table: BotLevelName;
 }
 
 /** The pot (PLAN §12.3): "Pot 340", plus "Main 300 · Side 400" once side pots exist. */

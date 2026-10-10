@@ -14,8 +14,9 @@
  */
 import { useId, type CSSProperties } from 'react';
 import { en } from '../../i18n/en.ts';
+import { BOT_LEVEL_ORDER } from '../screens/setupForm.ts';
 import { formatChips } from '../format.ts';
-import type { BotCardView } from '../views.ts';
+import type { BotCardView, BotLevelName } from '../views.ts';
 import s from './BotCard.module.css';
 import { Modal } from './Modal.tsx';
 import { avatarIndex } from './Seat.tsx';
@@ -23,11 +24,13 @@ import { ICONS, SpriteIcon } from './SvgSprite.tsx';
 
 export interface BotCardProps {
   card: BotCardView;
+  /** The level picker: this bot's own level from the next hand on, or null for the table's. */
+  onLevel: (level: BotLevelName | null) => void;
   /** ✕, Esc and the scrim. */
   onClose: () => void;
 }
 
-export function BotCard({ card, onClose }: BotCardProps) {
+export function BotCard({ card, onLevel, onClose }: BotCardProps) {
   const titleId = useId();
   const styleId = useId();
   const textId = useId();
@@ -72,7 +75,49 @@ export function BotCard({ card, onClose }: BotCardProps) {
         </>
       )}
       <p className={s.stack}>{en.botCard.stack(formatChips(card.stack))}</p>
+      <LevelPicker choice={card.nextLevel} onLevel={onLevel} />
     </Modal>
+  );
+}
+
+/**
+ * The per-seat override (PLAN §9.3, chunk 7.2): "Same as table (Easy)" and the four levels, one
+ * radio group. A pick is sent at once and starts with the next hand; the rest of the card keeps
+ * describing the hand in play, so the hint says so. The chips are the Settings look (native
+ * radios under their faces, 44 px or more).
+ */
+function LevelPicker({
+  choice,
+  onLevel,
+}: {
+  choice: BotCardView['nextLevel'];
+  onLevel: BotCardProps['onLevel'];
+}) {
+  const name = useId();
+  const options: readonly (BotLevelName | null)[] = [null, ...BOT_LEVEL_ORDER];
+  return (
+    <fieldset className={s.level}>
+      <legend className={s.levelLegend}>{en.botCard.level.legend}</legend>
+      <div className={s.choices}>
+        {options.map((level) => (
+          <label key={level ?? 'table'} className={level === null ? s.choiceWide : s.choice}>
+            <input
+              type="radio"
+              name={name}
+              value={level ?? ''}
+              checked={choice.own === level}
+              onChange={() => onLevel(level)}
+            />
+            <span className={s.face}>
+              {level === null
+                ? en.botCard.level.sameAsTable(en.levels.bot[choice.table])
+                : en.levels.bot[level]}
+            </span>
+          </label>
+        ))}
+      </div>
+      <p className={s.levelHint}>{en.botCard.level.hint}</p>
+    </fieldset>
   );
 }
 

@@ -2,15 +2,18 @@
  * Setup, "Set up your table" (PLAN §12.2): four questions, then Start game. Optional: Play never
  * passes through it. It opens with the last-used values (`initial`), so New table… → Start game is
  * at most two taps. The form state is local; `onStartTable` gets a config that `createTable`
- * accepts (§3.2), and Start stays disabled until there is one. "More options" (bot speed, per-seat
- * levels, four-colour cards) arrives with the stages that build those settings.
+ * accepts (§3.2), and Start stays disabled until there is one. "More options" (collapsed; chunk
+ * 7.2) holds the bot speed, a level for each bot (§9.3) and the four-colour deck; its code is a lazy
+ * chunk that loads when the section is opened.
  *
  * Level cards that are not available yet are shown disabled with "Coming soon" (§18: from chunk
  * 7.1 all four bot levels, Beginner and Intermediate coach; see `AVAILABLE_LEVELS`).
  */
-import { useId, useState, type FormEvent, type ReactNode } from 'react';
+import { lazy, Suspense, useId, useState, type FormEvent, type ReactNode } from 'react';
 import type { CoachLevel, TableConfig } from '../../engine/types.ts';
 import { en } from '../../i18n/en.ts';
+import { LoadBoundary } from '../components/LoadBoundary.tsx';
+import { ChevronDownIcon } from './icons.tsx';
 import { LevelCards } from './LevelCards.tsx';
 import { formatChips } from './numbers.ts';
 import { ScreenBar } from './ScreenBar.tsx';
@@ -29,20 +32,31 @@ import {
   STACK_PRESETS,
   stepPlayers,
   initialForm,
+  ownLevelCount,
+  resizeSeatLevels,
   type Amount,
   type AvailableLevels,
+  type MoreChoices,
   type SetupForm,
   type SetupValues,
   type Stakes,
 } from './setupForm.ts';
+
+/** "More options" loads when it is first opened (still precached for offline play, §15.1). */
+const MoreOptionsPanel = lazy(() =>
+  import('./MoreOptions.tsx').then((m) => ({ default: m.MoreOptions })),
+);
 
 export interface SetupProps {
   /** The last-used values; a `Settings` object fits (Appendix A.7). */
   initial: SetupValues;
   /** The levels that can be picked now (`AVAILABLE_LEVELS`); the others say "Coming soon". */
   available: AvailableLevels;
-  /** Start game. The controller asks first when a hand is unfinished (§3.1, the 'newTable' dialog). */
-  onStartTable: (config: TableConfig, coachLevel: CoachLevel) => void;
+  /**
+   * Start game. `config` holds the per-seat levels; `more` the bot speed and the four-colour deck.
+   * The controller asks first when a hand is unfinished (§3.1, the 'newTable' dialog).
+   */
+  onStartTable: (config: TableConfig, coachLevel: CoachLevel, more: MoreChoices) => void;
   onBack: () => void;
   /** The footer's Privacy link. Hidden while absent (the About screen comes later). */
   onOpenPrivacy?: (() => void) | undefined;
@@ -50,22 +64,35 @@ export interface SetupProps {
 
 export function Setup({ initial, available, onStartTable, onBack, onOpenPrivacy }: SetupProps) {
   const [form, setForm] = useState<SetupForm>(() => initialForm(initial, available));
+  const [moreOpen, setMoreOpen] = useState(false);
   const check = checkSetup(form, available);
   const id = useId();
   const depthId = `${id}-depth`;
+  const moreId = `${id}-more`;
 
   const update = (patch: Partial<SetupForm>) => setForm((f) => ({ ...f, ...patch }));
 
   const submit = (e: FormEvent) => {
     e.preventDefault();
-    if (check.config !== null) onStartTable(check.config, form.coachLevel);
+    if (check.config !== null) {
+      onStartTable(check.config, form.coachLevel, {
+        speed: form.speed,
+        fourColour: form.fourColour,
+      });
+    }
   };
 
   return (
     <main className={styles.page}>
       <ScreenBar title={en.setup.title} onBack={onBack} />
       <form className={styles.content} onSubmit={submit} noValidate>
-        <Players players={form.players} onChange={(players) => update({ players })} />
+        <Players
+          players={form.players}
+          onChange={(players) =>
+            // The per-seat levels follow the stepper: a new bot starts at the table's level.
+            setForm((f) => ({ ...f, players, seatLevels: resizeSeatLevels(f.seatLevels, players) }))
+          }
+        />
 
         <AmountField
           id={`${id}-stack`}
@@ -128,6 +155,51 @@ export function Setup({ initial, available, onStartTable, onBack, onOpenPrivacy 
           texts={en.levels.coachText}
           onChange={(coachLevel) => update({ coachLevel })}
         />
+
+        <section className={styles.section}>
+          <button
+            type="button"
+            className={s.moreToggle}
+            aria-expanded={moreOpen}
+            aria-controls={moreId}
+            aria-describedby={
+              ownLevelCount(form.seatLevels) > 0 && !moreOpen ? `${moreId}-own` : undefined
+            }
+            onClick={() => setMoreOpen((open) => !open)}
+          >
+            <span>{en.setup.more.title}</span>
+            <ChevronDownIcon />
+          </button>
+          {!moreOpen && ownLevelCount(form.seatLevels) > 0 && (
+            <p id={`${moreId}-own`} className={styles.hint}>
+              {en.setup.more.ownLevels(ownLevelCount(form.seatLevels))}
+            </p>
+          )}
+          <div id={moreId} hidden={!moreOpen}>
+            {moreOpen && (
+              <LoadBoundary onError={() => setMoreOpen(false)}>
+                <Suspense fallback={null}>
+                  <MoreOptionsPanel
+                    id={moreId}
+                    speed={form.speed}
+                    onSpeed={(speed) => update({ speed })}
+                    botLevel={form.botLevel}
+                    seatLevels={form.seatLevels}
+                    available={available.bot}
+                    onSeatLevel={(seat, level) =>
+                      setForm((f) => ({
+                        ...f,
+                        seatLevels: f.seatLevels.map((own, i) => (i === seat ? level : own)),
+                      }))
+                    }
+                    fourColour={form.fourColour}
+                    onFourColour={(fourColour) => update({ fourColour })}
+                  />
+                </Suspense>
+              </LoadBoundary>
+            )}
+          </div>
+        </section>
 
         <footer className={s.footer}>
           <p>
