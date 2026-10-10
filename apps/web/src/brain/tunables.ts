@@ -443,12 +443,12 @@ export const MIX_CALL_STICKINESS = 3;
 export const MIX_BLUFF_BONUS = 2.5;
 export const MIX_SLOWPLAY_BONUS = 2.5;
 /**
- * §9.4 step 3, chunk 7.3: the unit of a bias is `max(T, MIX_BIAS_UNIT_MIN)` pots. Medium's `T`
- * (0.12), where chunk 5.11 calibrated the biases: below it a bias keeps its Medium value in pots,
- * so a lower `T` (Hard, Expert) sharpens the same preferences, Medium's odds squared and cubed,
- * instead of shrinking the personality against the §8.9 EVs (risk R20).
+ * §9.4 step 3, chunk 7.3 (risk R20): `A*`'s bonus is in units of `max(T, MIX_RULE_BONUS_UNIT_MIN)`,
+ * Medium's `T`, where chunk 5.11 calibrated it. Below it the bonus keeps its Medium value in pots
+ * (0.42 before the flop, 0.12 after it): it covers the error of the §8.9 EV heuristic, a share of
+ * the pot at every level. The personality biases stay in units of `T`.
  */
-export const MIX_BIAS_UNIT_MIN = 0.12;
+export const MIX_RULE_BONUS_UNIT_MIN = 0.12;
 
 // --- 6.1 grading (§8.9 "Grade") ---
 
