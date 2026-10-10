@@ -22,6 +22,11 @@ import { newTable, openApp, pcState, slot } from './game.ts';
 export const SEED = '46';
 export const SCRIPT = '&script=river-min-bet';
 export const TAP_GUARD_MS = 250;
+/**
+ * How far a spec moves the paused clock per try while it waits for a lazy chunk to show (React's
+ * Suspense reveal is throttled by a timer: 300 ms).
+ */
+export const REVEAL_STEP_MS = 300;
 
 export type Level = 'beginner' | 'intermediate' | 'advanced' | 'exam';
 
@@ -142,15 +147,16 @@ export const gameMode = (page: Page): Promise<string> => pcState(page).then((s) 
 export async function feedbackCard(page: Page): Promise<Locator> {
   await expect.poll(() => gameMode(page), { timeout: 15_000 }).toBe('feedback');
   const card = page.locator('[role="alertdialog"][data-feedback]');
-  // Its code is a lazy chunk; a first showing may wait for React on the (paused) clock. The game
-  // is held, so moving the clock moves nothing else.
+  // Its code is a lazy chunk; a first showing waits for React's Suspense reveal, which is a timer
+  // on the (paused) clock. The game is held, so moving the clock moves nothing else; small polls
+  // and a step that clears the reveal's throttle keep it quick.
   await expect
     .poll(
       async () => {
-        if ((await card.count()) === 0) await page.clock.runFor(50);
+        if ((await card.count()) === 0) await page.clock.runFor(REVEAL_STEP_MS);
         return card.count();
       },
-      { timeout: 15_000 },
+      { timeout: 15_000, intervals: [20, 50, 100] },
     )
     .toBe(1);
   await expect(card).toBeVisible();

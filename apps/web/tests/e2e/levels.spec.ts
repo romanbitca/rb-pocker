@@ -17,6 +17,7 @@ import {
   type Level,
   pauseClock,
   playTo,
+  REVEAL_STEP_MS,
   scriptedTable,
   TAP_GUARD_MS,
 } from './scripted.ts';
@@ -228,10 +229,10 @@ async function readRankings(page: Page): Promise<RankingsView> {
     await expect
       .poll(
         async () => {
-          if ((await quiz.count()) === 0) await page.clock.runFor(50);
+          if ((await quiz.count()) === 0) await page.clock.runFor(REVEAL_STEP_MS);
           return quiz.count();
         },
-        { timeout: 10_000 },
+        { timeout: 10_000, intervals: [20, 50, 100] },
       )
       .toBe(1);
     expect(await panel.locator('[data-which-hand]').count()).toBeGreaterThanOrEqual(2);
@@ -262,21 +263,20 @@ async function act(page: Page, level: Level, name: 'middle' | 'fold'): Promise<s
   const grade = (await decisions(page)).at(-1)?.grade ?? null;
   expect(grade, 'the real coach grades every decision').not.toBeNull();
 
+  // The chip (§10.2 "Grade chip after you act") shows for 1.5 s of page time from the grade's
+  // arrival, under the card when there is one: read it before the clock moves for the card.
+  await expectChip(page, level, grade);
   // The pause (§10.2 "Pause + Undo offer"): the card from this grade on, at this level.
-  const card = reaches(grade, PAUSE_FROM[level]);
-  if (card) {
+  if (reaches(grade, PAUSE_FROM[level])) {
     const dialog = await feedbackCard(page);
     await expect(dialog).toHaveAttribute('data-feedback', grade as string);
     const undo = dialog.getByRole('button', { name: 'Undo: try again' });
     await expect(undo).not.toHaveAttribute('aria-disabled', 'true');
-    // The chip (below) is the strip's, under the card.
-    await expectChip(page, level, grade);
     await dialog.getByRole('button', { name: 'Keep my move' }).click();
     await expect(dialog).toHaveCount(0);
   } else {
     expect(await gameMode(page), 'no pause below the level’s grade').not.toBe('feedback');
     await expect(page.locator('[data-feedback]')).toHaveCount(0);
-    await expectChip(page, level, grade);
   }
   // The toolbar Undo (§10.2): there at Beginner and Intermediate, nothing at Advanced and Exam.
   const undoState = level === 'beginner' || level === 'intermediate' ? 'enabled' : 'hidden';
