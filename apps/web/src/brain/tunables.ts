@@ -498,3 +498,12 @@ export const EXPLOIT_STICKINESS_BONUS = 0.2;
 export const EXPLOIT_DEFENSE_FACTOR = 1;
 /** "Halve bluffs": every bluff chance (the flop and turn bluff draw, the bluff 3-bet, the river). */
 export const EXPLOIT_BLUFF_FACTOR = 0.5;
+
+// --- 7.3 Expert fold equity ---
+
+/**
+ * §8.9 at Expert (chunk 7.3, risk R20): after the flop an Expert bot reads each opponent's continue
+ * share from its fold to c-bet (§9.5) instead of `MDF × stickiness`. The prior of that statistic
+ * is the model's fold against a ½-pot c-bet, `1 − clamp(⅔ × stickiness)`: this is its MDF.
+ */
+export const FOLD_READ_MDF = 2 / 3;
