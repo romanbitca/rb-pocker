@@ -102,7 +102,7 @@ Legend: `[ ]` todo · `[~]` in progress (branch exists) · `[x]` merged to `main
 ## Stage 7 - Hard and Expert bots (PLAN §9.5, §10.1)
 
 - [~] 7.1 `feature/hard-expert-bot-profiles` - range model on for bots, exploits (n ≥ 30), balanced river bluffs, hidden labels, observed-stats card.
-- [ ] 7.2 `feature/per-seat-bot-levels` - per-seat override from next hand.
+- [~] 7.2 `feature/per-seat-bot-levels` - per-seat override from next hand.
 - [~] 7.3 `test/hard-expert-self-play` - acceptance 1–5.
 
 ## Stage 8 - Persistence and stats (PLAN §14, Appendix H)
@@ -225,3 +225,4 @@ If the human's answer later reveals a problem, the fix becomes a new chunk ahead
 | 9 Oct 21:50–22:50Z | R18 fix merged | [PR #54](https://github.com/romanbitca/rb-pocker/pull/54) (4233d52): the meter showed Strong next to Fold in 38% of folds; multiway `p = n·E / (1 + (n−1)·E)` (heads-up unchanged, 0.5 at the fair share) + meter cap (never fired in 2,000 hints); E19–E22 added; 85 of 3,881 hints changed (multiway postflop, fewer value bets) | 5h 8% → 55%, weekly 2% → 8% |
 | 9 Oct 21:50–23:10Z | 5.11 merged | [PR #51](https://github.com/romanbitca/rb-pocker/pull/51) (ad54330): 20,000-hand calibration, 12 failing gates → 0 at Medium and at Easy (biases in units of T, 3.5 T preflop rule bonus, Easy reads the opener's range, 4 §9.1 numbers; TAG untouched); 0 illegal actions in 100,000 hands (2–9 seats); Medium bot p95 3.7 ms; coach +288 ± 58 bb/100 vs Easy; R19 closed. Main's check for ad54330 did not start (GitHub billing) | weekly ~11% |
 | 9 Oct 23:05–23:50Z | 7.1 built (held) | [PR #55](https://github.com/romanbitca/rb-pocker/pull/55): range model on for Hard/Expert bots, exploits from n ≥ 30, balanced river bluffs, hidden labels, observed-stats card; non-cheating for all 20 profiles + coach; Expert p95 7.6 ms; initial JS 143.0 KB; R20 (Hard/Expert too loose) for 7.3. 6.2 #49 finished (300/300 on a 5× e2e repeat) | 5h → ~85%, weekly 12% |
+| 10 Oct 02:44–03:40Z | 7.2 built (held) | [PR #57](https://github.com/romanbitca/rb-pocker/pull/57) on #55: per-seat level override from the next hand (bot card picker, Setup "More options", `Settings.seatLevels`), levels recorded per seat; 208 e2e passed on 12 projects; initial JS 144.45 KB. Fixed a typecheck error on #55 (8c85f70, `riverSpot` level type) | weekly ~17% |
