@@ -7,27 +7,35 @@
  *   npm run selfplay -- --level medium --players 6 --hands 20000 --seed 1 --calibrate
  *   npm run selfplay -- --level easy --players 6 --hands 20000 --seed 1 --calibrate
  *   npm run selfplay -- --level mixed --players 2-9 --stacks random --hands 100000 --seed 1
+ *   npm run selfplay -- --level hard --lineup potBettor,tag,lag,rock,tag,lag --loses potBettor
+ *   npm run selfplay -- --lineup tag@medium,tag@expert,lag@medium,lag@expert,rock@medium,rock@expert \
+ *     --wins expert
  *
  * It prints, per profile (a personality at its level, the coach, a scripted baseline): VPIP, PFR,
  * AF, WTSD, 3-bet and c-bet with 95% confidence intervals, bb/100 with its interval, decisions;
  * then the illegal actions, invariant violations and unfinished hands, and the decision times
- * (p50, p95, max) per class. Exit code 1 when a gate fails: always an illegal action, an invariant
- * violation or a hand that does not finish; with `--calibrate` a personality off its §9.1 target
- * (VPIP and PFR within ±4 points, Easy's VPIP within ±8, AF within ±0.7); with `--max-p95 <ms>` a
- * bot level whose decision p95 is above it.
+ * (p50, p95, max) per class, and each side's result: the seats of one level, the coach, a baseline
+ * (bb/100 per seat with its interval). Exit code 1 when a gate fails: always an illegal action, an
+ * invariant violation or a hand that does not finish; with `--calibrate` a personality off its §9.1
+ * target (VPIP and PFR within ±4 points, Easy's VPIP within ±8, AF within ±0.7); with
+ * `--max-p95 <ms>` a bot level whose decision p95 is above it; with `--wins <sides>` or
+ * `--loses <sides>` a side whose bb/100 interval is not wholly above (below) 0 (§9.7 win rates).
  *
  * Intervals: VPIP, PFR, WTSD, 3-bet and c-bet are proportions over the seat-hands that had the
  * chance (Wilson score interval); AF is a ratio of per-hand counts (delta-method standard error
- * over seat-hands); bb/100 a mean over seat-hands. Each seat-hand counts as one sample.
+ * over seat-hands); bb/100 a mean over seat-hands. Each seat-hand counts as one sample; a side's
+ * bb/100 is a mean over hands of its seats' mean result (one sample per hand).
  *
  * Options: `--level` easy|medium|hard|expert|mixed (default medium; mixed = Easy or Medium per
  * seat), `--players` 6 | 2-9 | 3,6,9 (table sizes, default 6), `--hands` (default 20,000),
  * `--seed` (a number, a word or 32 hex characters; default 1), `--lineup` (who sits in seats 0, 1,
- * …, cycled: personalities, `coach`, `simple`, `raiseAlways`, `callAlways`, `potBettor`; default the
- * §9.3 Medium list, which holds all five personalities in its first six seats), `--stacks`
+ * …, cycled: personalities, `coach`, `simple`, `raiseAlways`, `callAlways`, `potBettor`, or a
+ * personality at a level of its own, `tag@expert`; default the §9.3 Medium list, which holds all
+ * five personalities in its first six seats), `--stacks`
  * reset|carry|random (default reset), `--bb` (default 20) and `--stack-bb` (default 100: the game's
  * default 2,000 chips at 10/20), `--threads` (default one per core), `--job-hands` (default 250),
- * `--calibrate`, `--max-p95 <ms>`, `--json <file>` (the summary as JSON), `--quiet`.
+ * `--calibrate`, `--max-p95 <ms>`, `--wins <sides>` and `--loses <sides>` (comma-separated: a level,
+ * `coach` or a baseline), `--json <file>` (the summary as JSON), `--quiet`.
  */
 import { appendFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -38,6 +46,7 @@ import { BOT_LEVELS, PERSONALITY_IDS, type PersonalityId } from '../src/engine/t
 import { defaultThreads, runPool } from './pool.ts';
 import {
   DEFAULT_LINEUP,
+  isLineupEntry,
   jobsOf,
   mergeResults,
   runJob,
@@ -45,11 +54,11 @@ import {
   type Count,
   type JobResult,
   type MeanMoments,
+  type LineupEntry,
   type ProfileTally,
   type RatioMoments,
   type RunLevel,
   type RunSpec,
-  type SeatSpec,
   type StackMode,
 } from './selfplay-jobs.ts';
 
@@ -150,6 +159,16 @@ export interface ProfileRow {
   level: string | null;
 }
 
+/** One side's result (`JobResult.sides`): a level's seats, the coach, a baseline. */
+export interface SideRow {
+  side: string;
+  /** Its seats per hand, on average. */
+  seats: number;
+  hands: number;
+  /** Big blinds won per 100 hands, per seat. */
+  bb100: Estimate;
+}
+
 export interface TimeRow {
   cls: string;
   n: number;
@@ -190,6 +209,20 @@ function profileRow(key: string, t: ProfileTally): ProfileRow {
     target: p === null ? null : { vpip: p.vpip, pfr: p.pfr, af: p.af },
     level: known ? (level as string) : null,
   };
+}
+
+export function sideRows(result: JobResult): SideRow[] {
+  return Object.entries(result.sides)
+    .map(([side, t]) => {
+      const net = mean(t.net);
+      return {
+        side,
+        seats: t.hands === 0 ? 0 : t.seatHands / t.hands,
+        hands: t.hands,
+        bb100: { value: 100 * net.value, half: 100 * net.half },
+      };
+    })
+    .sort((a, b) => a.side.localeCompare(b.side));
 }
 
 export function timeRows(result: JobResult): TimeRow[] {
@@ -241,6 +274,32 @@ export function calibrationGates(rows: readonly ProfileRow[]): Gate[] {
   return gates;
 }
 
+/**
+ * §9.7 win rates (Stage 7 acceptance 1): each side of `wins` wins, its bb/100 interval wholly above
+ * 0; each side of `loses` loses, wholly below. A side that did not play fails.
+ */
+export function winRateGates(
+  sides: readonly SideRow[],
+  wins: readonly string[],
+  loses: readonly string[],
+): Gate[] {
+  const gate = (side: string, sign: 1 | -1): Gate => {
+    const row = sides.find((r) => r.side === side);
+    const est = row?.bb100 ?? { value: NaN, half: NaN };
+    const low = est.value - est.half;
+    const high = est.value + est.half;
+    return {
+      name: `${side} ${sign > 0 ? 'wins' : 'loses'}`,
+      pass: sign > 0 ? low > 0 : high < 0,
+      detail:
+        row === undefined
+          ? 'did not play'
+          : `${est.value.toFixed(1)} ±${est.half.toFixed(1)} bb/100 per seat (95%: ${low.toFixed(1)} to ${high.toFixed(1)})`,
+    };
+  };
+  return [...wins.map((s) => gate(s, 1)), ...loses.map((s) => gate(s, -1))];
+}
+
 /** Bot decisions at each level within `maxMs` at the 95th percentile (Stage 5 acceptance 6). */
 export function speedGates(times: readonly TimeRow[], maxMs: number): Gate[] {
   return times
@@ -275,6 +334,7 @@ export interface Report {
   seconds: number;
   hands: number;
   profiles: ProfileRow[];
+  sides: SideRow[];
   times: TimeRow[];
   gates: Gate[];
   problems: JobResult['problems'];
@@ -322,6 +382,13 @@ export function formatReport(report: Report, markdown = false): string {
     num(r.bb100, 1),
     String(r.decisions),
   ]);
+  const sideHeader = ['side', 'seats', 'hands', 'bb/100 per seat'];
+  const sideBody = report.sides.map((r) => [
+    r.side,
+    r.seats.toFixed(1),
+    String(r.hands),
+    num(r.bb100, 1),
+  ]);
   const timeHeader = ['decisions of', 'count', 'p50 ms', 'p95 ms', 'max ms'];
   const timeBody = report.times.map((t) => [
     t.cls,
@@ -338,10 +405,11 @@ export function formatReport(report: Report, markdown = false): string {
       ...body.map((r) => `| ${r.join(' | ')} |`),
     ];
     out[0] = `### ${out[0]}`;
-    out.push('', ...md(header, rows), '', ...md(timeHeader, timeBody), '');
-    out.push(...gateLines.map((l) => `- ${l}`));
+    out.push('', ...md(header, rows), '', ...md(sideHeader, sideBody), '');
+    out.push(...md(timeHeader, timeBody), '', ...gateLines.map((l) => `- ${l}`));
   } else {
-    out.push('', ...table(header, rows), '', ...table(timeHeader, timeBody), '', ...gateLines);
+    out.push('', ...table(header, rows), '', ...table(sideHeader, sideBody));
+    out.push('', ...table(timeHeader, timeBody), '', ...gateLines);
   }
   for (const p of report.problems)
     out.push(`${markdown ? '- ' : ''}job ${p.job} hand ${p.hand}: ${p.detail}`);
@@ -350,10 +418,19 @@ export function formatReport(report: Report, markdown = false): string {
 
 // ── Command line ───────────────────────────────────────────────────────────────────────────────
 
+/** The sides of `--wins` and `--loses`: the bot levels, the coach and the baselines. */
+const SIDES: readonly string[] = [
+  ...BOT_LEVELS,
+  ...SEAT_SPECS.filter((s) => !(PERSONALITY_IDS as readonly string[]).includes(s)),
+];
+
 export interface Options extends RunSpec {
   seedText: string;
   calibrate: boolean;
   maxP95: number | null;
+  /** Sides that must win (lose): a level, `coach` or a baseline (§9.7 win rates). */
+  wins: string[];
+  loses: string[];
   json: string | null;
   quiet: boolean;
 }
@@ -407,6 +484,8 @@ export function parseOptions(argv: readonly string[]): Options {
       'job-hands': { type: 'string', default: '250' },
       calibrate: { type: 'boolean', default: false },
       'max-p95': { type: 'string' },
+      wins: { type: 'string' },
+      loses: { type: 'string' },
       json: { type: 'string' },
       quiet: { type: 'boolean', default: false },
     },
@@ -423,11 +502,24 @@ export function parseOptions(argv: readonly string[]): Options {
     throw new RangeError(`--stacks must be reset, carry or random, got ${values.stacks}`);
   }
   const lineup = values.lineup === undefined ? [...DEFAULT_LINEUP] : values.lineup.split(',');
-  for (const spec of lineup) {
-    if (!SEAT_SPECS.includes(spec as SeatSpec)) {
-      throw new RangeError(`--lineup: unknown player "${spec}" (one of ${SEAT_SPECS.join(', ')})`);
+  for (const entry of lineup) {
+    if (!isLineupEntry(entry)) {
+      throw new RangeError(
+        `--lineup: unknown player "${entry}" (one of ${SEAT_SPECS.join(', ')}, or a personality ` +
+          `at a level, e.g. tag@expert)`,
+      );
     }
   }
+  const sides = (text: string | undefined, name: string): string[] => {
+    if (text === undefined) return [];
+    const list = text.split(',');
+    for (const side of list) {
+      if (!SIDES.includes(side)) {
+        throw new RangeError(`${name}: unknown side "${side}" (one of ${SIDES.join(', ')})`);
+      }
+    }
+    return list;
+  };
   const bb = positiveInt(values.bb, '--bb');
   if (bb < 2 || bb % 2 !== 0) throw new RangeError(`--bb must be even and ≥ 2, got ${bb}`);
   const stackBB = positiveInt(values['stack-bb'], '--stack-bb');
@@ -439,7 +531,7 @@ export function parseOptions(argv: readonly string[]): Options {
     seedText: values.seed,
     hands: positiveInt(values.hands, '--hands'),
     seatCounts: parseSeatCounts(values.players),
-    lineup: lineup as SeatSpec[],
+    lineup: lineup as LineupEntry[],
     level,
     stacks,
     bb,
@@ -449,6 +541,8 @@ export function parseOptions(argv: readonly string[]): Options {
       values.threads === undefined ? defaultThreads() : positiveInt(values.threads, '--threads'),
     calibrate: values.calibrate,
     maxP95,
+    wins: sides(values.wins, '--wins'),
+    loses: sides(values.loses, '--loses'),
     json: values.json ?? null,
     quiet: values.quiet,
   };
@@ -463,11 +557,13 @@ export async function selfPlay(
   const result = await runSelfPlay(options, progress);
   const seconds = (performance.now() - started) / 1000;
   const profiles = profileRows(result);
+  const sides = sideRows(result);
   const times = timeRows(result);
   const gates = [
     ...legalityGates(result),
     ...(options.calibrate ? calibrationGates(profiles) : []),
     ...(options.maxP95 === null ? [] : speedGates(times, options.maxP95)),
+    ...winRateGates(sides, options.wins, options.loses),
   ];
   return {
     spec: {
@@ -485,6 +581,7 @@ export async function selfPlay(
     seconds,
     hands: result.hands,
     profiles,
+    sides,
     times,
     gates,
     problems: result.problems,

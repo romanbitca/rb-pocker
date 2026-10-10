@@ -83,6 +83,7 @@ import {
   CLOSE_SPOT_POT,
   E_CALLED_TRIALS,
   EXPLOIT_BLUFF_FACTOR,
+  MIX_BIAS_UNIT_MIN,
   MIX_BLUFF_BONUS,
   MIX_CALL_STICKINESS,
   MIX_RULE_BONUS,
@@ -416,6 +417,19 @@ export function bluff3betHand(hole: readonly [Card, Card] | readonly Card[]): bo
   return hi - lo === 1 && hi >= 3 && hi <= 8; // 54s–T9s
 }
 
+/**
+ * §9.4 step 3: the pot value of one unit of bias at temperature `T`, `max(T, 0.12)`. At Easy and
+ * Medium it is `T` itself (chunk 5.11: a bias weighs the same against the other candidates at
+ * both); below Medium's `T` it stays at Medium's value (chunk 7.3), so the scores of a Hard or
+ * Expert bot are a Medium bot's and its lower `T` only makes the same choice more often (`P` ∝
+ * Medium's odds to the power 0.12 / `T`: 2 at Hard, 3 at Expert). With `T` as the unit, the §9.4
+ * biases shrank in pots while the §8.9 EVs did not, and the preflop fold-equity heuristic, which
+ * rates a re-raise with any two cards at break-even or better, drowned the personalities (R20).
+ */
+export function biasUnit(T: number): number {
+  return Math.max(T, MIX_BIAS_UNIT_MIN);
+}
+
 /** Index picked by `P(i) ∝ exp(score_i / T)` with the uniform draw `u` (argmax when T ≤ 0). */
 export function softmaxIndex(scores: readonly number[], T: number, u: number): number {
   let best = 0;
@@ -536,16 +550,17 @@ export function botPick(
   const pot = Math.max(f.pot, 1);
   // "Air bucket bet": a bet into the pot after the flop; before it, the bluff 3-bet (a raise).
   const bluffType: PlayerAction['type'] = preflop ? 'raise' : 'bet';
-  // The biases are in units of the temperature T: EV/pot + T × bias (§9.4 step 3, chunk 5.11).
+  // The biases are in units of max(T, 0.12): EV/pot + unit × bias (§9.4 step 3, chunks 5.11, 7.3).
   const ruleBonus = preflop ? MIX_RULE_BONUS_PREFLOP : MIX_RULE_BONUS;
+  const unit = biasUnit(profile.temperature);
   const scores = candidates.map((c) => {
     let bias = 0;
     if (isAggressive(c.action)) bias += profile.aggressionBias;
     if (bluffing && c.action.type === bluffType) bias += MIX_BLUFF_BONUS;
     if (c.action.type === 'call') bias += MIX_CALL_STICKINESS * (profile.stickiness - 1);
     if (c.action.type === 'check' && slowplaying) bias += MIX_SLOWPLAY_BONUS;
-    if (c.key === ruleKey) bias += ruleBonus;
-    return c.ev / pot + profile.temperature * bias;
+    const rule = c.key === ruleKey ? ruleBonus : 0;
+    return c.ev / pot + profile.temperature * bias + unit * rule;
   });
   let pick = candidates[softmaxIndex(scores, profile.temperature, draws.pick)] as EvCandidate;
   // Limp mode (§9.4 step 2) limps an open raise the mix picked too: `pfrRatio` holds at every level.
