@@ -94,10 +94,15 @@ function LevelPicker({
   onLevel: BotCardProps['onLevel'];
 }) {
   const name = useId();
+  const legendId = `${name}-legend`;
+  const hintId = `${name}-hint`;
   const options: readonly (BotLevelName | null)[] = [null, ...BOT_LEVEL_ORDER];
+  // A group, not a fieldset: a fieldset's border runs through its legend.
   return (
-    <fieldset className={s.level}>
-      <legend className={s.levelLegend}>{en.botCard.level.legend}</legend>
+    <div className={s.level} role="group" aria-labelledby={legendId} aria-describedby={hintId}>
+      <p id={legendId} className={s.levelLegend}>
+        {en.botCard.level.legend}
+      </p>
       <div className={s.choices}>
         {options.map((level) => (
           <label key={level ?? 'table'} className={level === null ? s.choiceWide : s.choice}>
@@ -116,8 +121,10 @@ function LevelPicker({
           </label>
         ))}
       </div>
-      <p className={s.levelHint}>{en.botCard.level.hint}</p>
-    </fieldset>
+      <p id={hintId} className={s.levelHint}>
+        {en.botCard.level.hint}
+      </p>
+    </div>
   );
 }
 
