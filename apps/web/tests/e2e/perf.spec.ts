@@ -1,17 +1,24 @@
 import { appendFileSync } from 'node:fs';
 import type { Page, TestInfo } from '@playwright/test';
+import { candidateKey } from '../../src/brain/ev.ts';
+import type { PlayerAction } from '../../src/engine/types.ts';
 import { expect, test } from './fixtures.ts';
 import {
   collectErrors,
   installLongTaskObserver,
   longTasks,
   newTable,
+  nextFlowPoint,
   openApp,
+  pcState,
   playHands,
   prng,
+  reloadAfterBust,
   seedFor,
   startTable,
+  tapNextHand,
 } from './game.ts';
+import { tapAct } from './scripted.ts';
 
 // PLAN §15.3: no main-thread long task (> 50 ms) during play, from a `longtask`
 // PerformanceObserver (Chromium: WebKit has no Long Tasks API). A long task is wall time, so a
@@ -325,5 +332,209 @@ test('no main-thread task over 50 ms at 6× CPU in 20 hands (Stage 4, 3)', async
   const errors = collectErrors(page);
   await play20(page, seedFor(testInfo), true);
   concludeLongTasks(await longTasks(page));
+  expect(errors).toEqual([]);
+});
+
+// ---------------------------------------------------------------------------------------------
+// Stage 6 acceptance 6 (§8.11, §11.3 r5): grading adds at most 50 ms after the action when the
+// coach's EVs are cached (the hint was made at the start of the decision) and at most 150 ms when
+// an exact-size EV is needed (a bet or raise whose size is not one of the hint's candidates, §8.9).
+//
+// What is timed is the grade job in the real brain.worker, from the moment the controller posts it
+// (at the act) to the moment its reply is delivered, from the worker message log (`brainWorker`,
+// `at` in ms). Real time, no throttle, Instant speed, a few untimed samples first (the first tap
+// loads lazy code). A cached sample is a check or call, an exact-size sample a bet or raise of a
+// size picked off the hint's candidates and more than 15% from the coach's own size (that one is
+// graded Best without its EV, §8.9); both enter as a `dispatch` of the act, so that the reply is
+// not queued behind the render of a tap (React draws a tap's update before the page reads the
+// next message: a third row, a real tap on the middle button, reports that stretch, which is the
+// page's own and has no budget). Like the Stage 4 checks it is report-only in CI (R17: the shared
+// runner's load is the noise, here the page and the worker compete for 2 vCPUs) and enforced by
+// `npm run e2e:perf`.
+
+const GRADE_BUDGET = { cached: 50, exact: 150 } as const;
+/** Timed samples of each kind, after `GRADE_WARM_UP` untimed ones. */
+const GRADE_SAMPLES = 10;
+const GRADE_WARM_UP = 2;
+
+interface GradeLine {
+  at: number;
+  what: string;
+  kind?: string;
+  jobId?: number;
+}
+
+/** The newest grade job after `after` that has been answered: its id and its round trip, in ms. */
+async function gradeTrip(page: Page, after: number): Promise<{ jobId: number; ms: number }> {
+  let found: { jobId: number; ms: number } | null = null;
+  await expect
+    .poll(
+      async () => {
+        const log = await page.evaluate(
+          () => (window.__pc?.logs() as unknown as { brainWorker: GradeLine[] }).brainWorker,
+        );
+        const out = log.findLast((l) => l.kind === 'grade' && l.what === 'out');
+        if (out?.jobId === undefined || out.jobId <= after) return null;
+        const back = log.find(
+          (l) => l.kind === 'grade' && l.what === 'in' && l.jobId === out.jobId,
+        );
+        if (back === undefined) return null;
+        found = { jobId: out.jobId, ms: back.at - out.at };
+        return found.jobId;
+      },
+      { message: 'the grade came back', timeout: 15_000 },
+    )
+    .not.toBeNull();
+  if (found === null) throw new Error('no grade job');
+  return found;
+}
+
+/** A bet or raise of a legal size that is not a candidate of the hint, nor near its own size. */
+async function offCandidate(page: Page): Promise<PlayerAction | null> {
+  const s = await pcState(page);
+  const [legal, decision] = [s.game.legal, s.coach.decision];
+  if (legal === null || decision === null) return null;
+  const type = legal.bet !== null ? 'bet' : legal.raise !== null ? 'raise' : null;
+  if (type === null) return null;
+  const { min, max } = legal[type] as { min: number; max: number };
+  const rec = decision.action;
+  for (let k = 1; k <= 40; k++) {
+    const to = Math.min(max - 1, min + Math.round((k * (max - min)) / 41));
+    if (to < min) break;
+    const action: PlayerAction = { type, to };
+    if (decision.ev[candidateKey(legal, action)] !== undefined) continue;
+    if (rec.to !== undefined && Math.abs(to - rec.to) <= 0.15 * rec.to) continue;
+    return action;
+  }
+  return null;
+}
+
+type GradeKind = 'cached' | 'exact' | 'tapped';
+type GradeTimes = Record<GradeKind, number[]>;
+
+/** Plays real hands (Keep my move on cards) and times the grade of each kind of move. */
+async function gradeTimes(page: Page, seed: string): Promise<GradeTimes> {
+  await openApp(page, seed);
+  await newTable(page, { players: 6, speed: 'instant' });
+  const times: GradeTimes = { cached: [], exact: [], tapped: [] };
+  const want = GRADE_SAMPLES + GRADE_WARM_UP;
+  let lastJob = 0;
+  for (let hands = 0; hands < 80;) {
+    if (Object.values(times).every((t) => t.length >= want)) break;
+    const point = await nextFlowPoint(page);
+    if (point === 'end') {
+      hands++;
+      await tapNextHand(page);
+      continue;
+    }
+    if (point === 'bust') {
+      await reloadAfterBust(page);
+      continue;
+    }
+    // The hero's turn, its hint in: the answer the grade reads from the cache.
+    await page.waitForFunction(() => {
+      const s = window.__pc?.state();
+      const h = s?.game.hand;
+      return h !== null && h !== undefined && s?.coach.key === `${h.handSeq}:${h.log.length}`;
+    });
+    const off = times.exact.length <= times.cached.length ? await offCandidate(page) : null;
+    let kind: GradeKind = 'tapped';
+    if (off !== null) kind = 'exact';
+    else if (times.cached.length < want) kind = 'cached';
+    if (kind === 'tapped') {
+      await tapAct(page, 'middle');
+    } else {
+      const legal = (await pcState(page)).game.legal;
+      const action: PlayerAction =
+        off ?? (legal?.canCheck === true ? { type: 'check' } : { type: 'call' });
+      await page.evaluate((action) => {
+        window.__pc?.dispatch({ type: 'act', action });
+      }, action);
+    }
+    const trip = await gradeTrip(page, lastJob);
+    lastJob = trip.jobId;
+    times[kind].push(trip.ms);
+  }
+  return {
+    cached: times.cached.slice(GRADE_WARM_UP),
+    exact: times.exact.slice(GRADE_WARM_UP),
+    tapped: times.tapped.slice(GRADE_WARM_UP),
+  };
+}
+
+const spread = (times: number[]): { p50: number; p95: number; max: number } => {
+  const sorted = [...times].sort((a, b) => a - b);
+  const at = (q: number): number =>
+    sorted[Math.min(sorted.length - 1, Math.floor(q * sorted.length))] ?? 0;
+  return { p50: at(0.5), p95: at(0.95), max: sorted.at(-1) ?? 0 };
+};
+
+test('grading adds at most 50 ms (cached EVs) and 150 ms (an exact-size EV) after the action (Stage 6, 6)', async ({
+  page,
+}, testInfo) => {
+  test.setTimeout(300_000);
+  const errors = collectErrors(page);
+  const times = await gradeTimes(page, seedFor(testInfo));
+  // Never skipped, even report-only: without these numbers there is nothing to report.
+  expect(times.cached.length, 'cached grades measured').toBeGreaterThanOrEqual(GRADE_SAMPLES);
+  expect(times.exact.length, 'exact-size grades measured').toBeGreaterThanOrEqual(GRADE_SAMPLES);
+
+  const rows = [
+    {
+      label: 'Cached EVs',
+      budget: GRADE_BUDGET.cached as number | null,
+      n: times.cached.length,
+      ...spread(times.cached),
+    },
+    {
+      label: 'Exact-size EV',
+      budget: GRADE_BUDGET.exact as number | null,
+      n: times.exact.length,
+      ...spread(times.exact),
+    },
+    // The same cached grade after a real tap: the page's own render comes first (no budget).
+    { label: 'Cached, by a tap', budget: null, n: times.tapped.length, ...spread(times.tapped) },
+  ];
+  const ms = (x: number): string => `${x.toFixed(0)} ms`;
+  const result = (r: (typeof rows)[number]): string =>
+    r.budget === null ? 'reported' : r.max > r.budget ? 'over budget' : 'ok';
+  console.info(
+    [
+      `grade after the action (${MODE}; brain.worker round trip, real time):`,
+      ...rows.map(
+        (r) =>
+          `${r.label.padEnd(17)} n=${String(r.n).padStart(3)}  budget ${(r.budget === null ? '-' : ms(r.budget)).padStart(7)}  ` +
+          `p50 ${ms(r.p50).padStart(6)}  p95 ${ms(r.p95).padStart(6)}  max ${ms(r.max).padStart(6)}  ${result(r)}`,
+      ),
+    ].join('\n'),
+  );
+  summarize(
+    [
+      `#### Grading after the action (${MODE})`,
+      '',
+      'Real time, 6 players, Chromium: the grade job from the act to its reply, from the brain.worker ' +
+        'message log (whole milliseconds). A miss here is a hint, not a failure on this runner; ' +
+        'enforced by `npm run e2e:perf` on a developer machine (PLAN §8.11, §17.5).',
+      '',
+      '| Check | Budget | Measured | p50 | p95 | Max | Result |',
+      '|---|---|---|---|---|---|---|',
+      ...rows.map(
+        (r) =>
+          `| ${r.label} | ${r.budget === null ? '-' : ms(r.budget)} | ${r.n} | ${ms(r.p50)} | ${ms(r.p95)} | ${ms(r.max)} | ${result(r)} |`,
+      ),
+    ].join('\n'),
+  );
+  void testInfo.attach('grade-timings.json', {
+    body: JSON.stringify({ rows, times }, null, 2),
+    contentType: 'application/json',
+  });
+  for (const r of rows) {
+    if (r.budget === null) continue;
+    if (REPORT_ONLY) {
+      if (r.max > r.budget) warn(`${r.label} grade: max ${ms(r.max)}, budget ${ms(r.budget)}`);
+    } else {
+      expect.soft(r.max, `${r.label} grade, slowest of ${r.n}`).toBeLessThanOrEqual(r.budget);
+    }
+  }
   expect(errors).toEqual([]);
 });
