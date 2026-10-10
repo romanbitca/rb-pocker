@@ -33,9 +33,9 @@ jobs:
       # Finds the E2E build up to date, then runs playwright; its webServer starts `npm start`.
       - run: npm run e2e
         env:
-          # PLAN §15.3, §17.5: the two throttled speed checks (win chance and long tasks at 6×,
-          # tests/e2e/perf.spec.ts) only report here: their numbers go to the job summary and a
-          # miss never fails the run. This runner is too noisy to hold a latency budget; the
+          # PLAN §15.3, §17.5: the speed checks (win chance and long tasks at 6×, and the grading
+          # time of Stage 6, tests/e2e/perf.spec.ts) only report here: their numbers go to the job
+          # summary and a miss never fails the run. This runner is too noisy to hold a latency budget; the
           # budgets are enforced by `npm run e2e:perf` on a developer machine and by `#bench` on
           # a real phone.
           PERF_REPORT_ONLY: '1'
