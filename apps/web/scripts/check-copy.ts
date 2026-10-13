@@ -85,6 +85,7 @@ export const CHECK_PROFILE: BrainProfile = {
   temperature: 0,
   defenseFactor: 1,
   preflopJitter: 0,
+  balancedBluffs: false,
   exploit: false,
   deterministic: true,
   neverLimp: true,

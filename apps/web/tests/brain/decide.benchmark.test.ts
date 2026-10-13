@@ -1,4 +1,6 @@
 /**
+ * Stage 7 acceptance 5 in Node (chunk 7.1): an Expert decision, every seat's statistics seen and
+ * the exploits on, takes at most 150 ms at the 95th percentile; Hard is reported.
  * Stage 5 acceptance 6 in Node: a bot decision at Medium takes at most 100 ms at the 95th
  * percentile (PLAN §18; `decide()` as `brain.worker` runs it). Also reported: Easy, and the coach's
  * hint with the HUD number given and without it (§8.11 budget on a mid-range phone: p50 ≤ 100 ms,
@@ -14,7 +16,12 @@ import { deriveSeed, rngFromSeed } from '../../src/core/rng.ts';
 import { observe } from '../../src/engine/observe.ts';
 import { startHand } from '../../src/engine/start.ts';
 import { step } from '../../src/engine/step.ts';
-import { PERSONALITY_IDS, type HandState, type Observation } from '../../src/engine/types.ts';
+import {
+  PERSONALITY_IDS,
+  type HandState,
+  type Observation,
+  type SeatStats,
+} from '../../src/engine/types.ts';
 import { tableWith } from '../engine/helpers.ts';
 import { randomInput } from '../engine/play.ts';
 import { env } from '../helpers/seed.ts';
@@ -25,6 +32,21 @@ const HANDS = 60;
 /** Hints are timed on every fourth point (they take several times longer). */
 const HINT_EVERY = 4;
 const BOT_P95_BUDGET_MS = 100;
+/** Stage 7 acceptance 5: an Expert decision at most 150 ms at p95. */
+const EXPERT_P95_BUDGET_MS = 150;
+/** Every seat seen for 60 hands, loose and aggressive, folding to most c-bets: all exploits on. */
+const SEEN: SeatStats[] = Array.from({ length: 6 }, () => ({
+  hands: 60,
+  vpip: [30, 60],
+  pfr: [12, 60],
+  threeBet: [3, 20],
+  foldTo3bet: [4, 8],
+  cbet: [6, 9],
+  foldToCbet: [24, 34],
+  wtsd: [10, 30],
+  aggActions: 40,
+  passiveActions: 8,
+}));
 
 /** Every decision point of `HANDS` 6-max hands at 100 bb. */
 function corpus(): Observation[] {
@@ -52,9 +74,9 @@ function quantiles(times: number[]): { p50: number; p95: number; max: number } {
 
 const ms = (x: number): string => `${x.toFixed(1)} ms`;
 
-describe('decision time (Stage 5 acceptance 6, §8.11)', () => {
+describe('decision time (Stage 5 acceptance 6, Stage 7 acceptance 5, §8.11)', () => {
   it(
-    'a Medium bot decides in at most 100 ms at p95 (Node); Easy and the hint are reported',
+    'a Medium bot decides in at most 100 ms at p95 and an Expert bot in 150 ms (Node); Easy, Hard and the hint are reported',
     { timeout: 300_000 },
     () => {
       const points = corpus();
@@ -83,16 +105,35 @@ describe('decision time (Stage 5 acceptance 6, §8.11)', () => {
           decide(obs, profileFor(people[i % 5] as (typeof people)[number], 'easy'), seed(i)),
         ),
       );
+      // Stage 7 acceptance 5 (chunk 7.1): Hard, and Expert with every seat's statistics and the
+      // hero's leaks seen (the exploits on), at most 150 ms at p95.
+      const hard = quantiles(
+        time((obs, i) =>
+          decide(obs, profileFor(people[i % 5] as (typeof people)[number], 'hard'), seed(i)),
+        ),
+      );
+      const expert = quantiles(
+        time((obs, i) =>
+          decide(
+            { ...obs, seatStats: SEEN, seatLevels: obs.seatLevels.map(() => 'expert') },
+            profileFor(people[i % 5] as (typeof people)[number], 'expert'),
+            seed(i),
+          ),
+        ),
+      );
       const hintGiven = quantiles(time((obs) => hint(obs, 0.5), HINT_EVERY));
       const hintNull = quantiles(time((obs) => hint(obs, null), HINT_EVERY));
       const line =
         `decision times over ${points.length} points (hints: every ${HINT_EVERY}th): Medium bot p50 ${ms(medium.p50)}, p95 ${ms(medium.p95)}, max ${ms(medium.max)} (budget p95 ≤ ${BOT_P95_BUDGET_MS} ms); ` +
         `Easy bot p50 ${ms(easy.p50)}, p95 ${ms(easy.p95)}; ` +
+        `Hard bot p50 ${ms(hard.p50)}, p95 ${ms(hard.p95)}; ` +
+        `Expert bot p50 ${ms(expert.p50)}, p95 ${ms(expert.p95)}, max ${ms(expert.max)} (budget p95 ≤ ${EXPERT_P95_BUDGET_MS} ms); ` +
         `hint with the HUD number p50 ${ms(hintGiven.p50)}, p95 ${ms(hintGiven.p95)}; ` +
         `hint computing it p50 ${ms(hintNull.p50)}, p95 ${ms(hintNull.p95)}, max ${ms(hintNull.max)}`;
       console.info(line);
       if (env('GITHUB_ACTIONS') === 'true') console.info(`::notice title=Brain speed::${line}`);
       expect(medium.p95).toBeLessThanOrEqual(BOT_P95_BUDGET_MS);
+      expect(expert.p95).toBeLessThanOrEqual(EXPERT_P95_BUDGET_MS);
     },
   );
 });

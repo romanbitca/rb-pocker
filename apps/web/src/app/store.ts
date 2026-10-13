@@ -29,6 +29,7 @@ import type {
   HandState,
   LegalActions,
   PlayerAction,
+  SeatStats,
   TableState,
 } from '../engine/types.ts';
 import { defaultSettings } from '../persist/schema.ts';
@@ -193,6 +194,12 @@ export interface GameSlice {
   legal: LegalActions | null;
   /** The hero has no chips: no next hand until Reload or Change table (§3.1). */
   heroBust: boolean;
+  /**
+   * What the table has seen each player do (§9.5 seat statistics, by `playerId`; the hero's is the
+   * hero model): updated at every hand end, read by the Hard/Expert bot card (§9.3, chunk 7.1). A
+   * player not seen yet has no entry.
+   */
+  seatStats: Readonly<Record<string, SeatStats>>;
   /** Settings → Diagnostics counters (§4.5, §12.14). */
   diag: Diagnostics;
   /**
@@ -545,6 +552,7 @@ export function initialGame(): GameSlice {
     next: null,
     legal: null,
     heroBust: false,
+    seatStats: NO_SEAT_STATS,
     diag: { engineErrors: 0, botFallbacks: 0, voidedHands: 0 },
     canUndo: false,
     feedback: null,
@@ -552,6 +560,9 @@ export function initialGame(): GameSlice {
     coachLevel: null,
   };
 }
+
+/** No player seen yet (`GameSlice.seatStats`). */
+export const NO_SEAT_STATS: Readonly<Record<string, SeatStats>> = Object.freeze({});
 
 /** The UI state of a launch: Welcome on the first launch, Home after it (§12.1). */
 export function initialUi(firstLaunch = true): UiSlice {

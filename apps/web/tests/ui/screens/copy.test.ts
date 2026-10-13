@@ -95,6 +95,12 @@ const PLAN_WORDS: Record<string, string> = {
   'botCard.howToBeat': `"${en.botCard.howToBeat}"`,
   'botCard.stack': `"${en.botCard.stack(placeholder('x'))}"`,
   'botCard.unknownStyle': `"${en.botCard.unknownStyle}`,
+  // Chunk 7.1: what a Hard or Expert bot card says the player has seen (§9.3, F.10).
+  'botCard.seenIntro': `"${en.botCard.seenIntro}"`,
+  'botCard.notSeenYet': `"${en.botCard.notSeenYet}"`,
+  'botCard.seen line': `"${[en.botCard.plays(34), en.botCard.raises(20), en.botCard.aggression.betsOften].join(en.botCard.separator)}"`,
+  'botCard.aggression': `"${en.botCard.aggression.betsOften}" · "${en.botCard.aggression.betsSometimes}" · "${en.botCard.aggression.mostlyCalls}"`,
+  'botCard.handsSeen': `"${en.botCard.handsSeen(placeholder('n'))}"`,
   ...Object.fromEntries(
     Object.entries(en.personality).map(([id, name]) => [`personality.${id}`, `| ${name} |`]),
   ),

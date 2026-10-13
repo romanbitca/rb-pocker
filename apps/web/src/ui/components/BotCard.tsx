@@ -5,8 +5,9 @@
  *
  * - Easy and Medium: the bot's name, the personality's icon and name, a one-line description, the
  *   "How to beat them" tip and the stack.
- * - Hard and Expert (`personality` is null): the name, "Style: unknown." and the stack. The
- *   observed stats ("Here is what you have seen:") come with Stage 7.
+ * - Hard and Expert (`personality` is null): the name, "Style: unknown.", what the player has seen
+ *   the bot do ("Here is what you have seen:" and "Plays 34% of hands · Raises 20% · Bets often",
+ *   with the number of hands behind it; chunk 7.1), and the stack.
  *
  * The card is mounted only while it is open and its code is a lazy chunk (App.tsx), so the Table's
  * DOM and the main bundle do not pay for it (§15.3).
@@ -63,11 +64,28 @@ export function BotCard({ card, onClose }: BotCardProps) {
           <p className={s.text}>{text.tip}</p>
         </>
       ) : (
-        <p id={styleId} className={s.style}>
-          {en.botCard.unknownStyle}
-        </p>
+        <>
+          <p id={styleId} className={s.style}>
+            {en.botCard.unknownStyle}
+          </p>
+          <SeenPlay seen={card.seen} />
+        </>
       )}
       <p className={s.stack}>{en.botCard.stack(formatChips(card.stack))}</p>
     </Modal>
+  );
+}
+
+/** What the player has seen a Hard or Expert bot do (§9.3), in plain words. */
+function SeenPlay({ seen }: { seen: BotCardView['seen'] }) {
+  if (seen === null) return <p className={s.text}>{en.botCard.notSeenYet}</p>;
+  const parts = [en.botCard.plays(seen.plays), en.botCard.raises(seen.raises)];
+  if (seen.aggression !== null) parts.push(en.botCard.aggression[seen.aggression]);
+  return (
+    <>
+      <p className={s.text}>{en.botCard.seenIntro}</p>
+      <p className={s.seen}>{parts.join(en.botCard.separator)}</p>
+      <p className={s.hands}>{en.botCard.handsSeen(formatChips(seen.hands))}</p>
+    </>
   );
 }
