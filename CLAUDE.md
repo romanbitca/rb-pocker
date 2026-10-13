@@ -56,6 +56,16 @@ fixed slice of the Claude plan.
   same as the autonomous run above (each 5-hour window up to **95%**, wait for the reset, continue),
   but **stop all work when the weekly all-models limit reaches 30%** (it was 2%; resets
   2026-10-16 18:00Z). Then pause until the owner writes again.
+- **Weekly cap (owner, 2026-10-13 20:30Z = 23:30 local):** each 5-hour window up to **95%** as above, and
+  **stop all work when the weekly all-models limit reaches 68%** (it was 57%, mostly from the owner's
+  other projects; resets 2026-10-16 18:00Z). Then pause until the owner writes again. The weekly
+  limit is account-wide: check it before every merge or agent, not only while agents run.
+- **Testing on this Mac, not GitHub Actions (owner, 2026-10-13):** the owner won't pay for GitHub and the
+  repo stays private, so the 2,000 free Actions minutes a month are not enough (they ran out on 9 Oct).
+  CI runs locally: before a merge, run the full local suite (the same steps as the `check`, `e2e` and
+  `docker` workflows) on the PR head and post the result as the commit status `local-ci`. GitHub
+  Actions workflows run by hand only. In the strict-order rule below, "passes in CI" means "passes in
+  local CI".
 - **Order (owner, 2026-09-27): strict plan order.** Every acceptance criterion of a stage passes in
   CI before the next stage is merged. Development of the next stage MAY overlap (parallel branches),
   but merges happen in stage order and never onto a red `main`. Human gates `[H]` still don't block.
@@ -94,7 +104,7 @@ needs the human (e.g. P1/P2 in EXECUTION.md), or the same CI failure survives th
   stays Node 22 for the owner's other projects). Prefix every node/npm/npx command in this repo with
   `PATH=/opt/homebrew/opt/node@24/bin:$PATH` and check `node -v` shows v24.
 - Docker Desktop must be running for Docker checks.
-- CI: the heavy `slow` job runs **weekly** (not nightly as PLAN §17.5 says) to save Actions
-  minutes on this private repo.
+- CI runs on this Mac (see "Testing on this Mac" above); the GitHub workflows, including the heavy
+  `slow` job, run only by hand.
 - Owner tests on a phone and is not a native English speaker: keep user-facing copy plain,
   and keep notifications/reports short.
