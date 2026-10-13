@@ -6,7 +6,7 @@ This is the working checklist for building [PLAN.md](PLAN.md). PLAN.md is the so
 
 Legend: `[ ]` todo · `[~]` in progress (branch exists) · `[x]` merged to `main` · `[H]` waiting on the human
 
-**Current position:** ▶ Resumed 13 Oct 20:30Z (owner: weekly cap **68%**, it was 57%; **CI = full local suite on this Mac**, GitHub Actions by hand only, results posted as the commit status `local-ci`). Merge train running: Stage 7 restacked onto #59, then Stage 6 [#52](https://github.com/romanbitca/rb-pocker/pull/52) → [#49](https://github.com/romanbitca/rb-pocker/pull/49) → [#48](https://github.com/romanbitca/rb-pocker/pull/48) → [#58](https://github.com/romanbitca/rb-pocker/pull/58) → [#59](https://github.com/romanbitca/rb-pocker/pull/59), local suite on main (Stage 6 gate), Stage 7 [#55](https://github.com/romanbitca/rb-pocker/pull/55) → [#57](https://github.com/romanbitca/rb-pocker/pull/57) → [#56](https://github.com/romanbitca/rb-pocker/pull/56), local suite on main (Stage 7 gate); #60 closed. Next: `chore/local-ci` (workflows `workflow_dispatch` only, `scripts/ci-local.sh` posting `local-ci`, PLAN §17.5), then Stage 8.
+**Current position:** ⏸ **Paused (13 Oct 21:50Z): weekly at 68%, the owner's cap** (resets 16 Oct 18:00Z). **Stages 6 and 7 ✅ merged** (main 72fd6c0, `local-ci` ✅: same code as #56's verified head). CI = full local suite on this Mac (owner, 13 Oct). Next, in order: (1) `chore/local-ci`: workflows `workflow_dispatch` only, `scripts/ci-local.sh` posting `local-ci`, PLAN §17.5 + row 1.3.58, CLAUDE.md loop step 5; (2) `chore/initial-bundle-headroom`: lazy-load screens first paint doesn't need (Setup, Settings, Menu…) to get ~10 KB under the 150 KB gate (main: JS 149.88, CSS 19.94); (3) 8.1 [#61](https://github.com/romanbitca/rb-pocker/pull/61) (draft: rebase onto main, then needs the headroom — it is 151.78 KB; volume/server/gen/copy/html/docker checks not run yet; `pc.v1.diag` in memory only); (4) 8.2 + 8.3, 8.4.
 
 ---
 
@@ -93,21 +93,21 @@ Legend: `[ ]` todo · `[~]` in progress (branch exists) · `[x]` merged to `main
 
 ## Stage 6 - Grading, feedback, Undo, Advanced/Exam (PLAN §8.9, §10.2–10.3, §11)
 
-- [~] 6.1 `feature/decision-grading` - `grade.ts`, leak tags, controller `grading` state, grade chips.
-- [~] 6.2 `feature/mistake-feedback-and-undo` - feedback card, toolbar Undo, `reshuffle`, practice flag, §11.5 tests, `?script=` hook.
-- [~] 6.3 `feature/hand-review-replay` - hand summary and read-only Review.
-- [~] 6.4 `feature/advanced-quiz-and-exam-level` - quiz, Exam behaviour, full level matrix.
-- [~] 6.5 `test/grading-and-undo-e2e` - acceptance 2–6.
+- [x] 6.1 `feature/decision-grading` - `grade.ts`, leak tags, controller `grading` state, grade chips.
+- [x] 6.2 `feature/mistake-feedback-and-undo` - feedback card, toolbar Undo, `reshuffle`, practice flag, §11.5 tests, `?script=` hook.
+- [x] 6.3 `feature/hand-review-replay` - hand summary and read-only Review.
+- [x] 6.4 `feature/advanced-quiz-and-exam-level` - quiz, Exam behaviour, full level matrix.
+- [x] 6.5 `test/grading-and-undo-e2e` - acceptance 2–6.
 
 ## Stage 7 - Hard and Expert bots (PLAN §9.5, §10.1)
 
-- [~] 7.1 `feature/hard-expert-bot-profiles` - range model on for bots, exploits (n ≥ 30), balanced river bluffs, hidden labels, observed-stats card.
-- [~] 7.2 `feature/per-seat-bot-levels` - per-seat override from next hand.
-- [~] 7.3 `test/hard-expert-self-play` - acceptance 1–5.
+- [x] 7.1 `feature/hard-expert-bot-profiles` - range model on for bots, exploits (n ≥ 30), balanced river bluffs, hidden labels, observed-stats card.
+- [x] 7.2 `feature/per-seat-bot-levels` - per-seat override from next hand.
+- [x] 7.3 `test/hard-expert-self-play` - acceptance 1–5.
 
 ## Stage 8 - Persistence and stats (PLAN §14, Appendix H)
 
-- [ ] 8.1 `feature/profile-commit-protocol` - schema guards, migrations scaffold, atomic commit + backup, crash injection tests.
+- [~] 8.1 `feature/profile-commit-protocol` - schema guards, migrations scaffold, atomic commit + backup, crash injection tests.
 - [ ] 8.2 `feature/stats-model-and-screen` - stats reducers, Stats screen (4 tabs, charts), 20-hand fixture.
 - [ ] 8.3 `feature/tab-lock-and-export-import` - Web Locks writer, `rev` fallback, export/import/reset, `persist()`.
 - [ ] 8.4 `feature/level-suggestions-and-install-hints` - Settings Data section, install nudge, suggestions.
@@ -230,3 +230,4 @@ If the human's answer later reveals a problem, the fix becomes a new chunk ahead
 | 10 Oct 02:44–04:10Z | 7.3 built (held) | [PR #56](https://github.com/romanbitca/rb-pocker/pull/56): R20 fixed (rule bonus floored at Medium's value in pots for bots); Expert reads each seat's fold-to-c-bet for fold equity after the flop (the model said 31–55% folds, bots fold 0–25%); Expert beats Medium +57.8 ± 16.9; Hard beats raise-always/call-always; pot-bettor loses; Expert p95 10.5 ms | 5h 46%, weekly 20% |
 | 10 Oct 02:44–04:10Z | 6.4 built (held), #48 banner fixed | [PR #58](https://github.com/romanbitca/rb-pocker/pull/58) on #48: Advanced quiz (24.4% of eligible decisions, hides badge + price chip), Exam (no Undo, win badge hidden all hand, "Exam result"), full §10.2 matrix, grade chips, per-decision coach-level latch; the summary sheet waits for a tap (§12.8); 274 e2e passed. #48 e20c3cc: banner never above the table box | weekly 20% |
 | 10 Oct 04:15–05:10Z | 6.5 built (held) | [PR #59](https://github.com/romanbitca/rb-pocker/pull/59) on #58: e2e for Stage 6 criteria 2–6 (scripted blunder, Undo per level, late/failed grades and a killed worker via the dev-only `window.__pc.faults`, level matrix on one phone + one desktop per browser, quiz 21% with no badge/price chip, grading time report-only); fixed "Try again" after two worker failures (`hintJobs.ts`); +131 s of e2e → [#60](https://github.com/romanbitca/rb-pocker/pull/60) raises the e2e job timeout to 30 min | weekly 23% |
+| 13 Oct 20:30–21:50Z | Stages 6 and 7 merged; 8.1 built (draft) | Owner: no paid GitHub → CI = full local suite on this Mac (`local-ci` status), weekly cap 68%. Merged #52 fbd550c, #49 75f10d8, #48 cb19849, #58 a3ebf01, #59 acbdb85 (Stage 6 gate on main: unit 2656, e2e 308, docker ✅; two runs timed out under load first), #55 1cd3a5d, #57 011879b, #56 72fd6c0 (same tree as the verified #56 head: unit 2796, e2e 316). #60 closed. [#61](https://github.com/romanbitca/rb-pocker/pull/61) 8.1: §14.9 crash injection, handSeq rule, private mode, resume e2e ✅; initial JS 151.78 KB ❌ | weekly 57% → 68% |
