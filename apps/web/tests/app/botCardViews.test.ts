@@ -15,10 +15,13 @@ import {
   seatLevelOf,
   seatView,
   selectBotCard,
+  type AppState,
   type AppStore,
   type BotCardData,
 } from '../../src/app/store.ts';
-import type { BotLevel, HandState, TableState } from '../../src/engine/types.ts';
+import { seenAggression, seenPlay } from '../../src/app/botCardViews.ts';
+import { emptySeatStats } from '../../src/brain/opponentStats.ts';
+import type { BotLevel, HandState, SeatStats, TableState } from '../../src/engine/types.ts';
 import type { BotCardView } from '../../src/ui/views.ts';
 import { deal, tableWith } from '../engine/helpers.ts';
 
@@ -63,6 +66,8 @@ describe('botCardOf', () => {
         name: `P${seat}`,
         personality: labelVisible(level) ? 'tag' : null,
         stack: hand.seats[seat]?.stack,
+        seen: null,
+        nextLevel: { own: null, table: level },
       });
       fitsCard(card as BotCardData);
     }
@@ -95,13 +100,55 @@ describe('botCardOf', () => {
     expect(botCardOf(hand, table, -1)).toBeNull();
   });
 
-  it('holds nothing but the seat, name, personality and stack (no hole card)', () => {
+  it('holds nothing but the seat, name, personality, stack, seen play and next level (no hole card)', () => {
     const { table, hand } = dealt();
     const card = botCardOf(hand, table, 1) as BotCardData;
-    expect(Object.keys(card).sort()).toEqual(['name', 'personality', 'seat', 'stack']);
+    expect(Object.keys(card).sort()).toEqual([
+      'name',
+      'nextLevel',
+      'personality',
+      'seat',
+      'seen',
+      'stack',
+    ]);
     const hole = hand.seats[1]?.hole ?? [];
     expect(hole).toHaveLength(2);
     expect(JSON.stringify(card)).not.toContain(JSON.stringify(hole));
+  });
+
+  it('Hard and Expert: what the player has seen, from the seat statistics (§9.3, chunk 7.1)', () => {
+    const { table, hand } = dealt({ botLevel: 'hard', seatLevels: [null, null, 'easy'] });
+    const stats = (over: Partial<SeatStats>): SeatStats => ({ ...emptySeatStats(), ...over });
+    const id1 = table.slots[1]?.playerId as string;
+    const id2 = table.slots[2]?.playerId as string;
+    const seen = {
+      [id1]: stats({ hands: 50, vpip: [17, 50], pfr: [10, 50], aggActions: 9, passiveActions: 3 }),
+      [id2]: stats({ hands: 50, vpip: [25, 50], pfr: [5, 50] }),
+    };
+    // The Hard seat: whole percentages of the hands with a preflop decision, AF 3 = "Bets often".
+    expect(botCardOf(hand, table, 1, seen)?.seen).toEqual({
+      hands: 50,
+      plays: 34,
+      raises: 20,
+      aggression: 'betsOften',
+    });
+    // The Easy seat shows its personality instead: no seen play.
+    expect(botCardOf(hand, table, 2, seen)?.seen).toBeNull();
+    // Nobody seen yet: null.
+    expect(botCardOf(hand, table, 1, {})?.seen).toBeNull();
+    expect(seenPlay(stats({ hands: 3 }))).toBeNull(); // no preflop decision yet
+  });
+
+  it('puts AF into words: often from 2, sometimes from 1, else mostly calls; none unseen', () => {
+    const af = (aggActions: number, passiveActions: number) =>
+      seenAggression({ ...emptySeatStats(), aggActions, passiveActions });
+    expect(af(0, 0)).toBeNull();
+    expect(af(3, 0)).toBe('betsOften');
+    expect(af(4, 2)).toBe('betsOften');
+    expect(af(3, 2)).toBe('betsSometimes');
+    expect(af(2, 2)).toBe('betsSometimes');
+    expect(af(1, 2)).toBe('mostlyCalls');
+    expect(af(0, 5)).toBe('mostlyCalls');
   });
 
   it('shows the chips behind, as the pod does, once a bet is in front of the seat', () => {
@@ -110,6 +157,92 @@ describe('botCardOf', () => {
     expect(hand.seats[1]?.streetBet).toBe(50);
     expect(botCardOf(hand, table, 1)?.stack).toBe(9950);
     expect(seatView(hand, table, 1).stack).toBe(9950);
+  });
+});
+
+describe('the level picker’s value: a seat’s level from the next hand on (§9.3, chunk 7.2)', () => {
+  it('is, without more, the levels of the table the hand was dealt from', () => {
+    const { table, hand } = dealt({ botLevel: 'medium', seatLevels: [null, 'expert', null] });
+    expect(botCardOf(hand, table, 1)?.nextLevel).toEqual({ own: 'expert', table: 'medium' });
+    expect(botCardOf(hand, table, 2)?.nextLevel).toEqual({ own: null, table: 'medium' });
+  });
+
+  it('is the given choice when there is one, and the card still describes the hand in play', () => {
+    const { table, hand } = dealt({ botLevel: 'easy' });
+    const card = botCardOf(hand, table, 1, {}, { own: 'expert', table: 'hard' });
+    expect(card?.nextLevel).toEqual({ own: 'expert', table: 'hard' });
+    // Label and statistics are those of the level in force: still Easy, so the personality shows.
+    expect(card?.personality).toBe('tag');
+    expect(card?.seen).toBeNull();
+  });
+
+  describe('selectBotCard reads the settings', () => {
+    function open(
+      spec: Parameters<typeof tableWith>[1],
+      settings: Partial<AppState['settings']>,
+      seat = 1,
+    ): AppStore {
+      const { table, hand } = dealt(spec);
+      const store = storeWith(table, hand);
+      store.setState({ settings: { ...store.getState().settings, ...settings } });
+      store.getState().dispatch({ type: 'botCard', seat });
+      return store;
+    }
+
+    it('the settings’ table level and the seat’s override, not the hand’s', () => {
+      const store = open(
+        { botLevel: 'easy', seatLevels: [null, null, null] },
+        { botLevel: 'hard', players: 3, seatLevels: [null, 'expert', null] },
+      );
+      expect(selectBotCard(store.getState())).toMatchObject({
+        personality: 'tag', // the hand in play is Easy: the label shows
+        nextLevel: { own: 'expert', table: 'hard' },
+      });
+    });
+
+    it('a seat with no override follows the settings’ table level', () => {
+      const store = open(
+        { botLevel: 'easy', seatLevels: [null, 'hard', null] },
+        { botLevel: 'medium', players: 3, seatLevels: [null, 'hard', null] },
+        2,
+      );
+      expect(selectBotCard(store.getState())?.nextLevel).toEqual({ own: null, table: 'medium' });
+    });
+
+    it('settings for another number of seats are not read: the table’s own levels show', () => {
+      const store = open(
+        { botLevel: 'easy', seatLevels: [null, 'hard', null] },
+        {
+          botLevel: 'medium',
+          players: 6,
+          seatLevels: [null, 'expert', 'expert', null, null, null],
+        },
+      );
+      expect(selectBotCard(store.getState())?.nextLevel).toEqual({ own: 'hard', table: 'medium' });
+    });
+
+    it('keeps its object while nothing it shows changes, and changes when a level does', () => {
+      const store = open(
+        { botLevel: 'easy' },
+        { botLevel: 'easy', players: 3, seatLevels: [null, null, null] },
+      );
+      const a = selectBotCard(store.getState());
+      // Other settings (speed, a bot's level that is not this seat's) leave the card alone.
+      store.setState({ settings: { ...store.getState().settings, speed: 'fast' } });
+      expect(selectBotCard(store.getState())).toBe(a);
+      store.setState({
+        settings: { ...store.getState().settings, seatLevels: [null, null, 'hard'] },
+      });
+      expect(selectBotCard(store.getState())).toBe(a);
+      store.setState({
+        settings: { ...store.getState().settings, seatLevels: [null, 'hard', 'hard'] },
+      });
+      const b = selectBotCard(store.getState());
+      expect(b).not.toBe(a);
+      expect(b?.nextLevel).toEqual({ own: 'hard', table: 'easy' });
+      store.setState({ settings: { ...store.getState().settings, botLevel: 'medium' } });
+      expect(selectBotCard(store.getState())?.nextLevel).toEqual({ own: 'hard', table: 'medium' });
+    });
   });
 });
 

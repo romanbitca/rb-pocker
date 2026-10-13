@@ -8,6 +8,7 @@
  */
 import { build, type Rolldown } from 'vite';
 import { describe, expect, it } from 'vitest';
+import { SCRIPT_HOOK_MARKER } from '../../src/app/botScripts.ts';
 import { TEST_HOOKS_MARKER } from '../../src/app/testHooks.ts';
 
 const ROOT = decodeURIComponent(new URL('../../', import.meta.url).pathname);
@@ -50,11 +51,16 @@ describe('test hooks and the production bundle', () => {
     expect(hits(files, TEST_HOOKS_MARKER)).toEqual([]);
     expect(hits(files, '__pc')).toEqual([]);
     expect([...files.keys()].filter((name) => /testHooks/i.test(name))).toEqual([]);
+    // The `?script=` hook and its scripts (Stage 6) are stripped too.
+    expect(hits(files, SCRIPT_HOOK_MARKER)).toEqual([]);
+    expect(hits(files, 'river-min-bet')).toEqual([]);
   }, 120_000);
 
   it('an E2E build (--mode e2e) has them (the control for the check above)', async () => {
     const files = await builtFiles('e2e');
     expect(hits(files, TEST_HOOKS_MARKER).length).toBeGreaterThan(0);
     expect(hits(files, '__pc').length).toBeGreaterThan(0);
+    expect(hits(files, SCRIPT_HOOK_MARKER).length).toBeGreaterThan(0);
+    expect(hits(files, 'river-min-bet').length).toBeGreaterThan(0);
   }, 120_000);
 });

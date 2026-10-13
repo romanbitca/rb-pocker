@@ -15,6 +15,7 @@ import {
   byRiverShown,
   drawCards,
   drawChipsOf,
+  initialCoach,
   initialEquity,
   initialGame,
   nutsOf,
@@ -405,6 +406,7 @@ describe('selectors keep their objects (pitfall 37)', () => {
     ({
       game: { ...initialGame(), hand },
       equity,
+      coach: initialCoach(),
       settings: defaultSettings(),
     }) as unknown as AppState;
 

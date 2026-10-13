@@ -54,6 +54,7 @@ import { startHand } from '../src/engine/start.ts';
 import { step } from '../src/engine/step.ts';
 import { createTable, nextTable } from '../src/engine/table.ts';
 import {
+  BOT_LEVELS,
   PERSONALITY_IDS,
   type BotLevel,
   type HandState,
@@ -82,6 +83,37 @@ export type Baseline = (typeof BASELINES)[number];
 export type SeatSpec = PersonalityId | 'coach' | Baseline;
 
 export const SEAT_SPECS: readonly SeatSpec[] = [...PERSONALITY_IDS, 'coach', ...BASELINES];
+
+/**
+ * A seat of a lineup: a `SeatSpec`, or a personality at a level of its own ("tag@expert", the §9.3
+ * per-seat override), so one table can hold two levels (Stage 7: "Expert beats Medium").
+ */
+export type LineupEntry = SeatSpec | `${PersonalityId}@${BotLevel}`;
+
+/** The seat spec of a lineup entry and its own level (null: the run's level). */
+export function parseEntry(entry: LineupEntry): { spec: SeatSpec; level: BotLevel | null } {
+  const at = entry.indexOf('@');
+  if (at < 0) return { spec: entry as SeatSpec, level: null };
+  return { spec: entry.slice(0, at) as SeatSpec, level: entry.slice(at + 1) as BotLevel };
+}
+
+/** Is `text` a lineup entry: a seat spec, or a personality "@" a bot level? */
+export function isLineupEntry(text: string): text is LineupEntry {
+  const at = text.indexOf('@');
+  if (at < 0) return SEAT_SPECS.includes(text as SeatSpec);
+  return (
+    PERSONALITY_IDS.includes(text.slice(0, at) as PersonalityId) &&
+    (BOT_LEVELS as readonly string[]).includes(text.slice(at + 1))
+  );
+}
+
+/**
+ * The side a seat plays for, in the win-rate gates (§9.7): a personality's level ("hard"), the
+ * coach, or the baseline's name.
+ */
+export function sideOf(spec: SeatSpec, level: BotLevel): string {
+  return isPersonality(spec) ? level : spec;
+}
 
 /** The level of the personality seats: one of the four, or Easy/Medium drawn per seat. */
 export type RunLevel = BotLevel | 'mixed';
@@ -125,6 +157,8 @@ interface Player {
   key: string;
   /** Decision-time class: the bot level ("medium"), "coach" or "scripted". */
   timing: string;
+  /** The side it plays for in the win-rate gates (`sideOf`). */
+  side: string;
   /** Shown to the other seats (§9.2: personality labels at Easy and Medium). */
   label: PersonalityId | null;
   level: BotLevel;
@@ -137,6 +171,7 @@ function playerFor(spec: SeatSpec, level: BotLevel): Player {
     return {
       key: profile.id,
       timing: level,
+      side: level,
       label: level === 'easy' || level === 'medium' ? spec : null,
       level,
       act: (obs, seed) => {
@@ -149,6 +184,7 @@ function playerFor(spec: SeatSpec, level: BotLevel): Player {
     return {
       key: 'coach',
       timing: 'coach',
+      side: 'coach',
       label: null,
       level,
       act: (obs) => {
@@ -161,6 +197,7 @@ function playerFor(spec: SeatSpec, level: BotLevel): Player {
   return {
     key: spec,
     timing: 'scripted',
+    side: spec,
     label: null,
     level,
     act: (obs) => {
@@ -181,7 +218,7 @@ export interface SelfPlayJob {
   readonly firstHand: number;
   /** Table sizes; a `reset`/`carry` job plays `seatCounts[index mod length]` seats. */
   readonly seatCounts: readonly number[];
-  readonly lineup: readonly SeatSpec[];
+  readonly lineup: readonly LineupEntry[];
   readonly level: RunLevel;
   readonly stacks: StackMode;
   /** Blinds and starting stack (chips) of `reset` and `carry` tables. */
@@ -227,6 +264,20 @@ export interface ProfileTally {
   kinds: Record<string, number>;
 }
 
+/**
+ * One side's result (`Player.side`): per hand, the mean net in big blinds of its seats dealt in,
+ * so a side of several seats at one table is one sample per hand (its seats' results are not
+ * independent: at a table of two sides one side's loss is the other's gain).
+ */
+export interface SideTally {
+  /** Hands with at least one of its seats dealt in. */
+  hands: number;
+  /** Its seats dealt in, summed over those hands. */
+  seatHands: number;
+  /** Per hand: the mean net of its seats, in big blinds. */
+  net: MeanMoments;
+}
+
 export interface Problem {
   job: number;
   hand: number;
@@ -236,6 +287,8 @@ export interface Problem {
 export interface JobResult {
   hands: number;
   profiles: Record<string, ProfileTally>;
+  /** The win-rate sides (§9.7): a level, the coach, a baseline. */
+  sides: Record<string, SideTally>;
   illegal: number;
   invariant: number;
   unfinished: number;
@@ -310,12 +363,12 @@ export function mergeTally(into: ProfileTally, from: ProfileTally): void {
 // ── Tables ─────────────────────────────────────────────────────────────────────────────────────
 
 /** The engine's slots: the hero's slot is seat 0; a bot slot needs some personality. */
-function slotsFor(stacks: readonly number[], lineup: readonly SeatSpec[]): PlayerSlot[] {
+function slotsFor(stacks: readonly number[], lineup: readonly LineupEntry[]): PlayerSlot[] {
   return stacks.map((stack, seat) => {
     if (seat === 0) {
       return { playerId: 'hero', name: 'Seat 0', kind: 'hero', personality: null, stack };
     }
-    const spec = lineup[seat % lineup.length] as SeatSpec;
+    const { spec } = parseEntry(lineup[seat % lineup.length] as LineupEntry);
     return {
       playerId: `bot-${seat}`,
       name: `Seat ${seat}`,
@@ -352,7 +405,7 @@ function randomStack(rng: Rng, bb: number): number {
   return 1 + randInt(rng, 500 * bb);
 }
 
-function randomTable(seatCount: number, rng: Rng, lineup: readonly SeatSpec[], level: BotLevel) {
+function randomTable(seatCount: number, rng: Rng, lineup: readonly LineupEntry[], level: BotLevel) {
   const bb = BIG_BLINDS[randInt(rng, BIG_BLINDS.length)] as number;
   const stacks = Array.from({ length: seatCount }, () => randomStack(rng, bb));
   if (stacks.filter((s) => s > 0).length < 2) {
@@ -376,9 +429,15 @@ function seatLevels(level: RunLevel, seatCount: number, rng: Rng): BotLevel[] {
   return Array.from({ length: seatCount }, () => (randInt(rng, 2) === 0 ? 'easy' : 'medium'));
 }
 
-/** The players of a table and what `observe` adds for them (labels, levels, seat statistics). */
-function seatPlayers(lineup: readonly SeatSpec[], levels: readonly BotLevel[]): Player[] {
-  return levels.map((level, seat) => playerFor(lineup[seat % lineup.length] as SeatSpec, level));
+/**
+ * The players of a table and what `observe` adds for them (labels, levels, seat statistics): a
+ * lineup entry with a level of its own ("tag@expert") plays at it, every other seat at `levels`.
+ */
+function seatPlayers(lineup: readonly LineupEntry[], levels: readonly BotLevel[]): Player[] {
+  return levels.map((level, seat) => {
+    const entry = parseEntry(lineup[seat % lineup.length] as LineupEntry);
+    return playerFor(entry.spec, entry.level ?? level);
+  });
 }
 
 /** §4.5: the safest legal action, check if legal, else fold. */
@@ -387,6 +446,32 @@ const safeAction = (legal: LegalActions): PlayerAction =>
 
 // ── One job ────────────────────────────────────────────────────────────────────────────────────
 
+/** Adds one hand to the sides of the seats dealt in: each side's mean net over its seats. */
+function addSides(
+  sides: Record<string, SideTally>,
+  players: readonly Player[],
+  done: HandState,
+): void {
+  const sums = new Map<string, { net: number; seats: number }>();
+  done.seats.forEach((seat, s) => {
+    if (!seat.dealtIn) return;
+    const side = (players[s] as Player).side;
+    const sum = sums.get(side) ?? { net: 0, seats: 0 };
+    sum.net += ((done.result?.net[s] ?? 0) as number) / done.bb;
+    sum.seats++;
+    sums.set(side, sum);
+  });
+  for (const [side, { net, seats }] of sums) {
+    const t = (sides[side] ??= { hands: 0, seatHands: 0, net: { n: 0, sum: 0, sumSq: 0 } });
+    const x = net / seats;
+    t.hands++;
+    t.seatHands += seats;
+    t.net.n++;
+    t.net.sum += x;
+    t.net.sumSq += x * x;
+  }
+}
+
 /** Plays the job's hands and returns its tallies. Pure but for the decision times. */
 export function runJob(job: SelfPlayJob): JobResult {
   const jobSeed = deriveSeed(job.seed, 'job', job.index);
@@ -394,6 +479,7 @@ export function runJob(job: SelfPlayJob): JobResult {
   const result: JobResult = {
     hands: 0,
     profiles: {},
+    sides: {},
     illegal: 0,
     invariant: 0,
     unfinished: 0,
@@ -415,7 +501,7 @@ export function runJob(job: SelfPlayJob): JobResult {
     stats = new Array<SeatStats | null>(fixedSeats).fill(null);
     const stacks = new Array<number>(fixedSeats).fill(job.startingStack);
     table = createTable(
-      configFor(fixedSeats, job.bb, job.startingStack, levels[1] ?? 'medium'),
+      configFor(fixedSeats, job.bb, job.startingStack, players[1]?.level ?? 'medium'),
       slotsFor(stacks, job.lineup),
       deriveSeed(jobSeed, 'table'),
     );
@@ -427,7 +513,7 @@ export function runJob(job: SelfPlayJob): JobResult {
       const levels = seatLevels(job.level, n, rng);
       players = seatPlayers(job.lineup, levels);
       stats = new Array<SeatStats | null>(n).fill(null);
-      table = randomTable(n, rng, job.lineup, levels[1] ?? 'medium');
+      table = randomTable(n, rng, job.lineup, players[1]?.level ?? 'medium');
     }
     const t = table as TableState;
     const extras: ObserveExtras = {
@@ -451,6 +537,7 @@ export function runJob(job: SelfPlayJob): JobResult {
       addHand(tally, own, ((done.result?.net[s] ?? 0) as number) / bb);
       stats[s] = updateSeatStats(stats[s] ?? null, done.log, s);
     });
+    addSides(result.sides, players, done);
 
     if (job.stacks !== 'random') table = nextHandTable(t, done, job);
   }
@@ -538,7 +625,7 @@ export interface RunSpec {
   seed: Seed128;
   hands: number;
   seatCounts: readonly number[];
-  lineup: readonly SeatSpec[];
+  lineup: readonly LineupEntry[];
   level: RunLevel;
   stacks: StackMode;
   bb: number;
@@ -573,6 +660,7 @@ export function mergeResults(results: readonly JobResult[]): JobResult {
   const total: JobResult = {
     hands: 0,
     profiles: {},
+    sides: {},
     illegal: 0,
     invariant: 0,
     unfinished: 0,
@@ -587,6 +675,16 @@ export function mergeResults(results: readonly JobResult[]): JobResult {
     total.problems.push(...r.problems);
     for (const [key, tally] of Object.entries(r.profiles)) {
       mergeTally((total.profiles[key] ??= emptyTally()), tally);
+    }
+    for (const [side, t] of Object.entries(r.sides)) {
+      const into = (total.sides[side] ??= {
+        hands: 0,
+        seatHands: 0,
+        net: { n: 0, sum: 0, sumSq: 0 },
+      });
+      into.hands += t.hands;
+      into.seatHands += t.seatHands;
+      for (const k of ['n', 'sum', 'sumSq'] as const) into.net[k] += t.net[k];
     }
     for (const [cls, times] of Object.entries(r.times)) {
       const into = (total.times[cls] ??= []);

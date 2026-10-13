@@ -6,6 +6,9 @@
  */
 import type { BotLevel, CoachLevel, TableConfig } from '../../engine/types.ts';
 
+/** Bot speed (§9.8, §12.8): the Settings values. */
+export type Speed = 'normal' | 'fast' | 'instant';
+
 /** §3.2 limits. Depth is in big blinds: the starting stack must be 10 to 500 of them. */
 export const PLAYERS = { min: 2, max: 9 } as const;
 export const STACK = { min: 200, max: 1_000_000 } as const;
@@ -35,6 +38,17 @@ export interface SetupValues {
   bb: number;
   botLevel: BotLevel;
   coachLevel: CoachLevel;
+  /** "Set each bot's level" (§9.3, chunk 7.2): one entry per seat, the hero's (seat 0) null. */
+  seatLevels: readonly (BotLevel | null)[];
+  /** "More options" (§12.2): the bot speed and the four-colour deck. */
+  speed: Speed;
+  fourColour: boolean;
+}
+
+/** What "More options" sets besides the per-seat levels (chunk 7.2). */
+export interface MoreChoices {
+  speed: Speed;
+  fourColour: boolean;
 }
 
 /** The levels a player can pick now; the others show "Coming soon" (§18). */
@@ -44,13 +58,13 @@ export interface AvailableLevels {
 }
 
 /**
- * What the app offers in Setup and Settings (§18 Stage 5): Easy and Medium bots, Beginner and
- * Intermediate coach. Hard and Expert come with Stage 7, Advanced and Exam with Stage 6; the
- * stored settings and the engine already accept all four of each.
+ * What the app offers in Setup and Settings (§18): all four bot levels (Hard and Expert from
+ * chunk 7.1) and all four coach levels (Advanced and Exam from chunk 6.4, §10.2). The stored
+ * settings and the engine accept all four of each.
  */
 export const AVAILABLE_LEVELS: AvailableLevels = {
-  bot: ['easy', 'medium'],
-  coach: ['beginner', 'intermediate'],
+  bot: ['easy', 'medium', 'hard', 'expert'],
+  coach: ['beginner', 'intermediate', 'advanced', 'exam'],
 };
 
 /**
@@ -68,6 +82,10 @@ export interface SetupForm {
   bigBlind: Amount;
   botLevel: BotLevel;
   coachLevel: CoachLevel;
+  /** One entry per seat (`players`), the hero's null; null = the table's level. */
+  seatLevels: (BotLevel | null)[];
+  speed: Speed;
+  fourColour: boolean;
 }
 
 /** Depth labels (§12.2): 10–24 short, 25–59 medium, 60–150 normal, 151–500 deep. */
@@ -142,12 +160,29 @@ export function checkStakes(stack: number, bb: number): Stakes {
   return { kind: 'ok', bigBlinds, band: depthBand(bigBlinds) };
 }
 
-/** The table config Setup starts: no per-seat level overrides yet (Stage 7 adds them). */
+/**
+ * `levels` for `players` seats: the hero's (seat 0) null, a bot's kept, a new seat's null (the
+ * table's level), a seat that is gone dropped. The one way the per-seat list follows the stepper.
+ */
+export function resizeSeatLevels(
+  levels: readonly (BotLevel | null)[],
+  players: number,
+): (BotLevel | null)[] {
+  return Array.from({ length: players }, (_, seat) => (seat === 0 ? null : (levels[seat] ?? null)));
+}
+
+/** How many bots have a level of their own (not the table's). */
+export function ownLevelCount(levels: readonly (BotLevel | null)[]): number {
+  return levels.filter((level, seat) => seat > 0 && level !== null).length;
+}
+
+/** The table config Setup starts, with the per-seat overrides of "Set each bot's level". */
 export function tableConfig(
   players: number,
   startingStack: number,
   bb: number,
   botLevel: BotLevel,
+  seatLevels: readonly (BotLevel | null)[] = [],
 ): TableConfig {
   return {
     seatCount: players,
@@ -155,7 +190,7 @@ export function tableConfig(
     bb,
     startingStack,
     botLevel,
-    seatLevels: Array.from({ length: players }, () => null),
+    seatLevels: resizeSeatLevels(seatLevels, players),
   };
 }
 
@@ -165,14 +200,16 @@ export function checkSetup(form: SetupForm, available: AvailableLevels): SetupCh
   const bb = bigBlindValue(form.bigBlind);
   const stakes = stack !== null && bb !== null ? checkStakes(stack, bb) : null;
   const levelsOk =
-    available.bot.includes(form.botLevel) && available.coach.includes(form.coachLevel);
+    available.bot.includes(form.botLevel) &&
+    available.coach.includes(form.coachLevel) &&
+    form.seatLevels.every((level) => level === null || available.bot.includes(level));
   const config =
     stack !== null &&
     bb !== null &&
     stakes?.kind === 'ok' &&
     levelsOk &&
     inRange(form.players, PLAYERS)
-      ? tableConfig(form.players, stack, bb, form.botLevel)
+      ? tableConfig(form.players, stack, bb, form.botLevel, form.seatLevels)
       : null;
   return { stack, bb, stakes, config };
 }
@@ -205,5 +242,14 @@ export function initialForm(values: SetupValues, available: AvailableLevels): Se
     coachLevel: available.coach.includes(values.coachLevel)
       ? values.coachLevel
       : (available.coach[0] ?? values.coachLevel),
+    // A saved override that cannot be picked now opens as the table's level, like the cards above.
+    seatLevels: resizeSeatLevels(
+      values.seatLevels.map((level) =>
+        level !== null && available.bot.includes(level) ? level : null,
+      ),
+      players,
+    ),
+    speed: values.speed,
+    fourColour: values.fourColour,
   };
 }

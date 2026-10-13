@@ -21,6 +21,10 @@ export function toastText(toast: Toast): string {
       return en.toast.handNotRestored;
     case 'dataRecovered':
       return en.toast.dataRecovered;
+    case 'dataRestored':
+      return en.toast.dataRestored;
+    case 'undone':
+      return en.toast.undone;
   }
 }
 

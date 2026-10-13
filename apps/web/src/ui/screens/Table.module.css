@@ -322,15 +322,68 @@
   padding-top: 0;
 }
 
-/* ---- The coach (§12.3, §12.5, §12.6) ---- */
+/* ---- The coach (§12.3, §12.5, §12.6), with the toolbar Undo at its left (chunk 6.2) ---- */
 
-/* Portrait: the 48 px strip, as wide as the hero strip above it. */
+/* Portrait: the 48 px strip, as wide as the hero strip above it. The strip keeps 44 px of padding
+   on its left (CoachStrip.module.css); the toolbar Undo sits there. */
 .coach {
+  position: relative;
   grid-area: coach;
   justify-self: center;
   width: 100%;
   max-width: 600px;
   height: var(--coach-strip);
+}
+
+/* The Advanced quiz (§10.3) takes the strip's place: the row grows to fit it while it shows, and
+   the table gives the room back after (as the sizing tray pushes the rows, §12.7). */
+.coach:has([data-quiz]) {
+  height: auto;
+  min-height: var(--coach-strip);
+}
+
+/* The toolbar Undo in the strip's reserved slot (portrait, the landscape coach row). */
+.stripUndo {
+  position: absolute;
+  top: 2px;
+  left: max(8px, env(safe-area-inset-left));
+  z-index: 1;
+}
+
+/* Landscape: the coach row (Undo on its left, the strip's content on its right, §12.5). With
+   nothing to say the strip takes no space, but a shown Undo keeps its row. */
+.sideCoach {
+  position: relative;
+}
+.sideCoach:has(> .stripUndo) {
+  min-height: var(--coach-strip);
+}
+
+/* ---- The feedback card (§12.6): over everything above the action bar, a 25% scrim ---- */
+
+.feedbackHost {
+  position: relative;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  grid-row: 1 / 5;
+  grid-column: 1;
+  min-height: 0;
+  padding: var(--space-2) max(var(--space-2), env(safe-area-inset-right)) var(--space-2)
+    max(var(--space-2), env(safe-area-inset-left));
+}
+.compact .feedbackHost {
+  grid-row: 1 / 4;
+}
+.landscape .feedbackHost {
+  grid-row: 1 / 3;
+}
+
+.feedbackScrim {
+  position: absolute;
+  inset: 0;
+  background: rgb(0 0 0 / 25%);
 }
 
 /* Compact: the "Coach" pill in the draw chips' row of the hero strip, left of the badge column;
@@ -346,19 +399,34 @@
   margin-right: 80px;
 }
 
-/* Wide: the inline panel (the sheet's sections, always open). It fills its reserved row (`.wide`)
-   and scrolls inside; with nothing to say it is drawn empty. */
-.coachPanel {
+/* Wide: the inline panel (the sheet's sections, always open). Its box fills its reserved row
+   (`.wide`); the panel scrolls inside it, and with nothing to say it is drawn empty. The toolbar
+   Undo sits at the left of its head row and stays there while the panel scrolls. */
+.coachBox {
+  position: relative;
+  display: flex;
+  flex-direction: column;
   grid-area: coach;
   justify-self: center;
   width: 100%;
   max-width: 720px;
+  min-height: 0;
+}
+.coachPanel {
+  flex: 1;
   min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
   padding: 4px max(16px, env(safe-area-inset-right)) 12px max(16px, env(safe-area-inset-left));
   border-top: 1px solid var(--control-border);
   background: var(--surface);
+}
+/* 1 px of border and the panel's 4 px of padding above the head row. */
+.panelUndo {
+  position: absolute;
+  top: 5px;
+  left: max(16px, env(safe-area-inset-left));
+  z-index: 1;
 }
 
 /* The panel's sections line up with its head row's text, right of the reserved Undo slot. */

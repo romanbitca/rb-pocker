@@ -38,6 +38,12 @@
  *   over its level's personality list (the §9.5 prior); never the hidden personality itself.
  * - Each bet size seeds its own `E_called` trials from the decision seed and the amount, so the
  *   same size always gets the same EV, whether it is a candidate or the hero's own size.
+ * - **Expert reads the folds it has seen** (chunk 7.3, risk R20; `readsFolds`): after the flop
+ *   each opponent's `c` is its fold to c-bet read as a share of its range that continues against
+ *   any bet or raise (`readContinueFraction`), not `MDF × stickiness`. Measured in self-play, the
+ *   bots fold 0–25% against bets and raises after the flop whatever the size, where the model
+ *   predicts 31–55%; Expert follows its EVs most closely (T 0.04), so the model's fold equity made
+ *   it raise and bluff into callers. The coach keeps the model: its EVs only explain its advice.
  */
 import { deriveSeed, type Seed128 } from '../core/rng.ts';
 import type {
@@ -46,8 +52,10 @@ import type {
   Observation,
   PersonalityId,
   PlayerAction,
+  SeatStats,
 } from '../engine/types.ts';
 import { isLegalAction, snapToLegal } from './guardrails.ts';
+import { shrink } from './opponentStats.ts';
 import {
   COMBO_CLASS,
   COMBOS,
@@ -67,6 +75,7 @@ import {
   EV_OPEN_BB,
   EV_OPEN_PER_LIMPER_BB,
   EV_RAISE_MULTIPLES,
+  FOLD_READ_MDF,
   LEVEL_PERSONALITIES,
   PERSONALITIES,
 } from './tunables.ts';
@@ -94,9 +103,25 @@ export function mdf(pot: number, inv: number): number {
   return pot / (pot + inv);
 }
 
+const clampContinue = (c: number): number => Math.min(CONTINUE_MAX, Math.max(CONTINUE_MIN, c));
+
 /** The share of its range an opponent continues with: `clamp(MDF × stickiness, 0.15, 0.95)`. */
 export function continueFraction(pot: number, inv: number, stickiness: number): number {
-  return Math.min(CONTINUE_MAX, Math.max(CONTINUE_MIN, mdf(pot, inv) * stickiness));
+  return clampContinue(mdf(pot, inv) * stickiness);
+}
+
+/**
+ * §8.9 at Expert (chunk 7.3): the share of its range an opponent continues with against a bet or
+ * raise after the flop, read from its fold to c-bet `[x, n]` (§9.5): `clamp(1 − est, 0.15, 0.95)`,
+ * `est = (x + k·f0) / (n + k)` with k = 20. The prior `f0 = 1 − clamp(⅔ × stickiness)` is the
+ * model's fold against a ½-pot c-bet, so a seat seen nothing reads as the model at that size. The
+ * read does not depend on the size: fold to c-bet is the only fold statistic after the flop, and
+ * the bots' own folds barely do (HEURISTIC, measured in self-play: §9.7, chunk 7.3).
+ */
+export function readContinueFraction(stats: SeatStats | null, stickiness: number): number {
+  const prior = 1 - clampContinue(FOLD_READ_MDF * stickiness);
+  const [folds, chances] = stats === null ? [0, 0] : stats.foldToCbet;
+  return clampContinue(1 - shrink(folds, chances, prior));
 }
 
 /**
@@ -148,6 +173,15 @@ export function continuingWeights(
     left -= take;
   }
   return out;
+}
+
+/**
+ * A call ends the hero's betting: it puts the hero all-in, or every live opponent (`ranges`, one
+ * per live opponent) is all-in already. Then nobody can bet the hero off its equity: the call's
+ * `R` is 1 and it has no implied odds (§8.4; the grade's price signal reads the same `R`, §8.9).
+ */
+export function callEndsBetting(obs: Observation, ranges: readonly OpponentRange[]): boolean {
+  return obs.legal.callIsAllIn || ranges.every((r) => obs.allIn[r.seat] === true);
 }
 
 /**
@@ -248,6 +282,11 @@ export interface EvSpot {
   tables?: RangeTables;
   /** Each seat's stickiness: `seatStickiness` by default. */
   stickiness?: (seat: number) => number;
+  /**
+   * Expert (chunk 7.3): after the flop each opponent's `c` is `readContinueFraction` of its seat
+   * statistics instead of `MDF × stickiness`. Default false: the coach and Easy to Hard.
+   */
+  readsFolds?: boolean;
 }
 
 export interface EvModel {
@@ -272,6 +311,7 @@ export function evModel(spot: EvSpot): EvModel {
   const anyAllIn = responders.length < f.ranges.length;
   const stickiness = spot.stickiness ?? ((seat: number) => seatStickiness(obs, seat));
   const trials = spot.trials ?? E_CALLED_TRIALS;
+  const reads = spot.readsFolds === true && obs.board.length > 0;
   const chips = (seat: number): number =>
     (obs.streetBets[seat] as number) + (obs.stacks[seat] as number);
   const villain = responders.reduce<OpponentRange | null>((best, r) => {
@@ -302,7 +342,11 @@ export function evModel(spot: EvSpot): EvModel {
     const matched = Math.min(to, villainMax);
     const heroIn = matched - heroStreet;
     const callIn = matched - (obs.streetBets[villain.seat] as number);
-    const cs = responders.map((r) => continueFraction(f.pot, heroIn, stickiness(r.seat)));
+    const cs = responders.map((r) =>
+      reads
+        ? readContinueFraction(obs.seatStats[r.seat] ?? null, stickiness(r.seat))
+        : continueFraction(f.pot, heroIn, stickiness(r.seat)),
+    );
     const FE = anyAllIn ? 0 : foldEquity(cs);
     // One caller, as pot′ counts it: the villain's continuing range, plus the whole range of every
     // all-in opponent (in the pot, it cannot fold); the others have folded (chunk 5.7, PLAN §8.9).
@@ -335,7 +379,7 @@ export function evModel(spot: EvSpot): EvModel {
       case 'check':
         return evCheck(f.eRange, spot.R, f.pot);
       case 'call': {
-        const ends = legal.callIsAllIn || responders.length === 0;
+        const ends = callEndsBetting(obs, f.ranges);
         return ends
           ? evCall(f.eRange, 1, f.winPot, f.toCall)
           : evCall(f.eRange, spot.R, f.winPot, f.toCall, spot.implied);

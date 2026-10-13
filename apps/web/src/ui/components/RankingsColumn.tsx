@@ -18,6 +18,8 @@ export interface RankingsColumnProps {
   showTips?: boolean | undefined;
   /** The "By river" column (§13.2); null or absent = none. */
   byRiver?: ByRiverView | null | undefined;
+  /** The "Which hand wins?" button (Advanced and Exam, §10.2). */
+  whichWins?: boolean | undefined;
 }
 
 export const RankingsColumn = memo(function RankingsColumn({
@@ -26,6 +28,7 @@ export const RankingsColumn = memo(function RankingsColumn({
   onCollapsedChange,
   showTips,
   byRiver,
+  whichWins,
 }: RankingsColumnProps) {
   const titleId = useId();
   const currentRowRef = useRef<HTMLLIElement>(null);
@@ -74,6 +77,7 @@ export const RankingsColumn = memo(function RankingsColumn({
           hero={hero}
           cardSize="md"
           showTips={showTips}
+          whichWins={whichWins}
           currentRowRef={currentRowRef}
           byRiver={byRiver}
         />

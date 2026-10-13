@@ -3,12 +3,14 @@ import { expect, test } from './fixtures.ts';
 import {
   collectErrors,
   installLeakWatch,
+  keepMove,
   leakViolations,
   nextFlowPoint,
   seedFor,
   sizeOf,
   slot,
   startTable,
+  tapNextHand,
 } from './game.ts';
 
 /**
@@ -76,7 +78,7 @@ async function nextHand(page: Page, point: string): Promise<void> {
       .locator('[role="dialog"] button, [role="alertdialog"] button', { hasText: /^Reload/ })
       .click();
   } else {
-    await page.locator('[data-hand-end]').click();
+    await tapNextHand(page);
   }
 }
 
@@ -119,20 +121,30 @@ test('all-in TV mode: a bar for every face-up hand, then the luck line rule', as
     }
     await setSpeed(page, 'normal');
     await shove(page);
-    const outcome = await page.waitForFunction(
-      () => {
-        const g = (
-          window.__pc?.state() as unknown as {
-            game: { mode: string; hand: { runout: boolean; revealed: number[] } };
-          }
-        ).game;
-        if (g.mode === 'handEnd' || g.mode === 'heroTurn') return 'stop';
-        return g.hand.runout && g.hand.revealed.includes(0) ? 'runout' : null;
-      },
-      undefined,
-      { timeout: 60_000 },
-    );
-    if ((await outcome.jsonValue()) !== 'runout') {
+    const outcome = async (): Promise<string> =>
+      (
+        await page.waitForFunction(
+          () => {
+            const g = (
+              window.__pc?.state() as unknown as {
+                game: { mode: string; hand: { runout: boolean; revealed: number[] } };
+              }
+            ).game;
+            if (g.mode === 'handEnd' || g.mode === 'heroTurn') return 'stop';
+            // A mistake's feedback card (Stage 6) holds the hand until Keep my move.
+            if (g.mode === 'feedback') return 'feedback';
+            return g.hand.runout && g.hand.revealed.includes(0) ? 'runout' : null;
+          },
+          undefined,
+          { timeout: 60_000 },
+        )
+      ).jsonValue() as Promise<string>;
+    let result = await outcome();
+    for (let cards = 0; result === 'feedback' && cards < 5; cards++) {
+      await keepMove(page);
+      result = await outcome();
+    }
+    if (result !== 'runout') {
       await nextHand(page, await nextFlowPoint(page));
       continue;
     }

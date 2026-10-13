@@ -6,6 +6,7 @@
 import { act } from '@testing-library/react';
 import { vi } from 'vitest';
 import { createTableController, type TableController } from '../../src/app/controller.ts';
+import type { Grader } from '../../src/app/grading.ts';
 import { installBackHandler } from '../../src/app/lifecycle.ts';
 import {
   appStore,
@@ -42,6 +43,9 @@ export function startTableHarness(
     settings?: Partial<GameSettings>;
     hints?: boolean;
     brain?: BrainClient;
+    grader?: Grader;
+    /** Chunk 6.4: open the end-of-hand summary when the coach level shows one. */
+    summaries?: boolean;
   } = {},
 ): TableHarness {
   vi.useFakeTimers();
@@ -57,6 +61,8 @@ export function startTableHarness(
     heroName: 'You',
     seeds: fixedSeeds(options.seed ?? TABLE_SEED),
     ...(options.hints !== undefined && { hints: options.hints }),
+    ...(options.grader !== undefined && { grader: options.grader }),
+    ...(options.summaries !== undefined && { summaries: options.summaries }),
   });
   controller.boot();
   const unhook = installBackHandler(window, appStore);

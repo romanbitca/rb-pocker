@@ -109,6 +109,22 @@ export const en = {
     bots: { question: 'How good are the bots?' },
     coach: { question: 'How much help do you want?' },
     start: 'Start game',
+    /**
+     * "More options" (§12.2, chunk 7.2): bot speed (the Settings words), a level for each bot, and
+     * the four-colour deck. While it is closed, a line says how many bots have a level of their own.
+     */
+    more: {
+      title: 'More options',
+      ownLevels: (bots: number) =>
+        bots === 1 ? '1 bot has its own level.' : `${bots} bots have their own level.`,
+      bots: {
+        legend: "Set each bot's level",
+        hint: 'Bots are numbered clockwise, from your left.',
+        bot: (n: number) => `Bot ${n}`,
+        sameAsTable: (level: string) => `Same as table (${level})`,
+      },
+      fourColour: { label: 'Four-colour cards', hint: 'Each suit has its own colour.' },
+    },
   },
 
   /** Settings: the Game section (PLAN §12.1; §18 Stages 3 and 5). Later stages add rows and sections. */
@@ -117,7 +133,15 @@ export const en = {
     game: 'Game',
     /** The two level rows are the Setup cards (§10, §12.1); when a change starts is in the hint. */
     coachLevel: { label: 'Coach level', hint: 'Changes start with your next decision.' },
-    botLevel: { label: 'Bot level', hint: 'Changes start with the next hand.' },
+    botLevel: {
+      label: 'Bot level',
+      hint: 'Changes start with the next hand.',
+      /** Added under the hint while some bots have a level of their own (§9.3, chunk 7.2). */
+      own: (bots: number) =>
+        bots === 1
+          ? '1 bot has its own level. Tap that bot at the table to change it.'
+          : `${bots} bots have their own level. Tap a bot at the table to change it.`,
+    },
     speed: {
       label: 'Speed',
       hint: 'How fast the bots play and the cards move.',
@@ -147,6 +171,8 @@ export const en = {
     stats: 'Stats',
     learn: 'Learn',
     install: 'Install app',
+    /** The list of finished hands (Review, §12.10). */
+    hands: 'Recent hands',
     leaveTable: 'Leave table',
     newTable: 'New table',
   },
@@ -189,6 +215,8 @@ export const en = {
     cannotRaise: "You can't raise here: the all-in was too small to reopen the betting.",
     /** Under "Call all-in {x}" when the hero cannot cover the bet (§0.3 `winPot`). */
     potYouCanWin: (x: string) => `Pot you can win ${x}`,
+    /** While the Advanced quiz asks (§10.3), a tap on Row A says why it waits. */
+    quizFirst: 'Answer the quiz first, or tap Skip.',
   },
 
   /** The sizing tray (PLAN §12.7). */
@@ -220,6 +248,32 @@ export const en = {
     valueText: (action: string, other: string) => `${action}, ${other}`,
     bigBlinds: (x: string, one: boolean) => (one ? `${x} big blind` : `${x} big blinds`),
     chips: (x: string) => `${x} chips`,
+  },
+
+  /** The toolbar Undo (PLAN §11.1, §12.3): a 44×44 button left of the coach strip. */
+  undo: {
+    button: 'Undo',
+  },
+
+  /**
+   * The mistake feedback card (PLAN §11.1, §12.6, Appendix F.4). Its F.5 reasons are the coach
+   * templates `feedback.*` below (`coach.templates`, chunk 5.6).
+   */
+  feedback: {
+    /** F.4: the card's title per grade. Best and Good never open the card: their chip text. */
+    title: {
+      best: 'Best move',
+      good: 'Good',
+      inaccuracy: 'Small mistake',
+      mistake: 'Mistake',
+      blunder: 'Big mistake',
+    },
+    /** "Coach's move: Call 40." (§12.6) */
+    coachMove: (move: string) => `Coach's move: ${move}.`,
+    undo: 'Undo: try again',
+    keep: 'Keep my move',
+    /** §11.4 */
+    smallPrint: 'Undo lets you try again. The first move still counts in your stats.',
   },
 
   /** Amounts in big blinds (Setting "show amounts as BB"; Appendix F: "2.5 BB"). */
@@ -294,10 +348,28 @@ export const en = {
     howToBeat: 'How to beat them',
     stack: (chips: string) => `Stack: ${chips}`,
     /**
-     * Hard and Expert hide the personality (§9.2). Stage 7 adds "Here is what you have seen:" and
-     * the stats under this line (§9.3).
+     * Hard and Expert hide the personality (§9.2); the card shows what the player has seen the bot
+     * do instead (§9.3, chunk 7.1): "Plays 34% of hands · Raises 20% · Bets often".
      */
     unknownStyle: 'Style: unknown.',
+    seenIntro: 'Here is what you have seen:',
+    notSeenYet: 'You have not seen them play yet.',
+    plays: (pct: number) => `Plays ${pct}% of hands`,
+    raises: (pct: number) => `Raises ${pct}%`,
+    aggression: {
+      betsOften: 'Bets often',
+      betsSometimes: 'Bets sometimes',
+      mostlyCalls: 'Mostly calls',
+    },
+    /** Joins the parts of the stats line. */
+    separator: ' · ',
+    handsSeen: (hands: string) => `Hands seen: ${hands}`,
+    /** The level picker of the per-seat override (§9.3, chunk 7.2). */
+    level: {
+      legend: "This bot's level",
+      sameAsTable: (level: string) => `Same as table (${level})`,
+      hint: 'Changes start with the next hand.',
+    },
   },
 
   /** Seat pods (PLAN §12.4, §12.12). */
@@ -482,6 +554,8 @@ export const en = {
       royalFlush: 'Royal Flush',
     },
     nextHand: 'Next hand',
+    /** Under the banner: opens Review on this hand (§12.9, §12.10). */
+    review: 'Review this hand',
   },
 
   /** Short messages (PLAN §12.11). */
@@ -492,6 +566,11 @@ export const en = {
     handVoided: 'This hand was cancelled because of an internal error. Your chips were returned.',
     handNotRestored: 'Your last hand could not be restored. Chips were returned.',
     dataRecovered: 'Your saved data was damaged. We started fresh and kept a copy.',
+    /** The profile was damaged and its backup was good (§14.6 rule 2). */
+    dataRestored:
+      'Your saved data was damaged. We restored a backup. Your last hand may be missing.',
+    /** After an Undo (§11.3 r3, Appendix F.10). */
+    undone: 'Move taken back. The unseen cards were shuffled again.',
   },
 
   /**
@@ -524,6 +603,8 @@ export const en = {
     rowByRiver: (pct: string) => `By river: ${pct}.`,
     percent: (value: string) => `${value}%`,
     oneIn: (n: string) => `1 in ${n}`,
+    /** Advanced and Exam (§10.2, §13.2): opens the two-hands quiz. */
+    whichWins: 'Which hand wins?',
     /** Tie-break footer, always shown (§13.2). */
     footer: [
       'A higher row always beats a lower row.',
@@ -559,6 +640,17 @@ export const en = {
       `You had ${pct} when the chips went in. Good decision. Unlucky this time.`,
     /** The hero won with 35% or less. */
     lucky: (pct: string) => `You got lucky. You had ${pct}.`,
+  },
+
+  /**
+   * Review's loading and failure lines, shown by the app while the lazy Review chunk loads or when
+   * it cannot (PLAN §12.10, §15.3). Every other Review word is in `i18n/review.ts` (lazy).
+   */
+  review: {
+    screenTitle: 'Review',
+    loading: 'Loading…',
+    /** The screen's files could not be loaded (no connection, not cached yet). */
+    loadFailed: 'Review could not be loaded. Check your connection and try again.',
   },
 
   /**

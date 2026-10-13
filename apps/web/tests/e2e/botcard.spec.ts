@@ -4,12 +4,14 @@ import { expect, test } from './fixtures.ts';
 import {
   collectErrors,
   installLeakWatch,
+  keepMove,
   leakViolations,
   newTable,
   openApp,
   pcState,
   seedFor,
   sizeOf,
+  tapNextHand,
 } from './game.ts';
 
 // PLAN §9.3, §10, §12.1, §12.2 (chunk 5.10), in the real build: a tap on a seat opens that bot's
@@ -136,15 +138,21 @@ test.describe('the bot card', () => {
     for (let tries = 0; tries < 20 && !opened; tries++) {
       await page.waitForFunction(() => {
         const mode = window.__pc?.state().game.mode;
-        return mode === 'botTurn' || mode === 'heroTurn' || mode === 'handEnd';
+        return (
+          mode === 'botTurn' || mode === 'heroTurn' || mode === 'handEnd' || mode === 'feedback'
+        );
       });
       const mode = (await pcState(page)).game.mode;
       if (mode === 'heroTurn') {
         await page.locator('[data-slot="middle"]').click();
         continue;
       }
+      if (mode === 'feedback') {
+        await keepMove(page); // a mistake's feedback card (Stage 6): the hand goes on
+        continue;
+      }
       if (mode === 'handEnd') {
-        await page.locator('[data-hand-end]').click();
+        await tapNextHand(page);
         continue;
       }
       await pod(page, 2).click();
@@ -197,6 +205,10 @@ test.describe('the bot card', () => {
         await expect(dialog).toContainText(en.botCard.unknownStyle);
         await expect(dialog).not.toContainText(en.botCard.howToBeat);
         await expect(dialog.locator('use[href^="#p-"]')).toHaveCount(0);
+        // Chunk 7.1: what the player has seen it do (a new table: nothing yet, or its first hand).
+        await expect(dialog).toContainText(
+          new RegExp(`${en.botCard.seenIntro}|${en.botCard.notSeenYet.replace('.', '\\.')}`),
+        );
       }
       await page.keyboard.press('Escape');
       await expect(sheet(page)).toHaveCount(0);
@@ -257,20 +269,22 @@ test.describe('the level cards', () => {
     await openApp(page, seedFor(testInfo));
     await page.getByRole('button', { name: 'Choose players, chips and levels' }).click();
 
-    // Setup: Easy and Beginner by default; Medium and Intermediate can be picked, the others not.
+    // Setup: Easy and Beginner by default; every bot level (Hard and Expert from chunk 7.1) and
+    // every coach level (Advanced and Exam from chunk 6.4) can be picked.
     const bots = 'How good are the bots?';
     const coach = 'How much help do you want?';
     await expect(cards(page, bots).nth(0)).toBeChecked();
     await expect(cards(page, coach).nth(0)).toBeChecked();
     for (const [group, open] of [
-      [bots, [true, true, false, false]],
-      [coach, [true, true, false, false]],
+      [bots, [true, true, true, true]],
+      [coach, [true, true, true, true]],
     ] as const) {
       for (const [i, enabled] of open.entries()) {
         await expect(cards(page, group).nth(i)).toBeEnabled({ enabled });
       }
     }
-    await expect(page.getByText('Coming soon')).toHaveCount(4);
+    // Nothing is left to come: no card says "Coming soon".
+    await expect(page.getByText('Coming soon')).toHaveCount(0);
     await pick(page, bots, 1);
     await pick(page, coach, 1);
     await page.getByRole('button', { name: 'Start game', exact: true }).click();
@@ -286,8 +300,8 @@ test.describe('the level cards', () => {
     await page.getByRole('button', { name: 'Settings', exact: true }).click();
     await expect(cards(page, 'Bot level').nth(1)).toBeChecked();
     await expect(cards(page, 'Coach level').nth(1)).toBeChecked();
-    await expect(cards(page, 'Bot level').nth(2)).toBeDisabled();
-    await expect(cards(page, 'Coach level').nth(3)).toBeDisabled();
+    await expect(cards(page, 'Bot level').nth(3)).toBeEnabled(); // Expert, since chunk 7.1
+    await expect(cards(page, 'Coach level').nth(3)).toBeEnabled(); // Exam, since chunk 6.4
 
     // A new bot level is saved at once, and the hand in play keeps its table (§10).
     await pick(page, 'Bot level', 0);

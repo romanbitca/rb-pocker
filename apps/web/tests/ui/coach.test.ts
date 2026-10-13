@@ -310,9 +310,9 @@ describe('coachView (§10.2, §12.6)', () => {
       null,
       input(FACING),
     );
-    expect(pending.strip).toEqual({ kind: 'hint', ready: false });
+    expect(pending.strip).toEqual({ kind: 'hint', ready: false, countsAsHelp: false });
     const ready = coachView(coachData({ level: 'intermediate' }), null, input(FACING));
-    expect(ready.strip).toEqual({ kind: 'hint', ready: true });
+    expect(ready.strip).toEqual({ kind: 'hint', ready: true, countsAsHelp: false });
     expect(ready.shown).toBe(false);
     expect(ready.ring).toBeNull();
     expect(ready.hint).not.toBeNull(); // built, for the sheet after the tap
@@ -331,12 +331,22 @@ describe('coachView (§10.2, §12.6)', () => {
     expect(opened.ring).toBe('middle');
   });
 
-  it('Advanced and Exam act as Intermediate until Stage 6', () => {
+  it("Advanced and Exam show the hint as Intermediate does; Exam's button counts as help (§10.2)", () => {
     for (const level of ['advanced', 'exam'] as const) {
-      expect(coachView(coachData({ level }), null, input(FACING)).strip).toEqual({
-        kind: 'hint',
-        ready: true,
-      });
+      const ready = coachView(coachData({ level }), null, input(FACING));
+      expect(ready.strip).toEqual({ kind: 'hint', ready: true, countsAsHelp: level === 'exam' });
+      expect(ready.shown).toBe(false);
+      expect(ready.ring).toBeNull();
+      const pending = coachView(
+        coachData({ level, state: 'pending', decision: null }),
+        null,
+        input(FACING),
+      );
+      expect(pending.strip).toEqual({ kind: 'hint', ready: false, countsAsHelp: level === 'exam' });
+      // After the tap: the advice, as at Intermediate (action, one sentence, "Why?").
+      const opened = coachView(coachData({ level, opened: true }), null, input(FACING));
+      expect(opened.strip).toMatchObject({ kind: 'advice', headline: 'Call 40', why: true });
+      expect(opened.ring).toBe('middle');
     }
   });
 

@@ -101,49 +101,66 @@ describe('Settings: coach level and bot level (PLAN §10, §12.1)', () => {
     ).toEqual(['Coach level', 'Bot level', 'Speed', 'Show amounts as']);
   });
 
-  it('coach level: Beginner and Intermediate can be picked; Advanced and Exam say "Coming soon"', () => {
+  it('coach level: all four can be picked (Advanced and Exam since chunk 6.4)', () => {
     const { onChangeSettings } = renderSettings();
     expect(state('Coach level')).toEqual([
       ['beginner', true, false],
       ['intermediate', false, false],
-      ['advanced', false, true],
-      ['exam', false, true],
+      ['advanced', false, false],
+      ['exam', false, false],
     ]);
     expect(radios('Coach level').map((r) => r.labels?.[0]?.textContent)).toEqual([
       'BeginnerFull help',
       'IntermediateHelp on tap',
-      'AdvancedMistakes onlyComing soon',
-      'ExamTest yourselfComing soon',
+      'AdvancedMistakes only',
+      'ExamTest yourself',
     ]);
     fireEvent.click(radios('Coach level')[1] as HTMLInputElement);
-    expect(onChangeSettings).toHaveBeenCalledTimes(1);
-    expect(onChangeSettings).toHaveBeenCalledWith({ coachLevel: 'intermediate' });
+    fireEvent.click(radios('Coach level')[2] as HTMLInputElement);
+    fireEvent.click(radios('Coach level')[3] as HTMLInputElement);
+    expect(onChangeSettings.mock.calls).toEqual([
+      [{ coachLevel: 'intermediate' }],
+      [{ coachLevel: 'advanced' }],
+      [{ coachLevel: 'exam' }],
+    ]);
   });
 
-  it('bot level: Easy and Medium can be picked; Hard and Expert say "Coming soon"', () => {
+  it('bot level: all four can be picked (Hard and Expert from chunk 7.1)', () => {
     const { onChangeSettings } = renderSettings();
     expect(state('Bot level')).toEqual([
       ['easy', true, false],
       ['medium', false, false],
-      ['hard', false, true],
-      ['expert', false, true],
+      ['hard', false, false],
+      ['expert', false, false],
     ]);
     expect(radios('Bot level').map((r) => r.labels?.[0]?.textContent)).toEqual([
       'EasyBots make many mistakes. They call too much and rarely bluff.',
       'MediumBots play okay but are easy to read.',
-      'HardBots play solid poker and read the board. Their style is hidden.Coming soon',
-      'ExpertBots study how you play and adapt.Coming soon',
+      'HardBots play solid poker and read the board. Their style is hidden.',
+      'ExpertBots study how you play and adapt.',
     ]);
     fireEvent.click(radios('Bot level')[1] as HTMLInputElement);
-    expect(onChangeSettings).toHaveBeenCalledTimes(1);
-    expect(onChangeSettings).toHaveBeenCalledWith({ botLevel: 'medium' });
+    fireEvent.click(radios('Bot level')[2] as HTMLInputElement);
+    fireEvent.click(radios('Bot level')[3] as HTMLInputElement);
+    expect(onChangeSettings.mock.calls).toEqual([
+      [{ botLevel: 'medium' }],
+      [{ botLevel: 'hard' }],
+      [{ botLevel: 'expert' }],
+    ]);
   });
 
   it('a card that is not available yet sends nothing', () => {
-    const { onChangeSettings } = renderSettings();
+    const { onChangeSettings } = renderSettings(GAME, {
+      ...AVAILABLE_LEVELS,
+      bot: ['easy', 'medium'],
+    });
     fireEvent.click(radios('Bot level')[2] as HTMLInputElement);
     fireEvent.click(radios('Bot level')[3] as HTMLInputElement);
-    fireEvent.click(radios('Coach level')[2] as HTMLInputElement);
+    expect(onChangeSettings).not.toHaveBeenCalled();
+  });
+
+  it('a coach level missing from `available` sends nothing either', () => {
+    const { onChangeSettings } = renderSettings(GAME, { bot: ['easy'], coach: ['beginner'] });
     fireEvent.click(radios('Coach level')[3] as HTMLInputElement);
     expect(onChangeSettings).not.toHaveBeenCalled();
   });
@@ -158,6 +175,52 @@ describe('Settings: coach level and bot level (PLAN §10, §12.1)', () => {
       )?.textContent;
     expect(hint('Coach level')).toBe('Changes start with your next decision.');
     expect(hint('Bot level')).toBe('Changes start with the next hand.');
+  });
+
+  describe('bots with a level of their own (§9.3, chunk 7.2)', () => {
+    const hintOf = () =>
+      document.getElementById(
+        screen.getByRole('group', { name: 'Bot level' }).getAttribute('aria-describedby') ?? '',
+      )?.textContent;
+    const withOwn = (ownLevels?: number) => {
+      const props = {
+        settings: GAME,
+        available: AVAILABLE_LEVELS,
+        onChangeSettings: vi.fn(),
+        onBack: vi.fn(),
+        ownLevels,
+      };
+      return render(<Settings {...props} />);
+    };
+
+    it('says nothing while no bot has one', () => {
+      withOwn(0);
+      expect(hintOf()).toBe('Changes start with the next hand.');
+      cleanup();
+      withOwn(undefined);
+      expect(hintOf()).toBe('Changes start with the next hand.');
+    });
+
+    it('says how many do, and where to change them', () => {
+      withOwn(1);
+      expect(hintOf()).toBe(
+        'Changes start with the next hand. 1 bot has its own level. Tap that bot at the table to change it.',
+      );
+      cleanup();
+      withOwn(3);
+      expect(hintOf()).toBe(
+        'Changes start with the next hand. 3 bots have their own level. Tap a bot at the table to change it.',
+      );
+    });
+
+    it('the Coach level row is not touched', () => {
+      withOwn(2);
+      expect(
+        document.getElementById(
+          screen.getByRole('group', { name: 'Coach level' }).getAttribute('aria-describedby') ?? '',
+        )?.textContent,
+      ).toBe('Changes start with your next decision.');
+    });
   });
 
   it('later stages open more cards through `available`', () => {

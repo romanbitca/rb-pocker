@@ -40,6 +40,8 @@ export interface RankingsDrawerProps {
   showTips?: boolean | undefined;
   /** The "By river" column (§13.2); null or absent = none. */
   byRiver?: ByRiverView | null | undefined;
+  /** The "Which hand wins?" button (Advanced and Exam, §10.2). */
+  whichWins?: boolean | undefined;
 }
 
 /** The sheet stays mounted this long after closing, for the 200 ms slide-out (§12.8). */
@@ -79,7 +81,7 @@ interface Drag {
   active: boolean;
 }
 
-function Sheet({ open, onOpenChange, hero, showTips, byRiver }: RankingsDrawerProps) {
+function Sheet({ open, onOpenChange, hero, showTips, byRiver, whichWins }: RankingsDrawerProps) {
   const titleId = useId();
   const sheetRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
@@ -234,6 +236,7 @@ function Sheet({ open, onOpenChange, hero, showTips, byRiver }: RankingsDrawerPr
             hero={hero}
             cardSize="sm"
             showTips={showTips}
+            whichWins={whichWins}
             currentRowRef={currentRowRef}
             byRiver={byRiver}
           />

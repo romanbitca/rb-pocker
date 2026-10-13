@@ -1,6 +1,8 @@
 /**
  * Test hooks for development and E2E builds only (PLAN "Testing strategy" → Rules, §18 Stage 3):
  * - `?seed=<hex>` fixes the table and hand seeds, so a run can be repeated exactly;
+ * - `?script=<name>` (Stage 6): scripted bots and grades instead of brain.worker
+ *   (`app/botScripts.ts`);
  * - `window.__pc` exposes the store state, `dispatch` and the controller's logs.
  *
  * ⚠️ Never in a production build. main.tsx loads this module only behind the build constant
@@ -11,6 +13,7 @@
  * reach in test builds.
  */
 import { deriveSeed, type Seed128 } from '../core/rng.ts';
+export { scriptedBrain, scriptFromSearch, SCRIPT_HOOK_MARKER } from './botScripts.ts';
 import type {
   ControllerLogs,
   ControllerSnapshot,
@@ -53,6 +56,8 @@ export interface PcHooks {
   marker: typeof TEST_HOOKS_MARKER;
   /** The seed from `?seed=`, or null. */
   seed: Seed128 | null;
+  /** The bot script from `?script=`, or null. */
+  script: string | null;
   /** The whole store state (it holds the full hand state: test builds only). */
   state(): AppState;
   dispatch(cmd: Command): void;
@@ -73,10 +78,12 @@ export function installTestHooks(
   store: AppStore,
   controller: TableController,
   seed: Seed128 | null,
+  script: string | null = null,
 ): PcHooks {
   const hooks: PcHooks = {
     marker: TEST_HOOKS_MARKER,
     seed,
+    script,
     state: () => store.getState(),
     dispatch: (cmd) => store.getState().dispatch(cmd),
     logs: () => controller.logs(),

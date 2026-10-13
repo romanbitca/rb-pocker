@@ -78,6 +78,21 @@
   line-height: 1.45;
 }
 
+/* Hard and Expert: the observed stats line ("Plays 34% of hands · Raises 20% · Bets often"). */
+.seen {
+  margin: 0;
+  font-weight: 700;
+  line-height: 1.45;
+  font-variant-numeric: tabular-nums;
+}
+
+.hands {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.875rem;
+  font-variant-numeric: tabular-nums;
+}
+
 .tipTitle {
   margin: var(--space-2) 0 0;
   color: var(--muted);
@@ -93,4 +108,38 @@
   border-top: 1px solid rgb(242 245 243 / 15%);
   color: var(--muted);
   font-variant-numeric: tabular-nums;
+}
+
+/*
+ * The per-seat level picker (PLAN §9.3, chunk 7.2): "Same as table (Easy)" across the top, then the
+ * four levels in a row. The chips are the Settings chips (Screen.module.css: native radios lie
+ * invisibly over their faces, so a tap anywhere on a chip picks it); only the row and the faces'
+ * colour for the sheet's own background are set here.
+ */
+.level {
+  display: grid;
+  gap: var(--space-2);
+  min-width: 0;
+  margin: var(--space-2) 0 0;
+  padding: var(--space-3) 0 0;
+  border-top: 1px solid rgb(242 245 243 / 15%);
+}
+
+.levelLegend {
+  margin: 0;
+  padding: 0;
+  font-weight: 700;
+}
+
+.level .picker {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.level .wide {
+  grid-column: 1 / -1;
+}
+
+.level .face {
+  padding: 0 var(--space-1);
+  background: var(--bg);
 }

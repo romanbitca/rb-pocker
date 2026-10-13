@@ -334,6 +334,7 @@ describe('non-cheating boundary (§4.8, §9.6): the brain gets an Observation on
     h.dispatch({ type: 'play' });
     await drive(h, { hands: 40, hero: heroPolicy(deriveSeed(`${'0'.repeat(31)}9`, 'hero')) });
     expect(seen.length).toBeGreaterThan(200);
+    const statsOfHand = new Map<number, string>();
     for (const { req, hand, table } of seen) {
       expect(Object.keys(req).sort()).toEqual(['epoch', 'jobId', 'kind', 'obs', 'profile', 'seed']);
       expect(Object.keys(req.obs).sort()).toEqual(OBS_KEYS);
@@ -346,7 +347,11 @@ describe('non-cheating boundary (§4.8, §9.6): the brain gets an Observation on
         seatLevels: req.obs.seatLevels,
       };
       expect(req.obs).toEqual(observe(hand, seat, extras));
-      expect(req.obs.seatStats.every((x) => x === null)).toBe(true);
+      // §9.5: the seat statistics change only at hand end, so every request of a hand has the same.
+      const stats = JSON.stringify(req.obs.seatStats);
+      const first = statsOfHand.get(hand.handSeq);
+      if (first === undefined) statsOfHand.set(hand.handSeq, stats);
+      else expect(stats).toBe(first);
       const text = JSON.stringify(req);
       expect(text).not.toMatch(/"deck"|"deckPos"|"startStacks"|"log"/);
       expect(req.seed).toBe(botSeed(table.tableSeed, hand.handSeq, seat, hand.log.length));
@@ -364,6 +369,12 @@ describe('non-cheating boundary (§4.8, §9.6): the brain gets an Observation on
       });
       expect(req.profile.id).toBe(`${table.slots[seat]?.personality}/easy`);
     }
+    // The first hand sees nobody's statistics; later hands see what the earlier ones showed.
+    const hands = [...statsOfHand.keys()].sort((a, b) => a - b);
+    const nulls = (k: number) =>
+      (JSON.parse(statsOfHand.get(k) as string) as unknown[]).filter((x) => x === null).length;
+    expect(nulls(hands[0] as number)).toBe(9);
+    expect(nulls(hands.at(-1) as number)).toBeLessThan(9);
   }, 60_000);
 
   it('the bot seed depends on the table seed, never on the hand seed (§9.6 3b)', () => {

@@ -25,6 +25,9 @@ export interface CardView {
 /** Bot personality ids, the same strings as `PersonalityId` (PLAN Appendix A.3). */
 export type SeatPersonality = 'rock' | 'tag' | 'lag' | 'station' | 'maniac';
 
+/** Bot level ids, the same strings as `BotLevel` (PLAN Appendix A.3). */
+export type BotLevelName = 'easy' | 'medium' | 'hard' | 'expert';
+
 /** The seat's last action this street, for the pod's status tag (PLAN §12.4). */
 export type SeatAction = 'check' | 'call' | 'bet' | 'raise';
 
@@ -60,15 +63,41 @@ export interface SeatView {
 }
 
 /**
+ * What the player has seen a Hard or Expert bot do (PLAN §9.3, chunk 7.1): "Plays 34% of hands ·
+ * Raises 20% · Bets often". Whole percentages of the hands in which it decided before the flop.
+ */
+export interface SeenPlayView {
+  readonly hands: number;
+  readonly plays: number;
+  readonly raises: number;
+  /** After the flop; null before it has bet, raised or called there. */
+  readonly aggression: 'betsOften' | 'betsSometimes' | 'mostlyCalls' | null;
+}
+
+/**
  * A bot's card (PLAN §9.3, Appendix F.6), the sheet for a tapped seat. ⚠️ `personality` is null
- * at Hard and Expert, where the style is hidden ("Style: unknown."); the card never shows more
- * than the pod does.
+ * at Hard and Expert, where the style is hidden ("Style: unknown.") and the card shows what the
+ * player has seen it do instead (`seen`); the card never shows a hidden card.
  */
 export interface BotCardView {
   readonly name: string;
   readonly personality: SeatPersonality | null;
   /** Chips behind. */
   readonly stack: number;
+  /** Hard and Expert: what it was seen doing; null before its first preflop decision. */
+  readonly seen: SeenPlayView | null;
+  /**
+   * The level picker's value (PLAN §9.3, chunk 7.2): this seat's level from the next hand on, which
+   * is not always the level of the hand in play that the rest of the card describes.
+   */
+  readonly nextLevel: SeatLevelView;
+}
+
+/** A seat's own level from the next hand on, and the table's level that "Same as table" means. */
+export interface SeatLevelView {
+  /** The seat's own level; null = the table's. */
+  readonly own: BotLevelName | null;
+  readonly table: BotLevelName;
 }
 
 /** The pot (PLAN §12.3): "Pot 340", plus "Main 300 · Side 400" once side pots exist. */

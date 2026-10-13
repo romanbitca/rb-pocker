@@ -1,6 +1,6 @@
 import type { Locator, Page, TestInfo } from '@playwright/test';
 import { cardAriaLabel } from '../../src/core/cards.ts';
-import type { HandState, TableState } from '../../src/engine/types.ts';
+import type { HandState, LegalActions, TableState } from '../../src/engine/types.ts';
 import { expect } from './fixtures.ts';
 
 /**
@@ -19,6 +19,16 @@ interface PcState {
     hand: HandState | null;
     next: TableState | null;
     heroBust: boolean;
+    legal: LegalActions | null;
+    /** Stage 6 (§11.3): Undo can be taken now; the open feedback card; this hand's decisions. */
+    canUndo: boolean;
+    feedback: { grade: string; canUndo: boolean } | null;
+    decisions: readonly {
+      decisionId: number;
+      street: string;
+      grade: string | null;
+      undone: boolean;
+    }[];
   };
   ui: { screen: string; overlays: readonly string[]; gates: readonly string[]; layout: string };
   settings: { players: number; speed: string; autoNext: boolean } & Record<string, unknown>;
@@ -33,6 +43,8 @@ interface PcHooks {
   logs(): {
     events: { what: string; detail?: unknown }[];
     errors: { what: string; detail?: unknown }[];
+    /** Brain requests and replies as the controller saw them ('request' = a bot's decision). */
+    brain: { what: string; detail?: unknown }[];
   };
   snapshot(): {
     mode: string;
@@ -40,6 +52,7 @@ interface PcHooks {
     hand: HandState | null;
     next: TableState | null;
     inputs: unknown[];
+    meta: { undoCount: number };
   };
 }
 
@@ -90,9 +103,12 @@ export function collectErrors(page: Page): string[] {
   return errors;
 }
 
-/** Loads the app with `?seed=` and waits until it has booted. */
-export async function openApp(page: Page, seed: string): Promise<void> {
-  await page.goto(`/?seed=${seed}`);
+/**
+ * Loads the app with `?seed=` (and `extra` query parameters, e.g. `&script=river-min-bet`, the
+ * Stage 6 bot scripts) and waits until it has booted.
+ */
+export async function openApp(page: Page, seed: string, extra = ''): Promise<void> {
+  await page.goto(`/?seed=${seed}${extra}`);
   await page.waitForFunction(() => {
     const pc = window.__pc;
     return pc !== undefined && pc.state().game.mode !== 'booting';
@@ -151,37 +167,117 @@ export const pcState = (page: Page): Promise<PcState> =>
 /** What the hand flow waits for next. */
 export type FlowPoint = 'hero' | 'end' | 'bust';
 
-/** In the page: the flow point the game is at, or null while bots act or cards move. */
-function readFlowPoint(): FlowPoint | null {
+/**
+ * The flow points, and two waits of Stage 6:
+ * - the mistake feedback card (§11.1): after a hero decision graded at the coach level's
+ *   threshold (Beginner: Inaccuracy or worse, §10.2) the game waits for [Undo: try again] or
+ *   [Keep my move]. The helpers keep the move, as a player who reads the card and goes on; specs
+ *   about the card itself use `tests/e2e/undo.spec.ts`'s own steps;
+ * - the Advanced quiz (§10.3, chunk 6.4): Row A waits for its answers; the helpers tap "Skip".
+ * At a hand end the summary sheet (§12.9, chunk 6.4) may be open, over the banner: the hand-end
+ * point then waits for its "Next hand ›" (the tap `tapNextHand` and `playHands` make).
+ */
+type Waypoint = FlowPoint | 'feedback' | 'quiz';
+
+/**
+ * In the page: the point the game is at, or null while bots act or cards move. The card counts
+ * once its Keep my move button is on the page (its code is a lazy chunk); the quiz once its Skip
+ * is; a hand end once what to tap is (the summary's "Next hand ›" while it is open, else the
+ * banner).
+ */
+function readFlowPoint(): Waypoint | null {
   const s = window.__pc?.state();
   if (s === undefined) return null;
   if (s.ui.overlays.includes('outOfChips')) return 'bust';
-  if (s.game.mode === 'heroTurn') return 'hero';
-  if (s.game.mode === 'handEnd') return 'end';
+  if (s.game.mode === 'heroTurn') {
+    return document.querySelector('[data-quiz-skip]') !== null ? 'quiz' : 'hero';
+  }
+  if (s.game.mode === 'handEnd') {
+    const summary = s.ui.overlays.includes('summary');
+    const tap = document.querySelector(summary ? '[data-summary-next]' : '[data-hand-end]');
+    return tap === null ? null : 'end';
+  }
+  if (s.game.mode === 'feedback' && document.querySelector('[data-feedback-keep]') !== null) {
+    return 'feedback';
+  }
   return null;
 }
 
+/** The feedback card's [Keep my move]: the hand goes on (§11.1). */
+export async function keepMove(page: Page): Promise<void> {
+  await page.locator('[data-feedback-keep]').click();
+  await page.waitForFunction(() => window.__pc?.state().game.mode !== 'feedback');
+}
+
+/** The Advanced quiz's "Skip" (§10.3): Row A works again. */
+export async function skipQuiz(page: Page): Promise<void> {
+  await page.locator('[data-quiz-skip]').click();
+}
+
 /**
- * Waits until it is the hero's turn, the hand has ended, or the hero is out of chips.
+ * At a hand end (`nextFlowPoint` said 'end'): the next hand, by "Next hand ›" on the summary
+ * sheet when it is open (§12.9: the next hand waits for it), else by a tap on the banner.
+ */
+export async function tapNextHand(page: Page): Promise<void> {
+  // The sheet is a lazy chunk (prefetched with the Table): tap it once it is on the page.
+  const summary = await page.evaluate(
+    () => window.__pc?.state().ui.overlays.includes('summary') === true,
+  );
+  await page.locator(summary ? '[data-summary-next]' : '[data-hand-end]').click();
+}
+
+/**
+ * Closes the hand summary when it is open (Esc, as ✕ or the scrim would), so the banner under it
+ * can be read and tapped; the next hand then comes after its 3 s, or on the banner's tap.
+ */
+export async function closeSummary(page: Page): Promise<void> {
+  const open = await page.evaluate(
+    () => window.__pc?.state().ui.overlays.includes('summary') === true,
+  );
+  if (!open) return;
+  await page.keyboard.press('Escape');
+  await expect
+    .poll(() => page.evaluate(() => window.__pc?.state().ui.overlays.includes('summary')))
+    .toBe(false);
+}
+
+/**
+ * Waits until it is the hero's turn, the hand has ended, or the hero is out of chips. A feedback
+ * card on the way is answered with Keep my move (see `Waypoint`).
  *
  * `fast` (the page has a fake clock, `page.clock.install()`): instead of waiting out the bots'
  * think time in real time, it moves the page's clock on (`clock.runFor`), which fires every timer
  * that falls due, in order, each in its own task with the page rendering between them. The game
  * plays exactly as it would, only without the waits. No timer runs while the hero decides (nor,
- * with `autoNext` off, while the banner is up), so a jump never skips past a decision.
+ * with `autoNext` off, while the banner is up), so a jump never skips past a decision. (A jump can
+ * outrun the 1,500 ms the hand waits for a grade, §11.3 r5: the grade then comes late, without a
+ * card, as it may in real play.)
  */
 export async function nextFlowPoint(page: Page, fast = false): Promise<FlowPoint> {
-  if (!fast) {
-    const handle = await page.waitForFunction(readFlowPoint, undefined, {
-      polling: 'raf',
-      timeout: 20_000,
-    });
-    return (await handle.jsonValue()) as FlowPoint;
-  }
-  for (let jumps = 0; jumps < 120; jumps++) {
-    const point = await page.evaluate(readFlowPoint);
+  for (let jumps = 0, cards = 0; jumps < 120;) {
+    let point: Waypoint | null;
+    if (fast) {
+      point = await page.evaluate(readFlowPoint);
+    } else {
+      const handle = await page.waitForFunction(readFlowPoint, undefined, {
+        polling: 'raf',
+        timeout: 20_000,
+      });
+      point = (await handle.jsonValue()) as Waypoint;
+    }
+    if (point === 'feedback') {
+      if (++cards > 40) throw new Error('nextFlowPoint: a feedback card that does not go');
+      await keepMove(page);
+      continue;
+    }
+    if (point === 'quiz') {
+      if (++cards > 40) throw new Error('nextFlowPoint: a quiz that does not go');
+      await skipQuiz(page);
+      continue;
+    }
     if (point !== null) return point;
-    await page.clock.runFor(1000);
+    if (fast) await page.clock.runFor(1000);
+    jumps++;
   }
   throw new Error('no hero turn, hand end or out-of-chips dialog within 120 s of game time');
 }
@@ -249,7 +345,10 @@ export interface PlayOptions {
   random: () => number;
   /** Move a fake clock on instead of waiting (see nextFlowPoint); needs `page.clock.install()`. */
   fast?: boolean;
-  /** Called at every hand end, before the banner is tapped. */
+  /**
+   * Called at every hand end, before the banner (or the summary's "Next hand ›") is tapped. It
+   * may close the summary (`closeSummary`) to read the banner.
+   */
   onHandEnd?: (record: HandRecord) => Promise<void>;
   /** Called at every hero turn, before the tap (e.g. to wait for the final win chance). */
   beforeHeroAct?: () => Promise<void>;
@@ -262,18 +361,24 @@ interface Spot {
 
 /** Where the flow stands, and where to tap: read in one round trip (see playHands). */
 interface FlowView {
-  point: FlowPoint | null;
+  point: Waypoint | null;
   hand: HandState | null;
   /** Row A's enabled buttons; `tray` = the button opens the sizing tray. */
   slots: { slot: string; tray: boolean; at: Spot }[];
-  /** The hand-end banner, or the out-of-chips dialog's Reload button. */
+  /**
+   * The hand-end banner (the summary's "Next hand ›" while it is open), the out-of-chips
+   * dialog's Reload button, the card's Keep my move, or the quiz's Skip.
+   */
   tap: Spot | null;
 }
 
 /** In the page: FlowView (the full hand only at a hand end). */
 function readFlowView(): FlowView {
   // The middle of the part a finger can see: clipped by every ancestor that clips or scrolls
-  // (in landscape a long hand-end banner scrolls in its column, under Row A) and the viewport.
+  // (in landscape a long hand-end banner scrolls in its column, under Row A) and the viewport,
+  // and not covered by another element (a tall hand-end banner in the wide layout reaches up
+  // under the top bar: the middle of its clipped box would be a tap on the bar). When the middle
+  // is covered, the nearest point of that part that does hit the element.
   const centre = (el: Element): Spot => {
     const r = el.getBoundingClientRect();
     let [left, top, right, bottom] = [r.left, r.top, r.right, r.bottom];
@@ -286,13 +391,32 @@ function readFlowView(): FlowView {
     }
     [left, top] = [Math.max(left, 0), Math.max(top, 0)];
     [right, bottom] = [Math.min(right, innerWidth), Math.min(bottom, innerHeight)];
-    return { x: (left + right) / 2, y: (top + bottom) / 2 };
+    const middle: Spot = { x: (left + right) / 2, y: (top + bottom) / 2 };
+    const hits = (x: number, y: number): boolean => {
+      const on = document.elementFromPoint(x, y);
+      return on !== null && el.contains(on);
+    };
+    if (hits(middle.x, middle.y)) return middle;
+    let best: Spot | null = null;
+    let nearest = Infinity;
+    for (let y = Math.ceil(top) + 2; y < bottom - 1; y += 4) {
+      for (let x = Math.ceil(left) + 2; x < right - 1; x += 8) {
+        const away = (x - middle.x) ** 2 + (y - middle.y) ** 2;
+        if (away < nearest && hits(x, y)) [best, nearest] = [{ x, y }, away];
+      }
+    }
+    return best ?? middle;
   };
   const s = window.__pc?.state();
-  let point: FlowPoint | null = null;
+  const keep = document.querySelector('[data-feedback-keep]');
+  const skip = document.querySelector('[data-quiz-skip]');
+  const summary = s?.ui.overlays.includes('summary') === true;
+  const banner = document.querySelector(summary ? '[data-summary-next]' : '[data-hand-end]');
+  let point: Waypoint | null = null;
   if (s?.ui.overlays.includes('outOfChips') === true) point = 'bust';
-  else if (s?.game.mode === 'heroTurn') point = 'hero';
-  else if (s?.game.mode === 'handEnd') point = 'end';
+  else if (s?.game.mode === 'heroTurn') point = skip !== null ? 'quiz' : 'hero';
+  else if (s?.game.mode === 'handEnd' && banner !== null) point = 'end';
+  else if (s?.game.mode === 'feedback' && keep !== null) point = 'feedback';
   const slots = [...document.querySelectorAll('[data-slot]')]
     .filter((b) => b.getAttribute('aria-disabled') !== 'true')
     .map((b) => ({
@@ -304,8 +428,16 @@ function readFlowView(): FlowView {
   const reload = [...document.querySelectorAll(dialogButtons)].find((b) =>
     (b.textContent ?? '').startsWith('Reload '),
   );
-  const banner = document.querySelector('[data-hand-end]');
-  const tap = point === 'bust' ? reload : point === 'end' ? banner : null;
+  const tap =
+    point === 'bust'
+      ? reload
+      : point === 'end'
+        ? banner
+        : point === 'feedback'
+          ? keep
+          : point === 'quiz'
+            ? skip
+            : null;
   return {
     point,
     hand: point === 'end' ? (s?.game.hand ?? null) : null,
@@ -342,7 +474,9 @@ async function heroTap(page: Page, view: FlowView, random: () => number): Promis
 
 /**
  * Plays `hands` full hands through the UI: the hero taps Row A (as heroAct chooses), the
- * hand-end banner is tapped to deal the next hand, and "Reload" when the hero is out of chips.
+ * hand-end banner is tapped to deal the next hand (the summary's "Next hand ›" while it is open,
+ * Stage 6), "Reload" when the hero is out of chips, Keep my move on a feedback card and Skip on
+ * the Advanced quiz (Stage 6).
  * For speed each step reads the state and the buttons' places in one round trip and taps there
  * with real mouse clicks (Playwright's locator checks cost several round trips per tap, which
  * made 50 hands take minutes in WebKit on the CI runner). A tap that misses shows up as no
@@ -369,6 +503,9 @@ export async function playHands(page: Page, options: PlayOptions): Promise<HandR
     } else if (view.point === 'bust') {
       if (view.tap === null) throw new Error('out of chips, but no Reload button');
       await page.mouse.click(view.tap.x, view.tap.y);
+    } else if (view.point === 'feedback' || view.point === 'quiz') {
+      if (view.tap === null) throw new Error(`a ${view.point} without its button`);
+      await page.mouse.click(view.tap.x, view.tap.y);
     } else {
       const hand = view.hand;
       if (hand === null || view.tap === null) throw new Error('hand end without a banner');
@@ -381,6 +518,9 @@ export async function playHands(page: Page, options: PlayOptions): Promise<HandR
         };
         records.push(record);
         await options.onHandEnd?.(record);
+        // `onHandEnd` may have closed the summary: tap what is there now.
+        view = await page.evaluate(readFlowView);
+        if (view.point !== 'end' || view.tap === null) continue;
       }
       await page.mouse.click(view.tap.x, view.tap.y);
     }

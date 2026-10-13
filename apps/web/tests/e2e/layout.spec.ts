@@ -3,6 +3,7 @@ import { tableFrame } from '../../src/ui/layout/seats.ts';
 import { expect, test } from './fixtures.ts';
 import {
   ACCEPTANCE_SIZES,
+  closeSummary,
   heroAct,
   newTable,
   nextFlowPoint,
@@ -13,6 +14,7 @@ import {
   seedFor,
   sizeOf,
   slot,
+  tapNextHand,
 } from './game.ts';
 
 // PLAN §18 Stage 3, acceptance 2: for every player count 2–9 at the five acceptance viewports,
@@ -23,7 +25,10 @@ import {
 // it the table box keeps its size (§15.3: the pods are placed in the measured box, one render
 // after it changes, so a box that moved with the coach's words put them over the hero strip in
 // between). With the sizing tray open at 375×667, nothing needed for the decision is covered and
-// the page does not scroll.
+// the page does not scroll. At every hand end of a nine-player table (phones in portrait and the
+// wide screen) the hand-end banner, the result lines and the "Review this hand" link, stays on the
+// table: clear of the top bar, inside the viewport, with its first result line readable (chunk
+// 6.3: on the 340 px tall wide table the banner used to reach up under the top bar).
 
 interface Box {
   x: number;
@@ -132,6 +137,63 @@ function tableProblems(m: TableBoxes, dealt: TableBoxes, when: string): string[]
     : [`${when}: the table box is ${fmt(m.table)}, it was ${fmt(dealt.table)} at the deal`];
 }
 
+/** The hand-end banner, the top bar and the table box, in viewport pixels. */
+interface BannerBoxes {
+  /** The result lines, "Next hand ›" and the "Review this hand" link. */
+  banner: Box;
+  topBar: Box;
+  table: Box;
+  /** Whether the middle of the first result line is what a tap there would hit. */
+  resultReadable: boolean;
+  vw: number;
+  vh: number;
+}
+
+/** In the page, at a hand end: where the banner is. */
+function measureBanner(page: Page): Promise<BannerBoxes> {
+  return page.evaluate(() => {
+    const rect = (el: Element): Box => {
+      const r = el.getBoundingClientRect();
+      return { x: r.left, y: r.top, w: r.width, h: r.height };
+    };
+    const card = document.querySelector('[data-hand-end]');
+    const link = document.querySelector('[data-hand-review]');
+    const topBar = document.querySelector('main > header');
+    const table = document.querySelector('[data-table-box]');
+    const result = card?.querySelector('span');
+    if (card === null || link === null || topBar === null || table === null || !result) {
+      throw new Error('hand end: no banner, link, top bar or table box');
+    }
+    const [a, b] = [rect(card), rect(link)];
+    const [x, y] = [Math.min(a.x, b.x), Math.min(a.y, b.y)];
+    const [right, bottom] = [Math.max(a.x + a.w, b.x + b.w), Math.max(a.y + a.h, b.y + b.h)];
+    const r = result.getBoundingClientRect();
+    const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+    return {
+      banner: { x, y, w: right - x, h: bottom - y },
+      topBar: rect(topBar),
+      table: rect(table),
+      resultReadable: hit !== null && card.contains(hit),
+      vw: document.documentElement.clientWidth,
+      vh: document.documentElement.clientHeight,
+    };
+  });
+}
+
+/** Every problem with the banner's place; empty when there is none. */
+function bannerProblems(m: BannerBoxes, when: string): string[] {
+  const problems: string[] = [];
+  const say = (text: string) => problems.push(`${when}: ${text} (banner ${fmt(m.banner)})`);
+  const { banner: b } = m;
+  if (overlaps(b, m.topBar)) say(`the banner reaches under the top bar ${fmt(m.topBar)}`);
+  if (b.x < -0.5 || b.y < -0.5 || b.x + b.w > m.vw + 0.5 || b.y + b.h > m.vh + 0.5) {
+    say(`the banner leaves the ${m.vw}×${m.vh} viewport`);
+  }
+  if (b.y < m.table.y - 0.5) say(`the banner starts above the table box ${fmt(m.table)}`);
+  if (!m.resultReadable) say('something covers the first result line');
+  return problems;
+}
+
 /**
  * Plays on to the hero's first decision and waits until the coach has answered it (§12.6: the
  * advice, or "Coach is not available"; on wide screens the answer fills the inline panel). False
@@ -200,6 +262,34 @@ test.describe('table layout', () => {
     expect(problems).toEqual([]);
   });
 
+  test('with nine players the hand-end banner stays on the table, clear of the top bar', async ({
+    page,
+  }, testInfo) => {
+    // Landscape phones put the banner in the right column (§12.5): it scrolls there.
+    test.skip(sizeOf(testInfo) === '844x390', 'the banner is in the right column in landscape');
+    test.setTimeout(120_000);
+    await page.clock.install();
+    await openApp(page, seedFor(testInfo));
+    await newTable(page, { players: 9 });
+    const problems: string[] = [];
+    let ends = 0;
+    // Check or call to the end of six hands: results of different lengths (a win by folds, a
+    // showdown with one or two beaten hands, a split pot).
+    await playHands(page, {
+      hands: 6,
+      random: () => 0.5,
+      fast: true,
+      onHandEnd: async () => {
+        ends++;
+        // The hand summary (Beginner, §12.9) covers the table: closed, the banner is measured.
+        await closeSummary(page);
+        problems.push(...bannerProblems(await measureBanner(page), `hand end ${ends}`));
+      },
+    });
+    expect(ends, 'hand ends measured').toBe(6);
+    expect(problems).toEqual([]);
+  });
+
   test('with the sizing tray open at 375×667 the decision stays in view', async ({
     page,
   }, testInfo) => {
@@ -215,7 +305,7 @@ test.describe('table layout', () => {
       expect(decisions, 'a postflop decision with a bet or raise').toBeLessThan(60);
       const point = await nextFlowPoint(page, true);
       if (point === 'end') {
-        await page.locator('[data-hand-end]').click();
+        await tapNextHand(page);
         continue;
       }
       if (point === 'bust') {

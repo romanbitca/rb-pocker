@@ -354,12 +354,19 @@ export interface LevelParams {
   preflopJitter: number;
   /** §9.2 "Bluffs": Easy bluffs a flat 5% whatever its personality; null = the personality's. */
   bluffFreq: number | null;
+  /**
+   * §9.2 "Bluffs" at Hard and Expert: a river bluff is balanced by its size (`B / (pot + 2B)` of
+   * the river bets are bluffs, `brain/bluffs.ts`); on the flop and turn the personality's.
+   */
+  balancedBluffs: boolean;
+  /** §9.5 Expert exploits of the hero's leaks (`brain/exploits.ts`). */
   exploit: boolean;
 }
 
 /**
- * §9.2 difficulty → engine parameters. Hard and Expert come from the same table so that
- * `profileFor` is total; Stage 7 adds their balanced bluffs and the Expert exploits.
+ * §9.2 difficulty → engine parameters. Hard and Expert (chunk 7.1): the Loki re-weighting with
+ * generic priors (Hard) and with each seat's statistics (Expert), balanced river bluffs, and at
+ * Expert the §9.5 exploits.
  */
 export const LEVEL_PARAMS: Readonly<Record<BotLevel, LevelParams>> = {
   easy: {
@@ -372,6 +379,7 @@ export const LEVEL_PARAMS: Readonly<Record<BotLevel, LevelParams>> = {
     defenseFactor: 0.55,
     preflopJitter: 0.4,
     bluffFreq: 0.05,
+    balancedBluffs: false,
     exploit: false,
   },
   medium: {
@@ -384,6 +392,7 @@ export const LEVEL_PARAMS: Readonly<Record<BotLevel, LevelParams>> = {
     defenseFactor: 0.7,
     preflopJitter: 0.2,
     bluffFreq: null,
+    balancedBluffs: false,
     exploit: false,
   },
   hard: {
@@ -396,6 +405,7 @@ export const LEVEL_PARAMS: Readonly<Record<BotLevel, LevelParams>> = {
     defenseFactor: 0.85,
     preflopJitter: 0.1,
     bluffFreq: null,
+    balancedBluffs: true,
     exploit: false,
   },
   expert: {
@@ -408,6 +418,7 @@ export const LEVEL_PARAMS: Readonly<Record<BotLevel, LevelParams>> = {
     defenseFactor: 0.95,
     preflopJitter: 0.05,
     bluffFreq: null,
+    balancedBluffs: true,
     exploit: true,
   },
 };
@@ -431,3 +442,68 @@ export const MIX_CALL_STICKINESS = 3;
 /** §9.4 step 3: a bet or raise with Air (a bluff), a Monster's check on a Dry board (a slow-play). */
 export const MIX_BLUFF_BONUS = 2.5;
 export const MIX_SLOWPLAY_BONUS = 2.5;
+/**
+ * §9.4 step 3, chunk 7.3 (risk R20): `A*`'s bonus is in units of `max(T, MIX_RULE_BONUS_UNIT_MIN)`,
+ * Medium's `T`, where chunk 5.11 calibrated it. Below it the bonus keeps its Medium value in pots
+ * (0.42 before the flop, 0.12 after it): it covers the error of the §8.9 EV heuristic, a share of
+ * the pot at every level. The personality biases stay in units of `T`.
+ */
+export const MIX_RULE_BONUS_UNIT_MIN = 0.12;
+
+// --- 6.1 grading (§8.9 "Grade") ---
+
+/**
+ * The §8.9 grade table, by `lossPot` (the EV lost against the recommendation over the pot before
+ * the action): Best ≤ 1%, Good ≤ 5%, Inaccuracy ≤ 15%, Mistake ≤ 40%, above that a Blunder.
+ */
+export const GRADE_BEST_POT = 0.01;
+export const GRADE_GOOD_POT = 0.05;
+export const GRADE_INACCURACY_POT = 0.15;
+export const GRADE_MISTAKE_POT = 0.4;
+/**
+ * The bb floors: a loss below 0.25 bb is at most Good, below 1 bb at most an Inaccuracy; a
+ * Blunder, from any path (the price signal included), needs a loss of at least 5 bb, else Mistake.
+ */
+export const GRADE_GOOD_MAX_BB = 0.25;
+export const GRADE_INACCURACY_MAX_BB = 1;
+export const GRADE_BLUNDER_MIN_BB = 5;
+/**
+ * The price signal: a call with `E·R < need − 0.15` is at least a Mistake and below `need − 0.30`
+ * a Blunder; a fold with `E·R > need + 0.15` at least a Mistake and above `need + 0.30` a Blunder.
+ */
+export const PRICE_SIGNAL_MISTAKE = 0.15;
+export const PRICE_SIGNAL_BLUNDER = 0.3;
+/** A bet or raise whose "to" amount is within ±15% of the recommended one is the recommendation. */
+export const SAME_SIZE_SHARE = 0.15;
+/**
+ * Appendix F.5 "Folded a strong preflop hand": a hand in the top half of starting hands (the cap
+ * of the coach's calls of a raise, §8.3), so "It is strong enough to play" is plainly true.
+ */
+export const FEEDBACK_STRONG_PCT = 50;
+
+// --- 7.1 Hard and Expert bots ---
+
+/**
+ * §9.5 Expert exploits: each one reads what the hero has shown (`x / n` of one of its §9.5
+ * statistics) and is active only once that statistic has at least this many opportunities.
+ */
+export const EXPLOIT_MIN_OBSERVATIONS = 30;
+/** Hero folds to more than this share of c-bets → c-bet heads-up flops at 1/3 with any two cards. */
+export const EXPLOIT_FOLD_TO_CBET = 0.6;
+/** Hero VPIP above this → value-bet Medium hands and halve bluffs. */
+export const EXPLOIT_LOOSE_VPIP = 0.4;
+/** Hero AF above this → stickiness + 0.2 and `defenseFactor = 1.0` (§9.2 "1.0 vs a hero with AF > 3.5"). */
+export const EXPLOIT_AGGRESSIVE_AF = 3.5;
+export const EXPLOIT_STICKINESS_BONUS = 0.2;
+export const EXPLOIT_DEFENSE_FACTOR = 1;
+/** "Halve bluffs": every bluff chance (the flop and turn bluff draw, the bluff 3-bet, the river). */
+export const EXPLOIT_BLUFF_FACTOR = 0.5;
+
+// --- 7.3 Expert fold equity ---
+
+/**
+ * §8.9 at Expert (chunk 7.3, risk R20): after the flop an Expert bot reads each opponent's continue
+ * share from its fold to c-bet (§9.5) instead of `MDF × stickiness`. The prior of that statistic
+ * is the model's fold against a ½-pot c-bet, `1 − clamp(⅔ × stickiness)`: this is its MDF.
+ */
+export const FOLD_READ_MDF = 2 / 3;

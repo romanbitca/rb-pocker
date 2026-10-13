@@ -138,3 +138,24 @@ describe('Menu', () => {
     expect(smallTargets(container, () => false)).toEqual([]);
   });
 });
+
+describe('Menu: Recent hands (Review, PLAN §12.10)', () => {
+  it('is hidden until there is a finished hand, then sits after Hand rankings', () => {
+    const { unmount } = render(<Menu {...menuProps({ onOpenRankings: () => {} })} />);
+    expect(labels()).not.toContain('Recent hands');
+    unmount();
+
+    const onOpenHands = vi.fn();
+    render(<Menu {...menuProps({ onOpenRankings: () => {}, onOpenHands })} />);
+    expect(labels()).toEqual([
+      'Resume',
+      'Hand rankings',
+      'Recent hands',
+      'Settings',
+      'Leave table',
+      'New table',
+    ]);
+    fireEvent.click(screen.getByRole('button', { name: 'Recent hands' }));
+    expect(onOpenHands).toHaveBeenCalledTimes(1);
+  });
+});

@@ -36,7 +36,9 @@ const DEFAULTS: SetupValues & GameSettings = {
   bb: 20,
   botLevel: 'easy',
   coachLevel: 'beginner',
+  seatLevels: [null, null, null, null, null, null],
   speed: 'normal',
+  fourColour: true,
   autoNext: true,
   amounts: 'chips',
 };
@@ -280,6 +282,8 @@ function Flow({ navigation }: { navigation: PreviewNavigation }) {
             onBack={back}
           />
         ),
+        // Review is a lazy screen of the real app (ui/screens/Review.tsx); not previewed here.
+        review: () => <h1>Review</h1>,
       }}
       overlays={{
         menu: () => (

@@ -24,10 +24,20 @@ import type { EquityResult, HandAnalysis } from '../analysis/types.ts';
 import type { Explanation } from '../brain/explain.ts';
 import type { Decision } from '../brain/types.ts';
 import type { Card } from '../core/cards.ts';
-import type { HandState, LegalActions, PlayerAction, TableState } from '../engine/types.ts';
+import type {
+  BotLevel,
+  CoachLevel,
+  HandState,
+  LegalActions,
+  PlayerAction,
+  SeatStats,
+  TableState,
+} from '../engine/types.ts';
 import { defaultSettings } from '../persist/schema.ts';
-import type { Settings } from '../persist/schema.ts';
-import { heroDecisionKey } from './coachViews.ts';
+import type { DecisionRecord, Settings } from '../persist/schema.ts';
+import { heroDecisionKey, levelInForce } from './coachViews.ts';
+import { choiceCount, quizQuestions } from './quiz.ts';
+import { UNDO_POLICY, type FeedbackView } from './undo.ts';
 import {
   currentScreen,
   initialNav,
@@ -37,9 +47,30 @@ import {
   type Overlay,
   type Screen,
 } from './navigation.ts';
+import {
+  initialReview,
+  listItemOf,
+  selectHandSeq,
+  type ReviewCommand,
+  type ReviewHand,
+  type ReviewListItem,
+  type ReviewSlice,
+} from './review.ts';
 
 export { useShallow };
 export type { Nav, NavAction, Overlay, Screen };
+// Review (§12.10, chunk 6.3): the hands kept in memory, and the view model of one of them. The
+// builder is small (it reuses the Table's view builders); the screen itself is lazy (ui/App.tsx).
+export { buildReview } from './reviewViews.ts';
+export type { ReviewCommand, ReviewHand, ReviewListItem, ReviewSlice };
+export type {
+  ReviewActor,
+  ReviewEvent,
+  ReviewFrame,
+  ReviewReplay,
+  ReviewSummary,
+  ReviewView,
+} from './reviewViews.ts';
 // The view-model selectors (ui/views.ts shapes): the UI imports them from here (§2.1).
 export * from './tableViews.ts';
 // The HUD numbers (win badge, draw chips, big-move line, "By river"): the same, for Stage 4.
@@ -52,6 +83,32 @@ export * from './runoutViews.ts';
 export * from './botCardViews.ts';
 // The coach strip, sheet and recommendation (§10.2, §12.6, chunk 5.9): the same, for the coach.
 export * from './coachViews.ts';
+// Undo and the feedback card (§10.2, §11, chunk 6.2): the level rules and the card's shapes.
+export { UNDO_POLICY, type FeedbackView, type MoveView, type UndoPolicy } from './undo.ts';
+// "Which hand wins?" (§13.2): two random hands that do not tie (the quiz is a lazy chunk).
+export { dealPair, type WhichPair } from './whichWins.ts';
+// The bot level of each seat from the next hand on (§9.3, chunk 7.2). `seatLevelOf` and
+// `labelVisible` come with `tableViews.ts` above.
+export { levelsOf, nextLevels, sameSeatLevels, type TableLevels } from './botLevels.ts';
+// The coach levels as data (§10.2, chunk 6.4) and the Advanced quiz (§10.3).
+export {
+  atLeast,
+  chipShows,
+  decisionScore,
+  LEVEL_RULES,
+  summaryShows,
+  type LevelRules,
+} from './levels.ts';
+export {
+  choiceCount,
+  NEED_BANDS,
+  quizQuestions,
+  quizScore,
+  rightAnswers,
+  WIN_BANDS,
+  type QuizQuestion,
+  type QuizScore,
+} from './quiz.ts';
 
 // ---------------------------------------------------------------------------------------------
 // Appendix A.8 (the controller's modes and gates; `app/controller.ts` re-exports them)
@@ -61,8 +118,8 @@ export type ControllerMode =
   | 'idle' // no hand: between hands, bust dialog, or Table not open
   | 'botTurn'
   | 'heroTurn'
-  | 'grading' // ≤ 1,500 ms after a hero act (§11.3 r5; Stage 6)
-  | 'feedback' // mistake card open (Stage 6)
+  | 'grading' // ≤ 1,500 ms after a hero act, waiting for its grade (§11.3 r5)
+  | 'feedback' // the mistake card is open: nothing moves until Undo or Keep my move (§11.1)
   | 'advancing' // animation pause before an `advance`
   | 'handEnd'; // banner / summary; then commit (§14.3) and next hand
 
@@ -113,7 +170,11 @@ export type Toast =
   /** "Your last hand could not be restored. Chips were returned." (§14.3 load table) */
   | { id: number; kind: 'handNotRestored' }
   /** "Your saved data was damaged. We started fresh and kept a copy." (§12.11) */
-  | { id: number; kind: 'dataRecovered' };
+  | { id: number; kind: 'dataRecovered' }
+  /** "Your saved data was damaged. We restored a backup. Your last hand may be missing." (§14.6 rule 2) */
+  | { id: number; kind: 'dataRestored' }
+  /** "Move taken back. The unseen cards were shuffled again." (§11.3 r3, Appendix F.10) */
+  | { id: number; kind: 'undone' };
 
 /** An explicit gate close by `owner` (e.g. a first-table tip); the gate stays closed while any hold exists. */
 export interface GateHold {
@@ -139,8 +200,34 @@ export interface GameSlice {
   legal: LegalActions | null;
   /** The hero has no chips: no next hand until Reload or Change table (§3.1). */
   heroBust: boolean;
+  /**
+   * What the table has seen each player do (§9.5 seat statistics, by `playerId`; the hero's is the
+   * hero model): updated at every hand end, read by the Hard/Expert bot card (§9.3, chunk 7.1). A
+   * player not seen yet has no entry.
+   */
+  seatStats: Readonly<Record<string, SeatStats>>;
   /** Settings → Diagnostics counters (§4.5, §12.14). */
   diag: Diagnostics;
+  /**
+   * Undo can be taken now (§11.3 r2, r5; the decision's coach level, §10.2). Where it shows comes
+   * from the level (`UNDO_POLICY`): the toolbar Undo at Beginner and Intermediate, only inside the
+   * feedback card at Advanced, nowhere at Exam.
+   */
+  canUndo: boolean;
+  /** The feedback card's content while it is open (mode `feedback`), else null (§11.1, §12.6). */
+  feedback: FeedbackView | null;
+  /**
+   * This hand's hero decisions as recorded so far (A.7), the undone ones included: the grade chips
+   * (§12.6) and the hand summary (6.3) read them.
+   */
+  decisions: readonly DecisionRecord[];
+  /**
+   * The coach level in force (§10, chunk 6.4): fixed when a hero decision starts, so a change in
+   * Settings applies from the next decision; it stays the latest decision's until the hand ends.
+   * Null before the hero's first decision of the hand: the settings' level is in force then
+   * (`selectCoachLevel`).
+   */
+  coachLevel: CoachLevel | null;
 }
 
 export interface Diagnostics {
@@ -251,10 +338,25 @@ export interface CoachSlice {
    * Beginner, opening it marks the decision as helped (stats, Stage 6).
    */
   opened: string | null;
+  /**
+   * The Advanced quiz of a decision (§10.3, chunk 6.4): written by the hint jobs when they ask
+   * about a decision that rolled one (null: this decision has none), then by the `quizAnswer` and
+   * `quizSkip` commands.
+   */
+  quiz: CoachQuiz | null;
+}
+
+/** One decision's quiz: its answers so far (indices into each question's choices, in order). */
+export interface CoachQuiz {
+  /** `coachKeyOf(hand)` of the decision. */
+  readonly key: string;
+  readonly answers: readonly number[];
+  /** "Skip": the quiz ends; the answers given so far still count (A.7 `quiz`). */
+  readonly skipped: boolean;
 }
 
 export function initialCoach(): CoachSlice {
-  return { key: null, status: 'idle', decision: null, explanation: null, opened: null };
+  return { key: null, status: 'idle', decision: null, explanation: null, opened: null, quiz: null };
 }
 
 export interface UiSlice {
@@ -295,10 +397,22 @@ export type { Settings };
 /** First-launch values (§3.2, §12.1): you + 5 bots, 2,000 chips, blinds 10/20, Easy, Beginner. */
 export const defaultGameSettings: () => Settings = defaultSettings;
 
-/** Setup's four questions (§12.2): what a new table is made from. */
+/**
+ * Setup's four questions and its "More options" (§12.2, chunk 7.2): what a new table is made from.
+ * `seatLevels` are the per-seat overrides ("Set each bot's level"); `speed` and `fourColour` are
+ * the other two More options.
+ */
 export type TableSetup = Pick<
   Settings,
-  'players' | 'startingStack' | 'sb' | 'bb' | 'botLevel' | 'coachLevel' | 'seatLevels'
+  | 'players'
+  | 'startingStack'
+  | 'sb'
+  | 'bb'
+  | 'botLevel'
+  | 'coachLevel'
+  | 'seatLevels'
+  | 'speed'
+  | 'fourColour'
 >;
 
 // ---------------------------------------------------------------------------------------------
@@ -347,20 +461,38 @@ export type GameCommand =
   /** Out of chips → Change table: Setup; the old table's session ends (§3.1). */
   | { type: 'changeTable' }
   | { type: 'settings'; patch: Partial<GameSettings> }
+  /**
+   * A bot's own level (§9.3, chunk 7.2), from its card: `level` for the bot in `seat` (1..), or null
+   * for the table's. It is saved with the settings at once and the table follows it from the next
+   * hand; the hand in play keeps the table it was dealt from.
+   */
+  | { type: 'seatLevel'; seat: number; level: BotLevel | null }
   /** From `app/lifecycle.ts`: `visibilitychange` (§12.13). */
   | { type: 'visibility'; hidden: boolean }
   /** From `app/lifecycle.ts`: `pagehide` (flush storage, §14.6). */
   | { type: 'pagehide' }
   /** "Coach is not available. Tap to try again." (§12.11): ask the coach again. */
-  | { type: 'retryCoach' };
+  | { type: 'retryCoach' }
+  /**
+   * Undo (§11.3): the toolbar Undo, the feedback card's [Undo: try again], the U key. The
+   * controller ignores it unless Undo is possible (`game.canUndo`).
+   */
+  | { type: 'undo' }
+  /** The feedback card's [Keep my move] (also Esc and Back): the hand goes on (§11.1). */
+  | { type: 'keepMove' };
 
 /**
  * Commands the store applies to the `coach` slice itself: the player opened the hint of the
- * hero's decision ("Hint", §10.2; the coach sheet). Nothing happens when it is not the hero's turn.
+ * hero's decision ("Hint", §10.2; the coach sheet), answered the Advanced quiz's question or
+ * skipped the quiz (§10.3). Nothing happens when it is not the hero's turn, or there is no quiz.
  */
-export type CoachCommand = { type: 'showHint' };
+export type CoachCommand =
+  | { type: 'showHint' }
+  /** The answer to the quiz's next question: an index into its choices. */
+  | { type: 'quizAnswer'; choice: number }
+  | { type: 'quizSkip' };
 
-export type Command = UiCommand | GameCommand | CoachCommand;
+export type Command = UiCommand | GameCommand | CoachCommand | ReviewCommand;
 
 const UI_COMMANDS: ReadonlySet<string> = new Set([
   'go',
@@ -377,16 +509,43 @@ const UI_COMMANDS: ReadonlySet<string> = new Set([
 
 export const isUiCommand = (cmd: Command): cmd is UiCommand => UI_COMMANDS.has(cmd.type);
 
-export const isCoachCommand = (cmd: Command): cmd is CoachCommand => cmd.type === 'showHint';
+export const isCoachCommand = (cmd: Command): cmd is CoachCommand =>
+  cmd.type === 'showHint' || cmd.type === 'quizAnswer' || cmd.type === 'quizSkip';
 
-/** `showHint`: marks the hero's current decision as opened; `coach` itself when nothing changes. */
-export function reduceCoach(s: Pick<AppState, 'game' | 'coach'>, cmd: CoachCommand): CoachSlice {
-  switch (cmd.type) {
-    case 'showHint': {
-      const key = heroDecisionKey(s.game.mode, s.game.hand, s.game.legal);
-      return key === null || s.coach.opened === key ? s.coach : { ...s.coach, opened: key };
-    }
+/**
+ * `showHint`: marks the hero's current decision as opened. `quizAnswer`, `quizSkip`: the quiz of
+ * the hero's current decision, while it asks (Advanced, the hint ready, not finished or skipped).
+ * Returns `coach` itself when nothing changes.
+ */
+export function reduceCoach(
+  s: Pick<AppState, 'game' | 'coach' | 'settings'>,
+  cmd: CoachCommand,
+): CoachSlice {
+  const key = heroDecisionKey(s.game.mode, s.game.hand, s.game.legal);
+  if (key === null) return s.coach;
+  if (cmd.type === 'showHint') {
+    return s.coach.opened === key ? s.coach : { ...s.coach, opened: key };
   }
+  const { coach } = s;
+  const quiz = coach.quiz;
+  if (
+    levelInForce(s) !== 'advanced' ||
+    quiz === null ||
+    quiz.key !== key ||
+    quiz.skipped ||
+    coach.key !== key ||
+    coach.status !== 'ready' ||
+    coach.decision === null
+  ) {
+    return coach;
+  }
+  const questions = quizQuestions(coach.decision);
+  const q = questions[quiz.answers.length];
+  if (q === undefined) return coach; // finished: the result shows until the hero acts
+  if (cmd.type === 'quizSkip') return { ...coach, quiz: { ...quiz, skipped: true } };
+  const { choice } = cmd;
+  if (!Number.isSafeInteger(choice) || choice < 0 || choice >= choiceCount(q)) return coach;
+  return { ...coach, quiz: { ...quiz, answers: [...quiz.answers, choice] } };
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -398,6 +557,8 @@ export interface AppState {
   coach: CoachSlice;
   ui: UiSlice;
   settings: GameSettings;
+  /** The last finished hands, kept in memory for Review (written by the controller; §12.10). */
+  review: ReviewSlice;
   /** The one way to change anything (the UI dispatches through the controller, §2.1). Stable. */
   dispatch: (cmd: Command) => void;
 }
@@ -415,9 +576,17 @@ export function initialGame(): GameSlice {
     next: null,
     legal: null,
     heroBust: false,
+    seatStats: NO_SEAT_STATS,
     diag: { engineErrors: 0, botFallbacks: 0, voidedHands: 0 },
+    canUndo: false,
+    feedback: null,
+    decisions: [],
+    coachLevel: null,
   };
 }
+
+/** No player seen yet (`GameSlice.seatStats`). */
+export const NO_SEAT_STATS: Readonly<Record<string, SeatStats>> = Object.freeze({});
 
 /** The UI state of a launch: Welcome on the first launch, Home after it (§12.1). */
 export function initialUi(firstLaunch = true): UiSlice {
@@ -445,8 +614,11 @@ export function createAppStore(): AppStore {
     coach: initialCoach(),
     ui: initialUi(),
     settings: defaultGameSettings(),
+    review: initialReview(),
     dispatch: (cmd) => {
-      if (isUiCommand(cmd)) {
+      if (cmd.type === 'review') {
+        set((s) => showReview(s, cmd));
+      } else if (isUiCommand(cmd)) {
         set((s) => {
           const ui = reduceUi(s.ui, cmd);
           return ui === s.ui ? s : { ui };
@@ -474,6 +646,13 @@ export function updateUi(store: StoreApi<AppState>, change: (ui: UiSlice) => UiS
     const ui = withGates(change(s.ui));
     return ui === s.ui ? s : { ui };
   });
+}
+
+/** `review` command: the Review screen on a hand (or the list), over whatever screen is on show. */
+function showReview(s: AppState, cmd: ReviewCommand): Partial<AppState> | AppState {
+  const review = selectHandSeq(s.review, cmd.handSeq);
+  const ui = reduceUi(s.ui, { type: 'go', screen: 'review' });
+  return review === s.review && ui === s.ui ? s : { review, ui };
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -598,6 +777,20 @@ export const selectNextTable = (s: AppState): TableState | null => s.game.next;
 export const selectLegal = (s: AppState): LegalActions | null => s.game.legal;
 export const selectHeroBust = (s: AppState): boolean => s.game.heroBust;
 export const selectDiagnostics = (s: AppState): Diagnostics => s.game.diag;
+export const selectCanUndo = (s: AppState): boolean => s.game.canUndo;
+export const selectFeedback = (s: AppState): FeedbackView | null => s.game.feedback;
+export const selectDecisions = (s: AppState): readonly DecisionRecord[] => s.game.decisions;
+/**
+ * The toolbar Undo (§10.2, §12.3): 'hidden' unless the coach level in force shows it (Beginner and
+ * Intermediate), then 'enabled' when Undo is possible, else 'disabled' (shown, not hidden). The
+ * level is the latest decision's (§10), the one Undo would take back.
+ */
+export const selectUndoButton = (s: AppState): 'hidden' | 'disabled' | 'enabled' =>
+  UNDO_POLICY[levelInForce(s)].undo !== 'toolbar'
+    ? 'hidden'
+    : s.game.canUndo
+      ? 'enabled'
+      : 'disabled';
 /** The navigation state for `ScreenSwitcher` (ui/screens). */
 export const selectNav = (s: AppState): Nav => s.ui.nav;
 export const selectScreen = (s: AppState): Screen => s.ui.screen;
@@ -635,4 +828,28 @@ export const selectCanTopUp = (s: AppState): boolean => {
   if (next === null || (s.game.mode !== 'handEnd' && s.game.mode !== 'idle')) return false;
   const hero = next.slots[0];
   return hero !== undefined && hero.stack > 0 && hero.stack < next.config.startingStack;
+};
+
+// ---------------------------------------------------------------------------------------------
+// Review (§12.10)
+
+let listedHands: readonly ReviewHand[] | null = null;
+let listed: readonly ReviewListItem[] = [];
+
+/** The list of recent hands, newest first: rows without records (a new array only when a hand is added). */
+export const selectReviewList = (s: AppState): readonly ReviewListItem[] => {
+  if (s.review.hands !== listedHands) {
+    listedHands = s.review.hands;
+    listed = s.review.hands.map(listItemOf);
+  }
+  return listed;
+};
+
+/** How many finished hands Review has. */
+export const selectReviewCount = (s: AppState): number => s.review.hands.length;
+
+/** The hand the Review screen shows, or null for the list. ⚠️ Holds the seed: for view builders only. */
+export const selectReviewHand = (s: AppState): ReviewHand | null => {
+  const { hands, selected } = s.review;
+  return selected === null ? null : (hands.find((h) => h.handSeq === selected) ?? null);
 };

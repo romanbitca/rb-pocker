@@ -3,7 +3,7 @@
  * data (`selectCoach`, `selectNarration`) and the action bar's input to what the strip, the sheet,
  * the action bar's ring and the sizing tray show. The components only draw these.
  *
- * Levels (§10.2; Advanced and Exam arrive in Stage 6 and act as Intermediate until then):
+ * Levels (§10.2; Advanced and Exam show the hint as Intermediate does, chunk 6.4):
  * - Beginner "Full help": the advice is always on show: the strip says it ("Coach is thinking…"
  *   until it comes), the recommended button has the ring and the "Coach" badge, the tray starts at
  *   the coach's size and its coach chip is ringed; the sheet has the strength meter.
@@ -11,6 +11,9 @@
  *   (which marks the decision as helped) the strip says the action and one sentence, "Why?" opens
  *   the sheet, and the advice is on show as at Beginner. The sheet's "Why" starts with one
  *   sentence and "More".
+ * - Advanced "Mistakes only": as Intermediate, and on 1 in 4 decisions the quiz takes the strip's
+ *   place first (§10.3, the quiz chunk `ui/quizEntry.ts`).
+ * - Exam "Test yourself": as Intermediate, the button reads "Hint (counts as help)".
  *
  * ⚠️ Pitfall 35 (§8.10): a range number never shows bare. When the hint shows RANGE_ADJUST the
  * strip's line is the labelled pair ("Any cards: 62%. Their likely hands: about 35%."), never a
@@ -20,7 +23,7 @@
  * This module (with `coachText.ts`, `glossary.ts` and `i18n/coachUi.ts`) is part of the coach's lazy
  * chunk (`ui/coachEntry.ts`, §15.3); the ring and the tray's amount come from `coachAdvice.ts`.
  */
-import type { CoachData, CoachState, NarrationData } from '../app/store.ts';
+import { LEVEL_RULES, type CoachData, type CoachState, type NarrationData } from '../app/store.ts';
 import type { Explanation } from '../brain/explain.ts';
 import type { Decision } from '../brain/types.ts';
 import { coachWords } from '../i18n/coachUi.ts';
@@ -45,8 +48,11 @@ export type StripView =
   | { readonly kind: 'narration'; readonly text: string }
   /** Beginner, the hint on its way. */
   | { readonly kind: 'thinking' }
-  /** Intermediate before the tap: "Hint", disabled until the hint is ready. */
-  | { readonly kind: 'hint'; readonly ready: boolean }
+  /**
+   * Above Beginner, before the tap: "Hint", disabled until the hint is ready; at Exam "Hint
+   * (counts as help)" (`countsAsHelp`).
+   */
+  | { readonly kind: 'hint'; readonly ready: boolean; readonly countsAsHelp: boolean }
   /** The advice: "Coach: Call 40" and one line; Intermediate adds "Why?". */
   | {
       readonly kind: 'advice';
@@ -245,6 +251,7 @@ export function coachView(
   input: ActionBarInput | null,
 ): CoachView {
   const level = uiLevel(data.level);
+  const countsAsHelp = LEVEL_RULES[data.level].hint === 'countsAsHelp';
   const base = { level, state: data.state, key: data.key, hint: null, ring: null, size: null };
   switch (data.state) {
     case 'off':
@@ -266,7 +273,10 @@ export function coachView(
     case 'pending':
       return {
         ...base,
-        strip: level === 'beginner' ? { kind: 'thinking' } : { kind: 'hint', ready: false },
+        strip:
+          level === 'beginner'
+            ? { kind: 'thinking' }
+            : { kind: 'hint', ready: false, countsAsHelp },
         shown: false,
       };
     case 'ready': {
@@ -284,7 +294,7 @@ export function coachView(
               line: adviceLine(decision, hint, level),
               why: level !== 'beginner',
             }
-          : { kind: 'hint', ready: true },
+          : { kind: 'hint', ready: true, countsAsHelp },
         ring,
         size: size?.to ?? null,
       };

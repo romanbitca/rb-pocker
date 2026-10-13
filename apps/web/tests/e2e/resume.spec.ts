@@ -11,12 +11,42 @@ import {
   seedFor,
   sizeOf,
   slot,
+  tapNextHand,
 } from './game.ts';
 
 // PLAN §18 Stage 3, acceptance 8: close the tab in the middle of a hand, open the app again, and
 // Home's Play brings back a deep-equal game (the session is saved after every step, §14.2).
 // Android Back with the sizing tray open closes the tray, not the table. Acceptance 9's other
 // half: without a saved session, Home's Play starts a new table with the last-used settings.
+
+/**
+ * At the hero's decision, once the coach has answered it (§12.6, Beginner: the hint is on show):
+ * the decision and the hint, as the store holds them and as the coach strip shows them.
+ */
+async function hintAt(page: Page) {
+  await page.waitForFunction(
+    () => {
+      const s = window.__pc?.state();
+      const hand = s?.game.hand;
+      if (s === undefined || hand === null || hand === undefined) return false;
+      // The decision's key: coachKeyOf(hand) in app/hintJobs.ts.
+      const key = `${hand.handSeq}:${hand.log.length}`;
+      return s.game.mode === 'heroTurn' && s.coach.key === key && s.coach.status === 'ready';
+    },
+    undefined,
+    { timeout: 10_000 },
+  );
+  const advice = page.locator('[data-coach-advice]').first();
+  await expect(advice).toBeVisible();
+  const state = await page.evaluate(() => {
+    const s = window.__pc?.state() as unknown as {
+      game: { hand: unknown; legal: unknown };
+      coach: { key: string | null; decision: unknown };
+    };
+    return { hand: s.game.hand, legal: s.game.legal, key: s.coach.key, hint: s.coach.decision };
+  });
+  return { ...state, advice: await advice.innerText() };
+}
 
 /** The game the controller holds: the table, the hand and the hand's inputs (for replay). */
 const game = (page: Page) =>
@@ -51,7 +81,7 @@ test.describe('resume', () => {
       expect(decisions, 'a decision after the flop').toBeLessThan(60);
       const point = await nextFlowPoint(page, true);
       if (point === 'end') {
-        await page.locator('[data-hand-end]').click();
+        await tapNextHand(page);
         continue;
       }
       if (point === 'bust') {
@@ -79,6 +109,33 @@ test.describe('resume', () => {
     const restored = await game(again);
     expect(restored).toEqual(saved);
     expect((await pcState(again)).ui.screen).toBe('table');
+  });
+
+  // PLAN §18 Stage 8, acceptance 3 (its second half): close the app at a decision, open it again,
+  // and Home's Play returns to the same decision with the same hint (§14.5).
+  test('closing at a decision and opening again: Play returns to it with the same hint', async ({
+    page,
+    context,
+  }, testInfo) => {
+    test.setTimeout(60_000);
+    await page.clock.install();
+    await openApp(page, seedFor(testInfo, 'hint'));
+    await newTable(page, { players: 6 });
+    for (let points = 0; ; points++) {
+      expect(points, 'a hero decision').toBeLessThan(30);
+      const point = await nextFlowPoint(page, true);
+      if (point === 'hero') break;
+      if (point === 'end') await tapNextHand(page);
+      else await reloadAfterBust(page);
+    }
+    const before = await hintAt(page);
+    expect(before.hint).not.toBeNull();
+
+    await page.close({ runBeforeUnload: true });
+    const again = await context.newPage();
+    await again.goto('/');
+    await again.getByRole('button', { name: 'Play', exact: true }).click();
+    expect(await hintAt(again)).toEqual(before);
   });
 
   test('without a saved game, Play starts a new table with the last-used settings', async ({
@@ -121,7 +178,7 @@ test.describe('resume', () => {
       expect(decisions, 'a decision with the tray').toBeLessThan(60);
       const point = await nextFlowPoint(page, true);
       if (point === 'end') {
-        await page.locator('[data-hand-end]').click();
+        await tapNextHand(page);
         continue;
       }
       if (

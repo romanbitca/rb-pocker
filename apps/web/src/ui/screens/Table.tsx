@@ -24,18 +24,34 @@
  * the sheet opens over everything above the action bar. Its words and the sheet are a lazy chunk
  * (`ui/coachModule.ts`), asked for when the Table mounts. The action bar's ring and the tray's
  * coach amount come from `coachAdvice` (no words).
+ *
+ * Undo and the feedback card (§11, §12.3, §12.6; chunk 6.2): the toolbar Undo sits at the left of
+ * the coach strip (portrait), of the coach row (landscape's column, the wide screen's panel head),
+ * and in the top bar in compact mode; the feedback card covers everything above the action bar
+ * (the table column in landscape) with a 25% scrim while the game waits for Undo or Keep my move.
+ *
+ * The coach levels (§10.2, chunk 6.4; `LEVEL_RULES`): after the hero acts the coach's places show
+ * the grade chip for 1.5 s when the level shows that grade; at Advanced the quiz (a lazy chunk)
+ * takes the coach's place on 1 in 4 decisions, and Row A waits for it (portrait: the strip's row
+ * grows; compact: over the bottom of the table, like the tray; landscape: the column; wide: the
+ * panel); the rankings show tips, "By river" and "Which hand wins?" by level. At the hand end the
+ * summary sheet (a lazy chunk) opens when the level shows one.
  */
 import {
+  lazy,
   memo,
+  Suspense,
   useCallback,
   useEffect,
   useId,
   useMemo,
   useRef,
+  useState,
   type CSSProperties,
   type MutableRefObject,
 } from 'react';
 import {
+  LEVEL_RULES,
   selectActionBarInput,
   selectBigMove,
   selectBoardView,
@@ -43,6 +59,8 @@ import {
   selectCoach,
   selectCoachLevel,
   selectDrawChips,
+  selectFeedback,
+  selectGradeChip,
   selectHandEnd,
   selectHeroHandView,
   selectHeroView,
@@ -50,17 +68,22 @@ import {
   selectNuts,
   selectOverlayOpen,
   selectPotView,
+  selectQuiz,
+  selectQuizAsking,
   selectSeatViews,
   selectTableInfo,
+  selectUndoButton,
   selectWinBadge,
   useAppStore,
   useDispatch,
   useOverlay,
   type ActionBarInputData,
+  type AppState,
 } from '../../app/store.ts';
+import type { Grade } from '../../brain/types.ts';
 import type { PlayerAction } from '../../engine/types.ts';
 import { en } from '../../i18n/en.ts';
-import { actionBarView, useSizing } from '../actionBar.ts';
+import { actionBarView, lockedView, useSizing } from '../actionBar.ts';
 import { coachAdvice } from '../coachAdvice.ts';
 import { loadCoach, useCoachModule, useCoachView } from '../coachModule.ts';
 import { ActionBar } from '../components/ActionBar.tsx';
@@ -70,6 +93,7 @@ import { DrawChips } from '../components/DrawChips.tsx';
 import { HandEndBanner } from '../components/HandEndBanner.tsx';
 import { HandsTab } from '../components/HandsTab.tsx';
 import { HeroCards, HeroChips, HeroLabel } from '../components/HeroStrip.tsx';
+import { LoadBoundary } from '../components/LoadBoundary.tsx';
 import { Pot } from '../components/Pot.tsx';
 import { RankingsColumn } from '../components/RankingsColumn.tsx';
 import { RankingsDrawer } from '../components/RankingsDrawer.tsx';
@@ -77,6 +101,7 @@ import { RunoutBars, useLuckLine } from '../components/Runout.tsx';
 import { Seat } from '../components/Seat.tsx';
 import { SizingTray } from '../components/SizingTray.tsx';
 import { ICONS, SpriteIcon } from '../components/SvgSprite.tsx';
+import { UndoButton, useUndoKey } from '../components/UndoButton.tsx';
 import { BigMoveLine, PriceChip, WinBadge, type BadgePlacement } from '../components/WinBadge.tsx';
 import { bigMoveView, drawChipViews, priceChipView, useBadgeView } from '../equity.ts';
 import { betChips, formatChips } from '../format.ts';
@@ -123,10 +148,17 @@ interface TopBarProps {
   /** Wide screens: the button shows and hides the rankings column (else it opens the drawer). */
   handsColumn: boolean;
   onToggleHands: () => void;
+  /** Compact mode: the toolbar Undo sits here, in place of the mute button (§12.3). */
+  undo?: boolean;
 }
 
 /** ☰ · "Blinds 10/20 · Hand 12" · Hands (§12.3). The mute button arrives with sound (Stage 9). */
-const TopBar = memo(function TopBar({ handsExpanded, handsColumn, onToggleHands }: TopBarProps) {
+const TopBar = memo(function TopBar({
+  handsExpanded,
+  handsColumn,
+  onToggleHands,
+  undo = false,
+}: TopBarProps) {
   const info = useAppStore(selectTableInfo);
   const [, setMenuOpen] = useOverlay('menu');
   const text =
@@ -151,6 +183,7 @@ const TopBar = memo(function TopBar({ handsExpanded, handsColumn, onToggleHands 
         <SpriteIcon id={ICONS.menu} className={styles.icon} />
       </button>
       <p className={styles.info}>{text}</p>
+      {undo && <UndoSlot />}
       <button
         type="button"
         className={styles.handsButton}
@@ -257,24 +290,53 @@ function useHandEndLines(): readonly string[] | null {
   }, [view, luck]);
 }
 
-/** The banner's box in the table: under the board, clear of the side pods; else above the pot. */
+/**
+ * The banner's box in the table: under the board, clear of the side pods, when there is room;
+ * else at the foot of the table, just above the hero's cards, growing upward. It never reaches
+ * above the table box, where the top bar is: the old spot above the pot did on the 340 px tall
+ * wide table, and its result lines sat under the top bar.
+ */
 export function bannerStyle(geometry: TableGeometry): CSSProperties {
-  const { size, board, pot, hero } = geometry;
+  const { size, board, hero } = geometry;
   const width = Math.max(180, Math.min(360, size.w - 2 * 76));
   const left = Math.round((size.w - width) / 2);
   const top = board.y + board.h + 10;
-  const room = size.h - hero.h - 4 - top;
-  // About three lines and "Next hand ›" need ~110 px; otherwise it sits above the pot.
-  if (room >= 110) return { position: 'absolute', left, top, width };
-  return { position: 'absolute', left, width, bottom: size.h - pot.y + 6 };
+  // The lowest it may reach: the hero strip's cards reach up into the box.
+  const limit = hero.y - 4;
+  // About three lines and "Next hand ›" need ~110 px.
+  if (limit - top >= 110) return { position: 'absolute', left, top, width };
+  return {
+    position: 'absolute',
+    left,
+    width,
+    bottom: size.h - limit,
+    maxHeight: limit - 4,
+    overflowY: 'auto',
+  };
+}
+
+/** "Review this hand" on the banner: the Review screen on the hand that just ended (§12.10). */
+function useReviewHand(): () => void {
+  const dispatch = useDispatch();
+  const handSeq = useAppStore((s) => s.game.hand?.handSeq ?? null);
+  return useCallback(() => dispatch({ type: 'review', handSeq }), [dispatch, handSeq]);
 }
 
 const BannerLayer = memo(function BannerLayer({ geometry }: { geometry: TableGeometry }) {
   const lines = useHandEndLines();
   const dispatch = useDispatch();
   const next = useCallback(() => dispatch({ type: 'nextHand' }), [dispatch]);
+  const review = useReviewHand();
   if (lines === null) return null;
-  return <HandEndBanner lines={lines} onNext={next} style={bannerStyle(geometry)} />;
+  return (
+    <HandEndBanner
+      lines={lines}
+      onNext={next}
+      onReview={review}
+      wide={geometry.layout === 'wide'}
+      style={bannerStyle(geometry)}
+    />
+  );
 });
 
 /** Landscape: the hero's cards inset at the bottom centre of the felt (§12.5). */
@@ -459,13 +521,15 @@ const HeroStrip = memo(function HeroStrip({
 
 /**
  * Landscape: the label with the badge beside it, then the chips and the draw chips, heading the
- * right column (§12.5); hidden while the tray is open.
+ * right column (§12.5); hidden while the tray is open, and while the Advanced quiz asks (§10.3:
+ * the column's 390 px then hold the quiz and Row A; the cards stay on the felt).
  */
 const SideHero = memo(function SideHero({ onOpenRankings }: { onOpenRankings: () => void }) {
   const hero = useAppStore(selectHeroView);
   const nuts = useAppStore(selectNuts);
   const trayOpen = useAppStore(selectOverlayOpen('tray'));
-  if (hero === null || trayOpen) return null;
+  const quizAsking = useAppStore(selectQuizAsking);
+  if (hero === null || trayOpen || quizAsking) return null;
   return (
     <section className={styles.sideHero} aria-label={en.table.yourHand}>
       <HeroLabel hero={hero} nuts={nuts} onOpenRankings={onOpenRankings} />
@@ -481,8 +545,9 @@ const SideBanner = memo(function SideBanner() {
   const lines = useHandEndLines();
   const dispatch = useDispatch();
   const next = useCallback(() => dispatch({ type: 'nextHand' }), [dispatch]);
+  const review = useReviewHand();
   if (lines === null) return null;
-  return <HandEndBanner lines={lines} onNext={next} />;
+  return <HandEndBanner lines={lines} onNext={next} onReview={review} side />;
 });
 
 // ---------------------------------------------------------------------------------------------
@@ -513,6 +578,80 @@ function useCoachActions(): {
   );
 }
 
+/** How long a grade chip shows after its grade arrives (§12.6: "grade chip 1.5 s"). */
+export const CHIP_MS = 1500;
+
+/** When the newest chip first showed: a strip mounted later does not show it again in full. */
+let chipSeen: { key: string; at: number } | null = null;
+
+/**
+ * The grade chip of the decision just graded while it is fresh (1.5 s from its arrival, also a
+ * late one, §11.3 r5), else null. A display timer only: it never touches the game (§0.3).
+ */
+function useGradeChip(): Grade | null {
+  const chip = useAppStore(selectGradeChip);
+  const [, setTick] = useState(0);
+  const now = performance.now();
+  if (chip !== null && chipSeen?.key !== chip.key) chipSeen = { key: chip.key, at: now };
+  const left = chip === null || chipSeen === null ? 0 : chipSeen.at + CHIP_MS - now;
+  const fresh = left > 0;
+  useEffect(() => {
+    if (!fresh) return;
+    const timer = setTimeout(() => setTick((n) => n + 1), left);
+    return () => clearTimeout(timer);
+    // `left` is read once per chip: the effect runs again only when the chip changes.
+  }, [chip?.key, fresh]);
+  return chip !== null && fresh ? chip.grade : null;
+}
+
+/** The Advanced quiz (§10.3): a lazy chunk, loaded when the level in force is Advanced. */
+const loadQuiz = () => import('../quizEntry.ts');
+const QuizStrip = lazy(() => loadQuiz().then((m) => ({ default: m.QuizStrip })));
+type QuizVariant = 'strip' | 'column' | 'panel' | 'overlay';
+
+/**
+ * The quiz in one of the coach's places, while it asks or shows its result (until "Hint" shows
+ * the advice). A chunk that cannot load skips the quiz: Row A never waits on it.
+ */
+const QuizSlot = memo(function QuizSlot({
+  variant,
+  className,
+}: {
+  variant: QuizVariant;
+  className?: string | undefined;
+}) {
+  const quiz = useAppStore(selectQuiz);
+  const dispatch = useDispatch();
+  const onAnswer = useCallback(
+    (choice: number) => dispatch({ type: 'quizAnswer', choice }),
+    [dispatch],
+  );
+  const onSkip = useCallback(() => dispatch({ type: 'quizSkip' }), [dispatch]);
+  const onHint = useCallback(() => dispatch({ type: 'showHint' }), [dispatch]);
+  if (quiz === null) return null;
+  return (
+    <LoadBoundary onError={onSkip}>
+      <Suspense fallback={null}>
+        <QuizStrip
+          quiz={quiz}
+          variant={variant}
+          onAnswer={onAnswer}
+          onSkip={onSkip}
+          onHint={onHint}
+          className={className}
+        />
+      </Suspense>
+    </LoadBoundary>
+  );
+});
+
+/** The quiz takes the coach's place: while it asks, and with its result until "Hint". */
+function useQuizShows(): boolean {
+  const quiz = useAppStore(selectQuiz);
+  const opened = useAppStore(selectCoach).opened;
+  return quiz !== null && !(quiz.done && opened);
+}
+
 /** The portrait strip (48 px), compact mode's pill, the landscape column's coach rows. */
 const CoachSlot = memo(function CoachSlot({
   variant,
@@ -528,8 +667,17 @@ const CoachSlot = memo(function CoachSlot({
 }) {
   const view = useCoachView();
   const mod = useCoachModule();
+  const chip = useGradeChip();
+  const quiz = useQuizShows();
   const { onOpen, onHint, onRetry } = useCoachActions();
-  if (collapse && (view === null || view.strip.kind === 'empty')) return null;
+  // The quiz: in the strip's place (compact mode: over the table, `ActionArea`, and the pill
+  // waits: its tap would show the hint while the quiz asks).
+  if (quiz) {
+    return variant === 'pill' ? null : (
+      <QuizSlot variant={wrap ? 'column' : 'strip'} className={className} />
+    );
+  }
+  if (collapse && chip === null && (view === null || view.strip.kind === 'empty')) return null;
   // The strip is part of the coach's lazy chunk; until it is there its row stays empty.
   if (mod === null || view === null) {
     return variant === 'strip' ? <div className={className} /> : null;
@@ -542,55 +690,91 @@ const CoachSlot = memo(function CoachSlot({
       onHint={onHint}
       onRetry={onRetry}
       wrap={wrap}
+      chip={chip}
       className={className}
     />
   );
 });
 
 /**
- * Landscape (§12.5): the coach rows under the label, the reason wrapping; "›" opens the sheet
- * over the table column. The open sizing tray takes their place.
+ * Landscape (§12.5): the coach rows under the label, the reason wrapping, the toolbar Undo at the
+ * left of the first; "›" opens the sheet over the table column. The open sizing tray takes their
+ * place (the hero is deciding then: nothing to undo).
  */
 const SideCoach = memo(function SideCoach() {
   const trayOpen = useAppStore(selectOverlayOpen('tray'));
-  return trayOpen ? null : <CoachSlot variant="strip" wrap collapse className={styles.coachSide} />;
+  if (trayOpen) return null;
+  return (
+    <div className={styles.sideCoach}>
+      <UndoSlot className={styles.stripUndo} />
+      <CoachSlot variant="strip" wrap collapse className={styles.coachSide} />
+    </div>
+  );
 });
 
 /**
  * The wide screen's inline coach panel (§12.5): the strip's content as its head row, then the
  * sheet's sections while the advice is on show (no sheet on wide screens), scrolling inside. Its
  * grid row has a fixed height, so the table never changes size with what the coach says (§15.3).
+ * The toolbar Undo sits at the left of the head row, outside the scrolling part (chunk 6.2).
  */
 const CoachPanel = memo(function CoachPanel({ coachSize }: { coachSize: CoachSizeRef }) {
   const view = useCoachView();
   const mod = useCoachModule();
+  const chip = useGradeChip();
+  const quiz = useQuizShows();
   const { onOpen, onHint, onRetry } = useCoachActions();
   const onUseSize = useCallback(() => coachSize.current?.(), [coachSize]);
+  const undo = <UndoSlot className={styles.panelUndo} />;
+  // The Advanced quiz takes the panel (§10.3).
+  if (quiz) {
+    return (
+      <div className={styles.coachBox}>
+        {undo}
+        <section className={styles.coachPanel} aria-label={en.coachUi.title} data-coach-panel="">
+          <QuizSlot variant="panel" />
+        </section>
+      </div>
+    );
+  }
   // Nothing to say (or the chunk is still on its way): the panel's box, empty.
-  if (mod === null || view === null || (view.strip.kind === 'empty' && view.hint === null)) {
-    return <div className={styles.coachPanel} />;
+  if (
+    mod === null ||
+    view === null ||
+    (view.strip.kind === 'empty' && view.hint === null && chip === null)
+  ) {
+    return (
+      <div className={styles.coachBox}>
+        {undo}
+        <div className={styles.coachPanel} />
+      </div>
+    );
   }
   const details = view.shown && view.hint !== null;
   // With the sections under it, the head row says the action only (the reason follows below).
   const strip = details && view.strip.kind === 'advice' ? { ...view.strip, line: '' } : view.strip;
   return (
-    <section className={styles.coachPanel} aria-label={en.coachUi.title} data-coach-panel="">
-      <mod.CoachStrip
-        view={strip}
-        variant="header"
-        onOpen={onOpen}
-        onHint={onHint}
-        onRetry={onRetry}
-      />
-      {details && (
-        <mod.CoachDetails
-          view={view}
-          place="panel"
-          onUseSize={view.size === null ? null : onUseSize}
-          className={styles.panelDetails}
+    <div className={styles.coachBox}>
+      {undo}
+      <section className={styles.coachPanel} aria-label={en.coachUi.title} data-coach-panel="">
+        <mod.CoachStrip
+          view={strip}
+          variant="header"
+          onOpen={onOpen}
+          onHint={onHint}
+          onRetry={onRetry}
+          chip={chip}
         />
-      )}
-    </section>
+        {details && (
+          <mod.CoachDetails
+            view={view}
+            place="panel"
+            onUseSize={view.size === null ? null : onUseSize}
+            className={styles.panelDetails}
+          />
+        )}
+      </section>
+    </div>
   );
 });
 
@@ -656,7 +840,12 @@ const ActionArea = memo(function ActionArea({
 }) {
   const dispatch = useDispatch();
   const input = useAppStore(selectActionBarInput);
-  const view = useMemo(() => actionBarView(input ?? NO_HAND), [input]);
+  // The Advanced quiz asks (§10.3): Row A waits, its buttons say why when tapped.
+  const quizAsking = useAppStore(selectQuizAsking);
+  const view = useMemo(() => {
+    const bar = actionBarView(input ?? NO_HAND);
+    return quizAsking ? lockedView(bar, en.actions.quizFirst) : bar;
+  }, [input, quizAsking]);
   // The coach's advice while on show: the ring on Row A, the tray's start and its coach chip.
   const coach = useAppStore(selectCoach);
   const advice = useMemo(() => coachAdvice(coach), [coach]);
@@ -706,6 +895,8 @@ const ActionArea = memo(function ActionArea({
   const placement = layout === 'landscape' ? 'panel' : layout === 'compact' ? 'overlay' : 'inline';
   return (
     <div className={styles.actions}>
+      {/* Compact mode has no strip: the quiz sits over the bottom of the table, as the tray. */}
+      {layout === 'compact' && <CompactQuiz />}
       {trayOpen && view.tray !== null && (
         <SizingTray
           id={trayId}
@@ -756,8 +947,8 @@ const DrawerHost = memo(function DrawerHost({
   const [open, setOpen] = useOverlay('rankings');
   const hero = useAppStore(selectHeroHandView);
   const byRiver = useAppStore(selectByRiver);
-  // §10.2: the rankings' tips at Beginner; Intermediate collapses them.
-  const tips = useAppStore(selectCoachLevel) === 'beginner';
+  // §10.2: the tips at Beginner (Intermediate collapses them); "Which hand wins?" at Advanced, Exam.
+  const rules = LEVEL_RULES[useAppStore(selectCoachLevel)];
   const onOpenChange = useCallback((next: boolean) => setOpen(next), [setOpen]);
   return (
     <div className={styles.drawerHost}>
@@ -766,7 +957,8 @@ const DrawerHost = memo(function DrawerHost({
         onOpenChange={onOpenChange}
         hero={hero}
         byRiver={byRiver}
-        showTips={tips}
+        showTips={rules.tips}
+        whichWins={rules.whichWins}
       />
       <CoachSheetHost tall={layout === 'landscape'} coachSize={coachSize} />
     </div>
@@ -782,7 +974,7 @@ const RankingsPanel = memo(function RankingsPanel({
 }) {
   const hero = useAppStore(selectHeroHandView);
   const byRiver = useAppStore(selectByRiver);
-  const tips = useAppStore(selectCoachLevel) === 'beginner';
+  const rules = LEVEL_RULES[useAppStore(selectCoachLevel)];
   return (
     <div className={styles.rankings}>
       <RankingsColumn
@@ -790,9 +982,97 @@ const RankingsPanel = memo(function RankingsPanel({
         collapsed={collapsed}
         onCollapsedChange={onCollapsedChange}
         byRiver={byRiver}
-        showTips={tips}
+        showTips={rules.tips}
+        whichWins={rules.whichWins}
       />
     </div>
+  );
+});
+
+// ---------------------------------------------------------------------------------------------
+// Undo and the feedback card (§11, §12.3, §12.6)
+
+/** True while an overlay other than the sizing tray covers the table (U then does nothing). */
+const selectCovered = (s: AppState): boolean => s.ui.overlays.some((o) => o !== 'tray');
+
+/** The toolbar Undo for the coach level (§10.2), and its U key (§12.5). */
+const UndoSlot = memo(function UndoSlot({ className }: { className?: string | undefined }) {
+  const button = useAppStore(selectUndoButton);
+  const covered = useAppStore(selectCovered);
+  const dispatch = useDispatch();
+  const onUndo = useCallback(() => dispatch({ type: 'undo' }), [dispatch]);
+  useUndoKey(button === 'enabled' && !covered, onUndo);
+  return button === 'hidden' ? null : (
+    <UndoButton state={button} onUndo={onUndo} className={className} />
+  );
+});
+
+const selectAmountUnit = (s: AppState): 'chips' | 'bb' => s.settings.amounts;
+
+/**
+ * The card's code (and the coach-line renderer it uses) is a lazy chunk, still precached for
+ * offline play (§15.1): it shows only after a mistake, so the first paint does without it (§15.3).
+ */
+const FeedbackCard = lazy(() =>
+  import('../components/FeedbackCard.tsx').then((m) => ({ default: m.FeedbackCard })),
+);
+
+/** The feedback card over everything above the action bar, while the game waits (§11.1). */
+const FeedbackLayer = memo(function FeedbackLayer() {
+  const open = useAppStore(selectOverlayOpen('feedback'));
+  const view = useAppStore(selectFeedback);
+  const unit = useAppStore(selectAmountUnit);
+  const dispatch = useDispatch();
+  const onUndo = useCallback(() => dispatch({ type: 'undo' }), [dispatch]);
+  const onKeep = useCallback(() => dispatch({ type: 'keepMove' }), [dispatch]);
+  if (!open || view === null) return null;
+  return (
+    <div className={styles.feedbackHost}>
+      <div className={styles.feedbackScrim} aria-hidden="true" />
+      {/* A chunk that cannot load keeps the move: the game never waits on it. */}
+      <LoadBoundary onError={onKeep}>
+        <Suspense fallback={null}>
+          <FeedbackCard view={view} unit={unit} onUndo={onUndo} onKeep={onKeep} />
+        </Suspense>
+      </LoadBoundary>
+    </div>
+  );
+});
+
+/** Compact mode's quiz: over the bottom of the table, right above the hero's cards (§12.3). */
+const CompactQuiz = memo(function CompactQuiz() {
+  const quiz = useQuizShows();
+  return quiz ? <QuizSlot variant="overlay" /> : null;
+});
+
+/**
+ * The end-of-hand summary (§10.2, §12.9): a lazy chunk, asked for when the Table mounts, so it is
+ * there when the first hand ends; a chunk that cannot load closes the overlay (the banner stays).
+ */
+const loadSummary = () => import('../summaryEntry.ts');
+const HandSummary = lazy(() => loadSummary().then((m) => ({ default: m.HandSummary })));
+
+/**
+ * The summary sheet while the `summary` overlay is open (the controller opens it at the hand end,
+ * §12.9); the sheet itself closes the overlay when there is nothing to show (a new hand began).
+ */
+const SummaryLayer = memo(function SummaryLayer() {
+  const [open, setOpen] = useOverlay('summary');
+  const unit = useAppStore(selectAmountUnit);
+  const dispatch = useDispatch();
+  const onClose = useCallback(() => setOpen(false), [setOpen]);
+  const onNext = useCallback(() => dispatch({ type: 'nextHand' }), [dispatch]);
+  const onReview = useCallback(
+    (handSeq: number) => dispatch({ type: 'review', handSeq }),
+    [dispatch],
+  );
+  if (!open) return null;
+  return (
+    <LoadBoundary onError={onClose}>
+      <Suspense fallback={null}>
+        <HandSummary unit={unit} onNext={onNext} onReview={onReview} onClose={onClose} />
+      </Suspense>
+    </LoadBoundary>
   );
 });
 
@@ -830,10 +1110,16 @@ export function Table() {
     if (wide && coachOpen) setCoachOpen(false);
   }, [wide, drawerOpen, setDrawerOpen, coachOpen, setCoachOpen]);
 
-  // The coach's words and sheet: a lazy chunk, asked for now, long before the first hint.
+  // The coach's words and sheet: a lazy chunk, asked for now, long before the first hint; the
+  // hand summary's too (§12.9), and the quiz's when the level is Advanced (§10.3).
   useEffect(() => {
     void loadCoach().catch(() => {});
+    void loadSummary().catch(() => {});
   }, []);
+  const quizLevel = LEVEL_RULES[useAppStore(selectCoachLevel)].quiz;
+  useEffect(() => {
+    if (quizLevel) void loadQuiz().catch(() => {});
+  }, [quizLevel]);
   const coachSize: CoachSizeRef = useRef<(() => void) | null>(null);
 
   return (
@@ -846,6 +1132,7 @@ export function Table() {
         handsExpanded={wide ? !collapsed : drawerOpen}
         handsColumn={wide}
         onToggleHands={toggleHands}
+        undo={layout === 'compact'}
       />
       <TableArea layout={layout} />
       {landscape ? (
@@ -860,7 +1147,12 @@ export function Table() {
       ) : (
         <>
           <HeroStrip layout={layout} onOpenRankings={openRankings} />
-          {layout === 'portrait' && <CoachSlot variant="strip" className={styles.coach} />}
+          {layout === 'portrait' && (
+            <div className={styles.coach}>
+              <UndoSlot className={styles.stripUndo} />
+              <CoachSlot variant="strip" />
+            </div>
+          )}
           {wide && <CoachPanel coachSize={coachSize} />}
           <ActionArea layout={layout} coachSize={coachSize} />
         </>
@@ -870,6 +1162,8 @@ export function Table() {
       ) : (
         <DrawerHost layout={layout} coachSize={coachSize} />
       )}
+      <FeedbackLayer />
+      <SummaryLayer />
     </main>
   );
 }

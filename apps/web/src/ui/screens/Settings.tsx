@@ -11,6 +11,7 @@
 import { useId } from 'react';
 import type { BotLevel, CoachLevel } from '../../engine/types.ts';
 import { en } from '../../i18n/en.ts';
+import { Choice, SwitchRow } from './Controls.tsx';
 import { LevelCards } from './LevelCards.tsx';
 import { ScreenBar } from './ScreenBar.tsx';
 import styles from './Screen.module.css';
@@ -27,6 +28,11 @@ export interface GameSettings {
 
 export interface SettingsProps {
   settings: GameSettings;
+  /**
+   * How many bots have a level of their own (§9.3, chunk 7.2); the Bot level row says so, because
+   * the cards above it do not change those bots. Absent or 0: nothing is said.
+   */
+  ownLevels?: number | undefined;
   /** The levels that can be picked now (`AVAILABLE_LEVELS`). */
   available: AvailableLevels;
   /** Only the changed field. */
@@ -37,7 +43,13 @@ export interface SettingsProps {
 const SPEEDS: readonly GameSettings['speed'][] = ['normal', 'fast', 'instant'];
 const AMOUNTS: readonly GameSettings['amounts'][] = ['chips', 'bb'];
 
-export function Settings({ settings, available, onChangeSettings, onBack }: SettingsProps) {
+export function Settings({
+  settings,
+  ownLevels = 0,
+  available,
+  onChangeSettings,
+  onBack,
+}: SettingsProps) {
   const id = useId();
   return (
     <main className={styles.page}>
@@ -65,7 +77,11 @@ export function Settings({ settings, available, onChangeSettings, onBack }: Sett
             name={`${id}-bots`}
             legend={en.settings.botLevel.label}
             legendClass={styles.legend}
-            hint={en.settings.botLevel.hint}
+            hint={
+              ownLevels > 0
+                ? `${en.settings.botLevel.hint} ${en.settings.botLevel.own(ownLevels)}`
+                : en.settings.botLevel.hint
+            }
             order={BOT_LEVEL_ORDER}
             available={available.bot}
             value={settings.botLevel}
@@ -83,25 +99,13 @@ export function Settings({ settings, available, onChangeSettings, onBack }: Sett
             onChange={(speed) => onChangeSettings({ speed })}
           />
 
-          <label className={styles.switchRow}>
-            <span className={styles.switchText}>
-              <span id={`${id}-auto`} className={styles.switchLabel}>
-                {en.settings.autoNext.label}
-              </span>
-              <span id={`${id}-auto-hint`} className={styles.hint}>
-                {en.settings.autoNext.hint}
-              </span>
-            </span>
-            <input
-              type="checkbox"
-              role="switch"
-              aria-labelledby={`${id}-auto`}
-              aria-describedby={`${id}-auto-hint`}
-              checked={settings.autoNext}
-              onChange={(e) => onChangeSettings({ autoNext: e.target.checked })}
-            />
-            <span className={styles.switch} aria-hidden="true" />
-          </label>
+          <SwitchRow
+            id={`${id}-auto`}
+            label={en.settings.autoNext.label}
+            hint={en.settings.autoNext.hint}
+            checked={settings.autoNext}
+            onChange={(autoNext) => onChangeSettings({ autoNext })}
+          />
 
           <Choice
             name={`${id}-amounts`}
@@ -114,40 +118,5 @@ export function Settings({ settings, available, onChangeSettings, onBack }: Sett
         </section>
       </div>
     </main>
-  );
-}
-
-interface ChoiceProps<V extends string> {
-  name: string;
-  label: string;
-  hint: string;
-  options: readonly { value: V; label: string }[];
-  value: V;
-  onChange: (value: V) => void;
-}
-
-/** One setting with a few options: a radio group drawn as chips. */
-function Choice<V extends string>({ name, label, hint, options, value, onChange }: ChoiceProps<V>) {
-  return (
-    <fieldset className={styles.section} aria-describedby={`${name}-hint`}>
-      <legend className={styles.legend}>{label}</legend>
-      <div className={`${styles.choices} ${options.length === 2 ? styles.choices2 : ''}`}>
-        {options.map((option) => (
-          <label key={option.value} className={styles.choice}>
-            <input
-              type="radio"
-              name={name}
-              value={option.value}
-              checked={value === option.value}
-              onChange={() => onChange(option.value)}
-            />
-            <span className={styles.face}>{option.label}</span>
-          </label>
-        ))}
-      </div>
-      <p id={`${name}-hint`} className={styles.hint}>
-        {hint}
-      </p>
-    </fieldset>
   );
 }

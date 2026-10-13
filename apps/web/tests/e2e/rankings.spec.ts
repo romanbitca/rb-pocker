@@ -1,6 +1,17 @@
 import type { Locator, Page } from '@playwright/test';
 import { expect, test } from './fixtures.ts';
-import { newTable, nextFlowPoint, openApp, pageMetrics, pcState, seedFor, sizeOf } from './game.ts';
+import {
+  closeSummary,
+  keepMove,
+  newTable,
+  nextFlowPoint,
+  openApp,
+  pageMetrics,
+  pcState,
+  seedFor,
+  sizeOf,
+  tapNextHand,
+} from './game.ts';
 
 // PLAN §18 Stage 3, acceptance 3 (§13.1): the hand rankings are a persistent column at 1280×800
 // and 1024×768; at 390×844 and 844×390 a drawer that the edge tab, the top-bar button and the
@@ -208,15 +219,21 @@ test.describe('the rankings drawer', () => {
     for (let tries = 0; tries < 20 && !opened; tries++) {
       await page.waitForFunction(() => {
         const mode = window.__pc?.state().game.mode;
-        return mode === 'botTurn' || mode === 'heroTurn' || mode === 'handEnd';
+        return (
+          mode === 'botTurn' || mode === 'heroTurn' || mode === 'handEnd' || mode === 'feedback'
+        );
       });
       const mode = (await pcState(page)).game.mode;
       if (mode === 'heroTurn') {
         await page.locator('[data-slot="middle"]').click();
         continue;
       }
+      if (mode === 'feedback') {
+        await keepMove(page); // a mistake's feedback card (Stage 6): the hand goes on
+        continue;
+      }
       if (mode === 'handEnd') {
-        await page.locator('[data-hand-end]').click();
+        await tapNextHand(page);
         continue;
       }
       await edgeTab(page).click();
@@ -258,6 +275,11 @@ test.describe('the rankings drawer', () => {
       if (point === 'hero') await page.locator('[data-slot="middle"]').click();
       point = await nextFlowPoint(page, true);
     }
+    // At Beginner the hand summary is open over the table (§12.9): the DOM budget holds with it,
+    // then it is closed and the drawer opened over the result.
+    await expect(page.locator('[data-summary]')).toBeVisible();
+    expect((await pageMetrics(page)).nodes, '§15.3: ≤ 600 DOM nodes').toBeLessThanOrEqual(600);
+    await closeSummary(page);
     await edgeTab(page).click();
     await expect(drawer(page)).toBeVisible();
     expect((await pageMetrics(page)).nodes, '§15.3: ≤ 600 DOM nodes').toBeLessThanOrEqual(600);

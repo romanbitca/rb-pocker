@@ -1,7 +1,8 @@
 /**
  * The one decision pipeline of the coach and every bot (PLAN §8.1 C1, §8.2, §9.4, Appendix A.5):
  * `decide(obs, profile, seed)` for a bot, `hint(obs, eRandom)` for the coach (the fixed profile
- * `COACH`, seeded from `observationKey`, §2.4). `grade` is Stage 6's (§8.9).
+ * `COACH`, seeded from `observationKey`, §2.4). `grade` (§8.9) is `grade.ts`'s, from the same
+ * deliberation: `Deliberation.model` holds the hint's EVs.
  *
  * 1. **Features** (§8.2): `features(obs, profile, seed)`, the `eRange` Monte Carlo seeded with the
  *    decision seed itself (the coach: `coachSeed(obs)`; a bot: its table-only seed, §2.4).
@@ -15,7 +16,8 @@
  *    draw is below `1 − pfrRatio`; that draw also limps an open raise the mix picks (step 4).
  * 4. **The pick.** The coach (`deterministic`) takes `A*`: the recommendation is the rule action
  *    (§8.9 "recommendation from the rule policy"), so σ = 0 and no mixing. A bot scores its
- *    candidates (§9.4 step 3): `EV/pot` (§8.9, with `E'`) + `T ×` biases in units of its level's
+ *    candidates (§9.4 step 3): `EV/pot` (§8.9, with `E'`; at Expert the fold equity after the flop
+ *    read from each seat's fold to c-bet, `readsFoldStats`) + `T ×` biases in units of its level's
  *    temperature `T`: `aggressionBias` for a bet or raise, `3 × (stickiness − 1)` for a call, `1`
  *    for `A*` (`3.5` before the flop), `2.5` for a bet when it bluffs (Air and the bluff draw below
  *    `bluffFreq`; before the flop a raise facing one open with a suited A5–A2 or 54–T9 and the draw
@@ -47,8 +49,10 @@ import type { DrawKind } from '../analysis/types.ts';
 import { rankOf, suitOf, type Card } from '../core/cards.ts';
 import { deriveSeed, rngFromSeed, type Rng, type Seed128 } from '../core/rng.ts';
 import type { LegalActions, Observation, PlayerAction } from '../engine/types.ts';
+import { balancedBluffChance } from './bluffs.ts';
 import { candidateActions, candidateKey, confidence, evModel, type EvModel } from './ev.ts';
 import { explain, explainInput, type Explanation } from './explain.ts';
+import { exploitPlan, exploitProfile, NO_EXPLOITS, type ExploitPlan } from './exploits.ts';
 import { coachSeed, features } from './features.ts';
 import { guardrails, guardSpot } from './guardrails.ts';
 import {
@@ -79,6 +83,8 @@ import {
   CLEAR_SPOT_POT,
   CLOSE_SPOT_POT,
   E_CALLED_TRIALS,
+  EXPLOIT_BLUFF_FACTOR,
+  MIX_RULE_BONUS_UNIT_MIN,
   MIX_BLUFF_BONUS,
   MIX_CALL_STICKINESS,
   MIX_RULE_BONUS,
@@ -94,7 +100,6 @@ import type {
   Decision,
   EvCandidate,
   Features,
-  GradeResult,
   PolicyDecision,
   PostflopSpot,
   Reason,
@@ -265,12 +270,55 @@ function limpInstead(
   return { action, kind: action.type, trace: rule.trace };
 }
 
+/**
+ * §9.5 Expert exploit of a hero who plays too many hands (chunk 7.1): heads-up against the hero
+ * with nothing to call, a Medium hand (as perceived) that the rule would check bets for thin
+ * value instead (1/3 pot, §8.7). Any other rule action stands.
+ */
+export function valueMediumRule(
+  rule: PolicyDecision,
+  seen: Features,
+  spot: PostflopSpot | null,
+  profile: BrainProfile,
+  plan: ExploitPlan,
+): PolicyDecision {
+  if (!plan.valueMedium || spot === null) return rule;
+  if (seen.bucket !== 'medium' || rule.action.type !== 'check') return rule;
+  const bet = betOf('thinValue', seen, spot, profile);
+  if (bet === null || bet.type !== 'bet') return rule;
+  const data = {
+    handName: seen.handInfo.name,
+    E: seen.eRange,
+    size: bet.to,
+    sizeBB: bet.to / spot.bb,
+  };
+  return { action: bet, kind: kindOf(spot.legal, bet), trace: [{ code: 'THIN_VALUE', data }] };
+}
+
 // ── EVs (§8.9) ─────────────────────────────────────────────────────────────────────────────────
+
+/**
+ * The policy's realisation `R` of the hero's equity on this street (§8.3 step 3 before the flop,
+ * §8.5 step 2 after it). The EV model uses 1 instead after an action that ends the hero's betting.
+ */
+export function realisationOf(obs: Observation, f: Features, spot: PostflopSpot | null): number {
+  return spot === null ? preflopRealisation(f.position, obs.hole) : postflopRealisation(f);
+}
+
+/**
+ * §8.9 at Expert (chunk 7.3, risk R20): a bot with the per-seat statistics range model (§9.2
+ * "re-weighting + per-seat stats") reads its fold equity after the flop from each seat's fold to
+ * c-bet (`readContinueFraction`). The coach shares that range model but keeps the model's fold
+ * equity: its EVs only explain its advice, which takes `A*` (and does not change).
+ */
+export function readsFoldStats(profile: BrainProfile): boolean {
+  return !profile.deterministic && profile.rangeModel === 'reweight+stats';
+}
 
 /**
  * The EV model of the decision with equity `E` (the coach: `eRange`; a bot: `E'`): the policy's
  * realisation and implied odds (§8.3 steps 3–4, §8.5 steps 2–3), `E_called` trials capped at the
- * profile's own `mcTrials`.
+ * profile's own `mcTrials`; Expert reads its fold equity after the flop (`readsFoldStats`).
  */
 function evModelOf(
   obs: Observation,
@@ -280,7 +328,7 @@ function evModelOf(
   seed: Seed128,
   spot: PostflopSpot | null,
 ): EvModel {
-  const R = spot === null ? preflopRealisation(f.position, obs.hole) : postflopRealisation(f);
+  const R = realisationOf(obs, f, spot);
   // §8.3 step 4 sets up implied odds only facing a raise (a limp has none); §8.5 step 3 after the
   // flop. The EV model drops them when the call ends the betting (an all-in).
   const facingRaise = f.facing === 'open' || f.facing === '3bet' || f.facing === '4bet+';
@@ -294,6 +342,7 @@ function evModelOf(
     implied,
     seed,
     trials: Math.min(E_CALLED_TRIALS, profile.mcTrials),
+    readsFolds: readsFoldStats(profile),
   });
   // Each action's EV once per decision (a bet's E_called is a Monte Carlo of its own).
   const memo = new Map<CandidateKey, number>();
@@ -380,6 +429,19 @@ export function bluff3betHand(hole: readonly [Card, Card] | readonly Card[]): bo
   return hi - lo === 1 && hi >= 3 && hi <= 8; // 54s–T9s
 }
 
+/**
+ * §9.4 step 3: the pot value of one unit of `A*`'s bonus at temperature `T`, `max(T, 0.12)`. At
+ * Easy and Medium it is `T`, like every other bias (chunk 5.11); below Medium's `T` it keeps
+ * Medium's value in pots (chunk 7.3, risk R20). The bonus anchors the rule policy against the
+ * error of the §8.9 EV heuristic, which is a share of the pot at every level: before the flop its
+ * fold equity (each opponent continues with `MDF` of its range) rates a re-raise with any two
+ * cards at break-even or better. In units of `T` the bonus shrank to 0.21 pot at Hard and 0.14 at
+ * Expert, and their bots 3-bet and 4-bet hands their rules fold a third of the time.
+ */
+export function ruleBonusUnit(T: number): number {
+  return Math.max(T, MIX_RULE_BONUS_UNIT_MIN);
+}
+
 /** Index picked by `P(i) ∝ exp(score_i / T)` with the uniform draw `u` (argmax when T ≤ 0). */
 export function softmaxIndex(scores: readonly number[], T: number, u: number): number {
   let best = 0;
@@ -404,8 +466,41 @@ export interface BotPick {
   scores: number[];
   /** Fold was taken out by the §9.4 step 4 defence. */
   defended: boolean;
-  /** The softmax pick; in limp mode (§9.4 step 2) an open raise it picked is the limp instead. */
+  /**
+   * The softmax pick; in limp mode (§9.4 step 2) an open raise it picked is the limp instead.
+   * Hard and Expert: a river Air hand bluffs or checks by the balanced chance (§9.2, `river`);
+   * Expert: the c-bet exploit bets 1/3 pot with any two cards (§9.5).
+   */
   pick: EvCandidate;
+  /** Hard and Expert, a river Air hand with a bet allowed: the balanced bluff chance and the pick. */
+  river: { chance: number; bluff: boolean } | null;
+}
+
+/** A bet of the given §8.7 row, sized by the profile's set, or null when it is not a bet. */
+function betOf(
+  purpose: 'cbet' | 'bluff' | 'thinValue',
+  f: Features,
+  spot: PostflopSpot,
+  profile: BrainProfile,
+): PlayerAction | null {
+  const sized = sizeIntent({ kind: 'bet', purpose, allIn: false }, f, spot, profile.sizing);
+  return sized.action.type === 'bet' ? sized.action : null;
+}
+
+/** The candidate for `action`, added (with its EV) when the size set did not have it. */
+function candidateFor(
+  candidates: EvCandidate[],
+  legal: LegalActions,
+  action: PlayerAction,
+  model: EvModel,
+): EvCandidate {
+  const key = candidateKey(legal, action);
+  let c = candidates.find((x) => x.key === key);
+  if (c === undefined) {
+    c = { key, action, ev: model.ev(action) };
+    candidates.push(c);
+  }
+  return c;
 }
 
 export function botPick(
@@ -416,6 +511,8 @@ export function botPick(
   rule: PolicyDecision,
   draws: MixDraws,
   model: EvModel,
+  plan: ExploitPlan = NO_EXPLOITS,
+  spot: PostflopSpot | null = f.street === 'preflop' ? null : postflopSpot(obs),
 ): BotPick {
   const { legal } = obs;
   const preflop = f.street === 'preflop';
@@ -432,6 +529,28 @@ export function botPick(
       defended = true;
     }
   }
+  // The moves the exploits and the balanced river bluffs make for the bot (chunk 7.1), among the
+  // candidates before they are scored: the §9.5 c-bet with any two cards, or a river Air hand's
+  // bluff (§9.2, heads-up only) or check.
+  let forced: EvCandidate | null = null;
+  let river: BotPick['river'] = null;
+  if (spot !== null && legal.bet !== null) {
+    if (plan.cbet) {
+      const cbet = betOf('cbet', seen.f, spot, profile);
+      if (cbet !== null) forced = candidateFor(candidates, legal, cbet, model);
+    } else if (profile.balancedBluffs && f.street === 'river' && seen.f.bucket === 'air') {
+      const bluff = f.nOpp === 1 ? betOf('bluff', seen.f, spot, profile) : null;
+      const villain = f.ranges[0];
+      const chance =
+        bluff === null || bluff.type !== 'bet' || villain === undefined
+          ? 0
+          : balancedBluffChance(obs, profile.rangeModel, villain.weights, bluff.to) *
+            (plan.halveBluffs ? EXPLOIT_BLUFF_FACTOR : 1);
+      const bluffs = bluff !== null && draws.bluff < chance;
+      forced = candidateFor(candidates, legal, bluffs ? (bluff as PlayerAction) : CHECK, model);
+      river = { chance, bluff: bluffs };
+    }
+  }
   const bluffing = preflop
     ? f.facing === 'open' && bluff3betHand(obs.hole) && draws.bluff < profile.bluff3betFreq
     : seen.f.bucket === 'air' && draws.bluff < profile.bluffFreq;
@@ -443,23 +562,25 @@ export function botPick(
   const pot = Math.max(f.pot, 1);
   // "Air bucket bet": a bet into the pot after the flop; before it, the bluff 3-bet (a raise).
   const bluffType: PlayerAction['type'] = preflop ? 'raise' : 'bet';
-  // The biases are in units of the temperature T: EV/pot + T × bias (§9.4 step 3, chunk 5.11).
+  // EV/pot + T × biases; A*'s bonus in units of max(T, 0.12) (§9.4 step 3, chunks 5.11 and 7.3).
   const ruleBonus = preflop ? MIX_RULE_BONUS_PREFLOP : MIX_RULE_BONUS;
+  const unit = ruleBonusUnit(profile.temperature);
   const scores = candidates.map((c) => {
     let bias = 0;
     if (isAggressive(c.action)) bias += profile.aggressionBias;
     if (bluffing && c.action.type === bluffType) bias += MIX_BLUFF_BONUS;
     if (c.action.type === 'call') bias += MIX_CALL_STICKINESS * (profile.stickiness - 1);
     if (c.action.type === 'check' && slowplaying) bias += MIX_SLOWPLAY_BONUS;
-    if (c.key === ruleKey) bias += ruleBonus;
-    return c.ev / pot + profile.temperature * bias;
+    const rule = c.key === ruleKey ? ruleBonus : 0;
+    return c.ev / pot + profile.temperature * bias + unit * rule;
   });
   let pick = candidates[softmaxIndex(scores, profile.temperature, draws.pick)] as EvCandidate;
   // Limp mode (§9.4 step 2) limps an open raise the mix picked too: `pfrRatio` holds at every level.
   if (preflop && isAggressive(pick.action) && limpMode(f, profile, draws)) {
     pick = candidates.find((c) => !isAggressive(c.action) && c.key !== 'fold') as EvCandidate;
   }
-  return { candidates, scores, defended, pick };
+  if (forced !== null) pick = forced;
+  return { candidates, scores, defended, pick, river };
 }
 
 // ── The coach's hint extras (§8.9 Close, §8.10) ────────────────────────────────────────────────
@@ -625,6 +746,13 @@ export interface Deliberation {
   bot: BotPick | null;
   /** The guardrails that changed the pick (§8.8). */
   fired: string[];
+  /**
+   * The decision's EV model (§8.9), each action's EV computed once: the grade (chunk 6.1) reads
+   * the hint's own numbers from it and computes only an action that is not a candidate yet.
+   */
+  model: EvModel;
+  /** The street's realisation `R` the EV model used (`realisationOf`). */
+  R: number;
 }
 
 /**
@@ -639,15 +767,25 @@ export function deliberate(
 ): Deliberation {
   const f = features(obs, profile, seed, eRandom);
   const draws = profile.deterministic ? NO_DRAWS : mixDraws(seed);
-  const seen = perceive(f, profile, draws);
+  // §9.5 Expert exploits (chunk 7.1): what they change in this decision, and the profile it is
+  // played with (halved bluffs; stickiness + 0.2 and full defence against an aggressive hero).
+  const plan = exploitPlan(obs, f, profile);
+  const played = exploitProfile(profile, plan);
+  const seen = perceive(f, played, draws);
   const spot = f.street === 'preflop' ? null : postflopSpot(obs);
-  const rule = ruleAction(obs, f, seen, profile, seed, draws, spot);
-  const model = evModelOf(obs, f, seen.E, profile, seed, spot);
+  const rule = valueMediumRule(
+    ruleAction(obs, f, seen, played, seed, draws, spot),
+    seen.f,
+    spot,
+    played,
+    plan,
+  );
+  const model = evModelOf(obs, f, seen.E, played, seed, spot);
 
   let bot: BotPick | null = null;
   let proposed = rule.action;
   if (!profile.deterministic) {
-    bot = botPick(obs, f, seen, profile, rule, draws, model);
+    bot = botPick(obs, f, seen, played, rule, draws, model, plan, spot);
     proposed = bot.pick.action;
   }
   const guarded = guardrails(guardSpot(obs, f), proposed);
@@ -702,7 +840,16 @@ export function deliberate(
     alt: alt === null ? null : alt.action,
     trace,
   };
-  return { decision, f, seen, rule, bot, fired: guarded.fired };
+  return {
+    decision,
+    f,
+    seen,
+    rule,
+    bot,
+    fired: guarded.fired,
+    model,
+    R: realisationOf(obs, f, spot),
+  };
 }
 
 /**
@@ -740,13 +887,3 @@ export function coachHint(obs: Observation, eRandom: number | null): CoachHint {
   const { decision, f } = deliberate(obs, COACH, coachSeed(obs), eRandom);
   return { decision, explanation: explain(explainInput(obs, f, decision)) };
 }
-
-/** Appendix A.5 `grade(obs, taken, eRandom, decisionId)`: Stage 6 (§8.9, chunk 6.1). */
-export const grade: (
-  obs: Observation,
-  taken: PlayerAction,
-  eRandom: number | null,
-  decisionId: number,
-) => GradeResult = () => {
-  throw new Error('grade: not available until Stage 6');
-};

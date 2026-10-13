@@ -8,6 +8,7 @@ import type { HandAnalysis, OutCard } from '../analysis/types.ts';
 import type { Card } from '../core/cards.ts';
 import type { LegalActions, PlayerAction, Street } from '../engine/types.ts';
 import type { HandInfo } from '../eval/describe.ts';
+import type { Line } from './explain.ts';
 import type { OpponentRange } from './ranges.ts';
 
 /** The five grades of a hero decision, best first (§8.9). */
@@ -48,6 +49,8 @@ export interface BrainProfile {
   temperature: number;
   defenseFactor: number;
   preflopJitter: number;
+  /** Hard and Expert: river bluffs balanced by size, `B / (pot + 2B)` (§9.2, chunk 7.1). */
+  balancedBluffs: boolean;
   exploit: boolean;
   deterministic: boolean;
   neverLimp: boolean;
@@ -179,6 +182,12 @@ export interface GradeResult {
   lossMilliBB: number;
   leak: LeakId | null;
   trace: Reason[];
+  /**
+   * The feedback card's reason (Appendix F.5, chunk 6.2): the row `grade()` picks in F.5's order,
+   * as a chunk 5.6 line (`feedbackLine(row)`), plain data the UI renders. Null for Best and Good
+   * (no card), and when no row fits: the card then says the fallback row with the coach's move.
+   */
+  feedback: Line | null;
 }
 
 // --- 5.5 guardrails / EV ---

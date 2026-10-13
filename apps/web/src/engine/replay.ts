@@ -19,3 +19,18 @@ export function replay(record: ReplayRecord): HandState {
     startHand(record.table, record.seed),
   );
 }
+
+/**
+ * Every state of the hand, for Review (PLAN §12.10): `states[0]` is the deal (hole cards dealt,
+ * blinds posted), `states[i]` the state after input `i - 1`, so there are `inputs.length + 1` of
+ * them, and the last one is `replay(record)`. It is `replay` of every prefix of the inputs, in one
+ * pass. Like `replay`, it throws `EngineError` for an input the engine refuses. ⚠️ The states hold
+ * the deck and every hole card: they are for building views (`app/reviewViews.ts`), never for the UI.
+ */
+export function replayStates(record: ReplayRecord): HandState[] {
+  const states = [startHand(record.table, record.seed)];
+  for (const input of record.inputs) {
+    states.push(step(states[states.length - 1] as HandState, input));
+  }
+  return states;
+}

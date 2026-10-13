@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 // Setup (PLAN §12.2): the four questions, the "= N big blinds" line, custom fields, level cards.
 import '../../../src/ui/styles/tokens.css';
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import styles from '../../../src/ui/screens/Screen.module.css';
 import { Setup, type SetupProps } from '../../../src/ui/screens/Setup.tsx';
 import {
@@ -22,7 +22,13 @@ const DEFAULTS: SetupValues = {
   bb: 20,
   botLevel: 'easy',
   coachLevel: 'beginner',
+  seatLevels: [null, null, null, null, null, null],
+  speed: 'normal',
+  fourColour: true,
 };
+
+/** What "More options" sends besides the config when nothing there was touched (chunk 7.2). */
+const MORE = { speed: 'normal', fourColour: true } as const;
 
 function renderSetup(extra: Partial<SetupProps> = {}) {
   const onStartTable = vi.fn<SetupProps['onStartTable']>();
@@ -55,11 +61,11 @@ describe('Setup: opening', () => {
   it('opens with the last-used values, so New table… → Start game is one more tap (§12.2)', () => {
     const { onStartTable } = renderSetup({
       initial: {
+        ...DEFAULTS,
         players: 4,
         startingStack: 5000,
         bb: 50,
-        botLevel: 'easy',
-        coachLevel: 'beginner',
+        seatLevels: [null, null, null, null],
       },
     });
     expect(screen.getByText('You and 3 bots')).toBeTruthy();
@@ -79,6 +85,7 @@ describe('Setup: opening', () => {
         seatLevels: [null, null, null, null],
       },
       'beginner',
+      MORE,
     );
   });
 
@@ -267,7 +274,7 @@ describe('Setup: level cards (questions 3 and 4)', () => {
     coach: ['beginner', 'intermediate', 'advanced', 'exam'],
   };
 
-  it('Stage 5: Easy and Medium bots, Beginner and Intermediate coach; the rest say "Coming soon"', () => {
+  it('all four bot levels (7.1) and all four coach levels (6.4); nothing says "Coming soon"', () => {
     renderSetup();
     const bots = within(group('How good are the bots?')).getAllByRole(
       'radio',
@@ -275,8 +282,8 @@ describe('Setup: level cards (questions 3 and 4)', () => {
     expect(bots.map((r) => [r.value, r.checked, r.disabled])).toEqual([
       ['easy', true, false],
       ['medium', false, false],
-      ['hard', false, true],
-      ['expert', false, true],
+      ['hard', false, false],
+      ['expert', false, false],
     ]);
     const coach = within(group('How much help do you want?')).getAllByRole(
       'radio',
@@ -284,21 +291,21 @@ describe('Setup: level cards (questions 3 and 4)', () => {
     expect(coach.map((r) => [r.value, r.checked, r.disabled])).toEqual([
       ['beginner', true, false],
       ['intermediate', false, false],
-      ['advanced', false, true],
-      ['exam', false, true],
+      ['advanced', false, false],
+      ['exam', false, false],
     ]);
-    // The card text is the §10.1 / §12.2 text; the caption says why it cannot be picked.
+    // The card text is the §10.1 / §12.2 text, with no "Coming soon" caption on any card.
     expect(bots.map((r) => r.labels?.[0]?.textContent)).toEqual([
       'EasyBots make many mistakes. They call too much and rarely bluff.',
       'MediumBots play okay but are easy to read.',
-      'HardBots play solid poker and read the board. Their style is hidden.Coming soon',
-      'ExpertBots study how you play and adapt.Coming soon',
+      'HardBots play solid poker and read the board. Their style is hidden.',
+      'ExpertBots study how you play and adapt.',
     ]);
     expect(coach.map((r) => r.labels?.[0]?.textContent)).toEqual([
       'BeginnerFull help',
       'IntermediateHelp on tap',
-      'AdvancedMistakes onlyComing soon',
-      'ExamTest yourselfComing soon',
+      'AdvancedMistakes only',
+      'ExamTest yourself',
     ]);
   });
 
@@ -316,17 +323,38 @@ describe('Setup: level cards (questions 3 and 4)', () => {
         seatLevels: [null, null, null, null, null, null],
       }),
       'intermediate',
+      MORE,
     );
   });
 
-  it('a disabled card cannot be picked', () => {
-    const { onStartTable } = renderSetup();
+  it('Hard and Expert bots can be picked and are sent with Start (chunk 7.1)', () => {
+    for (const [name, level] of [
+      [/^Hard/, 'hard'],
+      [/^Expert/, 'expert'],
+    ] as const) {
+      const { onStartTable, unmount } = renderSetup();
+      fireEvent.click(radio('How good are the bots?', name));
+      fireEvent.click(start());
+      expect(onStartTable).toHaveBeenCalledWith(
+        expect.objectContaining({ botLevel: level }),
+        'beginner',
+        MORE,
+      );
+      unmount();
+    }
+  });
+
+  it('a disabled card cannot be picked; Advanced and Exam can (6.4)', () => {
+    const { onStartTable } = renderSetup({
+      available: { ...AVAILABLE_LEVELS, bot: ['easy', 'medium'] },
+    });
     fireEvent.click(radio('How good are the bots?', /^Hard/));
     fireEvent.click(radio('How much help do you want?', /^Exam/));
     fireEvent.click(start());
     expect(onStartTable).toHaveBeenCalledWith(
       expect.objectContaining({ botLevel: 'easy' }),
-      'beginner',
+      'exam',
+      MORE,
     );
   });
 
@@ -339,6 +367,7 @@ describe('Setup: level cards (questions 3 and 4)', () => {
     expect(onStartTable).toHaveBeenCalledWith(
       expect.objectContaining({ botLevel: 'hard' }),
       'exam',
+      MORE,
     );
   });
 
@@ -352,14 +381,28 @@ describe('Setup: level cards (questions 3 and 4)', () => {
     expect(onStartTable).toHaveBeenCalledWith(
       expect.objectContaining({ botLevel: 'medium' }),
       'intermediate',
+      MORE,
     );
   });
 
   it('a saved level that is not available yet opens as the first available one', () => {
-    renderSetup({ initial: { ...DEFAULTS, botLevel: 'expert', coachLevel: 'exam' } });
+    renderSetup({
+      initial: { ...DEFAULTS, botLevel: 'expert', coachLevel: 'exam' },
+      available: { bot: ['easy', 'medium'], coach: ['beginner', 'intermediate'] },
+    });
     expect(radio('How good are the bots?', /^Easy/).checked).toBe(true);
     expect(radio('How much help do you want?', /^Beginner/).checked).toBe(true);
     expect(start().disabled).toBe(false);
+  });
+
+  it('a saved Exam coach opens as Exam (6.4)', () => {
+    renderSetup({ initial: { ...DEFAULTS, coachLevel: 'exam' } });
+    expect(radio('How much help do you want?', /^Exam/).checked).toBe(true);
+  });
+
+  it('a saved Expert level opens as Expert (chunk 7.1)', () => {
+    renderSetup({ initial: { ...DEFAULTS, botLevel: 'expert' } });
+    expect(radio('How good are the bots?', /^Expert/).checked).toBe(true);
   });
 });
 
@@ -398,5 +441,225 @@ describe('Setup: disclaimer, labels and tap targets', () => {
     expect(controlCount(container)).toBeGreaterThan(20);
     expect(smallTargets(container, (el) => el.classList.contains(PRIMARY))).toEqual([]);
     expect(start().classList.contains(PRIMARY)).toBe(true);
+  });
+});
+
+describe('Setup: More options (chunk 7.2, §12.2 item 5, §9.3)', () => {
+  // The section's code is a lazy chunk, loaded before the tests (in the app it is precached).
+  beforeAll(async () => {
+    await import('../../../src/ui/screens/MoreOptions.tsx');
+  });
+
+  const toggle = () => screen.getByRole('button', { name: /^More options/ });
+  /** Opens the section and lets the lazy chunk render (React suspends once, then shows it). */
+  async function open(): Promise<void> {
+    fireEvent.click(toggle());
+    await act(async () => {
+      for (let i = 0; i < 10; i++) await Promise.resolve();
+    });
+  }
+  const botSelect = (n: number) => screen.getByLabelText(`Bot ${n}`) as HTMLSelectElement;
+  const optionsOf = (select: HTMLSelectElement) =>
+    [...select.options].map((o) => [o.value, o.textContent]);
+
+  it('is closed: a button that says so, and none of its content is in the page', () => {
+    renderSetup();
+    expect(toggle().getAttribute('aria-expanded')).toBe('false');
+    expect(screen.queryByRole('group', { name: "Set each bot's level" })).toBeNull();
+    expect(screen.queryByRole('group', { name: 'Speed' })).toBeNull();
+    expect(screen.queryByRole('switch')).toBeNull();
+    expect(document.getElementById(toggle().getAttribute('aria-controls') ?? '')?.hidden).toBe(
+      true,
+    );
+    // The four questions are the only groups, as before.
+    expect(
+      screen.getAllByRole('group').map((g) => g.getElementsByTagName('legend')[0]?.textContent),
+    ).toHaveLength(5);
+  });
+
+  it('opens on a tap and closes on a second one', async () => {
+    renderSetup();
+    await open();
+    expect(toggle().getAttribute('aria-expanded')).toBe('true');
+    expect(screen.getByRole('group', { name: "Set each bot's level" })).toBeTruthy();
+    fireEvent.click(toggle());
+    expect(toggle().getAttribute('aria-expanded')).toBe('false');
+    expect(screen.queryByRole('group', { name: "Set each bot's level" })).toBeNull();
+  });
+
+  it('holds the bot speed, a level for each bot and the four-colour cards', async () => {
+    renderSetup();
+    await open();
+    const speed = within(group('Speed')).getAllByRole('radio') as HTMLInputElement[];
+    expect(speed.map((r) => [r.value, r.checked])).toEqual([
+      ['normal', true],
+      ['fast', false],
+      ['instant', false],
+    ]);
+    expect(screen.getByText('How fast the bots play and the cards move.')).toBeTruthy();
+    expect(group("Set each bot's level").getAttribute('aria-describedby')).not.toBeNull();
+    expect(screen.getByText('Bots are numbered clockwise, from your left.')).toBeTruthy();
+    const colour = screen.getByRole('switch', { name: 'Four-colour cards' }) as HTMLInputElement;
+    expect(colour.checked).toBe(true);
+    expect(screen.getByText('Each suit has its own colour.')).toBeTruthy();
+  });
+
+  it('has one row per bot, each starting at "Same as table (Easy)"', async () => {
+    renderSetup();
+    await open();
+    const rows = screen.getAllByLabelText(/^Bot \d$/) as HTMLSelectElement[];
+    expect(rows.map((r) => r.labels?.[0]?.textContent)).toEqual([
+      'Bot 1',
+      'Bot 2',
+      'Bot 3',
+      'Bot 4',
+      'Bot 5',
+    ]);
+    for (const row of rows) {
+      expect(row.value).toBe('');
+      expect(optionsOf(row)).toEqual([
+        ['', 'Same as table (Easy)'],
+        ['easy', 'Easy'],
+        ['medium', 'Medium'],
+        ['hard', 'Hard'],
+        ['expert', 'Expert'],
+      ]);
+    }
+  });
+
+  it('"Same as table" names the table level chosen above', async () => {
+    renderSetup();
+    await open();
+    fireEvent.click(radio('How good are the bots?', /^Hard/));
+    expect(optionsOf(botSelect(1))[0]).toEqual(['', 'Same as table (Hard)']);
+  });
+
+  it('follows the players stepper, keeping the levels of the bots that stay', async () => {
+    renderSetup();
+    await open();
+    fireEvent.change(botSelect(2), { target: { value: 'expert' } });
+    fireEvent.change(botSelect(4), { target: { value: 'hard' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Fewer players' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Fewer players' }));
+    expect(screen.getAllByLabelText(/^Bot \d$/)).toHaveLength(3);
+    expect(botSelect(2).value).toBe('expert');
+    fireEvent.click(screen.getByRole('button', { name: 'More players' }));
+    fireEvent.click(screen.getByRole('button', { name: 'More players' }));
+    fireEvent.click(screen.getByRole('button', { name: 'More players' }));
+    // Bot 4 was dropped with its seat; the seats that came back start at the table's level.
+    expect(botSelect(4).value).toBe('');
+    expect(botSelect(2).value).toBe('expert');
+    expect(screen.getAllByLabelText(/^Bot \d$/)).toHaveLength(6);
+  });
+
+  it('Start sends the levels of the bots, the speed and the four-colour setting', async () => {
+    const { onStartTable } = renderSetup();
+    await open();
+    fireEvent.change(botSelect(2), { target: { value: 'expert' } });
+    fireEvent.change(botSelect(5), { target: { value: 'medium' } });
+    fireEvent.click(within(group('Speed')).getByRole('radio', { name: 'Fast' }));
+    fireEvent.click(screen.getByRole('switch', { name: 'Four-colour cards' }));
+    fireEvent.click(start());
+    expect(onStartTable).toHaveBeenCalledTimes(1);
+    expect(onStartTable).toHaveBeenCalledWith(
+      expect.objectContaining({
+        seatCount: 6,
+        botLevel: 'easy',
+        seatLevels: [null, null, 'expert', null, null, 'medium'],
+      }),
+      'beginner',
+      { speed: 'fast', fourColour: false },
+    );
+    // A bot put back to "Same as table" is a null again.
+    fireEvent.change(botSelect(2), { target: { value: '' } });
+    fireEvent.click(start());
+    expect(onStartTable.mock.calls[1]?.[0].seatLevels).toEqual([
+      null,
+      null,
+      null,
+      null,
+      null,
+      'medium',
+    ]);
+  });
+
+  it('opens with the last-used levels, speed and four-colour setting', async () => {
+    const { onStartTable } = renderSetup({
+      initial: {
+        ...DEFAULTS,
+        seatLevels: [null, 'hard', null, null, 'easy', null],
+        speed: 'instant',
+        fourColour: false,
+      },
+    });
+    await open();
+    expect(botSelect(1).value).toBe('hard');
+    expect(botSelect(2).value).toBe('');
+    expect(botSelect(4).value).toBe('easy');
+    expect(
+      (within(group('Speed')).getByRole('radio', { name: 'Instant' }) as HTMLInputElement).checked,
+    ).toBe(true);
+    expect(
+      (screen.getByRole('switch', { name: 'Four-colour cards' }) as HTMLInputElement).checked,
+    ).toBe(false);
+    fireEvent.click(start());
+    expect(onStartTable).toHaveBeenCalledWith(
+      expect.objectContaining({ seatLevels: [null, 'hard', null, null, 'easy', null] }),
+      'beginner',
+      { speed: 'instant', fourColour: false },
+    );
+  });
+
+  it('starts as it was left even if the section is never opened', () => {
+    const { onStartTable } = renderSetup({
+      initial: { ...DEFAULTS, seatLevels: [null, null, null, 'expert', null, null], speed: 'fast' },
+    });
+    fireEvent.click(start());
+    expect(onStartTable).toHaveBeenCalledWith(
+      expect.objectContaining({ seatLevels: [null, null, null, 'expert', null, null] }),
+      'beginner',
+      { speed: 'fast', fourColour: true },
+    );
+  });
+
+  it('closed, it says how many bots have a level of their own', async () => {
+    renderSetup({
+      initial: { ...DEFAULTS, seatLevels: [null, 'hard', null, 'expert', null, null] },
+    });
+    expect(screen.getByText('2 bots have their own level.')).toBeTruthy();
+    expect(toggle().getAttribute('aria-describedby')).not.toBeNull();
+    await open();
+    expect(screen.queryByText('2 bots have their own level.')).toBeNull();
+    fireEvent.change(botSelect(1), { target: { value: '' } });
+    fireEvent.click(toggle());
+    expect(screen.getByText('1 bot has its own level.')).toBeTruthy();
+    await open();
+    fireEvent.change(botSelect(3), { target: { value: '' } });
+    fireEvent.click(toggle());
+    expect(screen.queryByText(/has its own level|have their own level/)).toBeNull();
+    expect(toggle().hasAttribute('aria-describedby')).toBe(false);
+  });
+
+  it('offers only the levels that can be picked', async () => {
+    renderSetup({ available: { ...AVAILABLE_LEVELS, bot: ['easy', 'medium'] } });
+    await open();
+    expect(optionsOf(botSelect(1)).map(([value]) => value)).toEqual(['', 'easy', 'medium']);
+  });
+
+  it('every control in it is at least 44×44 px (§12.12)', async () => {
+    const { container } = renderSetup();
+    await open();
+    expect(container.querySelectorAll('select')).toHaveLength(5);
+    expect(smallTargets(container, (el) => el.classList.contains(PRIMARY))).toEqual([]);
+  });
+
+  it('every row has a label, and the section is named', async () => {
+    renderSetup();
+    await open();
+    for (const select of document.querySelectorAll('select')) {
+      expect(select.labels?.length ?? 0).toBe(1);
+    }
+    expect(group('Speed')).toBeTruthy();
+    expect(toggle().getAttribute('aria-controls')).toBeTruthy();
   });
 });

@@ -21,6 +21,7 @@ import {
   selectCurrentTable,
   selectLayout,
   selectNav,
+  selectReviewCount,
   selectSessionLine,
   selectToasts,
   useAppStore,
@@ -29,6 +30,7 @@ import {
   type Speed,
 } from '../app/store.ts';
 import type { CoachLevel, TableConfig } from '../engine/types.ts';
+import { en } from '../i18n/en.ts';
 import { LoadBoundary } from './components/LoadBoundary.tsx';
 import { StorageBanner, Toasts } from './components/Notices.tsx';
 import { SvgSprite } from './components/SvgSprite.tsx';
@@ -36,9 +38,10 @@ import { NewTableDialog, OutOfChipsDialog } from './screens/Dialogs.tsx';
 import { Home } from './screens/Home.tsx';
 import { Menu } from './screens/Menu.tsx';
 import { ScreenSwitcher } from './screens/ScreenSwitcher.tsx';
+import screenStyles from './screens/Screen.module.css';
 import { Settings } from './screens/Settings.tsx';
 import { Setup } from './screens/Setup.tsx';
-import { AVAILABLE_LEVELS } from './screens/setupForm.ts';
+import { AVAILABLE_LEVELS, ownLevelCount, type MoreChoices } from './screens/setupForm.ts';
 import { Table } from './screens/Table.tsx';
 import { Welcome } from './screens/Welcome.tsx';
 
@@ -87,8 +90,11 @@ function SetupScreen() {
     bb: s.settings.bb,
     botLevel: s.settings.botLevel,
     coachLevel: s.settings.coachLevel,
+    seatLevels: s.settings.seatLevels,
+    speed: s.settings.speed,
+    fourColour: s.settings.fourColour,
   }));
-  const start = (config: TableConfig, coachLevel: CoachLevel) =>
+  const start = (config: TableConfig, coachLevel: CoachLevel, more: MoreChoices) =>
     dispatch({
       type: 'newTable',
       setup: {
@@ -99,6 +105,8 @@ function SetupScreen() {
         botLevel: config.botLevel,
         seatLevels: config.seatLevels,
         coachLevel,
+        speed: more.speed,
+        fourColour: more.fourColour,
       },
     });
   return (
@@ -120,13 +128,73 @@ function SettingsScreen() {
     autoNext: s.settings.autoNext,
     amounts: s.settings.amounts,
   }));
+  // How many bots have a level of their own (§9.3): the Bot level row says so.
+  const ownLevels = useAppStore((s) => ownLevelCount(s.settings.seatLevels));
   return (
     <Settings
       settings={settings}
+      ownLevels={ownLevels}
       available={AVAILABLE_LEVELS}
       onChangeSettings={(patch) => dispatch({ type: 'settings', patch })}
       onBack={() => dispatch({ type: 'back' })}
     />
+  );
+}
+
+// Review (§12.10) is loaded when it is first opened: a dynamic `import()` keeps the screen and its
+// styles out of the initial bundle (§15.3). The service worker still precaches them, so it opens
+// offline.
+const ReviewLazy = lazy(async () => {
+  try {
+    const { ReviewRoute } = await import('./screens/Review.tsx');
+    return { default: ReviewRoute };
+  } catch {
+    return { default: ReviewFailed };
+  }
+});
+
+/** While the Review chunk loads: a heading (a screen change moves the focus to it) and one line. */
+function ReviewLoading() {
+  return (
+    <main className={screenStyles.page}>
+      <h1 className={screenStyles.title}>{en.review.screenTitle}</h1>
+      <p className={screenStyles.hint}>{en.review.loading}</p>
+    </main>
+  );
+}
+
+/** The chunk could not be loaded (no connection and not cached yet): say so, and leave. */
+function ReviewFailed() {
+  const dispatch = useDispatch();
+  return (
+    <main className={screenStyles.page}>
+      <h1 className={screenStyles.title}>{en.review.screenTitle}</h1>
+      <p className={screenStyles.hint}>{en.review.loadFailed}</p>
+      <button
+        type="button"
+        className={screenStyles.secondary}
+        onClick={() => dispatch({ type: 'back' })}
+      >
+        {en.back}
+      </button>
+    </main>
+  );
+}
+
+/**
+ * The Review screen over its lazy chunk. A chunk that cannot load shows `ReviewFailed`; if the
+ * screen throws while rendering, the boundary takes Back instead, so a bug in Review never takes
+ * the game down with it.
+ */
+function ReviewScreen() {
+  const dispatch = useDispatch();
+  const leave = useCallback(() => dispatch({ type: 'back' }), [dispatch]);
+  return (
+    <LoadBoundary onError={leave}>
+      <Suspense fallback={<ReviewLoading />}>
+        <ReviewLazy />
+      </Suspense>
+    </LoadBoundary>
   );
 }
 
@@ -136,6 +204,7 @@ const SCREENS = {
   setup: () => <SetupScreen />,
   table: () => <Table />,
   settings: () => <SettingsScreen />,
+  review: () => <ReviewScreen />,
 } as const;
 
 // ---------------------------------------------------------------------------------------------
@@ -146,6 +215,7 @@ function MenuOverlay() {
   const canTopUp = useAppStore(selectCanTopUp);
   const startingStack = useAppStore((s) => selectCurrentTable(s)?.config.startingStack ?? null);
   const wide = useAppStore((s) => selectLayout(s) === 'wide');
+  const hands = useAppStore(selectReviewCount);
   const close = () => dispatch({ type: 'close', overlay: 'menu' });
   return (
     <Menu
@@ -160,6 +230,7 @@ function MenuOverlay() {
         if (wide) dispatch({ type: 'settings', patch: { handsPanel: 'open' } });
         else dispatch({ type: 'open', overlay: 'rankings' });
       }}
+      onOpenHands={hands > 0 ? () => dispatch({ type: 'review', handSeq: null }) : undefined}
       onOpenSettings={() => dispatch({ type: 'go', screen: 'settings' })}
       onLeaveTable={() => dispatch({ type: 'leaveTable' })}
       onNewTable={() => dispatch({ type: 'go', screen: 'setup' })}
@@ -206,7 +277,11 @@ function BotCardOverlay() {
   return (
     <LoadBoundary onError={close}>
       <Suspense fallback={null}>
-        <BotCardSheet card={card} onClose={close} />
+        <BotCardSheet
+          card={card}
+          onLevel={(level) => dispatch({ type: 'seatLevel', seat: card.seat, level })}
+          onClose={close}
+        />
       </Suspense>
     </LoadBoundary>
   );
