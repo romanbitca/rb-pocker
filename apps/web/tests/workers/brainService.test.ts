@@ -1,25 +1,28 @@
 /**
  * The job runner of `brain.worker` (PLAN §2.2, §8.11, §9.8, Appendix A.6): `botDecision` answers
  * with the decision and its think time, echoing the job's id and epoch; `hint` answers with the
- * coach's advice, cached by observation (LRU of 32); `grade` and `bench` answer "not available
- * yet" until chunk 6.1 and the #bench hint row; a throwing brain gives an `error` reply and the
- * runner goes on. Node, no worker globals. The last block runs the real brain (`brain/decide.ts`)
- * through the runner, as `brain.worker.ts` does.
+ * coach's advice and `grade` with the grade of the hero's move, both from one coach computation
+ * per observation (LRU of 32; a grade reuses the hint whatever HUD number either job brought);
+ * `bench` answers "not available yet" until the #bench hint row; a throwing brain gives an `error`
+ * reply and the runner goes on. Node, no worker globals. The last block runs the real brain
+ * (`brain/decide.ts`, `brain/grade.ts`) through the runner, as `brain.worker.ts` does.
  */
 import { describe, expect, it } from 'vitest';
 import { simpleDecide } from '../helpers/simpleDecide.ts';
 import { coachHint, decide, hint } from '../../src/brain/decide.ts';
 import type { Explanation } from '../../src/brain/explain.ts';
+import { coachAnswer, grade } from '../../src/brain/grade.ts';
 import { isLegalAction } from '../../src/brain/guardrails.ts';
 import { profileFor } from '../../src/brain/profiles.ts';
 import { thinkMs } from '../../src/brain/think.ts';
-import type { Decision } from '../../src/brain/types.ts';
+import type { Decision, GradeResult } from '../../src/brain/types.ts';
 import { deriveSeed } from '../../src/core/rng.ts';
 import { observe } from '../../src/engine/observe.ts';
-import type { Observation, ObserveExtras } from '../../src/engine/types.ts';
+import type { Observation, ObserveExtras, PlayerAction } from '../../src/engine/types.ts';
 import {
   createBrainService,
   HINT_CACHE_SIZE,
+  type CoachFn,
   type DecideFn,
   type HintFn,
 } from '../../src/workers/brainService.ts';
@@ -43,12 +46,12 @@ const OBS: Observation = observe(
 const SEED = deriveSeed('0123456789abcdef0123456789abcdef', 'bot', 1, 3, 2);
 const PROFILE = profileFor('station', 'easy');
 
-function rig(decide: DecideFn = simpleDecide, think?: typeof thinkMs, coach?: HintFn) {
+function rig(decide: DecideFn = simpleDecide, think?: typeof thinkMs, coach?: CoachFn) {
   const replies: BrainReply[] = [];
   const service = createBrainService({
     decide,
     ...(think !== undefined && { thinkMs: think }),
-    ...(coach !== undefined && { hint: coach }),
+    ...(coach !== undefined && { coach }),
     post: (reply) => replies.push(reply),
   });
   return { service, replies };
@@ -59,6 +62,40 @@ const fakeHint: HintFn = (obs, eRandom) => ({
   decision: { ...simpleDecide(obs), eRandom: eRandom ?? -1 },
   explanation: { headline: { key: 'headline.check', params: {} } } as unknown as Explanation,
 });
+
+/** A fake grade: Best when the move is the fake hint's, else a Mistake; `eRandom` in `lossChips`. */
+function fakeGrade(
+  obs: Observation,
+  hintE: number | null,
+  taken: PlayerAction,
+  decisionId: number,
+  hud: number | null | undefined,
+): GradeResult {
+  const rec = simpleDecide(obs).action;
+  const same = JSON.stringify(rec) === JSON.stringify(taken);
+  return {
+    decisionId,
+    grade: same ? 'best' : 'mistake',
+    rec,
+    taken,
+    lossChips: hud ?? hintE ?? -1,
+    lossPot: 0,
+    lossMilliBB: 0,
+    leak: null,
+    trace: [],
+    feedback: null,
+  };
+}
+
+/** The fake coach's answer: `fakeHint` and `fakeGrade`. */
+const coachOf =
+  (hintFn: HintFn): CoachFn =>
+  (obs, eRandom) => ({
+    hint: hintFn(obs, eRandom),
+    grade: (taken, decisionId, hud) => fakeGrade(obs, eRandom, taken, decisionId, hud),
+  });
+const fakeCoach = coachOf(fakeHint);
+
 /** The reply the runner posts for a coach answer. */
 const hintReply = (jobId: number, epoch: number, answer: ReturnType<HintFn>) => ({
   kind: 'hint',
@@ -67,6 +104,15 @@ const hintReply = (jobId: number, epoch: number, answer: ReturnType<HintFn>) => 
   decision: answer.decision,
   explanation: answer.explanation,
 });
+
+const gradeMsg = (
+  jobId: number,
+  epoch: number,
+  taken: PlayerAction,
+  eRandom: number | null,
+  decisionId = 3,
+  obs: Observation = OBS,
+): BrainRequest => ({ kind: 'grade', jobId, epoch, obs, taken, eRandom, decisionId });
 
 /** The same table with the hero's cards changed: another observation. */
 function otherObs(i: number): Observation {
@@ -183,32 +229,32 @@ describe('botDecision', () => {
 
 describe('hint', () => {
   it('answers with the coach`s advice for the observation and the HUD number, echoing id and epoch', () => {
-    const { service, replies } = rig(simpleDecide, undefined, fakeHint);
+    const { service, replies } = rig(simpleDecide, undefined, fakeCoach);
     service.handle({ kind: 'hint', jobId: 4, epoch: 2, obs: OBS, eRandom: 0.5 });
     expect(replies).toEqual([hintReply(4, 2, fakeHint(OBS, 0.5))]);
   });
 
   it('computes each observation once: the same job again answers from the cache (§8.11)', () => {
     const calls: unknown[][] = [];
-    const counting: HintFn = (obs, eRandom) => {
+    const counting: CoachFn = (obs, eRandom) => {
       calls.push([obs, eRandom]);
-      return fakeHint(obs, eRandom);
+      return fakeCoach(obs, eRandom);
     };
     const { service, replies } = rig(simpleDecide, undefined, counting);
     service.handle({ kind: 'hint', jobId: 1, epoch: 1, obs: OBS, eRandom: null });
     service.handle({ kind: 'hint', jobId: 2, epoch: 2, obs: structuredClone(OBS), eRandom: null });
     expect(calls).toHaveLength(1);
     expect(replies[1]).toEqual(hintReply(2, 2, fakeHint(OBS, null)));
-    // Another HUD number is another job.
+    // Another HUD number is another hint (its words show the number).
     service.handle({ kind: 'hint', jobId: 3, epoch: 2, obs: OBS, eRandom: 0.25 });
     expect(calls).toHaveLength(2);
   });
 
   it('keeps the 32 most recently used hints', () => {
     let calls = 0;
-    const counting: HintFn = (obs, eRandom) => {
+    const counting: CoachFn = (obs, eRandom) => {
       calls++;
-      return fakeHint(obs, eRandom);
+      return fakeCoach(obs, eRandom);
     };
     const { service } = rig(simpleDecide, undefined, counting);
     const ask = (i: number): void =>
@@ -237,23 +283,78 @@ describe('hint', () => {
   });
 });
 
-describe('what is not there yet', () => {
-  it('answers grade with an error (chunk 6.1)', () => {
-    const { service, replies } = rig();
-    service.handle({
-      kind: 'grade',
-      jobId: 5,
-      epoch: 2,
-      obs: OBS,
-      taken: { type: 'fold' },
-      eRandom: null,
-      decisionId: 11,
-    });
+describe('grade (chunk 6.1)', () => {
+  const REC: PlayerAction = { type: 'raise', to: 300 };
+  const FOLD: PlayerAction = { type: 'fold' };
+
+  it('answers with the GradeResult, echoing the job id, the epoch and the decisionId', () => {
+    const { service, replies } = rig(simpleDecide, undefined, fakeCoach);
+    service.handle(gradeMsg(6, 4, FOLD, 0.3, 11));
     expect(replies).toEqual([
-      { kind: 'error', jobId: 5, epoch: 2, message: 'grade: not available yet' },
+      { kind: 'grade', jobId: 6, epoch: 4, result: fakeGrade(OBS, 0.3, FOLD, 11, 0.3) },
     ]);
+    expect(replies[0]).toMatchObject({ result: { decisionId: 11, grade: 'mistake' } });
   });
 
+  it('grades from the hint the worker already computed: no second coach computation (§8.11)', () => {
+    let calls = 0;
+    const counting: CoachFn = (obs, eRandom) => {
+      calls++;
+      return fakeCoach(obs, eRandom);
+    };
+    const { service, replies } = rig(simpleDecide, undefined, counting);
+    service.handle({ kind: 'hint', jobId: 1, epoch: 1, obs: OBS, eRandom: null });
+    // The usual order: the hint without the HUD number, the grade with the final one.
+    service.handle(gradeMsg(2, 1, REC, 0.42));
+    service.handle(gradeMsg(3, 1, FOLD, null));
+    expect(calls).toBe(1);
+    expect(replies[1]).toMatchObject({ kind: 'grade', result: { grade: 'best', lossChips: 0.42 } });
+    // A grade job without the HUD number reads the hint's.
+    expect(replies[2]).toMatchObject({
+      kind: 'grade',
+      result: { grade: 'mistake', lossChips: -1 },
+    });
+  });
+
+  it('reads the newest answer of the observation, and computes one when there is none', () => {
+    const calls: (number | null)[] = [];
+    const counting: CoachFn = (obs, eRandom) => {
+      calls.push(eRandom);
+      return fakeCoach(obs, eRandom);
+    };
+    const { service, replies } = rig(simpleDecide, undefined, counting);
+    service.handle(gradeMsg(1, 1, REC, 0.5)); // nothing cached: computed with the job's number
+    expect(calls).toEqual([0.5]);
+    service.handle({ kind: 'hint', jobId: 2, epoch: 1, obs: OBS, eRandom: 0.25 });
+    expect(calls).toEqual([0.5, 0.25]);
+    service.handle(gradeMsg(3, 1, REC, null)); // two answers of OBS: the newest (0.25) is read
+    expect(calls).toEqual([0.5, 0.25]);
+    expect(replies[2]).toMatchObject({ kind: 'grade', result: { lossChips: 0.25 } });
+    service.handle(gradeMsg(4, 1, REC, null, 3, otherObs(5))); // another observation
+    expect(calls).toEqual([0.5, 0.25, null]);
+  });
+
+  it('turns a throwing grade into an error reply, and a worker without a coach answers an error', () => {
+    const throwing: CoachFn = (obs, eRandom) => ({
+      hint: fakeHint(obs, eRandom),
+      grade: () => {
+        throw new RangeError('evModel: not a legal action now');
+      },
+    });
+    const { service, replies } = rig(simpleDecide, undefined, throwing);
+    service.handle(gradeMsg(7, 2, FOLD, null));
+    expect(replies).toEqual([
+      { kind: 'error', jobId: 7, epoch: 2, message: 'evModel: not a legal action now' },
+    ]);
+    const bare = rig();
+    bare.service.handle(gradeMsg(5, 2, FOLD, null, 11));
+    expect(bare.replies).toEqual([
+      { kind: 'error', jobId: 5, epoch: 2, message: 'grade: no coach in this worker' },
+    ]);
+  });
+});
+
+describe('what is not there yet', () => {
   it('answers bench with an error for epoch 0', () => {
     const { service, replies } = rig();
     service.handle({ kind: 'bench', jobId: 6 });
@@ -270,10 +371,11 @@ describe('what is not there yet', () => {
         return simpleDecide(OBS);
       },
       undefined,
-      fakeHint,
+      fakeCoach,
     );
     service.handle({ kind: 'hint', jobId: 1, epoch: 1, obs: OBS, eRandom: null });
-    service.handle({ kind: 'bench', jobId: 2 });
+    service.handle(gradeMsg(2, 1, { type: 'fold' }, null));
+    service.handle({ kind: 'bench', jobId: 3 });
     expect(calls).toBe(0);
   });
 });
@@ -290,10 +392,24 @@ describe('the real brain through the runner (brain.worker.ts)', () => {
   });
 
   it('a hint is hint(obs, eRandom), the same through a structured clone of the message', () => {
-    const { service, replies } = rig(decide, undefined, coachHint);
+    const { service, replies } = rig(decide, undefined, coachAnswer);
     service.handle(structuredClone({ kind: 'hint', jobId: 1, epoch: 1, obs: OBS, eRandom: null }));
     expect(replies).toEqual([hintReply(1, 1, coachHint(OBS, null))]);
     expect(coachHint(OBS, null).decision).toEqual(hint(OBS, null));
+  });
+
+  it('a grade is grade(obs, taken, eRandom, decisionId), as plain data; following the hint is Best', () => {
+    const { service, replies } = rig(decide, undefined, coachAnswer);
+    const rec = hint(OBS, null).action;
+    service.handle({ kind: 'hint', jobId: 1, epoch: 1, obs: OBS, eRandom: null });
+    service.handle(structuredClone(gradeMsg(2, 1, rec, 0.21, 0)));
+    service.handle(structuredClone(gradeMsg(3, 1, { type: 'fold' }, 0.21, 0)));
+    const best = replies[1] as Extract<BrainReply, { kind: 'grade' }>;
+    expect(best.result).toEqual(grade(OBS, rec, 0.21, 0));
+    expect(best.result).toMatchObject({ decisionId: 0, grade: 'best', rec, taken: rec });
+    const folded = replies[2] as Extract<BrainReply, { kind: 'grade' }>;
+    expect(folded.result).toEqual(grade(OBS, { type: 'fold' }, 0.21, 0));
+    expect(structuredClone(folded.result)).toEqual(folded.result); // posts as it is
   });
 });
 

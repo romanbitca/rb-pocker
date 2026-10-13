@@ -1,7 +1,8 @@
 /**
  * The one decision pipeline of the coach and every bot (PLAN §8.1 C1, §8.2, §9.4, Appendix A.5):
  * `decide(obs, profile, seed)` for a bot, `hint(obs, eRandom)` for the coach (the fixed profile
- * `COACH`, seeded from `observationKey`, §2.4). `grade` is Stage 6's (§8.9).
+ * `COACH`, seeded from `observationKey`, §2.4). `grade` (§8.9) is `grade.ts`'s, from the same
+ * deliberation: `Deliberation.model` holds the hint's EVs.
  *
  * 1. **Features** (§8.2): `features(obs, profile, seed)`, the `eRange` Monte Carlo seeded with the
  *    decision seed itself (the coach: `coachSeed(obs)`; a bot: its table-only seed, §2.4).
@@ -94,7 +95,6 @@ import type {
   Decision,
   EvCandidate,
   Features,
-  GradeResult,
   PolicyDecision,
   PostflopSpot,
   Reason,
@@ -268,6 +268,14 @@ function limpInstead(
 // ── EVs (§8.9) ─────────────────────────────────────────────────────────────────────────────────
 
 /**
+ * The policy's realisation `R` of the hero's equity on this street (§8.3 step 3 before the flop,
+ * §8.5 step 2 after it). The EV model uses 1 instead after an action that ends the hero's betting.
+ */
+export function realisationOf(obs: Observation, f: Features, spot: PostflopSpot | null): number {
+  return spot === null ? preflopRealisation(f.position, obs.hole) : postflopRealisation(f);
+}
+
+/**
  * The EV model of the decision with equity `E` (the coach: `eRange`; a bot: `E'`): the policy's
  * realisation and implied odds (§8.3 steps 3–4, §8.5 steps 2–3), `E_called` trials capped at the
  * profile's own `mcTrials`.
@@ -280,7 +288,7 @@ function evModelOf(
   seed: Seed128,
   spot: PostflopSpot | null,
 ): EvModel {
-  const R = spot === null ? preflopRealisation(f.position, obs.hole) : postflopRealisation(f);
+  const R = realisationOf(obs, f, spot);
   // §8.3 step 4 sets up implied odds only facing a raise (a limp has none); §8.5 step 3 after the
   // flop. The EV model drops them when the call ends the betting (an all-in).
   const facingRaise = f.facing === 'open' || f.facing === '3bet' || f.facing === '4bet+';
@@ -625,6 +633,13 @@ export interface Deliberation {
   bot: BotPick | null;
   /** The guardrails that changed the pick (§8.8). */
   fired: string[];
+  /**
+   * The decision's EV model (§8.9), each action's EV computed once: the grade (chunk 6.1) reads
+   * the hint's own numbers from it and computes only an action that is not a candidate yet.
+   */
+  model: EvModel;
+  /** The street's realisation `R` the EV model used (`realisationOf`). */
+  R: number;
 }
 
 /**
@@ -702,7 +717,16 @@ export function deliberate(
     alt: alt === null ? null : alt.action,
     trace,
   };
-  return { decision, f, seen, rule, bot, fired: guarded.fired };
+  return {
+    decision,
+    f,
+    seen,
+    rule,
+    bot,
+    fired: guarded.fired,
+    model,
+    R: realisationOf(obs, f, spot),
+  };
 }
 
 /**
@@ -740,13 +764,3 @@ export function coachHint(obs: Observation, eRandom: number | null): CoachHint {
   const { decision, f } = deliberate(obs, COACH, coachSeed(obs), eRandom);
   return { decision, explanation: explain(explainInput(obs, f, decision)) };
 }
-
-/** Appendix A.5 `grade(obs, taken, eRandom, decisionId)`: Stage 6 (§8.9, chunk 6.1). */
-export const grade: (
-  obs: Observation,
-  taken: PlayerAction,
-  eRandom: number | null,
-  decisionId: number,
-) => GradeResult = () => {
-  throw new Error('grade: not available until Stage 6');
-};

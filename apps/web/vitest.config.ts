@@ -42,6 +42,8 @@ const VOLUME_TESTS = [
   'tests/brain/decide.play.test.ts', // 400 hands played by the brain alone
   'tests/brain/decide.benchmark.test.ts', // timing (Stage 5 acceptance 6)
   'tests/scripts/selfplay.test.ts', // ~1,000 self-play hands (the CI-sized smoke of §9.7)
+  'tests/brain/grade.property.test.ts', // 2,000 coach decision points, ~10 grades each (C8)
+  'tests/brain/grade.benchmark.test.ts', // timing (Stage 6 acceptance 6)
 ];
 
 const slowRequested =

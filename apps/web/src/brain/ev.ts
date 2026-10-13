@@ -151,6 +151,15 @@ export function continuingWeights(
 }
 
 /**
+ * A call ends the hero's betting: it puts the hero all-in, or every live opponent (`ranges`, one
+ * per live opponent) is all-in already. Then nobody can bet the hero off its equity: the call's
+ * `R` is 1 and it has no implied odds (§8.4; the grade's price signal reads the same `R`, §8.9).
+ */
+export function callEndsBetting(obs: Observation, ranges: readonly OpponentRange[]): boolean {
+  return obs.legal.callIsAllIn || ranges.every((r) => obs.allIn[r.seat] === true);
+}
+
+/**
  * §9.1 `stickiness` of a seat as the observer can know it: its personality's when the label is
  * visible, else the mean over its level's personality list (as the §9.5 prior).
  */
@@ -335,7 +344,7 @@ export function evModel(spot: EvSpot): EvModel {
       case 'check':
         return evCheck(f.eRange, spot.R, f.pot);
       case 'call': {
-        const ends = legal.callIsAllIn || responders.length === 0;
+        const ends = callEndsBetting(obs, f.ranges);
         return ends
           ? evCall(f.eRange, 1, f.winPot, f.toCall)
           : evCall(f.eRange, spot.R, f.winPot, f.toCall, spot.implied);
