@@ -10,8 +10,12 @@
  * the share of hands it played and raised and how often it bets after the flop, from the table's
  * §9.5 seat statistics (public: every player saw the same actions). A hole card is never in it.
  */
-import type { HandState, PersonalityId, SeatStats, TableState } from '../engine/types.ts';
+import type { BotLevel, HandState, PersonalityId, SeatStats, TableState } from '../engine/types.ts';
+import { nextLevels } from './botLevels.ts';
 import type { AppState } from './store.ts';
+// ⚠️ The pods' level rules stay in tableViews.ts. This module read them from a small module of
+// their own once, and the bundler cut the whole store graph out of the entry chunk: initial JS
+// +3.3 KB and CSS +1.1 KB gzip (PLAN pitfall 47).
 import { labelVisible, seatLevelOf } from './tableViews.ts';
 
 /** How often a bot bets or raises after the flop, from what was seen (§9.3 "Bets often"). */
@@ -29,6 +33,17 @@ export interface SeenPlay {
   readonly aggression: SeenAggression | null;
 }
 
+/**
+ * A seat's level from the next hand on (§9.3 per-seat override, chunk 7.2): what the card's level
+ * picker shows. Not the level of the hand in play: the card's label and statistics follow that one.
+ */
+export interface SeatLevelChoice {
+  /** The seat's own level; null = the table's level. */
+  readonly own: BotLevel | null;
+  /** The table's level from the next hand: what "Same as table" means. */
+  readonly table: BotLevel;
+}
+
 /** `BotCardView`: one bot's card. */
 export interface BotCardData {
   /** Engine seat index, 1..8. */
@@ -43,6 +58,8 @@ export interface BotCardData {
    * made a decision before the flop yet. Always null when the personality shows.
    */
   readonly seen: SeenPlay | null;
+  /** The level picker's value: this seat's level from the next hand on. */
+  readonly nextLevel: SeatLevelChoice;
 }
 
 /** "Bets often" from an AF of 2 (TAG 2.5, LAG 3.5, Maniac 5), "Mostly calls" below 1 (Station 0.7). */
@@ -72,14 +89,16 @@ export function seenPlay(stats: SeatStats | null): SeenPlay | null {
 
 /**
  * The card for `seat` in `hand`, dealt from `table`, with the table's seat statistics by
- * `playerId` (`GameSlice.seatStats`). Null for the hero (seat 0, drawn by the hero strip) and for
- * a seat that does not exist.
+ * `playerId` (`GameSlice.seatStats`). `next` is the seat's level from the next hand on (the
+ * settings', §9.3); without it the card shows the levels of `table` itself. Null for the hero
+ * (seat 0, drawn by the hero strip) and for a seat that does not exist.
  */
 export function botCardOf(
   hand: HandState,
   table: TableState,
   seat: number,
   stats: Readonly<Record<string, SeatStats>> = {},
+  next?: SeatLevelChoice,
 ): BotCardData | null {
   const slot = table.slots[seat];
   const state = hand.seats[seat];
@@ -91,6 +110,7 @@ export function botCardOf(
     personality: visible ? slot.personality : null,
     stack: state.stack,
     seen: visible ? null : seenPlay(stats[slot.playerId] ?? null),
+    nextLevel: next ?? { own: table.config.seatLevels[seat] ?? null, table: table.config.botLevel },
   };
 }
 
@@ -108,21 +128,29 @@ const sameCard = (a: BotCardData, b: BotCardData): boolean =>
   a.name === b.name &&
   a.personality === b.personality &&
   a.stack === b.stack &&
-  sameSeen(a.seen, b.seen);
+  sameSeen(a.seen, b.seen) &&
+  a.nextLevel.own === b.nextLevel.own &&
+  a.nextLevel.table === b.nextLevel.table;
 
 let last: BotCardData | null = null;
 
 /**
  * The open card's data, or null when no card is open (or its seat is gone). An unchanged card keeps
- * its object, so a sheet subscribed to it renders again only when what it shows changes.
+ * its object, so a sheet subscribed to it renders again only when what it shows changes. The
+ * label, the statistics and the stack are the hand in play's; the level picker shows the settings'
+ * levels, which the table follows from the next hand (§9.3).
  */
 export const selectBotCard = (s: AppState): BotCardData | null => {
   const seat = s.ui.botCardSeat;
   const { hand, table, seatStats } = s.game;
-  const next =
-    seat === null || hand === null || table === null
-      ? null
-      : botCardOf(hand, table, seat, seatStats);
+  let next: BotCardData | null = null;
+  if (seat !== null && hand !== null && table !== null) {
+    const levels = nextLevels(s.settings, table);
+    next = botCardOf(hand, table, seat, seatStats, {
+      own: levels.seatLevels[seat] ?? null,
+      table: levels.botLevel,
+    });
+  }
   if (next === null || last === null || !sameCard(last, next)) last = next;
   return last;
 };

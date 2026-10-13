@@ -15,7 +15,9 @@ import {
   depthBand,
   digitsOnly,
   initialForm,
+  ownLevelCount,
   parseAmount,
+  resizeSeatLevels,
   roundUpToEven,
   STACK_PRESETS,
   stackValue,
@@ -23,6 +25,7 @@ import {
   tableConfig,
   type AvailableLevels,
   type SetupForm,
+  type SetupValues,
 } from '../../../src/ui/screens/setupForm.ts';
 import { testSeed } from '../../helpers/seed.ts';
 
@@ -42,6 +45,24 @@ function form(patch: Partial<SetupForm> = {}): SetupForm {
     bigBlind: preset(20),
     botLevel: 'easy',
     coachLevel: 'beginner',
+    seatLevels: [null, null, null, null, null, null],
+    speed: 'normal',
+    fourColour: true,
+    ...patch,
+  };
+}
+
+/** The last-used values Setup opens with (a `Settings` object fits). */
+function values(patch: Partial<SetupValues> = {}): SetupValues {
+  return {
+    players: 6,
+    startingStack: 2000,
+    bb: 20,
+    botLevel: 'easy',
+    coachLevel: 'beginner',
+    seatLevels: [null, null, null, null, null, null],
+    speed: 'normal',
+    fourColour: true,
     ...patch,
   };
 }
@@ -236,7 +257,14 @@ describe('players and the opening form', () => {
   it('opens with the last-used values (§12.2)', () => {
     expect(
       initialForm(
-        { players: 4, startingStack: 5000, bb: 50, botLevel: 'easy', coachLevel: 'beginner' },
+        values({
+          players: 4,
+          startingStack: 5000,
+          bb: 50,
+          seatLevels: [null, null, null, null],
+          speed: 'fast',
+          fourColour: false,
+        }),
         STAGE_3,
       ),
     ).toEqual({
@@ -245,32 +273,120 @@ describe('players and the opening form', () => {
       bigBlind: preset(50),
       botLevel: 'easy',
       coachLevel: 'beginner',
+      seatLevels: [null, null, null, null],
+      speed: 'fast',
+      fourColour: false,
     });
-    expect(
-      initialForm(
-        { players: 3, startingStack: 3500, bb: 30, botLevel: 'easy', coachLevel: 'beginner' },
-        STAGE_3,
-      ),
-    ).toMatchObject({ stack: custom('3500'), bigBlind: custom('30') });
+    expect(initialForm(values({ players: 3, startingStack: 3500, bb: 30 }), STAGE_3)).toMatchObject(
+      { stack: custom('3500'), bigBlind: custom('30') },
+    );
   });
 
   it('replaces a level that is not available yet and keeps players to 2–9', () => {
     const opened = initialForm(
-      { players: 12, startingStack: 2000, bb: 20, botLevel: 'expert', coachLevel: 'exam' },
+      values({ players: 12, botLevel: 'expert', coachLevel: 'exam' }),
       STAGE_3,
     );
     expect(opened).toMatchObject({ players: 9, botLevel: 'easy', coachLevel: 'beginner' });
-    expect(
-      initialForm(
-        {
-          players: Number.NaN,
-          startingStack: 2000,
-          bb: 20,
-          botLevel: 'easy',
-          coachLevel: 'beginner',
+    expect(opened.seatLevels).toHaveLength(9);
+    expect(initialForm(values({ players: Number.NaN }), STAGE_3).players).toBe(6);
+  });
+});
+
+describe('per-seat levels: "Set each bot\'s level" (§9.3, §12.2, chunk 7.2)', () => {
+  it('fits the list to the players: bots kept, new seats at the table level, the hero null', () => {
+    const own = [null, 'hard', null, 'expert'] as const;
+    expect(resizeSeatLevels(own, 4)).toEqual([null, 'hard', null, 'expert']);
+    expect(resizeSeatLevels(own, 6)).toEqual([null, 'hard', null, 'expert', null, null]);
+    expect(resizeSeatLevels(own, 3)).toEqual([null, 'hard', null]);
+    expect(resizeSeatLevels(own, 2)).toEqual([null, 'hard']);
+    // Whatever stood at seat 0, the hero has no level.
+    expect(resizeSeatLevels(['easy', 'hard'], 2)).toEqual([null, 'hard']);
+    expect(resizeSeatLevels([], 4)).toEqual([null, null, null, null]);
+    // The input is not changed.
+    const input: ('easy' | null)[] = [null, 'easy'];
+    resizeSeatLevels(input, 5);
+    expect(input).toEqual([null, 'easy']);
+  });
+
+  it('counts the bots that have a level of their own, never the hero', () => {
+    expect(ownLevelCount([null, null, null])).toBe(0);
+    expect(ownLevelCount([null, 'easy', null, 'expert'])).toBe(2);
+    expect(ownLevelCount(['hard', null])).toBe(0);
+    expect(ownLevelCount([])).toBe(0);
+  });
+
+  it('puts the overrides in the table config, one per seat, as the engine wants them', () => {
+    const config = tableConfig(4, 2000, 20, 'medium', [null, 'hard', null, 'expert']);
+    expect(config).toEqual({
+      seatCount: 4,
+      sb: 10,
+      bb: 20,
+      startingStack: 2000,
+      botLevel: 'medium',
+      seatLevels: [null, 'hard', null, 'expert'],
+    });
+    expect(engineAccepts(config)).toBe(true);
+    // No list at all (the old call): every seat follows the table.
+    expect(tableConfig(3, 2000, 20, 'easy').seatLevels).toEqual([null, null, null]);
+    // A list for other players is fitted, so the config is always valid.
+    expect(tableConfig(3, 2000, 20, 'easy', [null, 'hard', 'easy', 'expert']).seatLevels).toEqual([
+      null,
+      'hard',
+      'easy',
+    ]);
+  });
+
+  it('Start sends the form’s overrides, and agrees with createTable for any list', () => {
+    const level = fc.constantFrom(null, ...BOT_LEVELS);
+    fc.assert(
+      fc.property(
+        fc.integer({ min: 2, max: 9 }),
+        fc.array(level, { minLength: 0, maxLength: 12 }),
+        fc.constantFrom(...BOT_LEVELS),
+        (players, seatLevels, botLevel) => {
+          const check = checkSetup(form({ players, seatLevels, botLevel }), ALL);
+          expect(check.config).not.toBeNull();
+          const config = check.config as TableConfig;
+          expect(config.seatLevels).toHaveLength(players);
+          expect(config.seatLevels[0]).toBeNull();
+          expect(engineAccepts(config)).toBe(true);
+          config.seatLevels.forEach((own, seat) => {
+            if (seat > 0) expect(own).toBe(seatLevels[seat] ?? null);
+          });
         },
-        STAGE_3,
-      ).players,
-    ).toBe(6);
+      ),
+      { seed: FC_SEED, numRuns: 500 },
+    );
+  });
+
+  it('has no config while a bot has a level that cannot be picked yet (like the cards)', () => {
+    const own = form({ seatLevels: [null, 'hard', null, null, null, null] });
+    expect(checkSetup(own, STAGE_3).config).toBeNull();
+    expect(checkSetup(own, ALL).config).not.toBeNull();
+    expect(
+      checkSetup(form({ seatLevels: [null, 'easy', null, null, null, null] }), STAGE_3).config,
+    ).not.toBeNull();
+  });
+
+  it('opens with the saved overrides, dropping those that cannot be picked and fitting the players', () => {
+    const saved = values({ players: 4, seatLevels: [null, 'hard', 'expert', 'medium'] });
+    expect(initialForm(saved, ALL).seatLevels).toEqual([null, 'hard', 'expert', 'medium']);
+    // Only Easy is available: the others open as "Same as table", like a level card would.
+    expect(initialForm(saved, STAGE_3).seatLevels).toEqual([null, null, null, null]);
+    // The list always has one entry per player, whatever was saved.
+    expect(initialForm(values({ players: 6, seatLevels: [null, 'hard'] }), ALL).seatLevels).toEqual(
+      [null, 'hard', null, null, null, null],
+    );
+    expect(
+      initialForm(values({ players: 2, seatLevels: [null, null, 'hard'] }), ALL).seatLevels,
+    ).toEqual([null, null]);
+  });
+
+  it('opens with the saved speed and four-colour setting', () => {
+    expect(initialForm(values({ speed: 'instant', fourColour: false }), ALL)).toMatchObject({
+      speed: 'instant',
+      fourColour: false,
+    });
   });
 });

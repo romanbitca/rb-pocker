@@ -101,6 +101,13 @@ const PLAN_WORDS: Record<string, string> = {
   'botCard.seen line': `"${[en.botCard.plays(34), en.botCard.raises(20), en.botCard.aggression.betsOften].join(en.botCard.separator)}"`,
   'botCard.aggression': `"${en.botCard.aggression.betsOften}" · "${en.botCard.aggression.betsSometimes}" · "${en.botCard.aggression.mostlyCalls}"`,
   'botCard.handsSeen': `"${en.botCard.handsSeen(placeholder('n'))}"`,
+  // Chunk 7.2: the per-seat levels (§9.3, Appendix F.10).
+  'botCard.level': `the group "${en.botCard.level.legend}" with the choices "${en.botCard.level.sameAsTable(placeholder('level'))}" · "${en.levels.bot.easy}" · "${en.levels.bot.medium}" · "${en.levels.bot.hard}" · "${en.levels.bot.expert}" and the line "${en.botCard.level.hint}"`,
+  'setup.more.title': `a button "${en.setup.more.title}" that opens`,
+  'setup.more.bots': `"${en.setup.more.bots.legend}" ("${en.setup.more.bots.hint}", one row "${en.setup.more.bots.bot(0).replace('0', placeholder('n'))}" per bot, "${en.setup.more.bots.sameAsTable(placeholder('level'))}" first)`,
+  'setup.more.fourColour': `"${en.setup.more.fourColour.label}" ("${en.setup.more.fourColour.hint}")`,
+  'setup.more.ownLevels': `the lines "${en.setup.more.ownLevels(1)}" · "${en.setup.more.ownLevels(2).replace('2', placeholder('n'))}"`,
+  'settings.botLevel.own': `"${en.settings.botLevel.own(1)}" · "${en.settings.botLevel.own(2).replace('2', placeholder('n'))}"`,
   ...Object.fromEntries(
     Object.entries(en.personality).map(([id, name]) => [`personality.${id}`, `| ${name} |`]),
   ),

@@ -524,6 +524,128 @@ describe('topUp and withLevels', () => {
   });
 });
 
+describe('withLevels: per-seat overrides (§9.3, chunk 7.2)', () => {
+  const seats4 = (): TableState => seatedTable(4, 'easy');
+
+  it('changes the levels and nothing else: the same bots, stacks, button, cursors and counters', () => {
+    const table = seats4();
+    const next = withLevels(table, 'hard', [null, 'expert', null, 'medium']);
+    expect(next.config).toStrictEqual({
+      ...table.config,
+      botLevel: 'hard',
+      seatLevels: [null, 'expert', null, 'medium'],
+    });
+    expect({ ...next, config: table.config }).toStrictEqual(table);
+    // Every seated bot keeps its id, name, personality and stack.
+    expect(next.slots).toStrictEqual(table.slots);
+  });
+
+  it('keeps the personalities of the seated bots even when the new level’s list reads differently', () => {
+    const table = seats4();
+    const was = table.slots.map((s) => s.personality);
+    expect(was.slice(1)).toEqual(PERSONALITY_LISTS.easy.slice(0, 3));
+    const next = withLevels(table, 'expert', [null, 'expert', 'expert', 'expert']);
+    expect(next.slots.map((s) => s.personality)).toEqual(was);
+  });
+
+  it('null puts a seat back on the table level; a new table level moves every seat without an override', () => {
+    const table = withLevels(seats4(), 'easy', [null, 'hard', 'hard', null]);
+    const back = withLevels(table, 'medium', [null, null, 'hard', null]);
+    expect(back.config.seatLevels).toEqual([null, null, 'hard', null]);
+    expect(back.config.botLevel).toBe('medium');
+  });
+
+  it('does not change its input and shares nothing with it', () => {
+    const table = deepFreeze(seats4());
+    const levels: (BotLevel | null)[] = [null, 'hard', null, null];
+    const next = withLevels(table, 'medium', levels);
+    expect(table.config.seatLevels).toEqual([null, null, null, null]);
+    expect(next.config).not.toBe(table.config);
+    expect(next.slots).not.toBe(table.slots);
+    levels[2] = 'expert'; // changing the list given afterwards changes nothing
+    expect(next.config.seatLevels).toEqual([null, 'hard', null, null]);
+  });
+
+  it('the hand in play is not touched: it settles on the table with the new levels, and a hand can be dealt from it', () => {
+    const table = seats4();
+    const hand = deal(table);
+    const relevelled = withLevels(table, 'expert', [null, 'hard', null, null]);
+    // A hand holds no levels: the same hand is "from" both tables, and the next one is dealt from either.
+    const done = finishByFolds(hand) as HandState;
+    expect(nextTable(relevelled, done).slots.map((s) => s.stack)).toEqual(
+      nextTable(table, done).slots.map((s) => s.stack),
+    );
+    expect(deal(relevelled).seats).toHaveLength(4);
+    expect(hand.seats).toHaveLength(4); // unchanged by the call above
+  });
+
+  it('a bot that busts is replaced from the list of its seat’s level, in seat order, one cursor', () => {
+    const table = withLevels(seats4(), 'hard', [null, 'expert', 'easy', null]);
+    const done = allInHand(table, { 0: 'Ac Ad', 1: '7c 2d', 2: 'Qc 5d', 3: 'Th 6d' }, BOARD);
+    expect(done.seats.slice(1).every((s) => s.stack === 0)).toBe(true);
+    const next = nextTable(table, done);
+    // The cursor stood at 3: seat 1 takes entry 3 of the Expert list, seat 2 entry 4 of the Easy
+    // list, seat 3 (no override: the table’s Hard) entry 5 of the Hard list.
+    expect(next.slots.slice(1).map((s) => s.personality)).toEqual([
+      PERSONALITY_LISTS.expert[3],
+      PERSONALITY_LISTS.easy[4],
+      PERSONALITY_LISTS.hard[5],
+    ]);
+    expect(next.personalityCursor).toBe(6);
+    expect(next.slots.slice(1).every((s) => s.stack === 2000)).toBe(true);
+    expect(next.config.seatLevels).toEqual([null, 'expert', 'easy', null]); // the overrides stay
+  });
+
+  it('a seat’s override stays with the seat when its bot is replaced', () => {
+    const table = withLevels(seats4(), 'easy', [null, null, 'hard', null]);
+    const done = allInHand(table, { 0: 'Ac Ad', 1: '7c 2d', 2: 'Qc 5d', 3: 'Th 6d' }, BOARD);
+    const next = nextTable(table, done);
+    expect(next.slots[2]?.playerId).not.toBe(table.slots[2]?.playerId);
+    expect(next.config.seatLevels[2]).toBe('hard');
+  });
+
+  it('rejects a table that is not valid, and a list for another number of seats', () => {
+    const table = seats4();
+    expect(engineError(() => withLevels(table, 'easy', [null, null, null, null, null])).code).toBe(
+      'ILLEGAL_ACTION',
+    );
+    expect(
+      engineError(() => withLevels(table, 'easy', [null, 'pro' as BotLevel, null, null])).code,
+    ).toBe('ILLEGAL_ACTION');
+    const broken = { ...table, button: 9 };
+    expect(engineError(() => withLevels(broken, 'easy', [null, null, null, null])).code).toBe(
+      'BAD_AMOUNT',
+    );
+  });
+
+  it('for any run of changes: the table stays valid, the bots stay, the levels are the last ones set', () => {
+    const levelOrNull = fc.constantFrom<BotLevel | null>(null, ...BOT_LEVELS);
+    fc.assert(
+      fc.property(
+        fc.array(
+          fc.tuple(
+            fc.constantFrom(...BOT_LEVELS),
+            fc.array(levelOrNull, { minLength: 3, maxLength: 3 }),
+          ),
+          { minLength: 1, maxLength: 12 },
+        ),
+        (changes) => {
+          const base = seats4();
+          let table = base;
+          for (const [level, own] of changes) table = withLevels(table, level, [null, ...own]);
+          validateTable(table);
+          const [level, own] = changes[changes.length - 1] as (typeof changes)[number];
+          expect(table.config.botLevel).toBe(level);
+          expect(table.config.seatLevels).toEqual([null, ...own]);
+          expect(table.slots).toStrictEqual(base.slots);
+          expect({ ...table, config: base.config }).toStrictEqual(base);
+        },
+      ),
+      { seed: FC_SEED, numRuns: 100 },
+    );
+  });
+});
+
 // ---------------------------------------------------------------------------------------------
 // Many hands in a row.
 
