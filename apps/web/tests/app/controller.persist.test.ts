@@ -162,7 +162,7 @@ describe('session: saved after every step, resumed deep-equal (§14.5, Stage 3 a
     expect(hand.startStacks).toEqual(next?.slots.map((slot) => slot.stack));
   });
 
-  it('a complete hand saved just before nextTable resumes into the hand end (§14.3 step 5)', async () => {
+  it('a complete hand saved just before nextTable: boot runs §14.3 step 5, Play deals the next', async () => {
     const backend = new FakeStorage();
     const a = launch(backend).h;
     a.dispatch({ type: 'play' });
@@ -175,11 +175,13 @@ describe('session: saved after every step, resumed deep-equal (§14.5, Stage 3 a
       JSON.stringify({ ...session, table, hand: done, handInputs: a.controller.snapshot().inputs }),
     );
     a.controller.dispose();
+    // The hand was counted already (the profile says so): only step 5, the next table.
     const b = launch(backend).h;
-    expect(b.state().game.hand).toEqual(done);
-    b.dispatch({ type: 'play' });
-    expect(b.state().game.mode).toBe('handEnd');
+    expect(b.state().game).toMatchObject({ hand: null, table: null });
     expect(b.state().game.next?.handsDealt).toBe((table?.handsDealt ?? 0) + 1);
+    expect(stored(backend)).toMatchObject({ hand: null, table: b.state().game.next });
+    b.dispatch({ type: 'play' });
+    expect(b.state().game.hand?.handSeq).toBe((done as HandState).handSeq + 1);
   });
 
   it('a bust hero resumes into the out-of-chips dialog', async () => {

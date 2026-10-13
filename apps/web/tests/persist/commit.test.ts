@@ -18,7 +18,14 @@ import {
 import { applyHand } from '../../src/persist/stats.ts';
 import { createSafeStorage, STORAGE_KEYS, type SafeStorage } from '../../src/persist/storage.ts';
 import { FakeStorage, quotaError } from './fakeStorage.ts';
-import { handRecord, idleSession, midHandSession, NOW, profileV0ToV1, v0Profile } from './fixtures.ts';
+import {
+  handRecord,
+  idleSession,
+  midHandSession,
+  NOW,
+  profileV0ToV1,
+  v0Profile,
+} from './fixtures.ts';
 
 const K = STORAGE_KEYS;
 const LATER = new Date('2026-09-28T10:05:00.000Z');
@@ -101,7 +108,13 @@ describe('profile writes: the rev check and the backup (§14.3 steps 2–4)', ()
   });
 
   it('a storage that cannot be read lets the write go on (it lands in memory, §14.6 rule 3)', () => {
-    expect(checkWriter(createSafeStorage(() => null), 7, NOW)).toEqual({ ok: true, backup: null });
+    expect(
+      checkWriter(
+        createSafeStorage(() => null),
+        7,
+        NOW,
+      ),
+    ).toEqual({ ok: true, backup: null });
   });
 });
 
@@ -234,7 +247,12 @@ describe('the hand ring, pc.v1.hands (§14.2, §14.3 step 1)', () => {
   });
 
   it('a storage that cannot be read: an empty history, with the reason', () => {
-    expect(loadHands(createSafeStorage(() => null), 3)).toEqual({
+    expect(
+      loadHands(
+        createSafeStorage(() => null),
+        3,
+      ),
+    ).toEqual({
       hands: [],
       problem: 'hands: storage unavailable',
     });
@@ -311,7 +329,10 @@ describe('commitHand (§14.3)', () => {
       { ...commitOf(record(5)), apply: (p) => ({ ...p, heroModel: null as never }) },
       LATER,
     );
-    expect(badApply).toMatchObject({ status: 'invalid', problem: expect.stringContaining('heroModel') });
+    expect(badApply).toMatchObject({
+      status: 'invalid',
+      problem: expect.stringContaining('heroModel'),
+    });
     expect(fake.writeLog).toEqual([K.session, K.session]);
     expect(stored<Profile>(fake, K.profile)).toEqual(profile);
   });
@@ -343,7 +364,10 @@ describe('commitHand (§14.3)', () => {
       profile = again.profile;
     }
     expect(loadProfile(store, { now: LATER }).profile).toEqual(profile);
-    return { profile, ring: loadHands(store, profile.lastCommittedHandSeq).hands.map((r) => r.handSeq) };
+    return {
+      profile,
+      ring: loadHands(store, profile.lastCommittedHandSeq).hands.map((r) => r.handSeq),
+    };
   }
 
   it.each([0, 1, 2, 3, 4])(
