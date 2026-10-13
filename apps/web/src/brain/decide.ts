@@ -16,7 +16,8 @@
  *    draw is below `1 − pfrRatio`; that draw also limps an open raise the mix picks (step 4).
  * 4. **The pick.** The coach (`deterministic`) takes `A*`: the recommendation is the rule action
  *    (§8.9 "recommendation from the rule policy"), so σ = 0 and no mixing. A bot scores its
- *    candidates (§9.4 step 3): `EV/pot` (§8.9, with `E'`) + `T ×` biases in units of its level's
+ *    candidates (§9.4 step 3): `EV/pot` (§8.9, with `E'`; at Expert the fold equity after the flop
+ *    read from each seat's fold to c-bet, `readsFoldStats`) + `T ×` biases in units of its level's
  *    temperature `T`: `aggressionBias` for a bet or raise, `3 × (stickiness − 1)` for a call, `1`
  *    for `A*` (`3.5` before the flop), `2.5` for a bet when it bluffs (Air and the bluff draw below
  *    `bluffFreq`; before the flop a raise facing one open with a suited A5–A2 or 54–T9 and the draw
@@ -83,6 +84,7 @@ import {
   CLOSE_SPOT_POT,
   E_CALLED_TRIALS,
   EXPLOIT_BLUFF_FACTOR,
+  MIX_RULE_BONUS_UNIT_MIN,
   MIX_BLUFF_BONUS,
   MIX_CALL_STICKINESS,
   MIX_RULE_BONUS,
@@ -304,9 +306,19 @@ export function realisationOf(obs: Observation, f: Features, spot: PostflopSpot 
 }
 
 /**
+ * §8.9 at Expert (chunk 7.3, risk R20): a bot with the per-seat statistics range model (§9.2
+ * "re-weighting + per-seat stats") reads its fold equity after the flop from each seat's fold to
+ * c-bet (`readContinueFraction`). The coach shares that range model but keeps the model's fold
+ * equity: its EVs only explain its advice, which takes `A*` (and does not change).
+ */
+export function readsFoldStats(profile: BrainProfile): boolean {
+  return !profile.deterministic && profile.rangeModel === 'reweight+stats';
+}
+
+/**
  * The EV model of the decision with equity `E` (the coach: `eRange`; a bot: `E'`): the policy's
  * realisation and implied odds (§8.3 steps 3–4, §8.5 steps 2–3), `E_called` trials capped at the
- * profile's own `mcTrials`.
+ * profile's own `mcTrials`; Expert reads its fold equity after the flop (`readsFoldStats`).
  */
 function evModelOf(
   obs: Observation,
@@ -330,6 +342,7 @@ function evModelOf(
     implied,
     seed,
     trials: Math.min(E_CALLED_TRIALS, profile.mcTrials),
+    readsFolds: readsFoldStats(profile),
   });
   // Each action's EV once per decision (a bet's E_called is a Monte Carlo of its own).
   const memo = new Map<CandidateKey, number>();
@@ -414,6 +427,19 @@ export function bluff3betHand(hole: readonly [Card, Card] | readonly Card[]): bo
   const lo = Math.min(rankOf(a), rankOf(b));
   if (hi === 12) return lo <= 3; // A5s–A2s
   return hi - lo === 1 && hi >= 3 && hi <= 8; // 54s–T9s
+}
+
+/**
+ * §9.4 step 3: the pot value of one unit of `A*`'s bonus at temperature `T`, `max(T, 0.12)`. At
+ * Easy and Medium it is `T`, like every other bias (chunk 5.11); below Medium's `T` it keeps
+ * Medium's value in pots (chunk 7.3, risk R20). The bonus anchors the rule policy against the
+ * error of the §8.9 EV heuristic, which is a share of the pot at every level: before the flop its
+ * fold equity (each opponent continues with `MDF` of its range) rates a re-raise with any two
+ * cards at break-even or better. In units of `T` the bonus shrank to 0.21 pot at Hard and 0.14 at
+ * Expert, and their bots 3-bet and 4-bet hands their rules fold a third of the time.
+ */
+export function ruleBonusUnit(T: number): number {
+  return Math.max(T, MIX_RULE_BONUS_UNIT_MIN);
 }
 
 /** Index picked by `P(i) ∝ exp(score_i / T)` with the uniform draw `u` (argmax when T ≤ 0). */
@@ -536,16 +562,17 @@ export function botPick(
   const pot = Math.max(f.pot, 1);
   // "Air bucket bet": a bet into the pot after the flop; before it, the bluff 3-bet (a raise).
   const bluffType: PlayerAction['type'] = preflop ? 'raise' : 'bet';
-  // The biases are in units of the temperature T: EV/pot + T × bias (§9.4 step 3, chunk 5.11).
+  // EV/pot + T × biases; A*'s bonus in units of max(T, 0.12) (§9.4 step 3, chunks 5.11 and 7.3).
   const ruleBonus = preflop ? MIX_RULE_BONUS_PREFLOP : MIX_RULE_BONUS;
+  const unit = ruleBonusUnit(profile.temperature);
   const scores = candidates.map((c) => {
     let bias = 0;
     if (isAggressive(c.action)) bias += profile.aggressionBias;
     if (bluffing && c.action.type === bluffType) bias += MIX_BLUFF_BONUS;
     if (c.action.type === 'call') bias += MIX_CALL_STICKINESS * (profile.stickiness - 1);
     if (c.action.type === 'check' && slowplaying) bias += MIX_SLOWPLAY_BONUS;
-    if (c.key === ruleKey) bias += ruleBonus;
-    return c.ev / pot + profile.temperature * bias;
+    const rule = c.key === ruleKey ? ruleBonus : 0;
+    return c.ev / pot + profile.temperature * bias + unit * rule;
   });
   let pick = candidates[softmaxIndex(scores, profile.temperature, draws.pick)] as EvCandidate;
   // Limp mode (§9.4 step 2) limps an open raise the mix picked too: `pfrRatio` holds at every level.

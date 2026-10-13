@@ -44,8 +44,10 @@ import {
   runSelfPlay,
   seedFromText,
   selfPlay,
+  sideRows,
   speedGates,
   timeRows,
+  winRateGates,
   type ProfileRow,
 } from '../../scripts/selfplay.ts';
 import { tableWith } from '../engine/helpers.ts';
@@ -171,6 +173,42 @@ describe('self-play smoke (CI-sized; the full runs are weekly)', () => {
   );
 
   it(
+    'a seat at a level of its own ("tag@expert"): its profile, labels, levels and side',
+    { timeout: 60_000 },
+    () => {
+      const [job] = jobsOf(
+        spec({
+          hands: 12,
+          jobHands: 12,
+          lineup: ['tag@medium', 'tag@expert', 'rock', 'raiseAlways', 'lag@expert', 'station'],
+          level: 'hard',
+        }),
+      );
+      const r = runJob(job as SelfPlayJob);
+      expect([r.hands, r.illegal, r.invariant, r.unfinished]).toEqual([12, 0, 0, 0]);
+      expect(Object.keys(r.profiles).sort()).toEqual([
+        'lag/expert',
+        'raiseAlways',
+        'rock/hard',
+        'station/hard',
+        'tag/expert',
+        'tag/medium',
+      ]);
+      expect(Object.keys(r.sides).sort()).toEqual(['expert', 'hard', 'medium', 'raiseAlways']);
+      expect(r.sides.expert?.seatHands).toBe(2 * 12);
+      expect(r.sides.medium?.seatHands).toBe(12);
+      expect(r.sides.hard?.seatHands).toBe(2 * 12);
+      // No rake: the sides' results add up to zero, hand by hand.
+      const total = Object.values(r.sides).reduce(
+        (sum, t) => sum + (t.net.sum * t.seatHands) / t.hands,
+        0,
+      );
+      expect(total).toBeCloseTo(0, 9);
+      expect(Object.keys(r.times).sort()).toEqual(['expert', 'hard', 'medium', 'scripted']);
+    },
+  );
+
+  it(
     'carry: stacks carry over and a bust buys in again, with the same lineup',
     {
       timeout: 30_000,
@@ -262,6 +300,7 @@ describe('gates', () => {
   const result = (profiles: Record<string, ProfileTally>): JobResult => ({
     hands: 1000,
     profiles,
+    sides: {},
     illegal: 0,
     invariant: 0,
     unfinished: 0,
@@ -292,6 +331,15 @@ describe('gates', () => {
       'tag/medium AF': true,
     });
     expect(rows.find((r) => r.key === 'coach')?.target).toBeNull();
+    // `--calibrate-stats vpip,pfr` (Stage 7 acceptance 2 at Hard): no AF gates.
+    expect(calibrationGates(rows, ['vpip', 'pfr']).map((g) => g.name)).toEqual([
+      'lag/easy VPIP',
+      'lag/easy PFR',
+      'rock/medium VPIP',
+      'rock/medium PFR',
+      'tag/medium VPIP',
+      'tag/medium PFR',
+    ]);
   });
 
   it('legality: any illegal action, invariant violation or unfinished hand fails', () => {
@@ -300,6 +348,43 @@ describe('gates', () => {
     for (const field of ['illegal', 'invariant', 'unfinished'] as const) {
       expect(legalityGates({ ...ok, [field]: 1 }).some((g) => !g.pass)).toBe(true);
     }
+  });
+
+  it('win rates (§9.7): a side wins when its bb/100 interval is above 0, loses when below', () => {
+    // Per hand mean nets: +0.5 bb and −0.5 bb alternately plus `shift` (100 hands).
+    const side = (shift: number) => {
+      const xs = Array.from({ length: 100 }, (_, i) => (i % 2 === 0 ? 0.5 : -0.5) + shift);
+      return {
+        hands: 100,
+        seatHands: 300,
+        net: {
+          n: 100,
+          sum: xs.reduce((a, x) => a + x, 0),
+          sumSq: xs.reduce((a, x) => a + x * x, 0),
+        },
+      };
+    };
+    const rows = sideRows({
+      ...result({}),
+      sides: { expert: side(0.2), medium: side(-0.2), potBettor: side(0.05) },
+    });
+    expect(rows.map((r) => [r.side, r.seats, r.hands])).toEqual([
+      ['expert', 3, 100],
+      ['medium', 3, 100],
+      ['potBettor', 3, 100],
+    ]);
+    // ±1.96 × 0.5 / √100 × 100 ≈ ±9.8 bb/100 around +20, −20 and +5.
+    expect(rows[0]?.bb100.value).toBeCloseTo(20, 9);
+    expect(rows[0]?.bb100.half).toBeCloseTo(9.85, 1);
+    const verdicts = winRateGates(rows, ['expert', 'potBettor'], ['medium', 'potBettor', 'coach']);
+    expect(verdicts.map((g) => [g.name, g.pass])).toEqual([
+      ['expert wins', true],
+      ['potBettor wins', false],
+      ['medium loses', true],
+      ['potBettor loses', false],
+      ['coach loses', false],
+    ]);
+    expect(verdicts[4]?.detail).toBe('did not play');
   });
 
   it('speed: the p95 of each bot level against the budget (the coach is only reported)', () => {
@@ -349,6 +434,22 @@ describe('options', () => {
     expect(() => parseSeatCounts('10')).toThrow(RangeError);
     expect(parseOptions(['--lineup', 'coach,potBettor']).lineup).toEqual(['coach', 'potBettor']);
     expect(() => parseOptions(['--lineup', 'tag,shark'])).toThrow(/unknown player "shark"/);
+    expect(parseOptions(['--lineup', 'tag@expert,rock@medium,coach']).lineup).toEqual([
+      'tag@expert',
+      'rock@medium',
+      'coach',
+    ]);
+    expect(() => parseOptions(['--lineup', 'tag@pro'])).toThrow(/unknown player "tag@pro"/);
+    expect(() => parseOptions(['--lineup', 'coach@hard'])).toThrow(RangeError);
+    expect(parseOptions(['--wins', 'expert,coach', '--loses', 'potBettor'])).toMatchObject({
+      wins: ['expert', 'coach'],
+      loses: ['potBettor'],
+    });
+    expect(parseOptions([]).wins).toEqual([]);
+    expect(parseOptions([]).calibrateStats).toEqual(['vpip', 'pfr', 'af']);
+    expect(parseOptions(['--calibrate-stats', 'vpip,pfr']).calibrateStats).toEqual(['vpip', 'pfr']);
+    expect(() => parseOptions(['--calibrate-stats', 'wtsd'])).toThrow(/unknown statistic "wtsd"/);
+    expect(() => parseOptions(['--wins', 'tag'])).toThrow(/unknown side "tag"/);
     expect(() => parseOptions(['--level', 'pro'])).toThrow(RangeError);
     expect(() => parseOptions(['--stacks', 'deep'])).toThrow(RangeError);
     expect(() => parseOptions(['--bb', '15'])).toThrow(RangeError);

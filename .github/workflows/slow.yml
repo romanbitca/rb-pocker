@@ -28,13 +28,15 @@ jobs:
       - name: Slow tests (exhaustive, statistical and large property runs)
         run: npm run test:slow
 
-  # PLAN §9.7, Stage 5 acceptance 5 and 6: headless self-play with the real engine and brain
-  # (`scripts/selfplay.ts`), one runner per run. Calibration (seed 1, so the numbers are the same
-  # every week): each personality against its §9.1 targets, 20,000 hands 6-handed at Medium and at
-  # Easy, and the Medium bot decision p95 against the 100 ms budget. Legality: 100,000 hands over
-  # table sizes 2 to 9 with random blinds and stacks, Easy and Medium seats mixed, with a fresh
-  # seed every week (the report's first line prints it; `--seed <it>` reproduces the run). The
-  # report goes to the job summary; a gate that fails fails the job.
+  # PLAN §9.7, Stage 5 acceptance 5 and 6, Stage 7 acceptance 1, 2 and 5: headless self-play with
+  # the real engine and brain (`scripts/selfplay.ts`), one runner per run. Calibration (seed 1, so
+  # the numbers are the same every week): each personality against its §9.1 targets, 20,000 hands
+  # 6-handed at Medium and at Easy (VPIP, PFR, AF) and at Hard (VPIP, PFR), the Medium bot decision
+  # p95 against the 100 ms budget and the Expert one against 150 ms. Win rates (seed 1): the coach
+  # at an Easy table, Hard against the scripted baselines, Expert against Medium (§9.7). Legality:
+  # 100,000 hands over table sizes 2 to 9 with random blinds and stacks, Easy and Medium seats
+  # mixed, with a fresh seed every week (the report's first line prints it; `--seed <it>`
+  # reproduces the run). The report goes to the job summary; a gate that fails fails the job.
   selfplay:
     name: selfplay (${{ matrix.run }})
     runs-on: ubuntu-24.04 # the same image as the e2e job (see e2e.yml)
@@ -49,6 +51,21 @@ jobs:
             args: --level easy --players 6 --hands 20000 --seed 1 --calibrate
           - run: legality
             args: --level mixed --players 2-9 --stacks random --hands 100000 --seed ${{ github.run_id }}
+          # Stage 7 (chunk 7.3): acceptance 2 at Hard, 5 at Expert, and the four win rates of 1.
+          - run: hard
+            args: --level hard --players 6 --hands 20000 --seed 1 --calibrate --calibrate-stats vpip,pfr
+          - run: expert
+            args: --level expert --players 6 --hands 20000 --seed 1 --max-p95 150
+          - run: hard-vs-raise-always
+            args: --level hard --lineup raiseAlways,tag,lag,rock,tag,lag --hands 20000 --seed 1 --loses raiseAlways --wins hard
+          - run: hard-vs-call-always
+            args: --level hard --lineup callAlways,tag,lag,rock,tag,lag --hands 20000 --seed 1 --loses callAlways --wins hard
+          - run: pot-bettor-vs-hard
+            args: --level hard --lineup potBettor,tag,lag,rock,tag,lag --hands 20000 --seed 1 --loses potBettor --wins hard
+          - run: expert-vs-medium
+            args: --lineup tag@medium,tag@expert,lag@medium,lag@expert,rock@medium,rock@expert --hands 20000 --seed 1 --wins expert --loses medium
+          - run: coach-vs-easy
+            args: --level easy --lineup coach,station,station,maniac,station,rock --hands 20000 --seed 1 --wins coach
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
