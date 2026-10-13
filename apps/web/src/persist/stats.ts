@@ -21,7 +21,8 @@ export function applyHand(stats: Stats, record: HandRecord): Stats {
       [key]: {
         ...bucket,
         hands: bucket.hands + 1,
-        netChips: bucket.netChips + (record.net[0] ?? 0),
+        // The guard keeps `net` one entry per seat (2 to 9), the hero's first.
+        netChips: bucket.netChips + (record.net[0] as number),
         netMilliBB: bucket.netMilliBB + record.heroNetMilliBB,
       },
     },
