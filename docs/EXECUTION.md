@@ -6,7 +6,7 @@ This is the working checklist for building [PLAN.md](PLAN.md). PLAN.md is the so
 
 Legend: `[ ]` todo · `[~]` in progress (branch exists) · `[x]` merged to `main` · `[H]` waiting on the human
 
-**Current position:** ⏸ **Paused (11 Oct 08:10Z): the weekly all-models limit is at 40%, over the owner's 30% cap** (this project took it from 2% to 25%; the rest came from other work on the account). Waiting for the owner to write again. ⛔ GitHub Actions is still blocked by account billing (probed every 20 min until 10 Oct 23:07Z, and again at 11 Oct 08:10Z). **Ready to merge, in this order, once CI runs:** [#60](https://github.com/romanbitca/rb-pocker/pull/60) (e2e timeout) → Stage 6 [#52](https://github.com/romanbitca/rb-pocker/pull/52) → [#49](https://github.com/romanbitca/rb-pocker/pull/49) → [#48](https://github.com/romanbitca/rb-pocker/pull/48) → [#58](https://github.com/romanbitca/rb-pocker/pull/58) → [#59](https://github.com/romanbitca/rb-pocker/pull/59) → Stage 7 [#55](https://github.com/romanbitca/rb-pocker/pull/55) → [#57](https://github.com/romanbitca/rb-pocker/pull/57) → [#56](https://github.com/romanbitca/rb-pocker/pull/56). After each squash-merge: retarget the next PR to main, `git rebase --onto origin/main <old base head>`, CI, merge. All verified locally. Then Stage 8 (initial JS 149.86/150 KB, CSS 19.94/20 KB: new UI must be lazy or §15.3 renegotiated).
+**Current position:** ▶ Resumed 13 Oct 20:30Z (owner: weekly cap **68%**, it was 57%; **CI = full local suite on this Mac**, GitHub Actions by hand only, results posted as the commit status `local-ci`). Merge train running: Stage 7 restacked onto #59, then Stage 6 [#52](https://github.com/romanbitca/rb-pocker/pull/52) → [#49](https://github.com/romanbitca/rb-pocker/pull/49) → [#48](https://github.com/romanbitca/rb-pocker/pull/48) → [#58](https://github.com/romanbitca/rb-pocker/pull/58) → [#59](https://github.com/romanbitca/rb-pocker/pull/59), local suite on main (Stage 6 gate), Stage 7 [#55](https://github.com/romanbitca/rb-pocker/pull/55) → [#57](https://github.com/romanbitca/rb-pocker/pull/57) → [#56](https://github.com/romanbitca/rb-pocker/pull/56), local suite on main (Stage 7 gate); #60 closed. Next: `chore/local-ci` (workflows `workflow_dispatch` only, `scripts/ci-local.sh` posting `local-ci`, PLAN §17.5), then Stage 8.
 
 ---
 
@@ -133,8 +133,6 @@ needs to do in "Waiting on the human" below, sends a notification, and continues
 If the human's answer later reveals a problem, the fix becomes a new chunk ahead of the current one.
 
 ### Waiting on the human
-
-- **GitHub Actions billing** (9 Oct ~23:00Z): every job fails before starting with "recent account payments have failed or your spending limit needs to be increased". Fix on github.com → Settings → Billing and plans (payment method or the Actions spending limit). Until then nothing is merged (strict plan order needs CI); work continues on branches, verified locally.
 
 - **4.8 — `#bench` on an Android phone**: with the server running, open `http://<Mac LAN IP>:3000/#bench` in Chrome on the phone, wait a few seconds, copy the "results as text" box and paste it into the chat (or into PR #36).
 
