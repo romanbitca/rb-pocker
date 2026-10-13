@@ -166,6 +166,10 @@ describe('the commit waits for the last grade (§11.3 r5)', () => {
         if (fold) return s.game.hand as HandState;
       } else if (s.game.mode === 'feedback') {
         h.dispatch({ type: 'keepMove' });
+      } else if (s.game.mode === 'handEnd' && !s.settings.autoNext) {
+        h.dispatch({ type: 'nextHand' });
+      } else if (s.ui.overlays.includes('outOfChips')) {
+        h.dispatch({ type: 'reload' });
       } else {
         await tick();
       }
@@ -345,9 +349,13 @@ describe('the handSeq rule (§14.3, Stage 8 acceptance 4b)', () => {
   it('a New table mid-hand: that hand counts as a normal hand, not in the hero model (§3.1)', async () => {
     const backend = new FakeStorage();
     const h = start(backend);
-    await play(h, 2);
+    // The hero folds when it can (checks when that is free): no bust before the third hand.
+    const careful = (legal: LegalActions): PlayerAction =>
+      legal.canFold ? { type: 'fold' } : passive(legal);
+    await drive(h, { hands: 2, hero: careful });
     for (let i = 0; i < 400 && h.state().game.mode !== 'heroTurn'; i++) await tick();
     const unfinished = h.state().game.hand as HandState;
+    expect(unfinished.phase).toBe('betting');
     h.dispatch({ type: 'newTable', setup: { players: 4 }, confirmed: true });
     for (let i = 0; i < 400 && h.state().game.hand?.handSeq === unfinished.handSeq; i++) {
       await tick();

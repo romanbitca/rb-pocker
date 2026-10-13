@@ -21,7 +21,9 @@ export interface HandsRead {
 }
 
 /** The stored ring's list, or why it is not a ring (absent: an empty list). */
-function storedList(raw: string | null): { ok: true; list: unknown[] } | { ok: false; problem: string } {
+function storedList(
+  raw: string | null,
+): { ok: true; list: unknown[] } | { ok: false; problem: string } {
   if (raw === null) return { ok: true, list: [] };
   const parsed = parseJson(raw);
   if (!parsed.ok) return { ok: false, problem: `hands: ${parsed.problem}` };

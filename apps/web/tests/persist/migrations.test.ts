@@ -8,8 +8,12 @@ import {
   schemaOf,
   type Migrations,
 } from '../../src/persist/migrations.ts';
+import { loadProfile } from '../../src/persist/profile.ts';
 import { defaultProfile, isProfile, type Profile } from '../../src/persist/schema.ts';
+import { createSafeStorage, STORAGE_KEYS } from '../../src/persist/storage.ts';
+import { FakeStorage } from './fakeStorage.ts';
 import { NOW, profileV0ToV1, v0Profile } from './fixtures.ts';
+import profileV1 from './fixtures/profile.v1.json' with { type: 'json' };
 
 function deepFreeze<T>(x: T): T {
   if (typeof x === 'object' && x !== null) {
@@ -107,5 +111,22 @@ describe('persist/migrations mechanism (§14.9: a hand-written v0 fixture)', () 
     for (const [x, steps, problem] of cases) {
       expect(migrate(x, 1, steps)).toEqual({ ok: false, problem });
     }
+  });
+});
+
+describe('frozen fixtures of past schema versions (H.2 rule 1, chunk 8.1)', () => {
+  it('profile.v1.json (stats, hero model, flags) still loads as it is', () => {
+    const backend = new FakeStorage({ [STORAGE_KEYS.profile]: JSON.stringify(profileV1) });
+    const load = loadProfile(
+      createSafeStorage(() => backend),
+      { now: NOW },
+    );
+    expect(load).toEqual({ status: 'ok', profile: profileV1, migratedFrom: null });
+    expect(backend.writeLog).toEqual([]);
+    // From schema 2 on, this fixture loads through PROFILE_MIGRATIONS[1] instead.
+    expect(migrate(profileV1, PROFILE_VERSION, PROFILE_MIGRATIONS)).toMatchObject({
+      ok: true,
+      from: 1,
+    });
   });
 });

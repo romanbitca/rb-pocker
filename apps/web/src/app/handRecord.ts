@@ -12,13 +12,7 @@
  */
 import { describe } from '../eval/describe.ts';
 import { updateSeatStats } from '../brain/opponentStats.ts';
-import type {
-  CoachLevel,
-  EngineInput,
-  HandState,
-  LogEvent,
-  TableState,
-} from '../engine/types.ts';
+import type { CoachLevel, EngineInput, HandState, LogEvent, TableState } from '../engine/types.ts';
 import type { HandCategory } from '../eval/evaluate.ts';
 import type { HandMeta, HandRecord, Profile } from '../persist/schema.ts';
 import { applyHand } from '../persist/stats.ts';

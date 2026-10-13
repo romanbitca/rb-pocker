@@ -1139,9 +1139,10 @@ export class TableController {
   }
 
   /**
-   * Keeps the finished hand for Review (§12.10, from memory; its stored record is `pc.v1.hands`): its replay record,
-   * the hero's cards and the result the banner shows. A hand finished without animation (a new
-   * table mid-hand, §3.1) and a voided hand are not kept: nobody played them out.
+   * Keeps the finished hand for Review (§12.10, from memory; the commit stores its record in
+   * `pc.v1.hands`): its replay record, the hero's cards and the result the banner shows. A hand
+   * finished without animation (a new table mid-hand, §3.1) and a voided hand are not kept:
+   * nobody played them out.
    */
   private remember(h: HandState): void {
     const table = this.table;
@@ -2203,7 +2204,12 @@ export class TableController {
     }
     // §14.5: a resumed decision's hint that was open opens again (the "Hint" tap, A.8 `showHint`).
     const reopen = this.reopenHint;
-    if (reopen !== null && this.mode === 'heroTurn' && hand !== null && coachKeyOf(hand) === reopen) {
+    if (
+      reopen !== null &&
+      this.mode === 'heroTurn' &&
+      hand !== null &&
+      coachKeyOf(hand) === reopen
+    ) {
       this.reopenHint = null;
       this.store.getState().dispatch({ type: 'showHint' });
     }
