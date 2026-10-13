@@ -566,6 +566,8 @@ export const en = {
     handVoided: 'This hand was cancelled because of an internal error. Your chips were returned.',
     handNotRestored: 'Your last hand could not be restored. Chips were returned.',
     dataRecovered: 'Your saved data was damaged. We started fresh and kept a copy.',
+    /** The profile was damaged and its backup was good (§14.6 rule 2). */
+    dataRestored: 'Your saved data was damaged. We restored a backup. Your last hand may be missing.',
     /** After an Undo (§11.3 r3, Appendix F.10). */
     undone: 'Move taken back. The unseen cards were shuffled again.',
   },

@@ -108,6 +108,15 @@ export interface HandRecord {
   allIn: { expected: number; actual: number; pot: number } | null;
 }
 
+/**
+ * `pc.v1.hands` (§14.2, chunk 8.1): the last `HANDS_KEEP` (100) hand records, oldest first, one
+ * per `handSeq`. Written at hand end before the profile (§14.3 step 1).
+ */
+export interface HandRing {
+  schema: 1;
+  hands: HandRecord[];
+}
+
 export interface ResultBucket {
   hands: number;
   handsWon: number;
@@ -722,6 +731,12 @@ const handRecord: Check<HandRecord> = refine(
   },
 );
 
+/** The ring's version and list; each record has its own check (`handRecord`). */
+const handRing: Check<{ schema: 1; hands: unknown[] }> = object<{ schema: 1; hands: unknown[] }>({
+  schema: literal(1),
+  hands: array<unknown>(() => null),
+});
+
 const resultBucket: Check<ResultBucket> = object<ResultBucket>({
   hands: count,
   handsWon: count,
@@ -931,6 +946,11 @@ export const isDecisionRecord = (x: unknown): x is DecisionRecord =>
 export const isHandMeta = (x: unknown): x is HandMeta => handMeta(x, 'meta') === null;
 export const isHandRecord = (x: unknown): x is HandRecord => handRecord(x, 'record') === null;
 export const handRecordProblem = (x: unknown): string | null => handRecord(x, 'record');
+/**
+ * The `pc.v1.hands` wrapper (A.7 `HandRing`): its version and a list. The records are checked one
+ * by one (`handRecordProblem`), so one damaged record does not cost the others.
+ */
+export const handRingProblem = (x: unknown): string | null => handRing(x, 'hands');
 export const isTableState = (x: unknown): x is TableState => tableState(x, 'table') === null;
 export const tableStateProblem = (x: unknown): string | null => tableState(x, 'table');
 export const isEngineInput = (x: unknown): x is EngineInput => engineInput(x, 'input') === null;

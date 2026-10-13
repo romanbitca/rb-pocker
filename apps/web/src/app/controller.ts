@@ -76,6 +76,7 @@ import {
   type TableConfig,
   type TableState,
 } from '../engine/types.ts';
+import { commitHand } from '../persist/commit.ts';
 import { loadProfile, saveSettings } from '../persist/profile.ts';
 import { emptyHandMeta, isBotLevel, settingsProblem } from '../persist/schema.ts';
 import type {
@@ -94,6 +95,7 @@ import type { BrainProfile, GradeResult } from '../brain/types.ts';
 import type { BrainReply, BrainRequest } from '../workers/protocol.ts';
 import { levelsOf, nextLevels, sameSeatLevels } from './botLevels.ts';
 import { EquityJobs } from './equityJobs.ts';
+import { countHand, handRecordOf } from './handRecord.ts';
 import { coachKeyOf, finalHudEquity, HintJobs, type HintAsk } from './hintJobs.ts';
 import { LEVEL_RULES, summaryShows } from './levels.ts';
 import { quizRolls, quizScore } from './quiz.ts';
@@ -385,6 +387,8 @@ export interface ControllerSnapshot {
   undoSnapshot: UndoSnapshot | null;
   /** §11.4: the hand had an undo, so it counts as practice. */
   assisted: boolean;
+  /** This tab still writes the storage (false after another writer's `rev`, §14.3 step 2). */
+  writer: boolean;
 }
 
 type FlowKind = 'act' | 'advance' | 'nextHand';
@@ -439,6 +443,7 @@ type NewToast =
   | { kind: 'handVoided' }
   | { kind: 'handNotRestored' }
   | { kind: 'dataRecovered' }
+  | { kind: 'dataRestored' }
   | { kind: 'undone' };
 
 const RING = { events: 500, errors: 50, brain: 200, voided: 5 } as const;
@@ -484,8 +489,19 @@ export class TableController {
   private readonly equityJobs: EquityJobs | null;
   /** The coach's hint jobs (§8.2, §12.6); they write only the `coach` slice. */
   private readonly hintJobs: HintJobs | null;
-  /** The stored profile (settings only in Stage 3); null without storage. */
+  /** The profile as stored, or as it would be (in memory after a failed write); null without storage. */
   private profile: Profile | null = null;
+  /**
+   * The finished hand waits to be committed (§14.3): until its last decision's grade is in, or the
+   * next hand (or table) starts. Meanwhile the session keeps the complete hand.
+   */
+  private commitPending = false;
+  /**
+   * Another writer changed the profile since this tab read it (§14.3 step 2): this tab writes
+   * nothing more this launch and plays on in memory (the read-only banner and the tab lock are
+   * chunk 8.3's, §14.7).
+   */
+  private writer = true;
   /** When this table's session began (§14.4); stored in the session. */
   private sessionStart: string | null = null;
   private settingsTimer: unknown = null;
@@ -523,9 +539,9 @@ export class TableController {
   private newcomers: string[] = [];
   /**
    * §9.5 seat statistics by `playerId`, updated at hand end only, so every observation of a hand
-   * sees the same numbers. The hero's ('hero') is the hero model: it stays across tables, in
-   * memory until Stage 8 commits it to `profile.heroModel`; a bot's starts when it sits down
-   * (a replaced bot's new `playerId` has none) and goes with its table.
+   * sees the same numbers. The hero's ('hero') is the hero model: it stays across tables and is
+   * the profile's `heroModel`, which every commit updates (§14.3); a bot's starts when it sits
+   * down (a replaced bot's new `playerId` has none) and goes with its table.
    */
   private seatStats: Readonly<Record<string, SeatStats>> = NO_SEAT_STATS;
   private visibleTimer: unknown = null;
@@ -555,6 +571,8 @@ export class TableController {
   private latched: CoachLevel | null = null;
   /** The hand whose summary was opened (§12.9: once per hand). */
   private summaryHand: number | null = null;
+  /** A resumed decision whose hint was open (`coachKeyOf`): it opens again on the hero's turn. */
+  private reopenHint: string | null = null;
   /** Open the end-of-hand summary (`ControllerOptions.summaries`). */
   private readonly summaries: boolean;
   private readonly events: ControllerEvent[] = [];
@@ -580,6 +598,7 @@ export class TableController {
     this.unsubscribe = this.store.subscribe((s, prev) => {
       if (s.ui.nav !== prev.ui.nav) this.onNav(s.ui, prev.ui);
       if (s.ui.gates !== prev.ui.gates) this.onGates();
+      if (s.coach.opened !== prev.coach.opened) this.onHintOpened();
     });
     this.store.setGameHandler((cmd) => this.dispatch(cmd));
   }
@@ -587,7 +606,8 @@ export class TableController {
   /**
    * Boot (§12.14): with storage, reads the profile (its settings; Welcome on the first launch, else
    * Home) and the saved session (§14.5: Home's Play continues it; a hand that cannot be restored is
-   * voided with its chips returned, §14.3). Then ready for Play.
+   * voided with its chips returned; a complete hand is committed now if it was not yet, §14.3 load
+   * table). Then ready for Play.
    */
   boot(): void {
     if (this.mode !== 'booting') return;
@@ -599,9 +619,9 @@ export class TableController {
       this.profile = loaded.profile;
       this.seatStats = heroOnly(NO_SEAT_STATS, loaded.profile.heroModel);
       this.store.setState({ settings: sanitize(loaded.profile.settings, {}) });
-      if (loaded.status === 'reset') {
-        this.error('profile reset', loaded.problem);
-        this.toast({ kind: 'dataRecovered' });
+      if (loaded.status === 'reset' || loaded.status === 'restored') {
+        this.error(`profile ${loaded.status}`, loaded.problem);
+        this.toast({ kind: loaded.status === 'reset' ? 'dataRecovered' : 'dataRestored' });
       }
       const first = loaded.status === 'new' || loaded.status === 'unavailable';
       this.ui({ type: 'go', screen: first ? 'welcome' : 'home' });
@@ -613,6 +633,8 @@ export class TableController {
       } else if (session.status === 'discarded') {
         this.error('session discarded', session.problem);
       }
+      // §14.3 load table: a complete hand is committed now (or was already: step 5 only).
+      if (this.hand?.phase === 'complete') this.recoverHand(this.hand);
     }
     this.mode = 'idle';
     this.publish();
@@ -699,6 +721,7 @@ export class TableController {
       meta: this.meta,
       undoSnapshot: this.undoSnapshot,
       assisted: isAssisted(this.meta),
+      writer: this.writer,
     };
   }
 
@@ -754,11 +777,16 @@ export class TableController {
     const table = this.buildTable();
     if (table === null) return;
     if (this.hand !== null && this.hand.phase !== 'complete') {
+      this.dropGrading(true); // its grade cannot come now: recorded as failed (§11.3 r5)
       await this.finishHeadless();
       if (token !== this.newTableSeq) return;
+      // §3.1: committed as a normal hand; the forced fold adds nothing to the hero model (§9.5
+      // notes). Step 5 is the new table's first session, written as its hand is dealt below.
+      const done = this.hand as HandState | null; // `await` above: no longer the unfinished one
+      if (done?.phase === 'complete') this.commitFinished(done, null, false);
     }
-    // Stage 8 commits the finished hand here (§14.3) and ends the session (§14.4). A hand
-    // finished headless (the hero folded by the app, §3.1) adds nothing to the statistics.
+    // A finished hand still waiting for a grade is committed by `closeTable`. The session of
+    // §14.4 (the stats' running totals) ends here too: chunk 8.2.
     this.closeTable();
     this.seatStats = heroOnly(this.seatStats); // a new table: its bots have not been seen yet
     this.beginSession();
@@ -849,7 +877,8 @@ export class TableController {
     }
     this.closeTable();
     this.sessionStart = null;
-    if (this.storage !== null) clearSession(this.storage); // §3.1: the old table's session ends
+    // §3.1: the old table's session ends.
+    if (this.storage !== null && this.writer) clearSession(this.storage);
     this.ui({ type: 'replace', screen: 'setup' });
   }
 
@@ -962,12 +991,12 @@ export class TableController {
 
   /** Deals the next hand at `table` (§2.3 `startNextHand`), at the bot levels the settings name now. */
   private startHandAt(table: TableState): void {
+    this.flushCommit();
     this.bumpEpoch();
     const levelled = this.withSettingsLevels(table);
-    const t =
-      levelled.nextHandSeq < this.handSeqFloor
-        ? { ...levelled, nextHandSeq: this.handSeqFloor }
-        : levelled;
+    // §14.3 handSeq rule: global across tables, and above every hand the profile has counted.
+    const floor = Math.max(this.handSeqFloor, (this.profile?.lastCommittedHandSeq ?? 0) + 1);
+    const t = levelled.nextHandSeq < floor ? { ...levelled, nextHandSeq: floor } : levelled;
     let hand: HandState;
     try {
       hand = startHand(t, this.seeds.handSeed(t.nextHandSeq));
@@ -1002,32 +1031,115 @@ export class TableController {
     this.publish();
   }
 
-  /** The hand is complete: the next table (§3.1 bot replacement), then the hand-end pause. */
+  /** The hand is complete: the next table (§3.1 bot replacement), the hand-end pause, the commit. */
   private finishHand(h: HandState): void {
+    if (!this.settle(h)) return;
+    this.mode = 'handEnd';
+    this.remember(h);
+    this.trace('hand end', { handSeq: h.handSeq, net: h.result?.net ?? null });
+    this.commitWhenGraded();
+  }
+
+  /**
+   * The complete hand's next table (§3.1: busted bots replaced, at the levels the next hand is
+   * played at); the commit is now due (§14.3). False when the hand could not be finished (voided).
+   */
+  private settle(h: HandState): boolean {
     const table = this.table as TableState;
     let next: TableState;
     try {
-      // The bots that sit down for the next hand are picked at the levels it will be played at.
       next = nextTable(this.withSettingsLevels(table), h);
     } catch (e) {
       this.voidHand(e, null);
-      return;
+      return false;
     }
     this.newcomers = next.slots
       .filter((slot, i) => slot.playerId !== table.slots[i]?.playerId)
       .map((slot) => slot.name);
-    // §9.5: the seat statistics change only here, at hand end (a newcomer has none yet).
-    this.seatStats = withHandStats(this.seatStats, table, h);
     this.next = next;
-    this.mode = 'handEnd';
-    this.remember(h);
-    this.trace('hand end', { handSeq: h.handSeq, net: h.result?.net ?? null });
-    // Stage 8 commits the hand first (§14.3 steps 1–4); step 5: the session moves to the next table.
-    this.saveSession();
+    this.commitPending = true;
+    return true;
   }
 
   /**
-   * Keeps the finished hand for Review (§12.10, "from memory" until Stage 8): its replay record,
+   * §14.3: the finished hand is committed once every decision of it has its grade (§11.3 r5: a
+   * late one still counts), or when the next hand or table starts (`flushCommit`). Until then the
+   * session keeps the complete hand, so a crash commits it at the next launch. Then the seat
+   * statistics move on (§9.5: only at hand end) and the session becomes the next table (step 5).
+   */
+  private commitWhenGraded(): void {
+    const h = this.hand;
+    const table = this.table;
+    if (!this.commitPending || this.grading !== null || h === null || table === null) return;
+    this.commitPending = false;
+    this.seatStats = withHandStats(this.seatStats, table, h);
+    if (this.storage === null || this.profile === null) return;
+    this.commitFinished(h, this.sessionState(), true);
+  }
+
+  /** The next hand or table starts: a finished hand still waiting for a grade is committed now. */
+  private flushCommit(): void {
+    if (!this.commitPending) return;
+    this.dropGrading(true); // r5: its grade did not come in time, recorded as failed
+    this.commitWhenGraded();
+  }
+
+  /**
+   * §14.3 steps 1–5 for the complete hand `h` (dealt from `this.table`, with `this.inputs` and
+   * `this.meta`): its record, `applyHand` and the hero model in one profile write. `session` is
+   * step 5's (null: the caller writes the next one); `heroModel` false for a hand the app finished
+   * headless (§3.1). A second writer (`conflict`) stops every write of this tab (§14.7, chunk 8.3).
+   */
+  private commitFinished(h: HandState, session: SessionState | null, heroModel: boolean): void {
+    const { storage, profile, table } = this;
+    if (storage === null || profile === null || table === null || !this.writer) return;
+    const now = this.now();
+    const record = handRecordOf({
+      hand: h,
+      table,
+      inputs: this.inputs,
+      meta: this.meta,
+      coachLevel: this.latched ?? this.settings().coachLevel,
+      allIn: this.store.getState().equity.allIn,
+      at: now.toISOString(),
+    });
+    if (record === null) {
+      if (session !== null) saveSession(storage, session);
+      return;
+    }
+    const log = heroModel ? h.log : null;
+    const apply = (p: Profile): Profile => countHand(p, record, log);
+    const result = commitHand(storage, profile, { record, apply, session }, now);
+    this.trace('commit', { handSeq: h.handSeq, status: result.status });
+    if (result.status === 'conflict') {
+      this.writer = false;
+      this.error('another writer', { rev: profile.rev, storedRev: result.storedRev });
+      return;
+    }
+    if (result.status === 'invalid') this.error('hand not committed', result.problem);
+    this.profile = result.profile;
+    // §9.5: the hero model in memory is the profile's.
+    if (heroModel && result.profile.heroModel.hands > 0) {
+      this.seatStats = { ...this.seatStats, [HERO_ID]: result.profile.heroModel };
+    }
+  }
+
+  /**
+   * §14.3 load table: the saved hand is complete. It is counted now (steps 1–5) unless it already
+   * was (step 5 only); either way the game is between hands at its next table, as after a session
+   * saved with no hand (§14.5).
+   */
+  private recoverHand(h: HandState): void {
+    if (!this.settle(h)) return;
+    this.commitWhenGraded();
+    this.table = null;
+    this.hand = null;
+    this.inputs = [];
+    this.resetDecisions();
+  }
+
+  /**
+   * Keeps the finished hand for Review (§12.10, from memory; its stored record is `pc.v1.hands`): its replay record,
    * the hero's cards and the result the banner shows. A hand finished without animation (a new
    * table mid-hand, §3.1) and a voided hand are not kept: nobody played them out.
    */
@@ -1220,7 +1332,7 @@ export class TableController {
         const h = this.hand;
         if (h === null) return;
         if (h.phase === 'complete') {
-          // Stage 8 commits this hand (§3.1: "commits it, and closes the table").
+          // `newTable` commits it (§3.1: "commits it, and closes the table").
           this.trace('hand finished headless', { handSeq: h.handSeq, record: this.record(h) });
           return;
         }
@@ -1302,6 +1414,15 @@ export class TableController {
     const decisionId = heroDecisionsTaken(h);
     if (this.meta.hintShown[decisionId] === true) return;
     this.meta = { ...this.meta, hintShown: { ...this.meta.hintShown, [decisionId]: true } };
+  }
+
+  /** "Hint" opened (§10.2): kept in the hand's meta at once, so it outlives a reload (§14.5). */
+  private onHintOpened(): void {
+    const h = this.hand;
+    if (h === null || this.headless || this.mode !== 'heroTurn') return;
+    const meta = this.meta;
+    this.noteHintOpened(h);
+    if (this.meta !== meta) this.saveSession();
   }
 
   /** The coach level of decision `decisionId` (§10): fixed when it started, else the settings'. */
@@ -1460,8 +1581,9 @@ export class TableController {
       if (result !== null && pausesAt(g.level, result.grade)) this.openFeedback(g, result);
     }
     // A late grade (after the pause) is only recorded: nothing else changes (r5; its grade chip is
-    // the §12.6 chip's, not built yet).
-    this.saveSession();
+    // the §12.6 chip's). At the hand end it was the last thing the commit waited for (§14.3).
+    if (this.commitPending) this.commitWhenGraded();
+    else this.saveSession();
     this.pump();
     this.publish();
   }
@@ -1595,6 +1717,7 @@ export class TableController {
     this.decisionLevel = null;
     this.levels.clear();
     this.latched = null;
+    this.reopenHint = null;
     this.closeFeedbackOverlay();
     if (this.store.getState().ui.overlays.includes('summary')) {
       this.ui({ type: 'close', overlay: 'summary' });
@@ -1609,12 +1732,17 @@ export class TableController {
   private resumeDecision(): void {
     const h = this.hand;
     const snap = this.undoSnapshot;
-    if (h === null || snap === null || h.phase === 'complete') return;
+    if (h === null || snap === null) return;
     if (snap.state.handSeq !== h.handSeq || heroDecisionsTaken(h) !== snap.decisionId + 1) return;
     const act = this.inputs[snap.inputCount];
     if (act?.kind !== 'act' || act.seat !== HERO) return;
     if (standingRecord(this.meta, snap.decisionId) !== null) return;
     const g = this.decisionAt(snap.state, act.action);
+    if (h.phase === 'complete') {
+      // The hand is committed at boot (§14.3 load table): no grade can join it now (r5: failed).
+      this.addRecord(decisionRecord(g.facts, null));
+      return;
+    }
     this.trace('grade asked again', { decisionId: g.ask.decisionId });
     this.startGrading(g, false); // a late grade: no pause
   }
@@ -1783,10 +1911,15 @@ export class TableController {
     // §9.5: the saved statistics, so a resumed hand has the same observations (and hints); the
     // hero model the profile holds when the session has none for the hero. They come first: the
     // grade that `resumeDecision` asks again below is made from the decision's observation.
+    // Between hands the hero's entry is the profile's hero model (§9.5, written by every commit);
+    // a saved hand keeps the statistics it was dealt with, the hero's too.
     const stats: Record<string, SeatStats> = { ...heroOnly(this.seatStats) };
+    const heroFromProfile = session.hand === null && this.profile !== null;
     t.slots.forEach((slot, i) => {
       const s = session.seatStats[i];
-      if (s !== null && s !== undefined) stats[slot.playerId] = s;
+      if (s !== null && s !== undefined && !(i === HERO && heroFromProfile)) {
+        stats[slot.playerId] = s;
+      }
     });
     this.seatStats = stats;
     if (session.hand === null) {
@@ -1795,13 +1928,18 @@ export class TableController {
       this.next = session.table;
       this.inputs = [];
     } else {
+      const h = session.hand;
       this.table = session.table;
-      this.hand = session.hand;
+      this.hand = h;
       this.next = null;
       this.inputs = [...session.handInputs];
       this.meta = session.meta;
       this.undoSnapshot = session.undoSnapshot;
       this.resumeDecision();
+      // A hint opened before the page went is open again on that decision (§14.5).
+      if (isHeroTurn(h) && this.meta.hintShown[heroDecisionsTaken(h)] === true) {
+        this.reopenHint = coachKeyOf(h);
+      }
     }
     this.handSeqFloor = Math.max(
       this.handSeqFloor,
@@ -1815,16 +1953,16 @@ export class TableController {
   }
 
   /**
-   * `pc.v1.session` (§14.5, A.7), after every step: the table as at hand start with the hand and its
-   * inputs; between hands (after `nextTable`) the next hand's table and no hand. `savedAt` is now.
+   * `pc.v1.session` (§14.5, A.7): the table as at hand start with the hand and its inputs (also a
+   * complete hand until it is committed, §14.3); between hands (after `nextTable` and the commit)
+   * the next hand's table and no hand. `savedAt` is now. Null without a table.
    */
-  private saveSession(): void {
-    if (this.storage === null || this.headless) return;
-    const withHand = this.hand !== null && this.next === null;
+  private sessionState(): SessionState | null {
+    const withHand = this.hand !== null && (this.next === null || this.commitPending);
     const table = withHand ? this.table : (this.next ?? this.table);
-    if (table === null) return;
+    if (table === null) return null;
     const now = this.now().toISOString();
-    const session: SessionState = {
+    return {
       schema: 1,
       savedAt: now,
       sessionStart: this.sessionStart ?? now,
@@ -1836,6 +1974,13 @@ export class TableController {
       seatStats: statsBySeat(this.seatStats, table),
       resumeAfterUpdate: false,
     };
+  }
+
+  /** Writes the session, after every step (§14.5). */
+  private saveSession(): void {
+    if (this.storage === null || this.headless || !this.writer) return;
+    const session = this.sessionState();
+    if (session === null) return;
     const saved = saveSession(this.storage, session);
     if (!saved.ok && saved.reason === 'invalid') this.error('session not saved', saved.problem);
   }
@@ -1856,17 +2001,24 @@ export class TableController {
     if (this.settingsTimer !== null) this.timers.clearTimeout(this.settingsTimer);
     this.settingsTimer = null;
     this.settingsSeq++;
-    if (this.storage === null || this.profile === null || !this.settingsDirty) return;
+    if (this.storage === null || this.profile === null || !this.settingsDirty || !this.writer) {
+      return;
+    }
     const saved = saveSettings(this.storage, this.profile, this.settings(), this.now());
     this.profile = saved.profile;
     this.settingsDirty = false;
-    if (!saved.result.ok && saved.result.reason === 'invalid') {
-      this.error('settings not saved', saved.result.problem);
+    const result = saved.result;
+    if (!result.ok && result.reason === 'invalid') this.error('settings not saved', result.problem);
+    if (!result.ok && result.reason === 'conflict') {
+      this.writer = false; // §14.3 step 2: another tab writes now (§14.7, chunk 8.3)
+      this.error('another writer', { rev: saved.profile.rev, storedRev: result.storedRev });
     }
   }
 
   /** Forgets the table and its hand (a new table, Change table, a voided hand). */
   private closeTable(): void {
+    this.flushCommit();
+    this.commitPending = false;
     this.bumpEpoch();
     this.headless = false;
     this.table = null;
@@ -2048,6 +2200,12 @@ export class TableController {
           coachLevel: this.latched,
         },
       });
+    }
+    // §14.5: a resumed decision's hint that was open opens again (the "Hint" tap, A.8 `showHint`).
+    const reopen = this.reopenHint;
+    if (reopen !== null && this.mode === 'heroTurn' && hand !== null && coachKeyOf(hand) === reopen) {
+      this.reopenHint = null;
+      this.store.getState().dispatch({ type: 'showHint' });
     }
     this.offerSummary();
     // After the game slice, so the equity slice never describes a hand the store does not have.

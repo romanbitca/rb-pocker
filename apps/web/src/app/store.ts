@@ -171,6 +171,8 @@ export type Toast =
   | { id: number; kind: 'handNotRestored' }
   /** "Your saved data was damaged. We started fresh and kept a copy." (§12.11) */
   | { id: number; kind: 'dataRecovered' }
+  /** "Your saved data was damaged. We restored a backup. Your last hand may be missing." (§14.6 rule 2) */
+  | { id: number; kind: 'dataRestored' }
   /** "Move taken back. The unseen cards were shuffled again." (§11.3 r3, Appendix F.10) */
   | { id: number; kind: 'undone' };
 
