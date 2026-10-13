@@ -10,6 +10,7 @@
   align-items: center;
   gap: 4px;
   width: 100%;
+  min-width: 44px;
   min-height: 44px;
   margin: 0;
   padding: 10px 12px 8px;
@@ -51,6 +52,24 @@
   height: 14px;
 }
 
+/* "Review this hand": a quiet link under the card, 44 px to touch (§12.12). */
+.review {
+  display: block;
+  min-width: 44px;
+  min-height: 44px;
+  margin: 2px auto 0;
+  padding: 0 12px;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 0.9375rem;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-shadow: 0 1px 3px rgb(0 0 0 / 60%);
+  cursor: pointer;
+}
+
 @keyframes rise {
   from {
     opacity: 0;
@@ -73,4 +92,39 @@
 :root[data-motion='reduced'] .banner {
   animation-name: fade;
   animation-duration: calc(120ms * var(--speed));
+}
+
+/* Landscape's right column has about 110 px for the banner and the link: tighter. */
+.side .banner {
+  gap: 0;
+  padding: 4px 10px 2px;
+}
+.side .main {
+  line-height: 1.25;
+}
+.side .next {
+  margin-top: 0;
+}
+.side .review {
+  margin-top: -2px;
+}
+
+/* Wide screens: the table box is only ~340 px tall, so the link shares the "Next hand ›" row (44 px
+   for both) instead of taking a row of its own under the card, which made the card taller than
+   the room above the hero's cards. The Table positions the holder (absolute), so the link can sit
+   over the card's bottom-right corner; the banner itself stays one button (§12.9). */
+.wide .banner {
+  padding-bottom: 0;
+}
+.wide .next {
+  align-self: flex-start;
+  min-height: 44px;
+  margin-top: 0;
+}
+.wide .review {
+  position: absolute;
+  right: 13px;
+  bottom: 1px;
+  margin: 0;
+  text-shadow: none;
 }

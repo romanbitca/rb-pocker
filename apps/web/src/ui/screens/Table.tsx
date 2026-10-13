@@ -277,24 +277,53 @@ function useHandEndLines(): readonly string[] | null {
   }, [view, luck]);
 }
 
-/** The banner's box in the table: under the board, clear of the side pods; else above the pot. */
+/**
+ * The banner's box in the table: under the board, clear of the side pods, when there is room;
+ * else at the foot of the table, just above the hero's cards, growing upward. It never reaches
+ * above the table box, where the top bar is: the old spot above the pot did on the 340 px tall
+ * wide table, and its result lines sat under the top bar.
+ */
 export function bannerStyle(geometry: TableGeometry): CSSProperties {
-  const { size, board, pot, hero } = geometry;
+  const { size, board, hero } = geometry;
   const width = Math.max(180, Math.min(360, size.w - 2 * 76));
   const left = Math.round((size.w - width) / 2);
   const top = board.y + board.h + 10;
-  const room = size.h - hero.h - 4 - top;
-  // About three lines and "Next hand ›" need ~110 px; otherwise it sits above the pot.
-  if (room >= 110) return { position: 'absolute', left, top, width };
-  return { position: 'absolute', left, width, bottom: size.h - pot.y + 6 };
+  // The lowest it may reach: the hero strip's cards reach up into the box.
+  const limit = hero.y - 4;
+  // About three lines and "Next hand ›" need ~110 px.
+  if (limit - top >= 110) return { position: 'absolute', left, top, width };
+  return {
+    position: 'absolute',
+    left,
+    width,
+    bottom: size.h - limit,
+    maxHeight: limit - 4,
+    overflowY: 'auto',
+  };
+}
+
+/** "Review this hand" on the banner: the Review screen on the hand that just ended (§12.10). */
+function useReviewHand(): () => void {
+  const dispatch = useDispatch();
+  const handSeq = useAppStore((s) => s.game.hand?.handSeq ?? null);
+  return useCallback(() => dispatch({ type: 'review', handSeq }), [dispatch, handSeq]);
 }
 
 const BannerLayer = memo(function BannerLayer({ geometry }: { geometry: TableGeometry }) {
   const lines = useHandEndLines();
   const dispatch = useDispatch();
   const next = useCallback(() => dispatch({ type: 'nextHand' }), [dispatch]);
+  const review = useReviewHand();
   if (lines === null) return null;
-  return <HandEndBanner lines={lines} onNext={next} style={bannerStyle(geometry)} />;
+  return (
+    <HandEndBanner
+      lines={lines}
+      onNext={next}
+      onReview={review}
+      wide={geometry.layout === 'wide'}
+      style={bannerStyle(geometry)}
+    />
+  );
 });
 
 /** Landscape: the hero's cards inset at the bottom centre of the felt (§12.5). */
@@ -501,8 +530,9 @@ const SideBanner = memo(function SideBanner() {
   const lines = useHandEndLines();
   const dispatch = useDispatch();
   const next = useCallback(() => dispatch({ type: 'nextHand' }), [dispatch]);
+  const review = useReviewHand();
   if (lines === null) return null;
-  return <HandEndBanner lines={lines} onNext={next} />;
+  return <HandEndBanner lines={lines} onNext={next} onReview={review} side />;
 });
 
 // ---------------------------------------------------------------------------------------------

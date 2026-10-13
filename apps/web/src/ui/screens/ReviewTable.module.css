@@ -1,0 +1,99 @@
+/* The table of a replay (PLAN §12.10): the same look as the Table screen's felt and hero strip
+   (Table.module.css), in the box that fills its grid cell on the Review page. */
+
+.box {
+  position: absolute;
+  inset: 0;
+}
+
+/* The felt "stadium", inset 12% × 6% (a static radial gradient, §12.3). */
+.felt {
+  position: absolute;
+  inset: 6% 12%;
+  border: 6px solid var(--rail);
+  border-radius: 999px;
+  background: radial-gradient(ellipse at 50% 45%, var(--felt) 0%, var(--felt-dark) 100%);
+  box-shadow: inset 0 0 0 2px rgb(255 255 255 / 6%);
+}
+
+/* The hero's bet chip, drawn like the seats' chips. */
+.bet {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.betPill {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 6px 1px 2px;
+  border-radius: 10px;
+  background: rgb(0 0 0 / 55%);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 16px;
+  white-space: nowrap;
+}
+
+.chip {
+  width: 14px;
+  height: 14px;
+}
+
+/* Landscape: the hero's cards inset at the bottom centre of the felt (§12.5). */
+.heroInset {
+  position: absolute;
+  z-index: 4;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+}
+
+/* ---- The hero under the table: cards reach up into the felt, then the hand's name ---- */
+
+.hero {
+  position: relative;
+  z-index: 7;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  width: 100%;
+  max-width: 600px;
+  height: var(--hero-strip);
+  margin: 0 auto;
+  padding: 0 max(12px, env(safe-area-inset-right)) 2px max(12px, env(safe-area-inset-left));
+}
+
+.heroLeft {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  margin-top: calc(-1 * var(--hero-overlap));
+}
+
+.heroText {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  margin: 0;
+  padding-top: 8px;
+}
+
+.heroName {
+  font-size: 1.0625rem;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.heroSub {
+  color: var(--muted);
+  font-size: 0.875rem;
+  line-height: 1.3;
+}

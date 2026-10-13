@@ -38,9 +38,30 @@ import {
   type Overlay,
   type Screen,
 } from './navigation.ts';
+import {
+  initialReview,
+  listItemOf,
+  selectHandSeq,
+  type ReviewCommand,
+  type ReviewHand,
+  type ReviewListItem,
+  type ReviewSlice,
+} from './review.ts';
 
 export { useShallow };
 export type { Nav, NavAction, Overlay, Screen };
+// Review (§12.10, chunk 6.3): the hands kept in memory, and the view model of one of them. The
+// builder is small (it reuses the Table's view builders); the screen itself is lazy (ui/App.tsx).
+export { buildReview } from './reviewViews.ts';
+export type { ReviewCommand, ReviewHand, ReviewListItem, ReviewSlice };
+export type {
+  ReviewActor,
+  ReviewEvent,
+  ReviewFrame,
+  ReviewReplay,
+  ReviewSummary,
+  ReviewView,
+} from './reviewViews.ts';
 // The view-model selectors (ui/views.ts shapes): the UI imports them from here (§2.1).
 export * from './tableViews.ts';
 // The HUD numbers (win badge, draw chips, big-move line, "By river"): the same, for Stage 4.
@@ -385,7 +406,7 @@ export type GameCommand =
  */
 export type CoachCommand = { type: 'showHint' };
 
-export type Command = UiCommand | GameCommand | CoachCommand;
+export type Command = UiCommand | GameCommand | CoachCommand | ReviewCommand;
 
 const UI_COMMANDS: ReadonlySet<string> = new Set([
   'go',
@@ -423,6 +444,8 @@ export interface AppState {
   coach: CoachSlice;
   ui: UiSlice;
   settings: GameSettings;
+  /** The last finished hands, kept in memory for Review (written by the controller; §12.10). */
+  review: ReviewSlice;
   /** The one way to change anything (the UI dispatches through the controller, §2.1). Stable. */
   dispatch: (cmd: Command) => void;
 }
@@ -473,8 +496,11 @@ export function createAppStore(): AppStore {
     coach: initialCoach(),
     ui: initialUi(),
     settings: defaultGameSettings(),
+    review: initialReview(),
     dispatch: (cmd) => {
-      if (isUiCommand(cmd)) {
+      if (cmd.type === 'review') {
+        set((s) => showReview(s, cmd));
+      } else if (isUiCommand(cmd)) {
         set((s) => {
           const ui = reduceUi(s.ui, cmd);
           return ui === s.ui ? s : { ui };
@@ -502,6 +528,13 @@ export function updateUi(store: StoreApi<AppState>, change: (ui: UiSlice) => UiS
     const ui = withGates(change(s.ui));
     return ui === s.ui ? s : { ui };
   });
+}
+
+/** `review` command: the Review screen on a hand (or the list), over whatever screen is on show. */
+function showReview(s: AppState, cmd: ReviewCommand): Partial<AppState> | AppState {
+  const review = selectHandSeq(s.review, cmd.handSeq);
+  const ui = reduceUi(s.ui, { type: 'go', screen: 'review' });
+  return review === s.review && ui === s.ui ? s : { review, ui };
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -676,4 +709,28 @@ export const selectCanTopUp = (s: AppState): boolean => {
   if (next === null || (s.game.mode !== 'handEnd' && s.game.mode !== 'idle')) return false;
   const hero = next.slots[0];
   return hero !== undefined && hero.stack > 0 && hero.stack < next.config.startingStack;
+};
+
+// ---------------------------------------------------------------------------------------------
+// Review (§12.10)
+
+let listedHands: readonly ReviewHand[] | null = null;
+let listed: readonly ReviewListItem[] = [];
+
+/** The list of recent hands, newest first: rows without records (a new array only when a hand is added). */
+export const selectReviewList = (s: AppState): readonly ReviewListItem[] => {
+  if (s.review.hands !== listedHands) {
+    listedHands = s.review.hands;
+    listed = s.review.hands.map(listItemOf);
+  }
+  return listed;
+};
+
+/** How many finished hands Review has. */
+export const selectReviewCount = (s: AppState): number => s.review.hands.length;
+
+/** The hand the Review screen shows, or null for the list. ⚠️ Holds the seed: for view builders only. */
+export const selectReviewHand = (s: AppState): ReviewHand | null => {
+  const { hands, selected } = s.review;
+  return selected === null ? null : (hands.find((h) => h.handSeq === selected) ?? null);
 };

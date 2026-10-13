@@ -89,6 +89,8 @@ import {
   type Grader,
   type GradeOutcome,
 } from './grading.ts';
+import { addHand, type ReviewHand } from './review.ts';
+import { handEndViewOf } from './tableViews.ts';
 import {
   updateUi,
   type AppStore,
@@ -885,9 +887,29 @@ export class TableController {
       .map((slot) => slot.name);
     this.next = next;
     this.mode = 'handEnd';
+    this.remember(h);
     this.trace('hand end', { handSeq: h.handSeq, net: h.result?.net ?? null });
     // Stage 8 commits the hand first (§14.3 steps 1–4); step 5: the session moves to the next table.
     this.saveSession();
+  }
+
+  /**
+   * Keeps the finished hand for Review (§12.10, "from memory" until Stage 8): its replay record,
+   * the hero's cards and the result the banner shows. A hand finished without animation (a new
+   * table mid-hand, §3.1) and a voided hand are not kept: nobody played them out.
+   */
+  private remember(h: HandState): void {
+    const table = this.table;
+    const end = table === null ? null : handEndViewOf(h, table);
+    if (end === null) return;
+    const hand: ReviewHand = {
+      handSeq: h.handSeq,
+      at: this.now().toISOString(),
+      record: this.record(h),
+      heroHole: h.seats[HERO]?.hole ?? null,
+      end,
+    };
+    this.store.setState((s) => ({ review: addHand(s.review, hand) }));
   }
 
   /** After the hand-end pause: the next hand, or the out-of-chips dialog (§3.1). */
