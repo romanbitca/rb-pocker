@@ -28,16 +28,63 @@ interface PcState {
       street: string;
       grade: string | null;
       undone: boolean;
+      /** §10.2 "counts as on your own": the hint was on show or opened. */
+      hintSeen: boolean;
+      eRandom: number | null;
+      need: number | null;
+      quiz: { correct: number; of: number } | null;
     }[];
+    /** §10: the coach level fixed for the hero's current (or latest) decision, else null. */
+    coachLevel: string | null;
+    /** Refused inputs, bot fallbacks and voided hands since the launch (§12.14). */
+    diag: { engineErrors: number; botFallbacks: number; voidedHands: number };
   };
   ui: { screen: string; overlays: readonly string[]; gates: readonly string[]; layout: string };
   settings: { players: number; speed: string; autoNext: boolean } & Record<string, unknown>;
-  /** The coach's answer for the hero decision `key` (`CoachSlice`, app/store.ts). */
-  coach: { key: string | null; status: 'idle' | 'ready' | 'failed' };
+  /**
+   * The coach's answer for the hero decision `key` (`CoachSlice`, app/store.ts): `opened` = the
+   * decision whose hint was opened; `quiz` = the Advanced quiz rolled for it (§10.3).
+   */
+  coach: {
+    key: string | null;
+    status: 'idle' | 'ready' | 'failed';
+    opened: string | null;
+    quiz: { key: string; answers: readonly number[]; skipped: boolean } | null;
+    /** The hint's decision: the coach's move and the EV of each candidate action (§8.9). */
+    decision: {
+      action: { type: string; to?: number };
+      ev: Readonly<Record<string, number>>;
+    } | null;
+  };
+}
+
+/** `window.__pc.faults` (app/testFaults.ts, chunk 6.5): faults for brain.worker. */
+export interface PcFaults {
+  /** Replies to jobs of `kind` come `ms` later on the page clock; null: on time again. */
+  delay(kind: 'botDecision' | 'hint' | 'grade', ms: number | null): void;
+  /** The next `count` jobs of `kind` answer `error`. */
+  fail(kind: 'botDecision' | 'hint' | 'grade', count: number): void;
+  /** Bots think this long at Normal speed; null: the brain's own. */
+  think(ms: number | null): void;
+  /** The worker dies now (false: none left to kill). */
+  kill(): boolean;
+  log(): { at: number; what: string; kind?: string; jobId?: number; ms?: number }[];
+}
+
+/** A line of a worker client's message log (app/workerClient.ts). */
+export interface WorkerLogLine {
+  at: number;
+  what: string;
+  kind?: string;
+  jobId?: number;
+  epoch?: number;
+  detail?: string;
 }
 
 interface PcHooks {
   seed: string | null;
+  /** Faults for brain.worker (chunk 6.5). */
+  faults: PcFaults | null;
   state(): PcState;
   dispatch(cmd: { type: string } & Record<string, unknown>): void;
   logs(): {
@@ -45,6 +92,8 @@ interface PcHooks {
     errors: { what: string; detail?: unknown }[];
     /** Brain requests and replies as the controller saw them ('request' = a bot's decision). */
     brain: { what: string; detail?: unknown }[];
+    /** brain.worker's message log, as the client keeps it (out, in, drop, timeout, crash, …). */
+    brainWorker: WorkerLogLine[];
   };
   snapshot(): {
     mode: string;

@@ -32,14 +32,13 @@ export function startApp(options: StartOptions): TableController {
   const hooks = options.hooks;
   const seed = hooks?.seedFromSearch(win.location.search) ?? null;
   // Development and E2E builds: `?script=<name>` puts scripted bots in front of it (the coach's
-  // hints and grades still come from brain.worker).
+  // hints and grades still come from brain.worker), and a layer for faults sits in front of the
+  // worker (`window.__pc.faults`, chunk 6.5).
   const script = hooks?.scriptFromSearch(win.location.search) ?? null;
+  const rig = hooks?.testBrain(script, realTimers);
   // Warmed at start like the equity worker, never awaited (§12.14, §15.3): the bots decide in
   // brain.worker; without module workers it is `failed` and the bots take the safest action.
-  const brain =
-    hooks !== undefined && script !== null
-      ? hooks.scriptedBrain(script, realTimers)
-      : startBrainWorker(realTimers);
+  const brain = rig?.brain ?? startBrainWorker(realTimers);
   const controller = createTableController({
     store: appStore,
     brain,
@@ -58,7 +57,9 @@ export function startApp(options: StartOptions): TableController {
     summaries: true,
   });
   installLifecycle(win, appStore);
-  if (hooks !== undefined) hooks.installTestHooks(win, appStore, controller, seed, script);
+  if (hooks !== undefined) {
+    hooks.installTestHooks(win, appStore, controller, seed, script, rig?.faults ?? null);
+  }
   // Reads the profile and the saved session (§12.14, §14.5), then shows Welcome or Home.
   controller.boot();
   return controller;

@@ -87,6 +87,29 @@ describe('window.__pc and startApp', () => {
     }
   });
 
+  it('exposes the brain faults (chunk 6.5); without module workers (jsdom) there is nothing to kill', () => {
+    vi.useFakeTimers();
+    window.history.replaceState(null, '', `/?seed=c0ffee`);
+    const controller = startApp({ heroName: 'You', hooks });
+    try {
+      const pc = (window as Window & { __pc?: PcHooks }).__pc;
+      if (pc === undefined) throw new Error('window.__pc is missing');
+      expect(pc.faults).not.toBeNull();
+      expect(Object.keys(pc.faults ?? {}).sort()).toEqual([
+        'delay',
+        'fail',
+        'kill',
+        'log',
+        'think',
+      ]);
+      expect(pc.faults?.kill()).toBe(false);
+      expect(pc.faults?.log().map((e) => e.what)).toEqual(['kill nothing']);
+    } finally {
+      controller.dispose();
+      window.history.replaceState(null, '', '/');
+    }
+  });
+
   it('without hooks there is no window.__pc and seeds are random', () => {
     vi.useFakeTimers();
     delete (window as Window & { __pc?: PcHooks }).__pc;

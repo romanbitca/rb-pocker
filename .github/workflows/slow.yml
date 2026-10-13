@@ -77,11 +77,12 @@ jobs:
       - name: The committed tables are what the generator makes
         run: git diff --exit-code -- apps/web/src/data/generated
 
-  # PLAN §15.3, §17.5: the two throttled speed checks of tests/e2e/perf.spec.ts (win chance and
-  # long tasks at 6×), report-only here as in the PR e2e job: the numbers are in this job's
-  # summary, a miss never fails the run. This runner is too noisy to hold a latency budget; the
-  # budgets are enforced by `npm run e2e:perf` on a developer machine and by `#bench` on a real
-  # phone. Only the two Stage 4 checks run (the Stage 3 long-task test is enforced in every PR).
+  # PLAN §15.3, §17.5: the speed checks of tests/e2e/perf.spec.ts (win chance and long tasks at 6×,
+  # and the grading time of Stage 6), report-only here as in the PR e2e job: the numbers are in this
+  # job's summary, a miss never fails the run. This runner is too noisy to hold a latency budget;
+  # the budgets are enforced by `npm run e2e:perf` on a developer machine and by `#bench` on a real
+  # phone. Only the Stage 4 and Stage 6 checks run (the Stage 3 long-task test is enforced in every
+  # PR).
   perf:
     runs-on: ubuntu-24.04 # the same image as the e2e job (see e2e.yml)
     timeout-minutes: 30
@@ -96,7 +97,7 @@ jobs:
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
       - name: Speed checks at 6× (report only)
-        run: npm run e2e:perf -- --grep "Stage 4"
+        run: npm run e2e:perf -- --grep "Stage [46]"
         env:
           PERF_REPORT_ONLY: '1'
       - name: Upload the Playwright report

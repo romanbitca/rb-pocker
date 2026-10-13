@@ -1,9 +1,10 @@
 /**
  * Test hooks for development and E2E builds only (PLAN "Testing strategy" → Rules, §18 Stage 3):
  * - `?seed=<hex>` fixes the table and hand seeds, so a run can be repeated exactly;
- * - `?script=<name>` (Stage 6): scripted bots and grades instead of brain.worker
- *   (`app/botScripts.ts`);
- * - `window.__pc` exposes the store state, `dispatch` and the controller's logs.
+ * - `?script=<name>` (Stage 6): scripted bots instead of brain.worker's (`app/botScripts.ts`);
+ * - `window.__pc` exposes the store state, `dispatch` and the controller's logs;
+ * - `window.__pc.faults` (Stage 6, chunk 6.5): a slow or failing grade, long-thinking bots, a
+ *   worker that dies (`app/testFaults.ts`).
  *
  * ⚠️ Never in a production build. main.tsx loads this module only behind the build constant
  * `__PC_TEST_HOOKS__` (vite.config.ts: true for `vite` dev, Vitest and `vite build --mode e2e`,
@@ -13,14 +14,25 @@
  * reach in test builds.
  */
 import { deriveSeed, type Seed128 } from '../core/rng.ts';
+import { spawnBrainWorker } from '../workers/spawn.ts';
+import type { BrainReply, BrainRequest } from '../workers/protocol.ts';
+import { scriptedSpawn } from './botScripts.ts';
 export { scriptedBrain, scriptFromSearch, SCRIPT_HOOK_MARKER } from './botScripts.ts';
+export { FAULT_HOOK_MARKER } from './testFaults.ts';
 import type {
   ControllerLogs,
   ControllerSnapshot,
   SeedSource,
   TableController,
 } from './controller.ts';
+import { createBrainFaults, type BrainFaults } from './testFaults.ts';
 import type { AppState, AppStore, Command, EquitySlice } from './store.ts';
+import {
+  createBrainClient,
+  fromWorker,
+  type BrainClient,
+  type ClientTimers,
+} from './workerClient.ts';
 
 /** Present in every build that has the hooks, and in no other (the bundle test looks for it). */
 export const TEST_HOOKS_MARKER = 'rb-pc-test-hooks-v1';
@@ -51,6 +63,24 @@ export function fixedSeeds(seed: Seed128): SeedSource {
   };
 }
 
+/** The brain client of a test build and the faults layer in front of its worker. */
+export interface TestBrain {
+  brain: BrainClient;
+  faults: BrainFaults;
+}
+
+/**
+ * The brain client for development and E2E builds: brain.worker (the script's bots in front of it
+ * when `?script=` names one) behind the faults layer (`app/testFaults.ts`), which passes
+ * everything through until a spec switches a fault on.
+ */
+export function testBrain(script: string | null, timers: ClientTimers): TestBrain {
+  const { faults, wrap } = createBrainFaults(timers);
+  const worker = fromWorker<BrainRequest, BrainReply>(spawnBrainWorker);
+  const spawn = script === null ? worker : scriptedSpawn(script, worker);
+  return { brain: createBrainClient(wrap(spawn), timers), faults };
+}
+
 /** `window.__pc`. */
 export interface PcHooks {
   marker: typeof TEST_HOOKS_MARKER;
@@ -58,6 +88,8 @@ export interface PcHooks {
   seed: Seed128 | null;
   /** The bot script from `?script=`, or null. */
   script: string | null;
+  /** Faults for brain.worker (a slow or failing grade, long-thinking bots, a killed worker). */
+  faults: BrainFaults | null;
   /** The whole store state (it holds the full hand state: test builds only). */
   state(): AppState;
   dispatch(cmd: Command): void;
@@ -79,11 +111,13 @@ export function installTestHooks(
   controller: TableController,
   seed: Seed128 | null,
   script: string | null = null,
+  faults: BrainFaults | null = null,
 ): PcHooks {
   const hooks: PcHooks = {
     marker: TEST_HOOKS_MARKER,
     seed,
     script,
+    faults,
     state: () => store.getState(),
     dispatch: (cmd) => store.getState().dispatch(cmd),
     logs: () => controller.logs(),
