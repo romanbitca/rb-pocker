@@ -10,6 +10,7 @@ import {
   type TableController,
 } from './controller.ts';
 import { createSafeStorage } from '../persist/storage.ts';
+import { brainGrader } from './grading.ts';
 import { installLifecycle } from './lifecycle.ts';
 import { appStore } from './store.ts';
 import { startBrainWorker, startEquityWorker } from './workerClient.ts';
@@ -30,11 +31,21 @@ export function startApp(options: StartOptions): TableController {
   const win = options.win ?? window;
   const hooks = options.hooks;
   const seed = hooks?.seedFromSearch(win.location.search) ?? null;
+  // Development and E2E builds: `?script=<name>` puts scripted bots in front of it (the coach's
+  // hints and grades still come from brain.worker).
+  const script = hooks?.scriptFromSearch(win.location.search) ?? null;
+  // Warmed at start like the equity worker, never awaited (§12.14, §15.3): the bots decide in
+  // brain.worker; without module workers it is `failed` and the bots take the safest action.
+  const brain =
+    hooks !== undefined && script !== null
+      ? hooks.scriptedBrain(script, realTimers)
+      : startBrainWorker(realTimers);
   const controller = createTableController({
     store: appStore,
-    // Warmed at start like the equity worker, never awaited (§12.14, §15.3): the bots decide in
-    // brain.worker; without module workers it is `failed` and the bots take the safest action.
-    brain: startBrainWorker(realTimers),
+    brain,
+    // Every hero decision is graded in brain.worker too (§11.3 r5): chunk 6.1's `grade()`, from
+    // the same deliberation as the decision's hint (§8.11).
+    grader: brainGrader(brain),
     heroName: options.heroName,
     seeds: hooks !== undefined && seed !== null ? hooks.fixedSeeds(seed) : randomSeeds(),
     // One storage wrapper per launch over the real localStorage (§14.6).
@@ -45,7 +56,7 @@ export function startApp(options: StartOptions): TableController {
     hints: true,
   });
   installLifecycle(win, appStore);
-  if (hooks !== undefined) hooks.installTestHooks(win, appStore, controller, seed);
+  if (hooks !== undefined) hooks.installTestHooks(win, appStore, controller, seed, script);
   // Reads the profile and the saved session (§12.14, §14.5), then shows Welcome or Home.
   controller.boot();
   return controller;

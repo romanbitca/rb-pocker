@@ -71,7 +71,11 @@ export interface DecisionRecord {
   /** null = grading failed twice (§11.3 r5); excluded from every decision metric. */
   grade: Grade | null;
   lossMilliBB: number;
-  eRandom: number;
+  /**
+   * The HUD win chance at the decision (§7), a fraction; null when the hero acted before its first
+   * estimate, or the equity worker had failed (chunk 6.2).
+   */
+  eRandom: number | null;
   need: number | null;
   hintSeen: boolean;
   undone: boolean;
@@ -670,7 +674,7 @@ const decisionRecord: Check<DecisionRecord> = object<DecisionRecord>({
   rec: playerAction,
   grade: nullable(oneOf(GRADE)),
   lossMilliBB: integer,
-  eRandom: num(),
+  eRandom: nullable(num()),
   need: nullable(num()),
   hintSeen: bool,
   undone: bool,

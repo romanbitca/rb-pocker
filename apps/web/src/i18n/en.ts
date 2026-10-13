@@ -222,6 +222,32 @@ export const en = {
     chips: (x: string) => `${x} chips`,
   },
 
+  /** The toolbar Undo (PLAN §11.1, §12.3): a 44×44 button left of the coach strip. */
+  undo: {
+    button: 'Undo',
+  },
+
+  /**
+   * The mistake feedback card (PLAN §11.1, §12.6, Appendix F.4). Its F.5 reasons are the coach
+   * templates `feedback.*` below (`coach.templates`, chunk 5.6).
+   */
+  feedback: {
+    /** F.4: the card's title per grade. Best and Good never open the card: their chip text. */
+    title: {
+      best: 'Best move',
+      good: 'Good',
+      inaccuracy: 'Small mistake',
+      mistake: 'Mistake',
+      blunder: 'Big mistake',
+    },
+    /** "Coach's move: Call 40." (§12.6) */
+    coachMove: (move: string) => `Coach's move: ${move}.`,
+    undo: 'Undo: try again',
+    keep: 'Keep my move',
+    /** §11.4 */
+    smallPrint: 'Undo lets you try again. The first move still counts in your stats.',
+  },
+
   /** Amounts in big blinds (Setting "show amounts as BB"; Appendix F: "2.5 BB"). */
   amounts: {
     /** A no-break space: "15 BB" never splits across two lines of a button. */
@@ -492,6 +518,8 @@ export const en = {
     handVoided: 'This hand was cancelled because of an internal error. Your chips were returned.',
     handNotRestored: 'Your last hand could not be restored. Chips were returned.',
     dataRecovered: 'Your saved data was damaged. We started fresh and kept a copy.',
+    /** After an Undo (§11.3 r3, Appendix F.10). */
+    undone: 'Move taken back. The unseen cards were shuffled again.',
   },
 
   /**

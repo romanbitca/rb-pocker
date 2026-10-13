@@ -24,9 +24,16 @@
  * the sheet opens over everything above the action bar. Its words and the sheet are a lazy chunk
  * (`ui/coachModule.ts`), asked for when the Table mounts. The action bar's ring and the tray's
  * coach amount come from `coachAdvice` (no words).
+ *
+ * Undo and the feedback card (§11, §12.3, §12.6; chunk 6.2): the toolbar Undo sits at the left of
+ * the coach strip (portrait), of the coach row (landscape's column, the wide screen's panel head),
+ * and in the top bar in compact mode; the feedback card covers everything above the action bar
+ * (the table column in landscape) with a 25% scrim while the game waits for Undo or Keep my move.
  */
 import {
+  lazy,
   memo,
+  Suspense,
   useCallback,
   useEffect,
   useId,
@@ -43,6 +50,7 @@ import {
   selectCoach,
   selectCoachLevel,
   selectDrawChips,
+  selectFeedback,
   selectHandEnd,
   selectHeroHandView,
   selectHeroView,
@@ -52,11 +60,13 @@ import {
   selectPotView,
   selectSeatViews,
   selectTableInfo,
+  selectUndoButton,
   selectWinBadge,
   useAppStore,
   useDispatch,
   useOverlay,
   type ActionBarInputData,
+  type AppState,
 } from '../../app/store.ts';
 import type { PlayerAction } from '../../engine/types.ts';
 import { en } from '../../i18n/en.ts';
@@ -70,6 +80,7 @@ import { DrawChips } from '../components/DrawChips.tsx';
 import { HandEndBanner } from '../components/HandEndBanner.tsx';
 import { HandsTab } from '../components/HandsTab.tsx';
 import { HeroCards, HeroChips, HeroLabel } from '../components/HeroStrip.tsx';
+import { LoadBoundary } from '../components/LoadBoundary.tsx';
 import { Pot } from '../components/Pot.tsx';
 import { RankingsColumn } from '../components/RankingsColumn.tsx';
 import { RankingsDrawer } from '../components/RankingsDrawer.tsx';
@@ -77,6 +88,7 @@ import { RunoutBars, useLuckLine } from '../components/Runout.tsx';
 import { Seat } from '../components/Seat.tsx';
 import { SizingTray } from '../components/SizingTray.tsx';
 import { ICONS, SpriteIcon } from '../components/SvgSprite.tsx';
+import { UndoButton, useUndoKey } from '../components/UndoButton.tsx';
 import { BigMoveLine, PriceChip, WinBadge, type BadgePlacement } from '../components/WinBadge.tsx';
 import { bigMoveView, drawChipViews, priceChipView, useBadgeView } from '../equity.ts';
 import { betChips, formatChips } from '../format.ts';
@@ -123,10 +135,17 @@ interface TopBarProps {
   /** Wide screens: the button shows and hides the rankings column (else it opens the drawer). */
   handsColumn: boolean;
   onToggleHands: () => void;
+  /** Compact mode: the toolbar Undo sits here, in place of the mute button (§12.3). */
+  undo?: boolean;
 }
 
 /** ☰ · "Blinds 10/20 · Hand 12" · Hands (§12.3). The mute button arrives with sound (Stage 9). */
-const TopBar = memo(function TopBar({ handsExpanded, handsColumn, onToggleHands }: TopBarProps) {
+const TopBar = memo(function TopBar({
+  handsExpanded,
+  handsColumn,
+  onToggleHands,
+  undo = false,
+}: TopBarProps) {
   const info = useAppStore(selectTableInfo);
   const [, setMenuOpen] = useOverlay('menu');
   const text =
@@ -151,6 +170,7 @@ const TopBar = memo(function TopBar({ handsExpanded, handsColumn, onToggleHands 
         <SpriteIcon id={ICONS.menu} className={styles.icon} />
       </button>
       <p className={styles.info}>{text}</p>
+      {undo && <UndoSlot />}
       <button
         type="button"
         className={styles.handsButton}
@@ -548,49 +568,66 @@ const CoachSlot = memo(function CoachSlot({
 });
 
 /**
- * Landscape (§12.5): the coach rows under the label, the reason wrapping; "›" opens the sheet
- * over the table column. The open sizing tray takes their place.
+ * Landscape (§12.5): the coach rows under the label, the reason wrapping, the toolbar Undo at the
+ * left of the first; "›" opens the sheet over the table column. The open sizing tray takes their
+ * place (the hero is deciding then: nothing to undo).
  */
 const SideCoach = memo(function SideCoach() {
   const trayOpen = useAppStore(selectOverlayOpen('tray'));
-  return trayOpen ? null : <CoachSlot variant="strip" wrap collapse className={styles.coachSide} />;
+  if (trayOpen) return null;
+  return (
+    <div className={styles.sideCoach}>
+      <UndoSlot className={styles.stripUndo} />
+      <CoachSlot variant="strip" wrap collapse className={styles.coachSide} />
+    </div>
+  );
 });
 
 /**
  * The wide screen's inline coach panel (§12.5): the strip's content as its head row, then the
  * sheet's sections while the advice is on show (no sheet on wide screens), scrolling inside. Its
  * grid row has a fixed height, so the table never changes size with what the coach says (§15.3).
+ * The toolbar Undo sits at the left of the head row, outside the scrolling part (chunk 6.2).
  */
 const CoachPanel = memo(function CoachPanel({ coachSize }: { coachSize: CoachSizeRef }) {
   const view = useCoachView();
   const mod = useCoachModule();
   const { onOpen, onHint, onRetry } = useCoachActions();
   const onUseSize = useCallback(() => coachSize.current?.(), [coachSize]);
+  const undo = <UndoSlot className={styles.panelUndo} />;
   // Nothing to say (or the chunk is still on its way): the panel's box, empty.
   if (mod === null || view === null || (view.strip.kind === 'empty' && view.hint === null)) {
-    return <div className={styles.coachPanel} />;
+    return (
+      <div className={styles.coachBox}>
+        {undo}
+        <div className={styles.coachPanel} />
+      </div>
+    );
   }
   const details = view.shown && view.hint !== null;
   // With the sections under it, the head row says the action only (the reason follows below).
   const strip = details && view.strip.kind === 'advice' ? { ...view.strip, line: '' } : view.strip;
   return (
-    <section className={styles.coachPanel} aria-label={en.coachUi.title} data-coach-panel="">
-      <mod.CoachStrip
-        view={strip}
-        variant="header"
-        onOpen={onOpen}
-        onHint={onHint}
-        onRetry={onRetry}
-      />
-      {details && (
-        <mod.CoachDetails
-          view={view}
-          place="panel"
-          onUseSize={view.size === null ? null : onUseSize}
-          className={styles.panelDetails}
+    <div className={styles.coachBox}>
+      {undo}
+      <section className={styles.coachPanel} aria-label={en.coachUi.title} data-coach-panel="">
+        <mod.CoachStrip
+          view={strip}
+          variant="header"
+          onOpen={onOpen}
+          onHint={onHint}
+          onRetry={onRetry}
         />
-      )}
-    </section>
+        {details && (
+          <mod.CoachDetails
+            view={view}
+            place="panel"
+            onUseSize={view.size === null ? null : onUseSize}
+            className={styles.panelDetails}
+          />
+        )}
+      </section>
+    </div>
   );
 });
 
@@ -797,6 +834,56 @@ const RankingsPanel = memo(function RankingsPanel({
 });
 
 // ---------------------------------------------------------------------------------------------
+// Undo and the feedback card (§11, §12.3, §12.6)
+
+/** True while an overlay other than the sizing tray covers the table (U then does nothing). */
+const selectCovered = (s: AppState): boolean => s.ui.overlays.some((o) => o !== 'tray');
+
+/** The toolbar Undo for the coach level (§10.2), and its U key (§12.5). */
+const UndoSlot = memo(function UndoSlot({ className }: { className?: string | undefined }) {
+  const button = useAppStore(selectUndoButton);
+  const covered = useAppStore(selectCovered);
+  const dispatch = useDispatch();
+  const onUndo = useCallback(() => dispatch({ type: 'undo' }), [dispatch]);
+  useUndoKey(button === 'enabled' && !covered, onUndo);
+  return button === 'hidden' ? null : (
+    <UndoButton state={button} onUndo={onUndo} className={className} />
+  );
+});
+
+const selectAmountUnit = (s: AppState): 'chips' | 'bb' => s.settings.amounts;
+
+/**
+ * The card's code (and the coach-line renderer it uses) is a lazy chunk, still precached for
+ * offline play (§15.1): it shows only after a mistake, so the first paint does without it (§15.3).
+ */
+const FeedbackCard = lazy(() =>
+  import('../components/FeedbackCard.tsx').then((m) => ({ default: m.FeedbackCard })),
+);
+
+/** The feedback card over everything above the action bar, while the game waits (§11.1). */
+const FeedbackLayer = memo(function FeedbackLayer() {
+  const open = useAppStore(selectOverlayOpen('feedback'));
+  const view = useAppStore(selectFeedback);
+  const unit = useAppStore(selectAmountUnit);
+  const dispatch = useDispatch();
+  const onUndo = useCallback(() => dispatch({ type: 'undo' }), [dispatch]);
+  const onKeep = useCallback(() => dispatch({ type: 'keepMove' }), [dispatch]);
+  if (!open || view === null) return null;
+  return (
+    <div className={styles.feedbackHost}>
+      <div className={styles.feedbackScrim} aria-hidden="true" />
+      {/* A chunk that cannot load keeps the move: the game never waits on it. */}
+      <LoadBoundary onError={onKeep}>
+        <Suspense fallback={null}>
+          <FeedbackCard view={view} unit={unit} onUndo={onUndo} onKeep={onKeep} />
+        </Suspense>
+      </LoadBoundary>
+    </div>
+  );
+});
+
+// ---------------------------------------------------------------------------------------------
 // The screen
 
 export function Table() {
@@ -846,6 +933,7 @@ export function Table() {
         handsExpanded={wide ? !collapsed : drawerOpen}
         handsColumn={wide}
         onToggleHands={toggleHands}
+        undo={layout === 'compact'}
       />
       <TableArea layout={layout} />
       {landscape ? (
@@ -860,7 +948,12 @@ export function Table() {
       ) : (
         <>
           <HeroStrip layout={layout} onOpenRankings={openRankings} />
-          {layout === 'portrait' && <CoachSlot variant="strip" className={styles.coach} />}
+          {layout === 'portrait' && (
+            <div className={styles.coach}>
+              <UndoSlot className={styles.stripUndo} />
+              <CoachSlot variant="strip" />
+            </div>
+          )}
           {wide && <CoachPanel coachSize={coachSize} />}
           <ActionArea layout={layout} coachSize={coachSize} />
         </>
@@ -870,6 +963,7 @@ export function Table() {
       ) : (
         <DrawerHost layout={layout} coachSize={coachSize} />
       )}
+      <FeedbackLayer />
     </main>
   );
 }

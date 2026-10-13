@@ -399,6 +399,8 @@ describe('persist/schema decision records, inputs and hand meta', () => {
   it('accepts valid ones', () => {
     expect(isDecisionRecord(decision())).toBe(true);
     expect(isDecisionRecord(decision({ grade: null, leak: null, need: null }))).toBe(true);
+    // An unknown win chance (the hero acted before the HUD's first estimate) is null (chunk 6.2).
+    expect(isDecisionRecord(decision({ eRandom: null }))).toBe(true);
     expect(
       isDecisionRecord(decision({ quiz: { correct: 1, of: 2 }, taken: { type: 'bet', to: 40 } })),
     ).toBe(true);

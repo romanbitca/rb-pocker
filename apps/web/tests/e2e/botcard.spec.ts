@@ -4,6 +4,7 @@ import { expect, test } from './fixtures.ts';
 import {
   collectErrors,
   installLeakWatch,
+  keepMove,
   leakViolations,
   newTable,
   openApp,
@@ -136,11 +137,17 @@ test.describe('the bot card', () => {
     for (let tries = 0; tries < 20 && !opened; tries++) {
       await page.waitForFunction(() => {
         const mode = window.__pc?.state().game.mode;
-        return mode === 'botTurn' || mode === 'heroTurn' || mode === 'handEnd';
+        return (
+          mode === 'botTurn' || mode === 'heroTurn' || mode === 'handEnd' || mode === 'feedback'
+        );
       });
       const mode = (await pcState(page)).game.mode;
       if (mode === 'heroTurn') {
         await page.locator('[data-slot="middle"]').click();
+        continue;
+      }
+      if (mode === 'feedback') {
+        await keepMove(page); // a mistake's feedback card (Stage 6): the hand goes on
         continue;
       }
       if (mode === 'handEnd') {

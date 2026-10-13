@@ -29,6 +29,21 @@
  * the decision pending, or a worker that has failed for good (`brain.status === 'failed'`) all give
  * the bot the safest legal action, so the hand always finishes. The client (`app/workerClient.ts`)
  * owns the timeout and the restart.
+ *
+ * Grading, feedback and Undo (§11, chunk 6.2; the pure parts are `app/undo.ts`, the grade port
+ * `app/grading.ts`):
+ * - At every hero decision point the controller keeps an undo snapshot (state, meta, input count;
+ *   saved in the session, §11.3 r1).
+ * - After a hero act the hand is held in mode 'grading' (no bot request, no `advance`, no new card)
+ *   until the grade arrives, at most 1,500 ms. A grade at or above the level's threshold opens the
+ *   feedback card (mode 'feedback', the `feedback` gate closed) until Undo or Keep my move. A later
+ *   grade is recorded without a pause. An error or a timeout (5 s) is retried once; a second
+ *   failure records `grade: null` (r5). Without a grader (tests) every decision is recorded at once
+ *   with `grade: null` and nothing waits.
+ * - Undo (r3): a new epoch (every timer and job of before is stale), the snapshot's state with the
+ *   undealt stub reshuffled, the inputs cut back to it plus the `reshuffle` input, the undone record
+ *   kept with `undone: true`, the hand marked practice (`undoCount`). Bots' cards and the board
+ *   never change (r4).
  */
 import { EngineError } from '../core/assert.ts';
 import { deriveSeed, randomSeed, type Seed128 } from '../core/rng.ts';
@@ -40,6 +55,7 @@ import { createTable, initialSlots, nextTable, topUp, withLevels } from '../engi
 import {
   ENGINE_VERSION,
   type BotLevel,
+  type CoachLevel,
   type EngineInput,
   type HandState,
   type LegalActions,
@@ -51,14 +67,28 @@ import {
 } from '../engine/types.ts';
 import { loadProfile, saveSettings } from '../persist/profile.ts';
 import { emptyHandMeta, settingsProblem } from '../persist/schema.ts';
-import type { Profile, SessionState, Settings } from '../persist/schema.ts';
+import type {
+  DecisionRecord,
+  HandMeta,
+  Profile,
+  SessionState,
+  Settings,
+  UndoSnapshot,
+} from '../persist/schema.ts';
 import { clearSession, loadSession, saveSession } from '../persist/session.ts';
 import type { SafeStorage } from '../persist/storage.ts';
 import { profileFor } from '../brain/profiles.ts';
-import type { BrainProfile } from '../brain/types.ts';
+import type { BrainProfile, GradeResult } from '../brain/types.ts';
 import type { BrainReply, BrainRequest } from '../workers/protocol.ts';
 import { EquityJobs } from './equityJobs.ts';
 import { coachKeyOf, finalHudEquity, HintJobs, type HintAsk } from './hintJobs.ts';
+import {
+  GRADE_ATTEMPTS,
+  GRADE_PAUSE_MS,
+  type GradeAsk,
+  type Grader,
+  type GradeOutcome,
+} from './grading.ts';
 import {
   updateUi,
   type AppStore,
@@ -68,7 +98,27 @@ import {
   type Speed,
   type Toast,
   type UiCommand,
+  type UiSlice,
 } from './store.ts';
+import {
+  decisionRecord,
+  feedbackView,
+  heroDecisionsTaken,
+  hudEquityAt,
+  isAssisted,
+  isHeroTurn,
+  pausesAt,
+  priceNeed,
+  restoreForUndo,
+  snapshotAt,
+  standingRecord,
+  undoBlock,
+  withRecord,
+  type DecisionFacts,
+  type FeedbackView,
+  type Restored,
+  type UndoBlock,
+} from './undo.ts';
 import {
   BOT_TIMEOUT_MS,
   type BrainClient,
@@ -110,6 +160,8 @@ export const TIMING = {
   toastMs: 4000,
   /** Settings changes are saved 250 ms after the last one (§14.2), and at once when hidden. */
   settingsDebounceMs: 250,
+  /** After a hero act the hand waits this long for the grade (§11.3 r5, `app/grading.ts`). */
+  gradePauseMs: GRADE_PAUSE_MS,
 } as const;
 
 /** Pause and animation factor per speed (§12.8: Normal 1, Fast 0.5, Instant 0). */
@@ -209,6 +261,12 @@ export interface ControllerOptions {
    * goes to the store's `coach` slice. The app turns it on; tests without a coach leave it off.
    */
   hints?: boolean;
+  /**
+   * The grade port (§11.3 r5, chunk 6.2, `app/grading.ts`): every hero decision is graded through
+   * it (the app: `brainGrader(brain)`). Without it (tests) every decision is recorded at once with
+   * `grade: null`, like a grade that failed: nothing waits or pauses, and Undo is there at once.
+   */
+  grader?: Grader | null;
 }
 
 /** One line of the controller's in-memory log (Diagnostics; `window.__pc.logs()` in test builds). */
@@ -242,9 +300,32 @@ export interface ControllerSnapshot {
   hand: HandState | null;
   next: TableState | null;
   inputs: EngineInput[];
+  /** This hand's decision records, undo count and hints (A.7 `HandMeta`). */
+  meta: HandMeta;
+  /** The latest hero decision point (§11.3 r1), or null. */
+  undoSnapshot: UndoSnapshot | null;
+  /** §11.4: the hand had an undo, so it counts as practice. */
+  assisted: boolean;
 }
 
 type FlowKind = 'act' | 'advance' | 'nextHand';
+
+/** A hero decision whose grade is on its way (§11.3 r5). */
+interface PendingGrade {
+  epoch: number;
+  ask: GradeAsk;
+  facts: DecisionFacts;
+  /** The coach level the decision was made at (§10: a change applies from the next decision). */
+  level: CoachLevel;
+  /** The state at the decision point, before the act (the feedback card's legal moves). */
+  decision: HandState;
+  /** Tries so far (the first, then one retry). */
+  attempt: number;
+  /** The running job, or null. */
+  jobId: number | null;
+  /** The 1,500 ms pause timer while the hand waits for this grade, else null. */
+  pause: unknown;
+}
 
 /** The one pausable timer of the hand flow. */
 interface FlowTimer {
@@ -278,7 +359,8 @@ type NewToast =
   | { kind: 'botsJoined'; names: string[] }
   | { kind: 'handVoided' }
   | { kind: 'handNotRestored' }
-  | { kind: 'dataRecovered' };
+  | { kind: 'dataRecovered' }
+  | { kind: 'undone' };
 
 const RING = { events: 500, errors: 50, brain: 200, voided: 5 } as const;
 
@@ -365,6 +447,20 @@ export class TableController {
   private readonly toastTimers = new Map<number, unknown>();
   private legalCache: { hand: HandState; legal: LegalActions | null } | null = null;
   private diag: Diagnostics = { engineErrors: 0, botFallbacks: 0, voidedHands: 0 };
+  /** Grades every hero decision (§11.3 r5); null: decisions are recorded ungraded. */
+  private readonly grader: Grader | null;
+  /** This hand's decision records, undo count and hints (A.7 `HandMeta`; in the session). */
+  private meta: HandMeta = emptyHandMeta();
+  /** The latest hero decision point (§11.3 r1; in the session). */
+  private undoSnapshot: UndoSnapshot | null = null;
+  /** What holds the hand after a hero act: its grade (≤ 1,500 ms), or the open feedback card. */
+  private hold: 'grading' | 'feedback' | null = null;
+  /** The grade of the latest hero decision while it is on its way. */
+  private grading: PendingGrade | null = null;
+  /** The feedback card on show (mode 'feedback'). */
+  private feedback: FeedbackView | null = null;
+  /** The coach level of the latest hero decision (§10: level changes apply from the next one). */
+  private decisionLevel: CoachLevel | null = null;
   private readonly events: ControllerEvent[] = [];
   private readonly errors: ControllerEvent[] = [];
   private readonly brainEvents: ControllerEvent[] = [];
@@ -383,7 +479,9 @@ export class TableController {
     this.equityJobs =
       this.equityClient === null ? null : new EquityJobs(this.store, this.equityClient);
     this.hintJobs = options.hints === true ? new HintJobs(this.store, this.brain) : null;
+    this.grader = options.grader ?? null;
     this.unsubscribe = this.store.subscribe((s, prev) => {
+      if (s.ui.nav !== prev.ui.nav) this.onNav(s.ui, prev.ui);
       if (s.ui.gates !== prev.ui.gates) this.onGates();
     });
     this.store.setGameHandler((cmd) => this.dispatch(cmd));
@@ -462,6 +560,12 @@ export class TableController {
       case 'retryCoach':
         this.hintJobs?.retry();
         break;
+      case 'undo':
+        this.undo();
+        break;
+      case 'keepMove':
+        this.keepMove();
+        break;
       default:
         this.trace('unknown command', cmd);
     }
@@ -491,6 +595,9 @@ export class TableController {
       hand: this.hand,
       next: this.next,
       inputs: [...this.inputs],
+      meta: this.meta,
+      undoSnapshot: this.undoSnapshot,
+      assisted: isAssisted(this.meta),
     };
   }
 
@@ -556,7 +663,11 @@ export class TableController {
     this.publish();
   }
 
-  /** The hero's action (§2.3): only on the hero's turn; the engine checks it is legal. */
+  /**
+   * The hero's action (§2.3): only on the hero's turn; the engine checks it is legal. The undo
+   * snapshot of this decision point was taken when the turn began (§11.3 r1); then the hand waits
+   * for the decision's grade (§11.3 r5).
+   */
   private heroAct(action: PlayerAction): void {
     const h = this.hand;
     if (this.mode !== 'heroTurn' || h === null || h.phase !== 'betting' || h.toAct !== HERO) {
@@ -572,8 +683,16 @@ export class TableController {
       else this.voidHand(e, input);
       return;
     }
-    // Stage 6 takes the undo snapshot before this act and enters 'grading' here (§11.3 r1, r5).
-    this.commit(next, input);
+    this.ensureSnapshot(h);
+    this.noteHintOpened(h);
+    const decision = this.decisionAt(h, action);
+    this.hand = next;
+    this.inputs.push(input);
+    this.trace('input', input);
+    this.startGrading(decision);
+    this.saveSession(); // after every step (§14.5)
+    this.pump();
+    this.publish();
   }
 
   /** A tap on the hand-end banner: the next hand now. */
@@ -676,11 +795,18 @@ export class TableController {
       if (this.mode !== 'booting') this.mode = 'idle';
       return;
     }
+    // After a hero act: nothing moves (no bot, no `advance`, no new card) while its grade is on
+    // its way or the feedback card is open (§2.3, §11.3 r5, pitfall 23).
+    if (this.hold !== null) {
+      this.mode = this.hold;
+      return;
+    }
     switch (h.phase) {
       case 'betting': {
         const seat = h.toAct as number;
         if (seat === HERO) {
           this.mode = 'heroTurn';
+          this.ensureSnapshot(h);
           return;
         }
         this.mode = 'botTurn';
@@ -727,6 +853,8 @@ export class TableController {
     this.revealShown = false;
     this.handSeqFloor = Math.max(this.handSeqFloor, hand.handSeq + 1);
     this.dealUntil = this.timers.now() + this.dealMs(hand);
+    this.resetDecisions();
+    this.ensureSnapshot(hand);
     this.trace('hand start', {
       handSeq: hand.handSeq,
       button: hand.button,
@@ -894,6 +1022,7 @@ export class TableController {
     this.hand = next;
     this.inputs.push(input);
     this.trace('input', input);
+    this.ensureSnapshot(next); // a new hero decision point (§11.3 r1)
     this.saveSession(); // after every step (§14.5)
     this.pump();
     this.publish();
@@ -997,6 +1126,275 @@ export class TableController {
       }
       this.headlessJob = { jobId, release: () => resolve(safestAction(legal)) };
     });
+  }
+
+  // -------------------------------------------------------------------------------------------
+  // Grading, the feedback card and Undo (§11, chunk 6.2)
+
+  /** §11.3 r1: the snapshot of the decision point `h` (the hero is to act), once per state. */
+  private ensureSnapshot(h: HandState | null): void {
+    if (h === null || this.headless || !isHeroTurn(h) || this.undoSnapshot?.state === h) return;
+    this.undoSnapshot = snapshotAt(h, this.meta, this.inputs.length);
+  }
+
+  /**
+   * §10.2 "Counts as on your own": the player opened the hint of the decision `h` ("Hint", the
+   * coach sheet: the `coach` slice's `opened`, chunk 5.9) before acting. Kept in the hand's meta
+   * (A.7 `hintShown`, by decisionId), so it outlives an Undo and a reload.
+   */
+  private noteHintOpened(h: HandState): void {
+    if (this.store.getState().coach.opened !== coachKeyOf(h)) return;
+    const decisionId = heroDecisionsTaken(h);
+    if (this.meta.hintShown[decisionId] === true) return;
+    this.meta = { ...this.meta, hintShown: { ...this.meta.hintShown, [decisionId]: true } };
+  }
+
+  /** What a hero decision at `h` is, before the act changes anything (§8.2: the HUD's number). */
+  private decisionAt(h: HandState, action: PlayerAction): PendingGrade {
+    const level = this.settings().coachLevel;
+    const decisionId = heroDecisionsTaken(h);
+    const hud = hudEquityAt(this.store.getState().equity, h);
+    return {
+      epoch: this.epoch,
+      // Only an Observation crosses to the worker (§4.8).
+      ask: {
+        obs: observe(h, HERO, this.extras(this.table as TableState)),
+        taken: action,
+        eRandom: hud.final,
+        decisionId,
+      },
+      facts: {
+        decisionId,
+        street: h.street,
+        taken: action,
+        eRandom: hud.latest,
+        need: priceNeed(h),
+        // §10.2: the hint is always on show at Beginner; above it, the player opened it.
+        hintSeen: level === 'beginner' || this.meta.hintShown[decisionId] === true,
+      },
+      level,
+      decision: h,
+      attempt: 0,
+      jobId: null,
+      pause: null,
+    };
+  }
+
+  /**
+   * §11.3 r5: grades the decision just made. With `pause` the hand waits (mode 'grading') until the
+   * grade comes, at most `GRADE_PAUSE_MS`; without a grader the decision is recorded ungraded at
+   * once.
+   */
+  private startGrading(g: PendingGrade, pause = true): void {
+    // An earlier decision's grade still on its way (it was late): recorded as failed.
+    this.dropGrading(true);
+    this.decisionLevel = g.level;
+    if (this.grader === null) {
+      this.addRecord(decisionRecord(g.facts, null));
+      return;
+    }
+    this.grading = g;
+    if (pause) {
+      this.hold = 'grading';
+      g.pause = this.timers.setTimeout(() => this.onGradePause(g), GRADE_PAUSE_MS);
+    }
+    this.sendGrade(g);
+  }
+
+  /** One try of `g`'s grade job (the same inputs every time, r5). */
+  private sendGrade(g: PendingGrade): void {
+    g.attempt++;
+    const jobId = (this.grader as Grader).grade(g.ask, g.epoch, (outcome) =>
+      this.onGradeOutcome(g, outcome),
+    );
+    this.brainLog('grade request', { jobId, decisionId: g.ask.decisionId, attempt: g.attempt });
+    g.jobId = jobId;
+    if (jobId === null) this.onGradeOutcome(g, { ok: false, reason: 'brain unavailable' });
+  }
+
+  private onGradeOutcome(g: PendingGrade, outcome: GradeOutcome): void {
+    if (this.grading !== g || g.epoch !== this.epoch) {
+      this.brainLog('grade drop', { decisionId: g.ask.decisionId, epoch: g.epoch });
+      return; // stale (pitfall 22)
+    }
+    g.jobId = null;
+    const decisionId = g.ask.decisionId;
+    if (!outcome.ok) {
+      this.brainLog('grade failed', { decisionId, attempt: g.attempt, reason: outcome.reason });
+      if (g.attempt < GRADE_ATTEMPTS) {
+        this.sendGrade(g); // once more, with the same inputs
+        return;
+      }
+      this.finishGrading(g, null);
+      return;
+    }
+    this.brainLog('grade', { decisionId, grade: outcome.result.grade });
+    this.finishGrading(g, outcome.result);
+  }
+
+  /** The grade is in (or failed twice): record it; within the pause it may open the card. */
+  private finishGrading(g: PendingGrade, result: GradeResult | null): void {
+    if (g.pause !== null) this.timers.clearTimeout(g.pause);
+    g.pause = null;
+    this.grading = null;
+    this.addRecord(decisionRecord(g.facts, result));
+    if (this.hold === 'grading') {
+      this.hold = null;
+      if (result !== null && pausesAt(g.level, result.grade)) this.openFeedback(g, result);
+    }
+    // A late grade (after the pause) is only recorded: nothing else changes (r5; its grade chip is
+    // the §12.6 chip's, not built yet).
+    this.saveSession();
+    this.pump();
+    this.publish();
+  }
+
+  /** `GRADE_PAUSE_MS` passed with no grade: the hand goes on; the grade may still come (r5). */
+  private onGradePause(g: PendingGrade): void {
+    if (this.grading !== g || g.epoch !== this.epoch) return; // stale (pitfall 22)
+    g.pause = null;
+    if (this.hold !== 'grading') return;
+    this.trace('grade late', { decisionId: g.ask.decisionId });
+    this.hold = null;
+    this.pump();
+    this.publish();
+  }
+
+  /** Forgets the grade on its way; with `record`, its decision is recorded ungraded. */
+  private dropGrading(record = false): void {
+    const g = this.grading;
+    if (g === null) return;
+    this.grading = null;
+    if (g.pause !== null) this.timers.clearTimeout(g.pause);
+    g.pause = null;
+    if (g.jobId !== null) this.grader?.cancel(g.jobId);
+    g.jobId = null;
+    if (this.hold === 'grading') this.hold = null;
+    if (record) this.addRecord(decisionRecord(g.facts, null));
+  }
+
+  private addRecord(record: DecisionRecord): void {
+    this.meta = withRecord(this.meta, record);
+  }
+
+  /** §11.1: the feedback card; nothing moves until Undo or Keep my move. */
+  private openFeedback(g: PendingGrade, result: GradeResult): void {
+    this.hold = 'feedback';
+    this.feedback = feedbackView(result, g.decision, this.undoBlocked(true) === null);
+    this.trace('feedback', { decisionId: result.decisionId, grade: result.grade });
+    this.ui({ type: 'open', overlay: 'feedback' });
+  }
+
+  /** [Keep my move] (also Esc and Back): the hand goes on. */
+  private keepMove(): void {
+    if (this.hold !== 'feedback') {
+      this.trace('keep ignored', { mode: this.mode });
+      return;
+    }
+    this.hold = null;
+    this.feedback = null;
+    this.trace('keep move');
+    this.closeFeedbackOverlay();
+    this.pump();
+    this.publish();
+  }
+
+  /**
+   * The feedback card follows the navigation: closed on the Table (Back, Esc) = Keep my move;
+   * closed by leaving the Table (the Menu's Leave table) = still waiting, and it opens again when
+   * the Table is back (§11.1: it never goes away by itself).
+   */
+  private onNav(ui: UiSlice, prev: UiSlice): void {
+    if (this.hold !== 'feedback' || ui.overlays.includes('feedback')) return;
+    if (ui.screen !== 'table') return;
+    if (prev.screen === 'table' && prev.overlays.includes('feedback')) this.keepMove();
+    else this.ui({ type: 'open', overlay: 'feedback' });
+  }
+
+  private closeFeedbackOverlay(): void {
+    if (this.store.getState().ui.overlays.includes('feedback')) {
+      this.ui({ type: 'close', overlay: 'feedback' });
+    }
+  }
+
+  /** Why Undo is not possible now (§11.3 r2), or null. */
+  private undoBlocked(feedbackOpen = this.hold === 'feedback'): UndoBlock | null {
+    if (this.headless) return 'noDecision';
+    return undoBlock({
+      hand: this.hand,
+      snapshot: this.undoSnapshot,
+      meta: this.meta,
+      level: this.decisionLevel ?? this.settings().coachLevel,
+      feedbackOpen,
+    });
+  }
+
+  /**
+   * §11.3 r3: takes back the hero's latest decision. A refused Undo changes nothing (the button is
+   * disabled then; the U key and a second tap land here).
+   */
+  private undo(): void {
+    const block = this.undoBlocked();
+    const snap = this.undoSnapshot;
+    if (block !== null || snap === null) {
+      this.trace('undo refused', { block });
+      return;
+    }
+    let restored: Restored;
+    try {
+      restored = restoreForUndo(snap, { inputs: this.inputs, meta: this.meta }, this.stepFn);
+    } catch (e) {
+      // UNDO_USED and friends (§11.5): refused, nothing changed.
+      if (e instanceof EngineError) this.refused(e, null);
+      else this.voidHand(e, null);
+      return;
+    }
+    // (1)–(2): a new epoch: every timer and every brain or equity reply of before is stale.
+    this.bumpEpoch();
+    // (3)–(5): the snapshot back, the stub reshuffled, the hand marked practice.
+    this.hand = restored.state;
+    this.inputs = restored.inputs;
+    this.meta = restored.meta;
+    this.hold = null;
+    this.feedback = null;
+    this.trace('undo', { decisionId: snap.decisionId, undoCount: this.meta.undoCount });
+    this.trace('input', restored.reshuffle);
+    this.closeFeedbackOverlay();
+    // (6): the hero acts again (the same hint: determinism) at the same decision point.
+    this.ensureSnapshot(restored.state);
+    this.toast({ kind: 'undone' });
+    this.saveSession();
+    this.pump();
+    this.publish();
+  }
+
+  /** A new hand, or none: no decisions, no snapshot, nothing held, no feedback card. */
+  private resetDecisions(): void {
+    this.dropGrading();
+    this.meta = emptyHandMeta();
+    this.undoSnapshot = null;
+    this.hold = null;
+    this.feedback = null;
+    this.decisionLevel = null;
+    this.closeFeedbackOverlay();
+  }
+
+  /**
+   * After a reload (§11.3 r7): the snapshot and the records come back from the session. A grade
+   * that was on its way when the page went is asked again, as a late one (no pause: the feedback
+   * card does not come back after a reload; the toolbar Undo still works where rule 2 holds).
+   */
+  private resumeDecision(): void {
+    const h = this.hand;
+    const snap = this.undoSnapshot;
+    if (h === null || snap === null || h.phase === 'complete') return;
+    if (snap.state.handSeq !== h.handSeq || heroDecisionsTaken(h) !== snap.decisionId + 1) return;
+    const act = this.inputs[snap.inputCount];
+    if (act?.kind !== 'act' || act.seat !== HERO) return;
+    if (standingRecord(this.meta, snap.decisionId) !== null) return;
+    const g = this.decisionAt(snap.state, act.action);
+    this.trace('grade asked again', { decisionId: g.ask.decisionId });
+    this.startGrading(g, false); // a late grade: no pause
   }
 
   // -------------------------------------------------------------------------------------------
@@ -1136,6 +1534,7 @@ export class TableController {
     this.cancelFlow();
     this.cancelJob();
     this.hintJobs?.cancel();
+    this.dropGrading();
     // A headless finish waits for its bot: cancelled jobs never answer, so let it go on.
     const headless = this.headlessJob;
     if (headless !== null) {
@@ -1168,6 +1567,9 @@ export class TableController {
       this.hand = session.hand;
       this.next = null;
       this.inputs = [...session.handInputs];
+      this.meta = session.meta;
+      this.undoSnapshot = session.undoSnapshot;
+      this.resumeDecision();
     }
     const t = session.table;
     this.handSeqFloor = Math.max(
@@ -1198,8 +1600,8 @@ export class TableController {
       table,
       hand: withHand ? this.hand : null,
       handInputs: withHand ? this.inputs : [],
-      meta: emptyHandMeta(),
-      undoSnapshot: null,
+      meta: withHand ? this.meta : emptyHandMeta(),
+      undoSnapshot: withHand ? this.undoSnapshot : null,
       seatStats: table.slots.map(() => null),
       resumeAfterUpdate: false,
     };
@@ -1242,6 +1644,7 @@ export class TableController {
     this.inputs = [];
     this.newcomers = [];
     this.mode = 'idle';
+    this.resetDecisions();
   }
 
   // -------------------------------------------------------------------------------------------
@@ -1368,6 +1771,8 @@ export class TableController {
     const hand = this.hand;
     const legal = this.mode === 'heroTurn' && hand !== null ? this.legalOf(hand) : null;
     const heroBust = this.heroBust();
+    const canUndo = this.undoBlocked() === null;
+    const decisions = this.meta.decisions;
     const g = this.store.getState().game;
     if (
       g.mode !== this.mode ||
@@ -1376,7 +1781,10 @@ export class TableController {
       g.next !== this.next ||
       g.legal !== legal ||
       g.heroBust !== heroBust ||
-      g.diag !== this.diag
+      g.diag !== this.diag ||
+      g.canUndo !== canUndo ||
+      g.feedback !== this.feedback ||
+      g.decisions !== decisions
     ) {
       this.store.setState({
         game: {
@@ -1387,6 +1795,9 @@ export class TableController {
           legal,
           heroBust,
           diag: this.diag,
+          canUndo,
+          feedback: this.feedback,
+          decisions,
         },
       });
     }
