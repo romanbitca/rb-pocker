@@ -54,6 +54,8 @@ export function startApp(options: StartOptions): TableController {
     equity: startEquityWorker(realTimers),
     // The coach's hint at every hero decision, from brain.worker (§8.2, chunk 5.7).
     hints: true,
+    // The end-of-hand summary when the coach level shows one (§10.2, §12.9, chunk 6.4).
+    summaries: true,
   });
   installLifecycle(win, appStore);
   if (hooks !== undefined) hooks.installTestHooks(win, appStore, controller, seed, script);

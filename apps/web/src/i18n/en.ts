@@ -191,6 +191,8 @@ export const en = {
     cannotRaise: "You can't raise here: the all-in was too small to reopen the betting.",
     /** Under "Call all-in {x}" when the hero cannot cover the bet (§0.3 `winPot`). */
     potYouCanWin: (x: string) => `Pot you can win ${x}`,
+    /** While the Advanced quiz asks (§10.3), a tap on Row A says why it waits. */
+    quizFirst: 'Answer the quiz first, or tap Skip.',
   },
 
   /** The sizing tray (PLAN §12.7). */
@@ -556,6 +558,8 @@ export const en = {
     rowByRiver: (pct: string) => `By river: ${pct}.`,
     percent: (value: string) => `${value}%`,
     oneIn: (n: string) => `1 in ${n}`,
+    /** Advanced and Exam (§10.2, §13.2): opens the two-hands quiz. */
+    whichWins: 'Which hand wins?',
     /** Tie-break footer, always shown (§13.2). */
     footer: [
       'A higher row always beats a lower row.',

@@ -18,6 +18,8 @@ import type { HandCategory } from '../eval/evaluate.ts';
 import { HAND_CATEGORIES } from '../eval/evaluate.ts';
 import type { HandState, TableState } from '../engine/types.ts';
 import type { AppState, EquitySlice, EquityStatus } from './store.ts';
+import { levelInForce, quizHidesBadge } from './coachViews.ts';
+import { LEVEL_RULES } from './levels.ts';
 import { heroInfo } from './tableViews.ts';
 import { describe } from '../eval/describe.ts';
 
@@ -104,17 +106,21 @@ function heroLive(hand: HandState | null): boolean {
 
 /**
  * The badge (§7.6, §10.2): hidden when "Show win chance" is off, at Exam while the hand is played
- * (the hand summary shows it there), and from the showdown on (the result banner speaks then).
- * Known hands (an all-in run-out) show the hero's own run-out number.
+ * (the hand summary shows it there), while the Advanced quiz asks (`quiz`, §10.3), and from the
+ * showdown on (the result banner speaks then). Known hands (an all-in run-out) show the hero's own
+ * run-out number.
  */
 export function winBadgeOf(
   eq: EquitySlice,
   showEquity: boolean,
   coachLevel: AppState['settings']['coachLevel'],
   showdown = false,
+  quiz = false,
 ): WinBadgeData {
   const off: WinBadgeData = { status: 'off', key: '', result: null, nOpp: 0, known: false };
-  if (!showEquity || coachLevel === 'exam' || showdown || eq.status === 'off') return off;
+  if (!showEquity || !LEVEL_RULES[coachLevel].badge || quiz || showdown || eq.status === 'off') {
+    return off;
+  }
   if (eq.status === 'folded') return { ...off, status: 'folded' };
   if (eq.mode === 'known') {
     const k = eq.known;
@@ -227,7 +233,7 @@ export function drawChipsOf(
     });
   }
   if (draws.length === 0) return null;
-  return { handSeq: hand.handSeq, draws, namesOnly: coachLevel === 'exam' };
+  return { handSeq: hand.handSeq, draws, namesOnly: LEVEL_RULES[coachLevel].draws === 'name' };
 }
 
 /**
@@ -238,7 +244,7 @@ export function byRiverShown(
   hand: HandState | null,
   coachLevel: AppState['settings']['coachLevel'],
 ): boolean {
-  return coachLevel !== 'exam' && heroLive(hand) && hand !== null && !hand.runout;
+  return LEVEL_RULES[coachLevel].byRiver && heroLive(hand) && hand !== null && !hand.runout;
 }
 
 /** The hero's `nuts` from the hand analysis (§6.5): " · Best possible hand". */
@@ -351,18 +357,22 @@ const badgeMemo = memo(
     showEquity: boolean,
     coachLevel: AppState['settings']['coachLevel'],
     showdown: boolean,
+    quiz: boolean,
   ): WinBadgeData => {
-    const badge = winBadgeOf(slice, showEquity, coachLevel, showdown);
+    const badge = winBadgeOf(slice, showEquity, coachLevel, showdown, quiz);
     // A slice write that changes nothing the badge shows keeps the old object: no render.
     if (lastBadge === null || !sameBadge(lastBadge, badge)) lastBadge = badge;
     return lastBadge;
   },
 );
-/** The win badge. Changes only with the equity slice, two settings and the showdown. */
+/**
+ * The win badge. Changes only with the equity slice, "Show win chance", the coach level in force,
+ * the showdown and the Advanced quiz.
+ */
 export const selectWinBadge = (s: AppState): WinBadgeData => {
   const phase = s.game.hand?.phase;
   const showdown = phase === 'showdown' || phase === 'complete';
-  return badgeMemo(s.equity, s.settings.showEquity, s.settings.coachLevel, showdown);
+  return badgeMemo(s.equity, s.settings.showEquity, levelInForce(s), showdown, quizHidesBadge(s));
 };
 
 const analysisOf = (s: AppState): HandAnalysis | null => s.equity.analysis;
@@ -383,7 +393,7 @@ export const selectDrawChips = (s: AppState): DrawChipsData | null => {
   const hand = s.game.hand;
   drawsHand = hand;
   const key = heroLive(hand) && hand !== null ? `${hand.handSeq}|${hand.board.join(',')}` : '';
-  return drawsMemo(key, analysisOf(s), s.settings.coachLevel);
+  return drawsMemo(key, analysisOf(s), levelInForce(s));
 };
 
 /** The `exactly` numbers of the §6.6 chances. */
@@ -404,7 +414,7 @@ const byRiverMemo = memo(
  */
 export const selectByRiver = (s: AppState): ByRiverData | null => {
   const hand = s.game.hand;
-  const shown = byRiverShown(hand, s.settings.coachLevel);
+  const shown = byRiverShown(hand, levelInForce(s));
   return byRiverMemo(shown, hand?.handSeq ?? -1, shown ? analysisOf(s) : null);
 };
 
@@ -423,6 +433,6 @@ const moveMemo = memo(
 );
 /** The big-move line; null = none (also when the badge is hidden: it explains the badge). */
 export const selectBigMove = (s: AppState): BigMoveData | null =>
-  !s.settings.showEquity || s.settings.coachLevel === 'exam'
+  !s.settings.showEquity || !LEVEL_RULES[levelInForce(s)].badge || quizHidesBadge(s)
     ? null
     : moveMemo(s.equity, s.game.hand, s.game.table);

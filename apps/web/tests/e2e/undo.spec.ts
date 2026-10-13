@@ -34,7 +34,7 @@ async function scriptedTable(page: Page, level: Level): Promise<void> {
   await newTable(page, { players: 3 });
 }
 
-type Point = 'hero' | 'feedback' | 'end';
+type Point = 'hero' | 'feedback' | 'quiz' | 'end';
 
 /** In the page: the hero's turn with its hint in, the feedback card on show, or the hand end. */
 function readPoint(): Point | null {
@@ -49,7 +49,8 @@ function readPoint(): Point | null {
     s.coach.status === 'ready' &&
     s.coach.key === `${hand.handSeq}:${hand.log.length}`
   ) {
-    return 'hero';
+    // Advanced: the quiz holds Row A until it is answered or skipped (§10.3).
+    return document.querySelector('[data-quiz-skip]') !== null ? 'quiz' : 'hero';
   }
   if (s.game.mode === 'handEnd') return 'end';
   return null;
@@ -101,6 +102,10 @@ async function playTo(page: Page, street: 'flop' | 'river'): Promise<void> {
     if (point === 'feedback') {
       await page.getByRole('button', { name: 'Keep my move' }).click();
       await expect(page.locator('[data-feedback]')).toHaveCount(0);
+      continue;
+    }
+    if (point === 'quiz') {
+      await page.locator('[data-quiz-skip]').click();
       continue;
     }
     const spot = await heroSpot(page);
@@ -368,8 +373,8 @@ test.describe('Stage 6 acceptance 3: where Undo stops', () => {
     expect(errors).toEqual([]);
   });
 
-  // Advanced and Exam are not offered by Setup or Settings until chunk 6.4; the settings take
-  // them (the store's `coachLevel`), so the Undo rules of §10.2 are checked here already.
+  // Advanced and Exam: the settings set them as Setup and Settings would (chunk 6.4 offers
+  // them there); a quiz on the way is skipped (`readPoint`).
   test('Advanced: no toolbar Undo; the feedback card still offers it', async ({ page }) => {
     test.setTimeout(90_000);
     await scriptedTable(page, 'advanced');

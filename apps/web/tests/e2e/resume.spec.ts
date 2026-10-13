@@ -11,6 +11,7 @@ import {
   seedFor,
   sizeOf,
   slot,
+  tapNextHand,
 } from './game.ts';
 
 // PLAN §18 Stage 3, acceptance 8: close the tab in the middle of a hand, open the app again, and
@@ -51,7 +52,7 @@ test.describe('resume', () => {
       expect(decisions, 'a decision after the flop').toBeLessThan(60);
       const point = await nextFlowPoint(page, true);
       if (point === 'end') {
-        await page.locator('[data-hand-end]').click();
+        await tapNextHand(page);
         continue;
       }
       if (point === 'bust') {
@@ -121,7 +122,7 @@ test.describe('resume', () => {
       expect(decisions, 'a decision with the tray').toBeLessThan(60);
       const point = await nextFlowPoint(page, true);
       if (point === 'end') {
-        await page.locator('[data-hand-end]').click();
+        await tapNextHand(page);
         continue;
       }
       if (

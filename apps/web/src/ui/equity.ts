@@ -8,12 +8,13 @@
  * never reads "0%" and a chance below 100 never reads "100%" ("<1%", ">99%").
  */
 import { useState } from 'react';
-import type {
-  ActionBarInputData,
-  BigMoveData,
-  DrawChipData,
-  DrawChipsData,
-  WinBadgeData,
+import {
+  LEVEL_RULES,
+  type ActionBarInputData,
+  type BigMoveData,
+  type DrawChipData,
+  type DrawChipsData,
+  type WinBadgeData,
 } from '../app/store.ts';
 import type { Card } from '../core/cards.ts';
 import type { HandCategory } from '../eval/evaluate.ts';
@@ -171,7 +172,7 @@ export function priceChipView(
 ): PriceChipView | null {
   const legal = input?.legal ?? null;
   if (input === null || legal === null || !legal.canCall) return null;
-  if (coachLevel !== 'beginner' && coachLevel !== 'intermediate') return null;
+  if (LEVEL_RULES[coachLevel].price !== 'chip') return null;
   const price = priceOf(input.seats, legal.seat, legal.callAmount);
   const call = formatAmount(price.toCall, input.bb, input.amounts);
   const text = en.badge.price(call, percentText(100 * price.need));

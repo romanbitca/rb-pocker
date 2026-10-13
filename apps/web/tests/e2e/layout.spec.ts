@@ -3,6 +3,7 @@ import { tableFrame } from '../../src/ui/layout/seats.ts';
 import { expect, test } from './fixtures.ts';
 import {
   ACCEPTANCE_SIZES,
+  closeSummary,
   heroAct,
   newTable,
   nextFlowPoint,
@@ -13,6 +14,7 @@ import {
   seedFor,
   sizeOf,
   slot,
+  tapNextHand,
 } from './game.ts';
 
 // PLAN §18 Stage 3, acceptance 2: for every player count 2–9 at the five acceptance viewports,
@@ -279,6 +281,8 @@ test.describe('table layout', () => {
       fast: true,
       onHandEnd: async () => {
         ends++;
+        // The hand summary (Beginner, §12.9) covers the table: closed, the banner is measured.
+        await closeSummary(page);
         problems.push(...bannerProblems(await measureBanner(page), `hand end ${ends}`));
       },
     });
@@ -301,7 +305,7 @@ test.describe('table layout', () => {
       expect(decisions, 'a postflop decision with a bet or raise').toBeLessThan(60);
       const point = await nextFlowPoint(page, true);
       if (point === 'end') {
-        await page.locator('[data-hand-end]').click();
+        await tapNextHand(page);
         continue;
       }
       if (point === 'bust') {

@@ -3,6 +3,10 @@
 // reader whose first language is not English.
 import { describe, expect, it } from 'vitest';
 import { en } from '../../../src/i18n/en.ts';
+import { coachWords } from '../../../src/i18n/coachUi.ts';
+import { quizWords } from '../../../src/i18n/quiz.ts';
+import { summaryWords } from '../../../src/i18n/summary.ts';
+import { whichWinsWords } from '../../../src/i18n/whichWins.ts';
 
 const PLAN = Object.values(
   import.meta.glob<string>('../../../../../docs/PLAN.md', {
@@ -109,6 +113,63 @@ describe('screen copy comes from docs/PLAN.md', () => {
 
   it.each(Object.entries(PLAN_WORDS))('%s', (_key, words) => {
     expect(PLAN).toContain(words);
+  });
+
+  // Chunk 6.4 (§10.2, §10.3, §12.9, §13.2, F.10): the coach levels' words, each quoted in PLAN.
+  it.each(
+    Object.entries({
+      hintExam: `"${coachWords.hintExam}"`,
+      quizFirst: `"${en.actions.quizFirst}"`,
+      whichWins: `"${en.rankings.whichWins}"`,
+      quizQuestions: Object.values(quizWords.questions).map((q) => `"${q}"`),
+      quizChoices: [
+        ...quizWords.choices.win,
+        ...quizWords.choices.need,
+        ...quizWords.choices.move,
+      ].map((c) => `[${c}]`),
+      quizStep: `"${quizWords.step(0, 0).replace(/0/, '{i}').replace(/0/, '{n}')}"`,
+      quizScore: `"${quizWords.score(0, 0).replace(/0/, '{correct}').replace(/0/, '{of}')}"`,
+      quizRight: [
+        quizWords.right.win('{band}'),
+        quizWords.right.need('{band}'),
+        quizWords.right.move('{moves}'),
+      ].map((w) => `"${w}"`),
+      summaryTitle: `"${summaryWords.title('{n}', '{net}')}"`,
+      summary: [
+        summaryWords.exam,
+        summaryWords.score(0).replace('0', '{score}'),
+        ...Object.values(summaryWords.streets),
+        summaryWords.did.fold,
+        summaryWords.did.check,
+        summaryWords.did.call,
+        summaryWords.did.bet('{x}'),
+        summaryWords.did.raise('{x}'),
+        summaryWords.coach.fold,
+        summaryWords.coach.check,
+        summaryWords.coach.call,
+        summaryWords.coach.bet('{x}'),
+        summaryWords.coach.raise('{x}'),
+        summaryWords.numbers('{win}', '{need}'),
+        summaryWords.win('{win}'),
+        summaryWords.undone,
+        summaryWords.noGrade,
+        summaryWords.review,
+        summaryWords.next,
+      ].map((w) => `"${w}"`),
+      whichWinsQuiz: [
+        whichWinsWords.ask,
+        whichWinsWords.hand(1, '{cards}'),
+        whichWinsWords.hand(2, '{cards}'),
+        whichWinsWords.right,
+        whichWinsWords.wrong,
+        whichWinsWords.beats('{winner}', '{loser}'),
+        whichWinsWords.same('{name}'),
+        whichWinsWords.score(0, 0).replace(/0/, '{right}').replace(/0/, '{asked}'),
+        whichWinsWords.next,
+      ].map((w) => `"${w}"`),
+    }),
+  )('6.4 %s', (_key, words) => {
+    for (const w of Array.isArray(words) ? words : [words]) expect(PLAN).toContain(w);
   });
 
   it('the Welcome bullets are the four §12.1 bullets, capitalised', () => {

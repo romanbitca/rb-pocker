@@ -335,6 +335,13 @@
   height: var(--coach-strip);
 }
 
+/* The Advanced quiz (§10.3) takes the strip's place: the row grows to fit it while it shows, and
+   the table gives the room back after (as the sizing tray pushes the rows, §12.7). */
+.coach:has([data-quiz]) {
+  height: auto;
+  min-height: var(--coach-strip);
+}
+
 /* The toolbar Undo in the strip's reserved slot (portrait, the landscape coach row). */
 .stripUndo {
   position: absolute;

@@ -428,6 +428,22 @@ const disabled = (label: string, note: string | null = null): BarButton => ({
  * When everyone else is all-in there is nobody to raise against, so the right button is hidden
  * too (the engine offers no bet or raise without a responder, §3.5).
  */
+/**
+ * Row A while the Advanced quiz asks (§10.3): the same buttons with their own labels, all
+ * disabled until the quiz is answered or skipped; a tap says why (`note`). The tray stays shut.
+ */
+export function lockedView(view: ActionBarView, note: string): ActionBarView {
+  if (view.waiting) return view;
+  const lock = <B extends BarButton>(b: B): B => ({ ...b, enabled: false, action: null, note });
+  return {
+    ...view,
+    fold: lock(view.fold),
+    middle: lock(view.middle),
+    right: view.right === null ? null : { ...lock(view.right), opensTray: false },
+    tray: null,
+  };
+}
+
 export function actionBarView(input: ActionBarInput): ActionBarView {
   const t = en.actions;
   const { legal } = input;

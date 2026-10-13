@@ -44,6 +44,16 @@
  *   undealt stub reshuffled, the inputs cut back to it plus the `reshuffle` input, the undone record
  *   kept with `undone: true`, the hand marked practice (`undoCount`). Bots' cards and the board
  *   never change (r4).
+ *
+ * Coach levels (§10, §10.2, chunk 6.4; the rules are `app/levels.ts`):
+ * - The level of a hero decision is fixed when the decision starts (`game.coachLevel`): a level
+ *   chosen in Settings meanwhile applies from the next decision. A Beginner decision has its hint
+ *   on show, so it counts as helped (`meta.hintShown`, kept in the session).
+ * - Advanced: the hint job of a decision that rolls the quiz (`app/quiz.ts`) starts it; its score
+ *   goes into the decision's record when the hero acts.
+ * - At the hand end the controller opens the hand summary (the `summary` overlay, which closes the
+ *   `sheet` gate, so the next hand waits for a tap, §12.8) once per hand, when the level of the
+ *   hand's latest decision shows one; a late grade can still open it during the hand end.
  */
 import { EngineError } from '../core/assert.ts';
 import { deriveSeed, randomSeed, type Seed128 } from '../core/rng.ts';
@@ -82,6 +92,8 @@ import type { BrainProfile, GradeResult } from '../brain/types.ts';
 import type { BrainReply, BrainRequest } from '../workers/protocol.ts';
 import { EquityJobs } from './equityJobs.ts';
 import { coachKeyOf, finalHudEquity, HintJobs, type HintAsk } from './hintJobs.ts';
+import { LEVEL_RULES, summaryShows } from './levels.ts';
+import { quizRolls, quizScore } from './quiz.ts';
 import {
   GRADE_ATTEMPTS,
   GRADE_PAUSE_MS,
@@ -263,6 +275,12 @@ export interface ControllerOptions {
    * goes to the store's `coach` slice. The app turns it on; tests without a coach leave it off.
    */
   hints?: boolean;
+  /**
+   * Open the end-of-hand summary when the coach level shows one (§10.2, §12.9, chunk 6.4): it
+   * closes the `sheet` gate, so the next hand waits for its "Next hand ›". The app turns it on;
+   * tests of other features leave it off, and their hands go on by themselves.
+   */
+  summaries?: boolean;
   /**
    * The grade port (§11.3 r5, chunk 6.2, `app/grading.ts`): every hero decision is graded through
    * it (the app: `brainGrader(brain)`). Without it (tests) every decision is recorded at once with
@@ -463,6 +481,16 @@ export class TableController {
   private feedback: FeedbackView | null = null;
   /** The coach level of the latest hero decision (§10: level changes apply from the next one). */
   private decisionLevel: CoachLevel | null = null;
+  /**
+   * The coach level of each hero decision of this hand, fixed when the decision starts (§10, by
+   * decisionId); `latched` is the latest one (the `game.coachLevel` in force), null before the first.
+   */
+  private readonly levels = new Map<number, CoachLevel>();
+  private latched: CoachLevel | null = null;
+  /** The hand whose summary was opened (§12.9: once per hand). */
+  private summaryHand: number | null = null;
+  /** Open the end-of-hand summary (`ControllerOptions.summaries`). */
+  private readonly summaries: boolean;
   private readonly events: ControllerEvent[] = [];
   private readonly errors: ControllerEvent[] = [];
   private readonly brainEvents: ControllerEvent[] = [];
@@ -482,6 +510,7 @@ export class TableController {
       this.equityClient === null ? null : new EquityJobs(this.store, this.equityClient);
     this.hintJobs = options.hints === true ? new HintJobs(this.store, this.brain) : null;
     this.grader = options.grader ?? null;
+    this.summaries = options.summaries === true;
     this.unsubscribe = this.store.subscribe((s, prev) => {
       if (s.ui.nav !== prev.ui.nav) this.onNav(s.ui, prev.ui);
       if (s.ui.gates !== prev.ui.gates) this.onGates();
@@ -1171,10 +1200,71 @@ export class TableController {
     this.meta = { ...this.meta, hintShown: { ...this.meta.hintShown, [decisionId]: true } };
   }
 
+  /** The coach level of decision `decisionId` (§10): fixed when it started, else the settings'. */
+  private levelOf(decisionId: number): CoachLevel {
+    return this.levels.get(decisionId) ?? this.settings().coachLevel;
+  }
+
+  /**
+   * §10: "coach level changes apply from the next hero decision". When the hero's decision starts,
+   * its level is fixed for good (an Undo returns to it at the same level). A Beginner decision has
+   * the hint on show: it is noted as seen (`hintShown`), so it counts as helped even if the level
+   * changes before the act, and after a reload.
+   */
+  private latchLevel(): void {
+    const h = this.hand;
+    if (h === null || this.headless || this.mode !== 'heroTurn' || !isHeroTurn(h)) return;
+    const decisionId = heroDecisionsTaken(h);
+    const known = this.levels.get(decisionId);
+    if (known !== undefined) {
+      this.latched = known;
+      return;
+    }
+    const level = this.settings().coachLevel;
+    this.levels.set(decisionId, level);
+    this.latched = level;
+    if (LEVEL_RULES[level].hintAlwaysSeen && this.meta.hintShown[decisionId] !== true) {
+      this.meta = { ...this.meta, hintShown: { ...this.meta.hintShown, [decisionId]: true } };
+    }
+  }
+
+  /**
+   * §10.3: the quiz score of the decision at `h` when the hero acts (Advanced): the answers given
+   * (all of them, or those before "Skip"); null without a quiz, or with no answer.
+   */
+  private quizResult(h: HandState): { correct: number; of: number } | null {
+    const { coach } = this.store.getState();
+    const quiz = coach.quiz;
+    const key = coachKeyOf(h);
+    if (quiz === null || quiz.key !== key || coach.key !== key || coach.decision === null) {
+      return null;
+    }
+    if (quiz.answers.length === 0) return null;
+    return quizScore(coach.decision, quiz.answers);
+  }
+
+  /**
+   * §10.2, §12.9: at the hand end, the hand summary opens once per hand when the level of the
+   * hand's latest decision shows one (a late grade can still bring it). It closes the `sheet`
+   * gate, so the next hand waits for its "Next hand ›".
+   */
+  private offerSummary(): void {
+    const h = this.hand;
+    if (!this.summaries || this.mode !== 'handEnd' || this.headless || h === null) return;
+    if (h.phase !== 'complete') return;
+    if (this.summaryHand === h.handSeq) return;
+    const level = this.latched ?? this.settings().coachLevel;
+    const grades = this.meta.decisions.map((d) => d.grade);
+    if (!summaryShows(level, grades) || this.store.getState().ui.screen !== 'table') return;
+    this.summaryHand = h.handSeq;
+    this.trace('summary', { handSeq: h.handSeq });
+    this.ui({ type: 'open', overlay: 'summary' });
+  }
+
   /** What a hero decision at `h` is, before the act changes anything (§8.2: the HUD's number). */
   private decisionAt(h: HandState, action: PlayerAction): PendingGrade {
-    const level = this.settings().coachLevel;
     const decisionId = heroDecisionsTaken(h);
+    const level = this.levelOf(decisionId);
     const hud = hudEquityAt(this.store.getState().equity, h);
     return {
       epoch: this.epoch,
@@ -1192,7 +1282,8 @@ export class TableController {
         eRandom: hud.latest,
         need: priceNeed(h),
         // §10.2: the hint is always on show at Beginner; above it, the player opened it.
-        hintSeen: level === 'beginner' || this.meta.hintShown[decisionId] === true,
+        hintSeen: LEVEL_RULES[level].hintAlwaysSeen || this.meta.hintShown[decisionId] === true,
+        quiz: level === 'advanced' ? this.quizResult(h) : null,
       },
       level,
       decision: h,
@@ -1398,7 +1489,12 @@ export class TableController {
     this.hold = null;
     this.feedback = null;
     this.decisionLevel = null;
+    this.levels.clear();
+    this.latched = null;
     this.closeFeedbackOverlay();
+    if (this.store.getState().ui.overlays.includes('summary')) {
+      this.ui({ type: 'close', overlay: 'summary' });
+    }
   }
 
   /**
@@ -1762,13 +1858,21 @@ export class TableController {
     ) {
       return null;
     }
+    const decisionId = heroDecisionsTaken(hand);
+    // §10.3: Advanced only, and never again on a decision taken back with Undo (its answers showed).
+    const quizzes =
+      this.levelOf(decisionId) === 'advanced' && !hand.undoneDecisions.includes(decisionId);
     return {
       key: coachKeyOf(hand),
       epoch: this.epoch,
-      build: () => ({
-        obs: observe(hand, HERO, this.extras(table)),
-        eRandom: finalHudEquity(this.store.getState().equity, hand),
-      }),
+      build: () => {
+        const obs = observe(hand, HERO, this.extras(table));
+        return {
+          obs,
+          eRandom: finalHudEquity(this.store.getState().equity, hand),
+          quiz: quizzes && quizRolls(obs),
+        };
+      },
     };
   }
 
@@ -1790,6 +1894,7 @@ export class TableController {
 
   /** Writes the `game` slice when something in it changed; the equity jobs follow the hand. */
   private publish(): void {
+    this.latchLevel();
     const hand = this.hand;
     const legal = this.mode === 'heroTurn' && hand !== null ? this.legalOf(hand) : null;
     const heroBust = this.heroBust();
@@ -1806,7 +1911,8 @@ export class TableController {
       g.diag !== this.diag ||
       g.canUndo !== canUndo ||
       g.feedback !== this.feedback ||
-      g.decisions !== decisions
+      g.decisions !== decisions ||
+      g.coachLevel !== this.latched
     ) {
       this.store.setState({
         game: {
@@ -1820,9 +1926,11 @@ export class TableController {
           canUndo,
           feedback: this.feedback,
           decisions,
+          coachLevel: this.latched,
         },
       });
     }
+    this.offerSummary();
     // After the game slice, so the equity slice never describes a hand the store does not have.
     this.equityJobs?.sync(this.headless ? null : hand, this.epoch);
     // The coach's hint for the hero's decision; null cancels it (§8.2, chunk 5.7).

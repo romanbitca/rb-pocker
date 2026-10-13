@@ -2,6 +2,7 @@ import type { Page } from '@playwright/test';
 import { expect, heading, test } from './fixtures.ts';
 import {
   CARD_NAMES,
+  closeSummary,
   collectErrors,
   heroAct,
   newTable,
@@ -71,7 +72,9 @@ test('Review replays the hand that just ended, step by step, and hides what the 
   expect(result).not.toBe('');
   const handSeq = (await pcState(page)).game.hand?.handSeq;
 
-  // The link under the banner opens Review on this hand; the URL stays "/".
+  // The link under the banner opens Review on this hand; the URL stays "/". (At Beginner the
+  // hand summary is open over the banner first, §12.9: closed, the banner is there.)
+  await closeSummary(page);
   const link = page.getByRole('button', { name: 'Review this hand' });
   await expect(link).toBeVisible();
   await link.click();

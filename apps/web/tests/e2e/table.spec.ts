@@ -1,5 +1,5 @@
 import { expect, test } from './fixtures.ts';
-import { collectErrors, nextFlowPoint, pageMetrics, sizeOf, slot } from './game.ts';
+import { collectErrors, nextFlowPoint, pageMetrics, sizeOf, slot, tapNextHand } from './game.ts';
 
 // PLAN §18 Stage 3, acceptance 9 (§12.1 "one tap to play"): with a fresh profile, open the app
 // and tap Play: a dealt hand with the hero's cards face up within 2 s, and no other screen,
@@ -83,8 +83,9 @@ test('a full hand at Normal speed plays to its end', async ({ page }, testInfo) 
   const text = await page.evaluate(() => document.documentElement.outerHTML);
   expect(SUITS.test(text)).toBe(false);
 
-  // A tap on the banner moves on: the next hand.
-  await banner.click();
+  // At Beginner the hand summary is open over the banner (§10.2, §12.9): its "Next hand ›" (or a
+  // tap on the banner when there is none) moves on to the next hand.
+  await tapNextHand(page);
   await expect(banner).toHaveCount(0);
   expect(errors).toEqual([]);
 });

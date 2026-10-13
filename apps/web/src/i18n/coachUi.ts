@@ -11,6 +11,8 @@ export const coachWords = {
   thinking: 'Coach is thinking…',
   prefix: 'Coach:',
   hint: 'Hint',
+  /** Exam's hint button (§10.2, §12.6): opening it counts as help. */
+  hintExam: 'Hint (counts as help)',
   why: 'Why?',
   /** The strip opens the sheet (the "›"): its accessible name ends with this. */
   openSheet: 'Show why',
