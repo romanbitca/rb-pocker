@@ -16,9 +16,12 @@ import {
   createTableController,
   realTimers,
   type SeedSource,
+  type StorageManagerLike,
   type TableController,
   type Timers,
 } from '../../src/app/controller.ts';
+import type { ShareEnv } from '../../src/app/dataTools.ts';
+import type { TabLock } from '../../src/app/tabLock.ts';
 import {
   createAppStore,
   defaultGameSettings,
@@ -76,6 +79,11 @@ export interface HarnessOptions {
   grader?: Grader;
   /** Chunk 6.4: open the end-of-hand summary when the coach level shows one. */
   summaries?: boolean;
+  /** Chunk 8.3: the tab lock (§14.7), Export's page, `navigator.storage`, a Home Screen launch. */
+  tabLock?: TabLock;
+  shareEnv?: ShareEnv;
+  storageManager?: StorageManagerLike;
+  standalone?: boolean;
 }
 
 export function makeHarness(options: HarnessOptions = {}): Harness {
@@ -97,6 +105,10 @@ export function makeHarness(options: HarnessOptions = {}): Harness {
     ...(options.hints !== undefined && { hints: options.hints }),
     ...(options.grader !== undefined && { grader: options.grader }),
     ...(options.summaries !== undefined && { summaries: options.summaries }),
+    ...(options.tabLock !== undefined && { tabLock: options.tabLock }),
+    ...(options.shareEnv !== undefined && { shareEnv: options.shareEnv }),
+    ...(options.storageManager !== undefined && { storageManager: options.storageManager }),
+    ...(options.standalone !== undefined && { standalone: options.standalone }),
   });
   controller.boot();
   return {

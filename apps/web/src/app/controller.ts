@@ -54,6 +54,12 @@
  * - At the hand end the controller opens the hand summary (the `summary` overlay, which closes the
  *   `sheet` gate, so the next hand waits for a tap, §12.8) once per hand, when the level of the
  *   hand's latest decision shows one; a late grade can still open it during the hand end.
+ *
+ * One writer at a time (§14.7, chunk 8.3): with a tab lock (`app/tabLock.ts`) the controller boots
+ * `pending` and only reads until the lock answers; granted, it reads the storage again and writes;
+ * denied or taken, it is read-only: it writes nothing, its game stops and Home shows the §12.11
+ * banner. A `rev` conflict (§14.3 step 2) does the same. The Data commands (§14.8: Export, Import,
+ * Reset) run in their lazy chunk (`app/dataTools.ts`) through `dataHost()`.
  */
 import { EngineError } from '../core/assert.ts';
 import { deriveSeed, randomSeed, type Seed128 } from '../core/rng.ts';
@@ -78,7 +84,8 @@ import {
 } from '../engine/types.ts';
 import { commitHand } from '../persist/commit.ts';
 import { appendDiag } from '../persist/diag.ts';
-import { loadProfile, saveSettings } from '../persist/profile.ts';
+import { PERSIST_KIT } from '../persist/kit.ts';
+import { loadProfile, saveProfile, saveSettings } from '../persist/profile.ts';
 import { emptyHandMeta, isBotLevel, settingsProblem } from '../persist/schema.ts';
 import type {
   DecisionRecord,
@@ -107,8 +114,10 @@ import {
   type Grader,
   type GradeOutcome,
 } from './grading.ts';
-import { addHand, type ReviewHand } from './review.ts';
+import { addHand, initialReview, type ReviewHand } from './review.ts';
 import { handEndViewOf, labelVisible, seatLevelOf } from './tableViews.ts';
+import type { DataCommand, DataCommands, DataHost, ShareEnv } from './dataTools.ts';
+import type { TabLock, TabLockEvent } from './tabLock.ts';
 import {
   NO_SEAT_STATS,
   updateUi,
@@ -116,7 +125,10 @@ import {
   type ControllerMode,
   type Diagnostics,
   type GameCommand,
+  type ImportCheck,
+  type Screen,
   type Speed,
+  type TabMode,
   type Toast,
   type UiCommand,
   type UiSlice,
@@ -349,7 +361,34 @@ export interface ControllerOptions {
    * `grade: null`, like a grade that failed: nothing waits or pauses, and Undo is there at once.
    */
   grader?: Grader | null;
+  /**
+   * One writer at a time (§14.7, chunk 8.3, `app/tabLock.ts`): the app passes the page's lock.
+   * Without it (tests) this tab writes from the start; a `rev` conflict still makes it read-only.
+   */
+  tabLock?: TabLock | null;
+  /** Where Export sends the file (§14.8): the page (`globalThis`); tests pass a fake. */
+  shareEnv?: ShareEnv;
+  /**
+   * `navigator.storage` where `persist()` exists (secure pages, §12.14), else null (§14.8: then
+   * nothing is asked and Settings says "No").
+   */
+  storageManager?: StorageManagerLike | null;
+  /** Launched from the Home Screen (§12.13 "Installed"): `persist()` is asked at once (§14.8). */
+  standalone?: boolean;
 }
+
+/** The parts of `navigator.storage` used to keep the data (§14.8). */
+export interface StorageManagerLike {
+  persisted(): Promise<boolean>;
+  persist(): Promise<boolean>;
+}
+
+/**
+ * Screens that offer Export or Import (§14.8): opening one loads the Data commands' chunk, so the
+ * share sheet opens inside the Export tap. Settings' Data section (chunk 8.4); Stats → History's
+ * footer joins when Stats exists (chunk 8.2).
+ */
+export const DATA_SCREENS: readonly Screen[] = ['settings'];
 
 /** One line of the controller's in-memory log (Diagnostics; `window.__pc.logs()` in test builds). */
 export interface ControllerEvent {
@@ -388,7 +427,10 @@ export interface ControllerSnapshot {
   undoSnapshot: UndoSnapshot | null;
   /** §11.4: the hand had an undo, so it counts as practice. */
   assisted: boolean;
-  /** This tab still writes the storage (false after another writer's `rev`, §14.3 step 2). */
+  /**
+   * This tab writes the storage (§14.7): false while it waits for the lock, and once another tab
+   * has the game (its lock, or another writer's `rev`, §14.3 step 2).
+   */
   writer: boolean;
 }
 
@@ -445,7 +487,8 @@ type NewToast =
   | { kind: 'handNotRestored' }
   | { kind: 'dataRecovered' }
   | { kind: 'dataRestored' }
-  | { kind: 'undone' };
+  | { kind: 'undone' }
+  | { kind: 'exportCopied' | 'exportFailed' | 'imported' | 'statsReset' | 'dataNotChanged' };
 
 const RING = { events: 500, errors: 50, brain: 200, voided: 5 } as const;
 
@@ -498,11 +541,25 @@ export class TableController {
    */
   private commitPending = false;
   /**
-   * Another writer changed the profile since this tab read it (§14.3 step 2): this tab writes
-   * nothing more this launch and plays on in memory (the read-only banner and the tab lock are
-   * chunk 8.3's, §14.7).
+   * One writer at a time (§14.7): only a `writer` tab writes the storage. `pending` waits for the
+   * lock's answer (boot reads only; Play waits in `queued`); `readOnly`: another tab has the game
+   * (its lock, or its `rev`, §14.3 step 2), so this tab writes nothing and shows the banner.
    */
-  private writer = true;
+  private tab: TabMode;
+  private readonly tabLock: TabLock | null;
+  /** Play or New table while the lock had not answered: done once it is granted. */
+  private queued: GameCommand | null = null;
+  private disposed = false;
+  /** The Data commands (§14.8), from their lazy chunk once loaded. */
+  private data: DataCommands | null = null;
+  private dataLoading: Promise<DataCommands | null> | null = null;
+  private readonly shareEnv: ShareEnv;
+  /** Import's preview in the store (`data.importCheck`), set by the Data commands. */
+  private importCheck: ImportCheck | null = null;
+  private readonly storageManager: StorageManagerLike | null;
+  private readonly standalone: boolean;
+  /** `persist()` was asked this launch (§14.8: at most once). */
+  private keepAsked = false;
   /** When this table's session began (§14.4); stored in the session. */
   private sessionStart: string | null = null;
   private settingsTimer: unknown = null;
@@ -596,6 +653,11 @@ export class TableController {
     this.hintJobs = options.hints === true ? new HintJobs(this.store, this.brain) : null;
     this.grader = options.grader ?? null;
     this.summaries = options.summaries === true;
+    this.tabLock = options.tabLock ?? null;
+    this.tab = this.tabLock === null ? 'writer' : 'pending';
+    this.shareEnv = options.shareEnv ?? (globalThis as ShareEnv);
+    this.storageManager = options.storageManager ?? null;
+    this.standalone = options.standalone === true;
     this.unsubscribe = this.store.subscribe((s, prev) => {
       if (s.ui.nav !== prev.ui.nav) this.onNav(s.ui, prev.ui);
       if (s.ui.gates !== prev.ui.gates) this.onGates();
@@ -609,46 +671,79 @@ export class TableController {
    * Home) and the saved session (§14.5: Home's Play continues it; a hand that cannot be restored is
    * voided with its chips returned; a complete hand is committed now if it was not yet, §14.3 load
    * table). Then ready for Play.
+   *
+   * §14.7: the tab lock is asked first. Without Web Locks the answer comes at once; with them it
+   * comes a few milliseconds later, so boot only reads (no write-back, no commit) and the lock's
+   * answer decides: granted reads the storage again, writing this time; denied makes the tab
+   * read-only. A Play tapped meanwhile waits for it (`queued`).
    */
   boot(): void {
     if (this.mode !== 'booting') return;
+    this.tabLock?.start((event) => this.onTabLock(event));
     const storage = this.storage;
     if (storage !== null) {
       storage.onFailure(() => updateUi(this.store, (ui) => ({ ...ui, storageBanner: true })));
-      const now = this.now();
-      const loaded = loadProfile(storage, { now });
-      this.profile = loaded.profile;
-      this.seatStats = heroOnly(NO_SEAT_STATS, loaded.profile.heroModel);
-      this.store.setState({ settings: sanitize(loaded.profile.settings, {}) });
-      if (loaded.status === 'reset' || loaded.status === 'restored') {
-        this.error(`profile ${loaded.status}`, loaded.problem);
-        this.toast({ kind: loaded.status === 'reset' ? 'dataRecovered' : 'dataRestored' });
-      }
-      const first = loaded.status === 'new' || loaded.status === 'unavailable';
+      const first = this.loadStorage(true);
       this.ui({ type: 'go', screen: first ? 'welcome' : 'home' });
-      const session = loadSession(storage, { engineVersion: ENGINE_VERSION, now });
-      if (session.status === 'ok' || session.status === 'voided') this.resume(session.session);
-      if (session.status === 'voided') {
-        this.error('session hand voided', session.problem);
-        this.toast({ kind: 'handNotRestored' });
-      } else if (session.status === 'discarded') {
-        this.error('session discarded', session.problem);
-      }
-      // §14.3 load table: a complete hand is committed now (or was already: step 5 only).
-      if (this.hand?.phase === 'complete') this.recoverHand(this.hand);
     }
     this.mode = 'idle';
     this.publish();
+    void this.keepData();
+  }
+
+  /**
+   * Reads the profile and the session (§12.14, §14.5, §14.6) into a fresh game: the settings, the
+   * game Home's Play continues, a hand that could not be restored (voided, chips back). A writer
+   * tab also writes back what loading repaired and counts a complete hand left in the session
+   * (§14.3 load table); a tab without the lock only reads (§14.7). `notify`: the toasts and logs of
+   * a repair (boot; not again when the lock's answer reads it a second time). Returns true when
+   * there is no profile yet (Welcome).
+   */
+  private loadStorage(notify: boolean): boolean {
+    const storage = this.storage as SafeStorage;
+    const readOnly = this.tab !== 'writer';
+    const now = this.now();
+    this.forgetGame();
+    this.sessionStart = null;
+    const loaded = loadProfile(storage, { now, readOnly });
+    this.profile = loaded.profile;
+    this.seatStats = heroOnly(NO_SEAT_STATS, loaded.profile.heroModel);
+    this.store.setState({ settings: sanitize(loaded.profile.settings, {}) });
+    if (notify && (loaded.status === 'reset' || loaded.status === 'restored')) {
+      this.error(`profile ${loaded.status}`, loaded.problem);
+      this.toast({ kind: loaded.status === 'reset' ? 'dataRecovered' : 'dataRestored' });
+    }
+    const session = loadSession(storage, { engineVersion: ENGINE_VERSION, now, readOnly });
+    if (session.status === 'ok' || session.status === 'voided') this.resume(session.session);
+    if (notify && session.status === 'voided') {
+      this.error('session hand voided', session.problem);
+      this.toast({ kind: 'handNotRestored' });
+    } else if (notify && session.status === 'discarded') {
+      this.error('session discarded', session.problem);
+    }
+    // §14.3 load table: a complete hand is committed now (or was already: step 5 only).
+    if (!readOnly && this.hand?.phase === 'complete') this.recoverHand(this.hand);
+    return loaded.status === 'new' || loaded.status === 'unavailable';
   }
 
   /** Handles one game command (the store's `dispatch` sends them here). */
   dispatch(cmd: GameCommand): void {
     switch (cmd.type) {
       case 'play':
-        this.play();
+        if (!this.waitsForLock(cmd)) this.play();
         break;
       case 'newTable':
-        void this.newTable(cmd.setup, cmd.confirmed === true);
+        if (!this.waitsForLock(cmd)) void this.newTable(cmd.setup, cmd.confirmed === true);
+        break;
+      case 'playHere':
+        this.playHere();
+        break;
+      case 'exportStats':
+      case 'importFile':
+      case 'importConfirm':
+      case 'importCancel':
+      case 'resetStats':
+        this.withData(cmd);
         break;
       case 'act':
         this.heroAct(cmd.action);
@@ -696,8 +791,10 @@ export class TableController {
     this.publish();
   }
 
-  /** Stops every timer and unhooks from the store. */
+  /** Stops every timer, lets the tab lock go and unhooks from the store. */
   dispose(): void {
+    this.disposed = true;
+    this.tabLock?.release();
     this.bumpEpoch();
     this.equityJobs?.dispose();
     this.hintJobs?.cancel();
@@ -722,7 +819,7 @@ export class TableController {
       meta: this.meta,
       undoSnapshot: this.undoSnapshot,
       assisted: isAssisted(this.meta),
-      writer: this.writer,
+      writer: this.tab === 'writer',
     };
   }
 
@@ -789,6 +886,7 @@ export class TableController {
     // A finished hand still waiting for a grade is committed by `closeTable`. The session of
     // §14.4 (the stats' running totals) ends here too: chunk 8.2.
     this.closeTable();
+    if (this.tab === 'readOnly') return; // a commit found another writer (§14.7)
     this.seatStats = heroOnly(this.seatStats); // a new table: its bots have not been seen yet
     this.beginSession();
     this.startHandAt(table);
@@ -877,9 +975,10 @@ export class TableController {
       return;
     }
     this.closeTable();
+    if (this.tab === 'readOnly') return; // the commit found another writer (§14.7)
     this.sessionStart = null;
     // §3.1: the old table's session ends.
-    if (this.storage !== null && this.writer) clearSession(this.storage);
+    if (this.storage !== null && this.tab === 'writer') clearSession(this.storage);
     this.ui({ type: 'replace', screen: 'setup' });
   }
 
@@ -993,6 +1092,7 @@ export class TableController {
   /** Deals the next hand at `table` (§2.3 `startNextHand`), at the bot levels the settings name now. */
   private startHandAt(table: TableState): void {
     this.flushCommit();
+    if (this.tab === 'readOnly') return; // the commit found another writer (§14.7)
     this.bumpEpoch();
     const levelled = this.withSettingsLevels(table);
     // §14.3 handSeq rule: global across tables, and above every hand the profile has counted.
@@ -1089,11 +1189,11 @@ export class TableController {
    * §14.3 steps 1–5 for the complete hand `h` (dealt from `this.table`, with `this.inputs` and
    * `this.meta`): its record, `applyHand` and the hero model in one profile write. `session` is
    * step 5's (null: the caller writes the next one); `heroModel` false for a hand the app finished
-   * headless (§3.1). A second writer (`conflict`) stops every write of this tab (§14.7, chunk 8.3).
+   * headless (§3.1). A second writer (`conflict`) makes this tab read-only (§14.7).
    */
   private commitFinished(h: HandState, session: SessionState | null, heroModel: boolean): void {
     const { storage, profile, table } = this;
-    if (storage === null || profile === null || table === null || !this.writer) return;
+    if (storage === null || profile === null || table === null || this.tab !== 'writer') return;
     const now = this.now();
     const record = handRecordOf({
       hand: h,
@@ -1113,8 +1213,7 @@ export class TableController {
     const result = commitHand(storage, profile, { record, apply, session }, now);
     this.trace('commit', { handSeq: h.handSeq, status: result.status });
     if (result.status === 'conflict') {
-      this.writer = false;
-      this.error('another writer', { rev: profile.rev, storedRev: result.storedRev });
+      this.anotherWriter(profile.rev, result.storedRev);
       return;
     }
     if (result.status === 'invalid') this.error('hand not committed', result.problem);
@@ -1123,6 +1222,7 @@ export class TableController {
     if (heroModel && result.profile.heroModel.hands > 0) {
       this.seatStats = { ...this.seatStats, [HERO_ID]: result.profile.heroModel };
     }
+    void this.keepData(); // §14.8: maybe the third finished session
   }
 
   /**
@@ -1311,7 +1411,7 @@ export class TableController {
       if (input !== null) record.inputs.push(input);
       push(this.voided, record, RING.voided);
       // §4.5, §14.2: stored under `pc.v1.diag` too (the last 5), unless another tab writes (§14.7).
-      if (this.storage !== null && this.writer) appendDiag(this.storage, record, this.now());
+      if (this.storage !== null && this.tab === 'writer') appendDiag(this.storage, record, this.now());
     }
     this.diag = { ...this.diag, voidedHands: this.diag.voidedHands + 1 };
     this.toast({ kind: 'handVoided' });
@@ -1648,6 +1748,8 @@ export class TableController {
    * the Table is back (§11.1: it never goes away by itself).
    */
   private onNav(ui: UiSlice, prev: UiSlice): void {
+    // §14.8: a screen with Export opens, so its chunk is there before the tap.
+    if (ui.screen !== prev.screen && DATA_SCREENS.includes(ui.screen)) this.withData(null);
     if (this.hold !== 'feedback' || ui.overlays.includes('feedback')) return;
     if (ui.screen !== 'table') return;
     if (prev.screen === 'table' && prev.overlays.includes('feedback')) this.keepMove();
@@ -1982,7 +2084,7 @@ export class TableController {
 
   /** Writes the session, after every step (§14.5). */
   private saveSession(): void {
-    if (this.storage === null || this.headless || !this.writer) return;
+    if (this.storage === null || this.headless || this.tab !== 'writer') return;
     const session = this.sessionState();
     if (session === null) return;
     const saved = saveSession(this.storage, session);
@@ -2005,7 +2107,12 @@ export class TableController {
     if (this.settingsTimer !== null) this.timers.clearTimeout(this.settingsTimer);
     this.settingsTimer = null;
     this.settingsSeq++;
-    if (this.storage === null || this.profile === null || !this.settingsDirty || !this.writer) {
+    if (
+      this.storage === null ||
+      this.profile === null ||
+      !this.settingsDirty ||
+      this.tab !== 'writer'
+    ) {
       return;
     }
     const saved = saveSettings(this.storage, this.profile, this.settings(), this.now());
@@ -2013,9 +2120,265 @@ export class TableController {
     this.settingsDirty = false;
     const result = saved.result;
     if (!result.ok && result.reason === 'invalid') this.error('settings not saved', result.problem);
+    // §14.3 step 2: another tab writes now (§14.7).
     if (!result.ok && result.reason === 'conflict') {
-      this.writer = false; // §14.3 step 2: another tab writes now (§14.7, chunk 8.3)
-      this.error('another writer', { rev: saved.profile.rev, storedRev: result.storedRev });
+      this.anotherWriter(saved.profile.rev, result.storedRev);
+    }
+  }
+
+  // -------------------------------------------------------------------------------------------
+  // One writer at a time (§14.7, chunk 8.3)
+
+  /** Play or New table before the lock answered: they wait for it; read-only: ignored. */
+  private waitsForLock(cmd: GameCommand): boolean {
+    if (this.tab === 'writer') return false;
+    if (this.tab === 'pending') this.queued = cmd;
+    else this.trace('read-only: ignored', cmd.type);
+    return true;
+  }
+
+  private onTabLock(event: TabLockEvent): void {
+    if (this.disposed) return;
+    this.trace('tab lock', event);
+    switch (event) {
+      case 'granted':
+        this.becomeWriter();
+        break;
+      case 'denied':
+      case 'lost':
+        this.becomeReadOnly(event === 'denied' ? 'another tab has the game' : 'lock taken');
+        break;
+      case 'changed':
+        if (this.tab === 'readOnly') this.refreshProfile();
+        break;
+    }
+    this.publish();
+  }
+
+  /**
+   * This tab writes now (§14.7). After boot (the lock's late answer, or "Play here") the storage
+   * is read again, writing back what loading repairs: another tab may have played on since this
+   * one read it. Without Web Locks the other tab hears this one only through its writes, so the
+   * profile is written once at once. Then what waited for the lock runs.
+   */
+  private becomeWriter(): void {
+    this.tab = 'writer';
+    if (this.mode === 'booting' || this.storage === null) return;
+    this.loadStorage(false);
+    if (this.tabLock?.mode !== 'locks' && this.profile !== null) {
+      const saved = saveProfile(this.storage, this.profile, this.now());
+      this.profile = saved.profile;
+    }
+    void this.keepData();
+    const queued = this.queued;
+    this.queued = null;
+    if (queued !== null) this.dispatch(queued);
+  }
+
+  /** A profile write found another tab's `rev` (§14.3 step 2): that tab has the game now. */
+  private anotherWriter(rev: number, storedRev: number): void {
+    this.error('another writer', { rev, storedRev });
+    this.becomeReadOnly('another writer');
+  }
+
+  /**
+   * Another tab has the game (§14.7): from now on this tab writes nothing (its unsaved settings
+   * too), and the game stops: the game screens show the §12.11 banner. The stop runs on a
+   * microtask, so a write path that found the other `rev` finishes its own steps first (they
+   * write nothing any more).
+   */
+  private becomeReadOnly(why: string): void {
+    if (this.tab === 'readOnly') return;
+    this.tab = 'readOnly';
+    this.queued = null;
+    this.trace('read-only', why);
+    queueMicrotask(() => {
+      if (this.disposed || this.tab !== 'readOnly') return;
+      this.data?.run({ type: 'importCancel' }); // a checked file waits for nobody now
+      this.forgetGame();
+      this.ui({ type: 'go', screen: 'home' });
+      this.publish();
+    });
+  }
+
+  /** "Play here" (§12.11): the game comes to this tab, and Play continues it. */
+  private playHere(): void {
+    if (this.tab !== 'readOnly') return;
+    this.queued = { type: 'play' };
+    this.tab = 'pending';
+    if (this.tabLock === null) this.becomeWriter();
+    else this.tabLock.takeOver(); // 'granted' follows (at once without Web Locks)
+  }
+
+  /** A read-only tab: the writer changed the profile, so show the new numbers (§14.7). */
+  private refreshProfile(): void {
+    if (this.storage === null) return;
+    const loaded = loadProfile(this.storage, { now: this.now(), readOnly: true });
+    this.profile = loaded.profile;
+    this.store.setState({ settings: sanitize(loaded.profile.settings, {}) });
+  }
+
+  /** The game in this tab stops (read-only, or before the storage is read again): no writes. */
+  private forgetGame(): void {
+    this.bumpEpoch();
+    this.commitPending = false;
+    this.headless = false;
+    this.pendingSetup = null;
+    if (this.settingsTimer !== null) this.timers.clearTimeout(this.settingsTimer);
+    this.settingsTimer = null;
+    this.settingsDirty = false;
+    this.table = null;
+    this.hand = null;
+    this.next = null;
+    this.inputs = [];
+    this.newcomers = [];
+    if (this.mode !== 'booting') this.mode = 'idle';
+    this.resetDecisions();
+  }
+
+  // -------------------------------------------------------------------------------------------
+  // Keeping the data: persist(), Export, Import, Reset (§14.8, chunk 8.3)
+
+  /**
+   * §14.8: asks the browser to keep this site's data (`navigator.storage.persist()`), at most once
+   * per launch: on a launch from the Home Screen until it is granted, and in a browser tab once,
+   * after the third finished session (`stats.sessions`, chunk 8.2). The answer is kept in
+   * `persistGranted` (Settings: "Protected from automatic clean-up: Yes/No").
+   */
+  private async keepData(): Promise<void> {
+    const manager = this.storageManager;
+    const asked = this.profile;
+    if (manager === null || asked === null || this.tab !== 'writer' || this.keepAsked) return;
+    const due = this.standalone
+      ? asked.persistGranted !== true
+      : asked.persistGranted === null && asked.stats.sessions >= 3;
+    if (!due) return;
+    this.keepAsked = true;
+    let granted: boolean;
+    try {
+      granted = (await manager.persisted()) || (await manager.persist());
+    } catch (e) {
+      this.error('persist() failed', e instanceof Error ? e.message : String(e));
+      return;
+    }
+    this.trace('persist()', { granted });
+    const profile = this.profile;
+    const storage = this.storage;
+    if (this.disposed || this.tab !== 'writer' || storage === null || profile === null) return;
+    if (profile.persistGranted === granted) return;
+    const saved = saveProfile(storage, { ...profile, persistGranted: granted }, this.now());
+    const result = saved.result;
+    if (!result.ok && result.reason === 'conflict') {
+      this.anotherWriter(profile.rev, result.storedRev);
+      return;
+    }
+    this.profile = saved.profile;
+    this.publish();
+  }
+
+  /**
+   * The Data commands (§14.8: Export, Import, Reset) run in their lazy chunk (`app/dataTools.ts`).
+   * Loaded already (a Data screen opened it), a command runs inside this call, so Export's share
+   * sheet opens inside the tap; else once the chunk is there. When it cannot load (offline, not
+   * cached), Export says it failed, Import and Reset that nothing changed.
+   */
+  private withData(cmd: DataCommand | null): void {
+    const storage = this.storage;
+    if (storage === null) return;
+    if (this.data !== null) {
+      if (cmd !== null) this.data.run(cmd);
+      return;
+    }
+    this.dataLoading ??= import('./dataTools.ts').then(
+      (tools) => (this.data = tools.dataCommands(this.dataHost(storage))),
+      (e: unknown) => {
+        this.dataLoading = null;
+        this.error('data commands not loaded', e instanceof Error ? e.message : String(e));
+        return null;
+      },
+    );
+    void this.dataLoading.then((data) => {
+      if (this.disposed || cmd === null) return;
+      if (data !== null) data.run(cmd);
+      else if (cmd.type !== 'importCancel') {
+        this.toast({ kind: cmd.type === 'exportStats' ? 'exportFailed' : 'dataNotChanged' });
+      }
+    });
+  }
+
+  /** What the Data commands may see and do in this controller (`DataHost`). */
+  private dataHost(storage: SafeStorage): DataHost {
+    const canChange = (): boolean =>
+      !this.disposed && this.tab === 'writer' && this.profile !== null && !this.headless;
+    return {
+      storage,
+      kit: PERSIST_KIT,
+      env: this.shareEnv,
+      now: this.now,
+      canChange,
+      exportProfile: () =>
+        this.tab === 'writer' && this.profile !== null
+          ? this.profile
+          : loadProfile(storage, { now: this.now(), readOnly: true }).profile,
+      profile: () => this.profile as Profile,
+      prepare: (cancel) => {
+        this.flushCommit(); // §14.3: counted in the stats that pc.v1.preimport keeps
+        return cancel && canChange() ? this.cancelUnfinished() : null;
+      },
+      adopt: (profile, table) => {
+        if (this.disposed) return;
+        if (profile !== null) this.adoptProfile(profile);
+        if (table !== null && this.tab === 'writer') this.startHandAt(table);
+        this.publish();
+      },
+      conflict: (storedRev) => this.anotherWriter(this.profile?.rev ?? 0, storedRev),
+      importCheck: (check) => {
+        this.importCheck = check;
+        if (!this.disposed) this.publish();
+      },
+      toast: (kind) => {
+        if (!this.disposed) this.toast({ kind });
+      },
+      log: (what, detail) => this.trace(what, detail),
+    };
+  }
+
+  /**
+   * Import (§14.8): an unfinished hand cannot go on, as its number may already be counted in the
+   * file (§14.3 handSeq rule). It is dropped and the table waits as at hand start, so every seat
+   * has its hand-start stack back; the session says so. Returns that table, or null.
+   */
+  private cancelUnfinished(): TableState | null {
+    const h = this.hand;
+    const table = this.table;
+    if (h === null || h.phase === 'complete' || table === null) return null;
+    this.trace('hand cancelled', { handSeq: h.handSeq });
+    this.bumpEpoch();
+    this.hand = null;
+    this.table = null;
+    this.next = table;
+    this.inputs = [];
+    this.mode = 'idle';
+    this.resetDecisions();
+    this.saveSession();
+    return table;
+  }
+
+  /**
+   * After Import or Reset: the new profile in memory (settings, the handSeq floor that follows
+   * `lastCommittedHandSeq`, the hero model), Review's list emptied (its hands were the old
+   * stats'). During a hand (Reset) the hero model in memory waits for that hand's commit (§9.5).
+   */
+  private adoptProfile(profile: Profile): void {
+    this.profile = profile;
+    if (this.settingsTimer !== null) this.timers.clearTimeout(this.settingsTimer);
+    this.settingsTimer = null;
+    this.settingsDirty = false;
+    this.store.setState({ settings: sanitize(profile.settings, {}), review: initialReview() });
+    if (this.hand === null || this.hand.phase === 'complete') {
+      const others = Object.entries(this.seatStats).filter(([id]) => id !== HERO_ID);
+      if (profile.heroModel.hands > 0) others.push([HERO_ID, profile.heroModel]);
+      this.seatStats = Object.fromEntries(others);
     }
   }
 
@@ -2221,6 +2584,16 @@ export class TableController {
     this.equityJobs?.sync(this.headless ? null : hand, this.epoch);
     // The coach's hint for the hero's decision; null cancels it (§8.2, chunk 5.7).
     this.hintJobs?.sync(this.hintAsk(hand, legal));
+    // §14.7, §14.8: the tab mode, "Protected from automatic clean-up", Import's preview.
+    const persisted = this.profile?.persistGranted ?? null;
+    const data = this.store.getState().data;
+    if (
+      data.tab !== this.tab ||
+      data.persisted !== persisted ||
+      data.importCheck !== this.importCheck
+    ) {
+      this.store.setState({ data: { tab: this.tab, persisted, importCheck: this.importCheck } });
+    }
   }
 
   private ui(cmd: UiCommand): void {

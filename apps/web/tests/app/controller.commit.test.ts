@@ -417,22 +417,31 @@ describe('storage that fails (§14.6 rule 3, Stage 8 acceptance 5)', () => {
 });
 
 describe('a second writer (§14.3 step 2, §14.7)', () => {
-  it('another tab writes the profile: this tab writes nothing more and plays on in memory', async () => {
+  it('another tab writes the profile: this tab writes nothing more and becomes read-only', async () => {
     const backend = new FakeStorage();
     const h = start(backend);
     await play(h, 1);
     const theirs: Profile = { ...profileOf(backend), rev: profileOf(backend).rev + 1 };
     backend.data.set(K.profile, JSON.stringify(theirs));
     const before = new Map(backend.data);
-    await play(h, 1); // its commit finds the other rev
+    // Its next commit finds the other rev (chunk 8.3: then the game stops, the banner shows).
+    for (let i = 0; i < 2000 && h.controller.snapshot().writer; i++) {
+      const s = h.state();
+      if (s.game.mode === 'heroTurn' && s.game.legal !== null) {
+        h.dispatch({ type: 'act', action: passive(s.game.legal) });
+      } else await tick();
+    }
+    await flush();
     expect(h.controller.snapshot().writer).toBe(false);
+    expect(h.state().data.tab).toBe('readOnly');
     expect(h.controller.logs().errors.map((e) => e.what)).toContain('another writer');
     expect(profileOf(backend)).toEqual(theirs);
     expect(ringOf(backend).length).toBe(1);
     const writes = backend.writeLog.length;
     h.dispatch({ type: 'settings', patch: { sound: false } });
-    await play(h, 1);
+    h.dispatch({ type: 'play' });
     h.dispatch({ type: 'pagehide' });
+    expect(h.state().game.hand).toBeNull();
     expect(backend.writeLog.length).toBe(writes);
     expect(backend.data.get(K.profile)).toBe(before.get(K.profile));
   }, 30_000);

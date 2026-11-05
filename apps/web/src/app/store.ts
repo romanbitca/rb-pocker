@@ -1,5 +1,6 @@
 /**
- * The app's one Zustand store (PLAN §2.5): slices `game`, `equity`, `coach`, `ui` and `settings`.
+ * The app's one Zustand store (PLAN §2.5): slices `game`, `equity`, `coach`, `ui`, `settings`,
+ * `review` and `data` (the tab lock, `persist()` and Import's preview: chunk 8.3, §14.7, §14.8).
  *
  * - It holds the reducer's output and UI state only; it never runs game logic. The TableController
  *   (`app/controller.ts`) drives every hand and writes the `game` slice; its equity jobs
@@ -35,6 +36,7 @@ import type {
 } from '../engine/types.ts';
 import { defaultSettings } from '../persist/schema.ts';
 import type { DecisionRecord, Settings } from '../persist/schema.ts';
+import type { ImportCheckProblem } from './dataTools.ts';
 import { heroDecisionKey, levelInForce } from './coachViews.ts';
 import { choiceCount, quizQuestions } from './quiz.ts';
 import { UNDO_POLICY, type FeedbackView } from './undo.ts';
@@ -174,7 +176,16 @@ export type Toast =
   /** "Your saved data was damaged. We restored a backup. Your last hand may be missing." (§14.6 rule 2) */
   | { id: number; kind: 'dataRestored' }
   /** "Move taken back. The unseen cards were shuffled again." (§11.3 r3, Appendix F.10) */
-  | { id: number; kind: 'undone' };
+  | { id: number; kind: 'undone' }
+  /**
+   * The Data commands' results (§14.8, chunk 8.3): Export's last resort (the clipboard) or its
+   * failure, Import and Reset done, or nothing changed (another tab has the game, or the browser
+   * keeps nothing: private modes).
+   */
+  | {
+      id: number;
+      kind: 'exportCopied' | 'exportFailed' | 'imported' | 'statsReset' | 'dataNotChanged';
+    };
 
 /** An explicit gate close by `owner` (e.g. a first-table tip); the gate stays closed while any hold exists. */
 export interface GateHold {
@@ -387,6 +398,36 @@ export interface UiSlice {
 }
 
 /**
+ * One writer at a time (§14.7, chunk 8.3): this tab writes the storage (`writer`), waits for the
+ * lock's answer (`pending`: at boot for a few milliseconds, and after "Play here"; Play waits for
+ * it), or another tab has the game (`readOnly`: the game screens show the §12.11 banner, nothing
+ * is written).
+ */
+export type TabMode = 'pending' | 'writer' | 'readOnly';
+
+/**
+ * The file Import read (§14.8), for the Data section's preview and its Replace (chunk 8.4):
+ * `reading`, then `ready` with the preview ("1,234 hands, exported 12 Sep 2026"), or `failed`
+ * with the reason: not a stats file, from a newer app, damaged, or it could not be read.
+ */
+export type ImportCheck =
+  | { status: 'reading' }
+  | { status: 'ready'; hands: number; exportedAt: string }
+  | { status: 'failed'; why: ImportCheckProblem };
+
+/** Keeping the data (§14.7, §14.8). Only the controller writes this slice. */
+export interface DataSlice {
+  tab: TabMode;
+  /** `Profile.persistGranted`: Settings shows "Protected from automatic clean-up: Yes/No" (null: never asked). */
+  persisted: boolean | null;
+  importCheck: ImportCheck | null;
+}
+
+export function initialData(): DataSlice {
+  return { tab: 'writer', persisted: null, importCheck: null };
+}
+
+/**
  * The player's settings: Appendix A.7 `Settings`, as stored in `pc.v1.profile` (chunk 3.2). The
  * controller saves every change (debounced 250 ms, §14.2) and keeps `seatLevels.length ===
  * players`.
@@ -479,7 +520,37 @@ export type GameCommand =
    */
   | { type: 'undo' }
   /** The feedback card's [Keep my move] (also Esc and Back): the hand goes on (§11.1). */
-  | { type: 'keepMove' };
+  | { type: 'keepMove' }
+  /**
+   * §12.11 "Play here" (chunk 8.3): this tab takes the game from the other tab (§14.7: the lock is
+   * stolen; without Web Locks this tab writes the profile once so the other tab hears it), reads
+   * the storage again and plays (Home's Play).
+   */
+  | { type: 'playHere' }
+  /**
+   * §14.8 Export (the Data section, chunk 8.4): the share sheet, else a download, else the
+   * clipboard. Dispatch it from the tap itself: the share sheet opens only inside a user
+   * activation (the chunk it needs is loaded when a Data screen opens).
+   */
+  | { type: 'exportStats' }
+  /**
+   * §14.8 Import: the file from `<input type="file" accept="application/json,.json">`. It is read
+   * and checked; `data.importCheck` gets the preview (or why not). Only in the writer tab.
+   */
+  | { type: 'importFile'; file: Blob }
+  /**
+   * The preview's Replace (after its confirmation): the file's profile and hands replace the
+   * stored ones; the old profile is kept in `pc.v1.preimport`. An unfinished hand is cancelled
+   * first, its chips back (its number may be counted in the file already, §14.3).
+   */
+  | { type: 'importConfirm' }
+  /** The preview's Cancel: the file is forgotten. */
+  | { type: 'importCancel' }
+  /**
+   * §14.8 Reset stats, after its confirmation ("Delete my stats"): stats, hands and hero model
+   * emptied, settings kept; the old profile is kept in `pc.v1.preimport`.
+   */
+  | { type: 'resetStats' };
 
 /**
  * Commands the store applies to the `coach` slice itself: the player opened the hint of the
@@ -559,6 +630,8 @@ export interface AppState {
   settings: GameSettings;
   /** The last finished hands, kept in memory for Review (written by the controller; §12.10). */
   review: ReviewSlice;
+  /** The tab lock, persistence and Import's preview (§14.7, §14.8; written by the controller). */
+  data: DataSlice;
   /** The one way to change anything (the UI dispatches through the controller, §2.1). Stable. */
   dispatch: (cmd: Command) => void;
 }
@@ -615,6 +688,7 @@ export function createAppStore(): AppStore {
     ui: initialUi(),
     settings: defaultGameSettings(),
     review: initialReview(),
+    data: initialData(),
     dispatch: (cmd) => {
       if (cmd.type === 'review') {
         set((s) => showReview(s, cmd));
@@ -814,6 +888,14 @@ export const selectOverlayOpen =
   (overlay: Overlay) =>
   (s: AppState): boolean =>
     s.ui.overlays.includes(overlay);
+
+/** §14.7: another tab has the game; this one shows the §12.11 banner instead of the game. */
+export const selectReadOnly = (s: AppState): boolean => s.data.tab === 'readOnly';
+export const selectTabMode = (s: AppState): TabMode => s.data.tab;
+/** §14.8: Settings' "Protected from automatic clean-up: Yes/No" (null: never asked). */
+export const selectPersisted = (s: AppState): boolean | null => s.data.persisted;
+/** §14.8: the picked import file's preview, or why it cannot be imported. */
+export const selectImportCheck = (s: AppState): ImportCheck | null => s.data.importCheck;
 
 /** A hand is dealt and not over: starting a new table would fold it (§3.1). */
 export const selectHandInProgress = (s: AppState): boolean =>

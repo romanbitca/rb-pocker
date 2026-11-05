@@ -153,6 +153,12 @@ describe('toastText (§12.11)', () => {
       expect(PLAN).toContain(toastText({ id: 1, kind }));
     }
     expect(PLAN).toContain(en.storage.banner);
+    // Chunk 8.3: the Data commands' toasts and the read-only banner (§12.11, §14.7, §14.8).
+    const data = ['exportCopied', 'exportFailed', 'imported', 'statsReset', 'dataNotChanged'];
+    for (const kind of data as ('exportCopied' | 'imported')[]) {
+      expect(PLAN).toContain(`toast "${toastText({ id: 1, kind })}"`);
+    }
+    expect(PLAN).toContain(`banner "${en.otherTab.text}" | [${en.otherTab.playHere}]`);
   });
 });
 

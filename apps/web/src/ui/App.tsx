@@ -22,10 +22,12 @@ import { useRegisterSW } from 'virtual:pwa-register/react';
 import {
   selectBotCard,
   selectNav,
+  selectReadOnly,
   selectSessionLine,
   selectToasts,
   useAppStore,
   useDispatch,
+  type Nav,
   type Speed,
 } from '../app/store.ts';
 import { en } from '../i18n/en.ts';
@@ -65,12 +67,14 @@ function WelcomeScreen() {
 function HomeScreen() {
   const dispatch = useDispatch();
   const session = useAppStore(selectSessionLine);
+  const readOnly = useAppStore(selectReadOnly);
   return (
     <Home
       session={session}
       onPlay={() => dispatch({ type: 'play' })}
       onNewTable={() => dispatch({ type: 'go', screen: 'setup' })}
       onOpenSettings={() => dispatch({ type: 'go', screen: 'settings' })}
+      onPlayHere={readOnly ? () => dispatch({ type: 'playHere' }) : undefined}
     />
   );
 }
@@ -218,6 +222,12 @@ const SCREENS = {
   review: () => <ReviewScreen />,
 } as const;
 
+/**
+ * §14.7: a read-only tab (another tab has the game) shows Home, whose §12.11 banner and "Play
+ * here" replace Play: the game screens are not shown. The controller goes Home too.
+ */
+const READ_ONLY_NAV: Nav = { screens: ['home'], overlays: [] };
+
 // ---------------------------------------------------------------------------------------------
 // Overlays wired to the store (the Menu and the §3.1 dialogs are in the lazy chunk; the rankings
 // drawer and the sizing tray belong to the Table)
@@ -296,11 +306,12 @@ export function App() {
   useDocumentMotion();
   usePreloadScreens();
   const nav = useAppStore(selectNav);
+  const readOnly = useAppStore(selectReadOnly);
 
   return (
     <>
       <SvgSprite />
-      <ScreenSwitcher nav={nav} screens={SCREENS} overlays={OVERLAYS} />
+      <ScreenSwitcher nav={readOnly ? READ_ONLY_NAV : nav} screens={SCREENS} overlays={OVERLAYS} />
       <NoticeLayer />
     </>
   );

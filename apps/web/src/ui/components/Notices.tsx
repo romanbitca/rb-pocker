@@ -10,22 +10,11 @@ import { en } from '../../i18n/en.ts';
 import { joinNames } from '../handEnd.ts';
 import styles from './Notices.module.css';
 
-/** A toast's text (§12.11). */
+/** A toast's text (§12.11): each kind is a key of `en.toast`. */
 export function toastText(toast: Toast): string {
-  switch (toast.kind) {
-    case 'botsJoined':
-      return en.toast.botsJoined(joinNames(toast.names), toast.names.length === 1);
-    case 'handVoided':
-      return en.toast.handVoided;
-    case 'handNotRestored':
-      return en.toast.handNotRestored;
-    case 'dataRecovered':
-      return en.toast.dataRecovered;
-    case 'dataRestored':
-      return en.toast.dataRestored;
-    case 'undone':
-      return en.toast.undone;
-  }
+  return toast.kind === 'botsJoined'
+    ? en.toast.botsJoined(joinNames(toast.names), toast.names.length === 1)
+    : en.toast[toast.kind];
 }
 
 export interface ToastsProps {

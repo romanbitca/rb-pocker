@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
-// Home (PLAN §12.1, Appendix F.10): one-tap Play, the session line, hidden (not disabled) tiles.
+// Home (PLAN §12.1, Appendix F.10): one-tap Play, the session line, hidden (not disabled) tiles,
+// the read-only banner (§14.7, §12.11).
 import '../../../src/ui/styles/tokens.css';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -107,6 +108,24 @@ describe('Home', () => {
     expect([onOpenLearn, onOpenStats, onInstall].map((f) => f.mock.calls.length)).toEqual([
       1, 1, 1,
     ]);
+  });
+
+  it('read-only (§14.7): the §12.11 banner and "Play here" replace Play, New table and Settings', () => {
+    const onPlayHere = vi.fn();
+    const onOpenStats = vi.fn();
+    const { onPlay, container } = renderHome({ session: SESSION, onPlayHere, onOpenStats });
+    expect(screen.getByRole('alert').textContent).toBe(
+      'The game is open in another tab. Close it, or tap here to play here instead.',
+    );
+    expect(screen.getAllByRole('button').map((b) => b.textContent)).toEqual(['Play here', 'Stats']);
+    expect(screen.queryByText(/You have/)).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Play here' }));
+    expect(onPlayHere).toHaveBeenCalledTimes(1);
+    expect(onPlay).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: 'Play here' }).classList.contains(PRIMARY)).toBe(
+      true,
+    );
+    expect(smallTargets(container, (el) => el.classList.contains(PRIMARY))).toEqual([]);
   });
 
   it('carries the short disclaimer (§16.2, Appendix G.1)', () => {
