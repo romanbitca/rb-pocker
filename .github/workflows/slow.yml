@@ -1,10 +1,10 @@
-# PLAN §17.5 `slow`: weekly (the owner's decision, to save Actions minutes on this private repo)
-# and on demand (Actions → slow → Run workflow).
+# PLAN §17.5 `slow`. It runs on the dev Mac (`scripts/ci-local.sh --slow`, before a stage's last
+# merge; owner decision 13 Oct 2026: no paid Actions minutes for the private repository). This
+# workflow runs only by hand (Actions → slow → Run workflow); keep its self-play list in step with
+# the script's.
 name: slow
 
 on:
-  schedule:
-    - cron: '17 3 * * 1' # Mondays 03:17 UTC
   workflow_dispatch:
 
 concurrency:

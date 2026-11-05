@@ -1,9 +1,10 @@
 # `npm run docker:up`: the same image Coolify runs, at http://localhost:3000 (PLAN §17.3).
+# HOST_PORT moves it (scripts/ci-local.sh uses 3200, so a server already on 3000 never clashes).
 services:
   app:
     build: .
     ports:
-      - '3000:3000'
+      - '${HOST_PORT:-3000}:3000'
     environment:
       NODE_ENV: production
       # What /api/health reports as `commit`, like Coolify's runtime SOURCE_COMMIT (§17.6).
