@@ -60,6 +60,12 @@ fixed slice of the Claude plan.
   **stop all work when the weekly all-models limit reaches 68%** (it was 57%, mostly from the owner's
   other projects; resets 2026-10-16 18:00Z). Then pause until the owner writes again. The weekly
   limit is account-wide: check it before every merge or agent, not only while agents run.
+- **Weekly cap 80%, don't stop (owner, 2026-11-05 19:45Z, "continue working, use max 80% of weekly.
+  dont stop"):** the plan is now **Ultra** and `get_usage` reports no 5-hour window (if one appears
+  again, use it up to 95%). Work continuously; **stop all work when the weekly all-models limit
+  reaches 80%** (it was 34%; resets 2026-11-06 18:00Z), wait for the weekly reset, then continue
+  under the same 80% cap: "don't stop" means no pausing to ask the owner. The `rb-poker-watchdog`
+  safety net is back on (`.loop/watchdog.json`, `weeklyStopAt: 80`).
 - **Testing on this Mac, not GitHub Actions (owner, 2026-10-13):** the owner won't pay for GitHub and the
   repo stays private, so the 2,000 free Actions minutes a month are not enough (they ran out on 9 Oct).
   CI runs locally: before a merge, run the full local suite (the same steps as the `check`, `e2e` and
