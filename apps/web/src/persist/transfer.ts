@@ -79,11 +79,42 @@ export const EXPORT_APP = 'poker-coach';
 /** The largest file Import reads: the browser keeps 5 MiB per site in all (§14.1). */
 export const IMPORT_MAX_CHARS = 5 * 1024 * 1024;
 
-/** `rb-poker-coach-stats-2026-09-12.json`: the local date, as the player's calendar shows it. */
-export function exportFileName(now: Date): string {
+/**
+ * `rb-poker-coach-stats-2026-09-12.json` (`rb-poker-coach-debug-…` for the debug report): the
+ * local date, as the player's calendar shows it.
+ */
+export function exportFileName(now: Date, kind: 'stats' | 'debug' = 'stats'): string {
   const two = (n: number): string => String(n).padStart(2, '0');
   const date = `${now.getFullYear()}-${two(now.getMonth() + 1)}-${two(now.getDate())}`;
-  return `rb-poker-coach-stats-${date}.json`;
+  return `rb-poker-coach-${kind}-${date}.json`;
+}
+
+/**
+ * Settings → Diagnostics → "Export debug report" (§4.5, chunk 8.4): `rb-poker-coach-debug-…json`
+ * = `{ app: 'poker-coach', kind: 'debug', exportedAt, …report, diag }`, where `diag` is
+ * `pc.v1.diag` (the voided hands' replay records, A.7 `DiagRing`) as stored: parsed, or its text
+ * when it does not parse, or null. The player sends it by their own choice; nothing is sent.
+ */
+export function debugData(
+  kit: PersistKit,
+  store: SafeStorage,
+  report: Record<string, unknown>,
+  now: Date,
+): { name: string; text: string } {
+  const read = store.get(STORAGE_KEYS.diag);
+  const raw = read.ok ? read.value : null;
+  const parsed = raw === null ? null : kit.parseJson(raw);
+  const diag = parsed === null ? null : parsed.ok ? parsed.value : raw;
+  return {
+    name: exportFileName(now, 'debug'),
+    text: JSON.stringify({
+      app: EXPORT_APP,
+      kind: 'debug',
+      exportedAt: now.toISOString(),
+      ...report,
+      diag,
+    }),
+  };
 }
 
 /** The export file of `profile` and its counted hand records (oldest first). */

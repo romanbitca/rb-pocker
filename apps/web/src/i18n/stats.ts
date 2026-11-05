@@ -120,6 +120,9 @@ export const statsWords = {
     noGrade: 'No grade',
     /** Footer (§14.4); Export and Import arrive with chunk 8.3. */
     saved: 'Your stats are saved only on this device.',
+    /** The footer's buttons (chunk 8.4, §14.8). */
+    export: 'Export',
+    import: 'Import',
     where: 'Where are my stats?',
     /** Appendix G.4. */
     whereText:

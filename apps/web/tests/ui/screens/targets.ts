@@ -30,9 +30,15 @@ export function declaredSize(el: Element): { w: number; h: number } {
   };
 }
 
-/** What a finger hits: a radio or checkbox laid over its label is as big as the label. */
+/**
+ * What a finger hits: a radio, checkbox or file input laid over its label (the Settings chips,
+ * `FileButton`) is as big as the label.
+ */
 export function tapTarget(el: Element): Element {
-  if (el instanceof HTMLInputElement && (el.type === 'radio' || el.type === 'checkbox')) {
+  if (
+    el instanceof HTMLInputElement &&
+    (el.type === 'radio' || el.type === 'checkbox' || el.type === 'file')
+  ) {
     return el.labels?.[0] ?? el;
   }
   return el;

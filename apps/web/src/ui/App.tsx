@@ -21,17 +21,22 @@ import { lazy, Suspense, useCallback, useEffect, useRef } from 'react';
 import { useRegisterSW } from 'virtual:pwa-register/react';
 import {
   selectBotCard,
+  selectInstall,
   selectNav,
+  selectNudge,
   selectReadOnly,
   selectSessionLine,
   selectToasts,
   useAppStore,
   useDispatch,
+  type Command,
   type Nav,
+  type Nudge,
   type Speed,
 } from '../app/store.ts';
 import { en } from '../i18n/en.ts';
 import { LoadBoundary } from './components/LoadBoundary.tsx';
+import type { NudgeCardProps } from './components/NudgeCard.tsx';
 import { StorageBanner, Toasts } from './components/Notices.tsx';
 import { SvgSprite } from './components/SvgSprite.tsx';
 import { Home } from './screens/Home.tsx';
@@ -54,12 +59,28 @@ const BotCardSheet = lazy(() =>
 // ---------------------------------------------------------------------------------------------
 // Screens wired to the store
 
+/** The one-time card's props (§12.11, §12.13; chunk 8.4), or undefined when there is none. */
+function nudgeProps(
+  nudge: Nudge | null,
+  dispatch: (cmd: Command) => void,
+): NudgeCardProps | undefined {
+  if (nudge === null) return undefined;
+  return {
+    nudge,
+    onDismiss: () => dispatch({ type: 'dismissNudge' }),
+    onInstall: () => dispatch({ type: 'install' }),
+    onImportFile: (file) => dispatch({ type: 'importFile', file }),
+  };
+}
+
 function WelcomeScreen() {
   const dispatch = useDispatch();
+  const nudge = useAppStore(selectNudge);
   return (
     <Welcome
       onPlay={() => dispatch({ type: 'play' })}
       onSetup={() => dispatch({ type: 'go', screen: 'setup' })}
+      nudge={nudgeProps(nudge, dispatch)}
     />
   );
 }
@@ -68,6 +89,8 @@ function HomeScreen() {
   const dispatch = useDispatch();
   const session = useAppStore(selectSessionLine);
   const readOnly = useAppStore(selectReadOnly);
+  const install = useAppStore(selectInstall);
+  const nudge = useAppStore(selectNudge);
   return (
     <Home
       session={session}
@@ -75,7 +98,10 @@ function HomeScreen() {
       onNewTable={() => dispatch({ type: 'go', screen: 'setup' })}
       onOpenSettings={() => dispatch({ type: 'go', screen: 'settings' })}
       onOpenStats={() => dispatch({ type: 'go', screen: 'stats' })}
+      // "Install app" while the browser offers it; its dialog opens from the tap itself (§12.13).
+      onInstall={install ? () => dispatch({ type: 'install' }) : undefined}
       onPlayHere={readOnly ? () => dispatch({ type: 'playHere' }) : undefined}
+      nudge={nudgeProps(nudge, dispatch)}
     />
   );
 }
@@ -150,7 +176,11 @@ function ScreenFailed() {
 }
 
 /** An overlay from the lazy chunk; nothing until it is there (it opens only over its screens). */
-function LaterOverlay({ name }: { name: 'MenuOverlay' | 'OutOfChipsOverlay' | 'NewTableOverlay' }) {
+function LaterOverlay({
+  name,
+}: {
+  name: 'MenuOverlay' | 'OutOfChipsOverlay' | 'NewTableOverlay' | 'ImportOverlay' | 'ResetOverlay';
+}) {
   const { mod } = useScreens();
   if (mod === null) return null;
   const Overlay = mod[name];
@@ -321,6 +351,9 @@ const OVERLAYS = {
   outOfChips: () => <LaterOverlay name="OutOfChipsOverlay" />,
   newTable: () => <LaterOverlay name="NewTableOverlay" />,
   botCard: () => <BotCardOverlay />,
+  // §14.8 (chunk 8.4): Import's preview and Replace, and "Delete my stats", over any screen.
+  dataImport: () => <LaterOverlay name="ImportOverlay" />,
+  dataReset: () => <LaterOverlay name="ResetOverlay" />,
 } as const;
 
 // ---------------------------------------------------------------------------------------------

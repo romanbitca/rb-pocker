@@ -6,8 +6,12 @@
  *
  * Links to screens that do not exist yet are hidden, not disabled (§18 Stage 3): the guide
  * (Learn) and Privacy show only when their callback is given.
+ *
+ * The first launch of a home-screen app on iOS has storage of its own (§12.13): the card "Played
+ * in Safari before?…" [Import] [Skip] sits under the buttons (chunk 8.4).
  */
 import { en } from '../../i18n/en.ts';
+import { NudgeCard, type NudgeCardProps } from '../components/NudgeCard.tsx';
 import { CheckIcon } from './icons.tsx';
 import styles from './Screen.module.css';
 
@@ -20,9 +24,11 @@ export interface WelcomeProps {
   onOpenGuide?: (() => void) | undefined;
   /** The footer's Privacy link. Hidden while absent (the About screen comes later). */
   onOpenPrivacy?: (() => void) | undefined;
+  /** The one-time card (§12.11), or absent. */
+  nudge?: NudgeCardProps | undefined;
 }
 
-export function Welcome({ onPlay, onSetup, onOpenGuide, onOpenPrivacy }: WelcomeProps) {
+export function Welcome({ onPlay, onSetup, onOpenGuide, onOpenPrivacy, nudge }: WelcomeProps) {
   return (
     <main className={`${styles.page} ${styles.felt}`}>
       <div className={styles.column}>
@@ -53,6 +59,8 @@ export function Welcome({ onPlay, onSetup, onOpenGuide, onOpenPrivacy }: Welcome
             </button>
           )}
         </div>
+
+        {nudge && <NudgeCard {...nudge} />}
       </div>
 
       <footer className={styles.footer}>

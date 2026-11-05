@@ -90,3 +90,68 @@ describe('a read-only tab (§14.7)', () => {
     appStore.setGameHandler(null);
   });
 });
+
+describe('chunk 8.4: install hints and the Data dialogs over every screen', () => {
+  afterEach(() => {
+    appStore.setGameHandler(null);
+    act(() => appStore.setState({ data: initialData(), ui: initialUi(false) }));
+  });
+
+  it('Home: the Install tile while the browser offers it, and the one-time card; their taps go to the controller', () => {
+    const sent: string[] = [];
+    appStore.setGameHandler((cmd) => sent.push(cmd.type));
+    appStore.setState({
+      ui: initialUi(false),
+      data: { ...initialData(), install: true, nudge: 'installCard' },
+    });
+    render(<App />);
+    act(() => screen.getByRole('button', { name: en.home.install }).click());
+    act(() => screen.getByRole('button', { name: en.nudge.installNow }).click());
+    act(() => screen.getByRole('button', { name: en.nudge.notNow }).click());
+    expect(sent).toEqual(['install', 'install', 'dismissNudge']);
+  });
+
+  it('Welcome: "Played in Safari before?" picks a file for Import', () => {
+    const sent: { type: string; file?: unknown }[] = [];
+    appStore.setGameHandler((cmd) => sent.push(cmd));
+    appStore.setState({ ui: initialUi(true), data: { ...initialData(), nudge: 'safariImport' } });
+    const { container } = render(<App />);
+    const file = new File(['{}'], 'stats.json');
+    const input = container.querySelector('input[type="file"]') as HTMLInputElement;
+    act(() => {
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    expect(sent).toEqual([]); // no file picked yet
+    Object.defineProperty(input, 'files', { value: [file], configurable: true });
+    act(() => {
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    expect(sent).toEqual([{ type: 'importFile', file }]);
+  });
+
+  it('Import`s preview and "Delete my stats" open over the screen in force (the screens chunk)', () => {
+    const sent: string[] = [];
+    appStore.setGameHandler((cmd) => sent.push(cmd.type));
+    appStore.setState({
+      ui: initialUi(false),
+      data: {
+        ...initialData(),
+        importCheck: { status: 'ready', hands: 3, exportedAt: '2026-11-06T10:00:00.000Z' },
+      },
+    });
+    act(() => appStore.getState().dispatch({ type: 'open', overlay: 'dataImport' }));
+    const { unmount } = render(<App />);
+    expect(screen.getByRole('alertdialog', { name: 'Import stats' }).textContent).toContain(
+      '3 hands, exported 6 Nov 2026',
+    );
+    act(() => screen.getByRole('button', { name: 'Replace' }).click());
+    expect(sent).toEqual(['importConfirm']);
+    unmount();
+
+    act(() => appStore.getState().dispatch({ type: 'open', overlay: 'dataReset' }));
+    render(<App />);
+    act(() => screen.getByRole('button', { name: 'Delete my stats' }).click());
+    expect(sent).toEqual(['importConfirm', 'resetStats']);
+    expect(appStore.getState().ui.overlays).not.toContain('dataReset');
+  });
+});

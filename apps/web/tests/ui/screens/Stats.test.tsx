@@ -6,9 +6,10 @@
  * hands are `tests/ui/stats.fixture.test.tsx`.
  */
 import '../../../src/ui/styles/tokens.css';
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { HistoryItem } from '../../../src/app/history.ts';
+import { appStore, initialData } from '../../../src/app/store.ts';
 import { emptyStats, type Stats as StatsData } from '../../../src/persist/schema.ts';
 import { Stats, type StatsProps, type StatsTab } from '../../../src/ui/screens/Stats.tsx';
 import { SUIT_CODE_POINTS } from '../dom.ts';
@@ -145,5 +146,49 @@ describe('the Stats screen', () => {
       expect(SUIT_CODE_POINTS.test(container.textContent ?? ''), tab).toBe(false);
       cleanup();
     }
+  }, 15_000);
+});
+
+describe('Stats, chunk 8.4: History`s [Export] [Import] and the level suggestion card', () => {
+  afterEach(() => {
+    act(() => appStore.setState({ data: initialData() }));
+  });
+
+  it('History`s footer: Export from the tap, Import through the file picker (§14.4, §14.8)', () => {
+    const onExport = vi.fn();
+    const onImport = vi.fn();
+    const { container } = show({ tab: 'history', history: [], onExport, onImport });
+    const footer = screen.getByText('Your stats are saved only on this device.')
+      .parentElement as HTMLElement;
+    fireEvent.click(within(footer).getByRole('button', { name: 'Export' }));
+    expect(onExport).toHaveBeenCalledTimes(1);
+    const input = footer.querySelector('input[type="file"]') as HTMLInputElement;
+    expect(input.accept).toBe('application/json,.json');
+    expect(input.labels?.[0]?.textContent).toBe('Import');
+    const file = new File(['{}'], 'stats.json');
+    fireEvent.change(input, { target: { files: [file] } });
+    expect(onImport).toHaveBeenCalledWith(file);
+    expect(smallTargets(container, () => false)).toEqual([]);
+    cleanup();
+    show({ tab: 'history', history: [] }); // without the commands: no buttons
+    expect(screen.queryByRole('button', { name: 'Export' })).toBeNull();
+  }, 15_000);
+
+  it('the level suggestion card (§10.4) at the top of Progress, from the store', () => {
+    act(() =>
+      appStore.setState({
+        data: { ...initialData(), suggestion: { rule: 'botsUp', from: 'easy', to: 'medium' } },
+      }),
+    );
+    show({ tab: 'progress' });
+    const card = screen.getByRole('region', { name: 'You beat Easy bots. Try Medium?' });
+    // First on the page, before the decision score.
+    const page = card.parentElement as HTMLElement;
+    expect(page.firstElementChild).toBe(card);
+    expect(within(card).getByRole('button', { name: 'Try Medium' })).toBeTruthy();
+    cleanup();
+    act(() => appStore.setState({ data: initialData() }));
+    show({ tab: 'progress' });
+    expect(screen.queryByRole('region', { name: /Try Medium/ })).toBeNull();
   }, 15_000);
 });

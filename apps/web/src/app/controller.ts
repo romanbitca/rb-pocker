@@ -60,6 +60,11 @@
  * denied or taken, it is read-only: it writes nothing, its game stops and Home shows the §12.11
  * banner. A `rev` conflict (§14.3 step 2) does the same. The Data commands (§14.8: Export, Import,
  * Reset) run in their lazy chunk (`app/dataTools.ts`) through `dataHost()`.
+ *
+ * Install hints and level suggestions (§12.13, §10.4, chunk 8.4): the controller works out the
+ * one-time install card of Home (`data.nudge`), keeps the browser's install offer (`data.install`)
+ * and the level suggestion card (`data.suggestion`, `app/suggestions.ts`), and writes their
+ * answers in the profile's flags.
  */
 import { EngineError } from '../core/assert.ts';
 import { deriveSeed, randomSeed, type Seed128 } from '../core/rng.ts';
@@ -84,6 +89,7 @@ import {
 } from '../engine/types.ts';
 import { commitHand } from '../persist/commit.ts';
 import { appendDiag } from '../persist/diag.ts';
+import { loadHands } from '../persist/hands.ts';
 import { PERSIST_KIT } from '../persist/kit.ts';
 import { loadProfile, saveProfile, saveSettings } from '../persist/profile.ts';
 import { emptyHandMeta, isBotLevel, settingsProblem } from '../persist/schema.ts';
@@ -91,6 +97,7 @@ import type {
   DecisionRecord,
   HandMeta,
   Profile,
+  ProfileFlags,
   SessionState,
   SessionSummary,
   Settings,
@@ -120,6 +127,8 @@ import {
 import { addHand, addStoredHand, initialReview, type ReviewHand } from './review.ts';
 import { handEndViewOf, labelVisible, seatLevelOf } from './tableViews.ts';
 import type { DataCommand, DataCommands, DataHost, ShareEnv } from './dataTools.ts';
+import type { InstallEnv } from './lifecycle.ts';
+import type { Suggestion, SuggestionTools } from './suggestions.ts';
 import type { TabLock, TabLockEvent } from './tabLock.ts';
 import {
   NO_SEAT_STATS,
@@ -129,6 +138,7 @@ import {
   type Diagnostics,
   type GameCommand,
   type ImportCheck,
+  type Nudge,
   type Screen,
   type Speed,
   type TabMode,
@@ -378,6 +388,11 @@ export interface ControllerOptions {
   storageManager?: StorageManagerLike | null;
   /** Launched from the Home Screen (§12.13 "Installed"): `persist()` is asked at once (§14.8). */
   standalone?: boolean;
+  /**
+   * Installing (§12.13, chunk 8.4): the browser's install offer and whether this is iOS (the Share
+   * tip). Without it (tests) there is no Install tile and no install card.
+   */
+  install?: InstallEnv | null;
 }
 
 /** The parts of `navigator.storage` used to keep the data (§14.8). */
@@ -388,10 +403,10 @@ export interface StorageManagerLike {
 
 /**
  * Screens that offer Export or Import (§14.8): opening one loads the Data commands' chunk, so the
- * share sheet opens inside the Export tap. Settings' Data section (chunk 8.4); Stats → History's
- * footer joins when Stats exists (chunk 8.2).
+ * share sheet opens inside the Export tap. Settings' Data section and Stats → History's footer
+ * (chunk 8.4).
  */
-export const DATA_SCREENS: readonly Screen[] = ['settings'];
+export const DATA_SCREENS: readonly Screen[] = ['settings', 'stats'];
 
 /** One line of the controller's in-memory log (Diagnostics; `window.__pc.logs()` in test builds). */
 export interface ControllerEvent {
@@ -492,7 +507,8 @@ type NewToast =
   | { kind: 'dataRestored' }
   | { kind: 'undone' }
   | { kind: 'exportCopied' | 'exportFailed' | 'imported' | 'statsReset' | 'dataNotChanged' }
-  | { kind: 'session'; session: SessionSummary };
+  | { kind: 'session'; session: SessionSummary }
+  | { kind: 'debugCopied' };
 
 const RING = { events: 500, errors: 50, brain: 200, voided: 5 } as const;
 
@@ -562,6 +578,10 @@ export class TableController {
   private importCheck: ImportCheck | null = null;
   private readonly storageManager: StorageManagerLike | null;
   private readonly standalone: boolean;
+  private readonly install: InstallEnv | null;
+  /** §10.4: the level suggestions' lazy chunk (`app/suggestions.ts`), once loaded. */
+  private suggestionTools: SuggestionTools | null = null;
+  private suggestionsLoading = false;
   /** `persist()` was asked this launch (§14.8: at most once). */
   private keepAsked = false;
   /** When this table's session began (§14.4); stored in the session. */
@@ -662,6 +682,10 @@ export class TableController {
     this.shareEnv = options.shareEnv ?? (globalThis as ShareEnv);
     this.storageManager = options.storageManager ?? null;
     this.standalone = options.standalone === true;
+    this.install = options.install ?? null;
+    this.install?.listen(() => {
+      if (!this.disposed) this.publish();
+    });
     this.unsubscribe = this.store.subscribe((s, prev) => {
       if (s.ui.nav !== prev.ui.nav) this.onNav(s.ui, prev.ui);
       if (s.ui.gates !== prev.ui.gates) this.onGates();
@@ -711,6 +735,7 @@ export class TableController {
     this.sessionStart = null;
     const loaded = loadProfile(storage, { now, readOnly });
     this.profile = loaded.profile;
+    this.suggestionTools?.forget(); // §10.4: the coach sample is read again when it matters
     this.seatStats = heroOnly(NO_SEAT_STATS, loaded.profile.heroModel);
     this.store.setState({ settings: sanitize(loaded.profile.settings, {}) });
     if (notify && (loaded.status === 'reset' || loaded.status === 'restored')) {
@@ -759,7 +784,17 @@ export class TableController {
       case 'importConfirm':
       case 'importCancel':
       case 'resetStats':
+      case 'exportDebug':
         this.withData(cmd);
+        break;
+      case 'install':
+        this.installApp();
+        break;
+      case 'dismissNudge':
+        this.dismissNudge();
+        break;
+      case 'suggestion':
+        this.answerSuggestion(cmd.accept);
         break;
       case 'act':
         this.heroAct(cmd.action);
@@ -1249,6 +1284,8 @@ export class TableController {
     if (result.status === 'invalid') this.error('hand not committed', result.problem);
     this.profile = result.profile;
     this.publishStats(true);
+    // §10.4: the coach rule's sample follows the counted hands (read once it can matter).
+    if (result.status === 'committed') this.suggestionTools?.counted(record);
     // §9.5: the hero model in memory is the profile's.
     if (heroModel && result.profile.heroModel.hands > 0) {
       this.seatStats = { ...this.seatStats, [HERO_ID]: result.profile.heroModel };
@@ -1783,6 +1820,18 @@ export class TableController {
   private onNav(ui: UiSlice, prev: UiSlice): void {
     // §14.8: a screen with Export opens, so its chunk is there before the tap.
     if (ui.screen !== prev.screen && DATA_SCREENS.includes(ui.screen)) this.withData(null);
+    // §10.4: the level suggestion card shows on the hand summary (the Table) and on Stats, where
+    // the coach rule's sample is read if it can matter.
+    if (ui.screen === 'table' || ui.screen === 'stats') this.loadSuggestions();
+    if (ui.screen === 'stats' && prev.screen !== 'stats') this.suggestionTools?.counted(null);
+    // Import's dialog closed by Back (or by leaving the screen) while a file waits: forget it.
+    if (
+      this.importCheck !== null &&
+      prev.overlays.includes('dataImport') &&
+      !ui.overlays.includes('dataImport')
+    ) {
+      this.withData({ type: 'importCancel' });
+    }
     if (this.hold !== 'feedback' || ui.overlays.includes('feedback')) return;
     if (ui.screen !== 'table') return;
     if (prev.screen === 'table' && prev.overlays.includes('feedback')) this.keepMove();
@@ -2340,6 +2389,7 @@ export class TableController {
     if (this.storage === null) return;
     const loaded = loadProfile(this.storage, { now: this.now(), readOnly: true });
     this.profile = loaded.profile;
+    this.suggestionTools?.forget();
     this.store.setState({ settings: sanitize(loaded.profile.settings, {}) });
     this.publishStats(true); // §14.7: Stats stay readable, with the other tab's numbers
   }
@@ -2360,6 +2410,118 @@ export class TableController {
     this.newcomers = [];
     if (this.mode !== 'booting') this.mode = 'idle';
     this.resetDecisions();
+  }
+
+  // -------------------------------------------------------------------------------------------
+  // Install hints and level suggestions (§12.13, §12.11, §10.4, chunk 8.4)
+
+  /**
+   * The one-time card of Home (and Welcome), or null (§12.11, §12.13). Only with storage, and not
+   * in a read-only tab: its answer is saved in the profile's flags, which are this device's (Import
+   * keeps them, §14.8 notes). A tab still waiting for the lock's answer (`pending`, a few
+   * milliseconds at boot) shows it already, so the card is there from the first paint.
+   * - In a home-screen app on iOS, before any hand is counted: "Played in Safari before?…" (its
+   *   storage is not Safari's), until [Skip] (`flags.safariImport`).
+   * - In a browser tab, until answered (`flags.iosInstall`, for both cards: a device gets one of
+   *   them): on iOS over https after the first finished session the Share tip; where the browser
+   *   offers installing, after the second finished session, the install card.
+   */
+  private nudge(): Nudge | null {
+    const { profile, install } = this;
+    if (profile === null || install === null || this.storage === null || this.tab === 'readOnly') {
+      return null;
+    }
+    const { flags, stats } = profile;
+    if (this.standalone) {
+      const hands = stats.results.clean.hands + stats.results.practice.hands;
+      return install.ios && !flags.safariImport && hands === 0 ? 'safariImport' : null;
+    }
+    if (flags.iosInstall) return null;
+    if (install.ios) return install.secure && stats.sessions >= 1 ? 'iosTip' : null;
+    return install.ready() && stats.sessions >= 2 ? 'installCard' : null;
+  }
+
+  /** The card's [Got it], [Not now] or [Skip]: it does not come back on this device. */
+  private dismissNudge(): void {
+    const nudge = this.nudge();
+    const profile = this.profile;
+    if (nudge === null || profile === null) return;
+    const flag = nudge === 'safariImport' ? 'safariImport' : 'iosInstall';
+    this.changeFlags({ ...profile.flags, [flag]: true });
+  }
+
+  /**
+   * "Install app" (§12.13): the browser's install dialog, from the tap itself. The offer is used
+   * up at once (`data.install` turns false through `listen`), and the install card counts as
+   * answered (the tile or the card: either way the player has seen it).
+   */
+  private installApp(): void {
+    if (this.nudge() === 'installCard') this.dismissNudge();
+    void this.install?.prompt()?.then((installed) => this.trace('install', { installed }));
+  }
+
+  /**
+   * The level suggestion card (§10.4), or null: from the lazy chunk `app/suggestions.ts` once it
+   * is loaded (the Table or Stats opened), only in the writer tab with storage (its answer is
+   * saved).
+   */
+  private suggestion(): Suggestion | null {
+    return this.suggestionTools?.current() ?? null;
+  }
+
+  /**
+   * Loads the suggestions' chunk once (again after a failure), with storage only; then publishes
+   * the card. The tools see the profile only in the writer tab, and read the ring only then.
+   */
+  private loadSuggestions(): void {
+    if (this.suggestionsLoading || this.storage === null) return;
+    this.suggestionsLoading = true;
+    import('./suggestions.ts').then(
+      (m) => {
+        if (this.disposed) return;
+        this.suggestionTools = m.suggestionTools({
+          profile: () => (this.tab === 'writer' ? this.profile : null),
+          settings: () => this.settings(),
+          hands: () =>
+            loadHands(this.storage as SafeStorage, (this.profile as Profile).lastCommittedHandSeq)
+              .hands,
+          now: this.now,
+        });
+        if (this.store.getState().ui.screen === 'stats') this.suggestionTools.counted(null);
+        this.publish();
+      },
+      (e: unknown) => {
+        this.suggestionsLoading = false;
+        this.error('suggestions not loaded', e instanceof Error ? e.message : String(e));
+      },
+    );
+  }
+
+  /**
+   * The card's answer (§10.4): yes changes the level through the same path as Settings (§10: the
+   * bots from the next hand, the coach from the next decision); either answer hides the card for 7
+   * days, saved at once.
+   */
+  private answerSuggestion(accept: boolean): void {
+    const tools = this.suggestionTools;
+    const offer = this.suggestion();
+    if (tools === null || offer === null) return;
+    const { patch, flags } = tools.answer(offer, accept);
+    this.trace('suggestion', { ...offer, accept });
+    if (patch !== null) this.changeSettings(patch);
+    this.changeFlags(flags);
+  }
+
+  /**
+   * The profile's flags changed (§10.4, §12.11): written at once, with the settings in force,
+   * through the same `rev` check and backup as every profile write. A tab that is not the writer
+   * keeps them in memory (it writes nothing, §14.7).
+   */
+  private changeFlags(flags: ProfileFlags): void {
+    if (this.profile === null) return;
+    this.profile = { ...this.profile, flags };
+    this.settingsDirty = true;
+    this.flushSettings();
   }
 
   // -------------------------------------------------------------------------------------------
@@ -2458,8 +2620,15 @@ export class TableController {
       conflict: (storedRev) => this.anotherWriter(this.profile?.rev ?? 0, storedRev),
       importCheck: (check) => {
         this.importCheck = check;
-        if (!this.disposed) this.publish();
+        if (this.disposed) return;
+        // The 'dataImport' dialog shows the check (chunk 8.4): open while there is one.
+        const open = this.store.getState().ui.overlays.includes('dataImport');
+        if (check !== null && !open) this.ui({ type: 'open', overlay: 'dataImport' });
+        else if (check === null && open) this.ui({ type: 'close', overlay: 'dataImport' });
+        this.publish();
       },
+      // §4.5: this launch's counters and last errors (no cards of a hand in play).
+      debugReport: () => ({ counters: this.diag, errors: this.errors.slice(-20) }),
       toast: (kind) => {
         if (!this.disposed) this.toast({ kind });
       },
@@ -2496,6 +2665,7 @@ export class TableController {
   private adoptProfile(profile: Profile): void {
     this.profile = profile;
     this.publishStats(true); // Stats show the new numbers; History reads the new hands
+    this.suggestionTools?.forget(); // §10.4: the old hands' sample (read again when it matters)
     if (this.settingsTimer !== null) this.timers.clearTimeout(this.settingsTimer);
     this.settingsTimer = null;
     this.settingsDirty = false;
@@ -2709,15 +2879,31 @@ export class TableController {
     this.equityJobs?.sync(this.headless ? null : hand, this.epoch);
     // The coach's hint for the hero's decision; null cancels it (§8.2, chunk 5.7).
     this.hintJobs?.sync(this.hintAsk(hand, legal));
-    // §14.7, §14.8: the tab mode, "Protected from automatic clean-up", Import's preview.
+    // §14.7, §14.8: the tab mode, "Protected from automatic clean-up", Import's preview; §12.13,
+    // §10.4: the install offer, the one-time install card, the level suggestion.
     const persisted = this.profile?.persistGranted ?? null;
+    const install = this.install?.ready() === true;
+    const nudge = this.nudge();
+    const suggestion = this.suggestion();
     const data = this.store.getState().data;
     if (
       data.tab !== this.tab ||
       data.persisted !== persisted ||
-      data.importCheck !== this.importCheck
+      data.importCheck !== this.importCheck ||
+      data.install !== install ||
+      data.nudge !== nudge ||
+      data.suggestion !== suggestion
     ) {
-      this.store.setState({ data: { tab: this.tab, persisted, importCheck: this.importCheck } });
+      this.store.setState({
+        data: {
+          tab: this.tab,
+          persisted,
+          importCheck: this.importCheck,
+          install,
+          nudge,
+          suggestion,
+        },
+      });
     }
   }
 

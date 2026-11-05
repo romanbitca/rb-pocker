@@ -39,6 +39,7 @@ import { defaultSettings } from '../persist/schema.ts';
 import type { DecisionRecord, SessionSummary, Settings, Stats } from '../persist/schema.ts';
 import type { ImportCheckProblem } from './dataTools.ts';
 import type { HistoryItem } from './history.ts';
+import type { Suggestion } from './suggestions.ts';
 import { heroDecisionKey, levelInForce } from './coachViews.ts';
 import { choiceCount, quizQuestions } from './quiz.ts';
 import { UNDO_POLICY, type FeedbackView } from './undo.ts';
@@ -157,6 +158,8 @@ export const OVERLAY_GATE: Readonly<Record<Overlay, Gate | null>> = {
   feedback: 'feedback',
   quiz: 'quiz',
   tip: 'tip',
+  dataImport: 'dialog',
+  dataReset: 'dialog',
 };
 
 /** Layout (§12.3): one CSS media query each; first match wins. */
@@ -189,7 +192,9 @@ export type Toast =
       kind: 'exportCopied' | 'exportFailed' | 'imported' | 'statsReset' | 'dataNotChanged';
     }
   /** Leave table (§14.4): "This session: 45 hands · +640 chips · Decision score 82 · 4 mistakes." */
-  | { id: number; kind: 'session'; session: SessionSummary };
+  | { id: number; kind: 'session'; session: SessionSummary }
+  /** Settings → Diagnostics → "Export debug report" could only copy the report (§4.5, chunk 8.4). */
+  | { id: number; kind: 'debugCopied' };
 
 /** An explicit gate close by `owner` (e.g. a first-table tip); the gate stays closed while any hold exists. */
 export interface GateHold {
@@ -419,16 +424,40 @@ export type ImportCheck =
   | { status: 'ready'; hands: number; exportedAt: string }
   | { status: 'failed'; why: ImportCheckProblem };
 
+/**
+ * The one-time card on Home (and Welcome) about installing (§12.11, §12.13; chunk 8.4):
+ * - `iosTip`: iOS, not installed, after the first finished session: "Tip: add RB Poker Coach to
+ *   your Home Screen…" [Got it];
+ * - `installCard`: the browser offers installing (`beforeinstallprompt`), after the second finished
+ *   session: [Install] [Not now];
+ * - `safariImport`: the first launch from the Home Screen on iOS, with no hands yet: "Played in
+ *   Safari before?…" [Import] [Skip] (a home-screen app has storage of its own).
+ */
+export type Nudge = 'iosTip' | 'installCard' | 'safariImport';
+
 /** Keeping the data (§14.7, §14.8). Only the controller writes this slice. */
 export interface DataSlice {
   tab: TabMode;
   /** `Profile.persistGranted`: Settings shows "Protected from automatic clean-up: Yes/No" (null: never asked). */
   persisted: boolean | null;
   importCheck: ImportCheck | null;
+  /** The browser offers installing now (§12.13): Home's "Install app" tile and the Menu item. */
+  install: boolean;
+  /** The one-time card Home (or Welcome) shows, or null. */
+  nudge: Nudge | null;
+  /** The level suggestion card (§10.4) of the hand summary and Stats → Progress, or null. */
+  suggestion: Suggestion | null;
 }
 
 export function initialData(): DataSlice {
-  return { tab: 'writer', persisted: null, importCheck: null };
+  return {
+    tab: 'writer',
+    persisted: null,
+    importCheck: null,
+    install: false,
+    nudge: null,
+    suggestion: null,
+  };
 }
 
 /**
@@ -558,7 +587,25 @@ export type GameCommand =
   /** Stats → History (§14.4, chunk 8.2): read the stored hands into `history`. */
   | { type: 'history' }
   /** A History row: Review on that stored hand (§12.10), read from `pc.v1.hands`. */
-  | { type: 'historyReview'; handSeq: number };
+  | { type: 'historyReview'; handSeq: number }
+  /**
+   * Settings → Diagnostics → "Export debug report" (§4.5, chunk 8.4): the voided hands of
+   * `pc.v1.diag`, the counters and the features this page lacks, sent out like Export (from the
+   * tap itself). Nothing is ever sent by the app.
+   */
+  | { type: 'exportDebug' }
+  /**
+   * "Install app" (§12.13): the browser's install dialog (`beforeinstallprompt`). Dispatch it from
+   * the tap itself: the browser shows it only inside a user activation.
+   */
+  | { type: 'install' }
+  /** The one-time card's [Got it], [Not now] or [Skip] (`data.nudge`): it does not come back. */
+  | { type: 'dismissNudge' }
+  /**
+   * The level suggestion card (§10.4): `accept` changes the level as Settings does (§10 timing),
+   * "Not now" hides the card for 7 days; either way the answer is saved.
+   */
+  | { type: 'suggestion'; accept: boolean };
 
 /**
  * Commands the store applies to the `coach` slice itself: the player opened the hint of the
@@ -858,7 +905,9 @@ export function useOverlay(overlay: Overlay): [open: boolean, setOpen: (open: bo
   const open = useStore(appStore, (s) => s.ui.overlays.includes(overlay));
   const dispatchCmd = useDispatch();
   const setOpen = useCallback(
-    (next: boolean) => dispatchCmd({ type: next ? 'open' : 'close', overlay }),
+    // Two literals: TypeScript checks a `type: 'open' | 'close'` object against at most 25
+    // combinations of the union's discriminants, and 2 × 13 overlays is more.
+    (next: boolean) => dispatchCmd(next ? { type: 'open', overlay } : { type: 'close', overlay }),
     [dispatchCmd, overlay],
   );
   return [open, setOpen];
@@ -917,6 +966,13 @@ export const selectTabMode = (s: AppState): TabMode => s.data.tab;
 export const selectPersisted = (s: AppState): boolean | null => s.data.persisted;
 /** §14.8: the picked import file's preview, or why it cannot be imported. */
 export const selectImportCheck = (s: AppState): ImportCheck | null => s.data.importCheck;
+/** The browser offers installing now (§12.13). */
+export const selectInstall = (s: AppState): boolean => s.data.install;
+/** The one-time card on Home or Welcome (§12.11). */
+export const selectNudge = (s: AppState): Nudge | null => s.data.nudge;
+/** The level suggestion card (§10.4). */
+export const selectSuggestion = (s: AppState): Suggestion | null => s.data.suggestion;
+export type { Suggestion };
 
 /** A hand is dealt and not over: starting a new table would fold it (§3.1). */
 export const selectHandInProgress = (s: AppState): boolean =>

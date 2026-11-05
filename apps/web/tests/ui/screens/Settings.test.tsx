@@ -4,7 +4,12 @@
 import '../../../src/ui/styles/tokens.css';
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { Settings, type GameSettings } from '../../../src/ui/screens/Settings.tsx';
+import {
+  Settings,
+  type DataSection,
+  type DiagnosticsSection,
+  type GameSettings,
+} from '../../../src/ui/screens/Settings.tsx';
 import { AVAILABLE_LEVELS, type AvailableLevels } from '../../../src/ui/screens/setupForm.ts';
 import { controlCount, smallTargets } from './targets.ts';
 
@@ -235,5 +240,121 @@ describe('Settings: coach level and bot level (PLAN §10, §12.1)', () => {
       [{ botLevel: 'expert' }],
       [{ coachLevel: 'exam' }],
     ]);
+  });
+});
+
+describe('Settings: Data (§14.8) and Diagnostics (§4.5, §12.14), chunk 8.4', () => {
+  function renderData(
+    persisted: boolean | null,
+    featuresOff: DiagnosticsSection['featuresOff'] = [],
+  ) {
+    const data: DataSection = {
+      persisted,
+      onExport: vi.fn(),
+      onImport: vi.fn(),
+      onReset: vi.fn(),
+    };
+    const diagnostics: DiagnosticsSection = {
+      counters: { engineErrors: 2, botFallbacks: 1234, voidedHands: 1 },
+      featuresOff,
+      onExportDebug: vi.fn(),
+    };
+    const props = {
+      settings: GAME,
+      available: AVAILABLE_LEVELS,
+      onChangeSettings: vi.fn(),
+      onBack: vi.fn(),
+      data,
+      diagnostics,
+    };
+    return { data, diagnostics, ...render(<Settings {...props} />) };
+  }
+
+  const describedBy = (el: HTMLElement): string =>
+    document.getElementById(el.getAttribute('aria-describedby') ?? '')?.textContent ?? '';
+
+  it('the sections come after Game, each named by its heading', () => {
+    renderData(true);
+    expect(screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent)).toEqual([
+      'Game',
+      'Data',
+      'Diagnostics',
+    ]);
+    expect(screen.getByRole('region', { name: 'Data' })).toBeTruthy();
+    expect(screen.getByRole('region', { name: 'Diagnostics' })).toBeTruthy();
+  });
+
+  it('Export, Import and Reset stats, each with a line that says what it does', () => {
+    const { data, container } = renderData(true);
+    const region = screen.getByRole('region', { name: 'Data' });
+    expect(within(region).getByText('Your stats are saved only on this device.')).toBeTruthy();
+    const exportButton = within(region).getByRole('button', { name: 'Export' });
+    expect(describedBy(exportButton)).toBe('Save your stats and settings in a file.');
+    fireEvent.click(exportButton);
+    expect(data.onExport).toHaveBeenCalledTimes(1);
+
+    const input = container.querySelector('input[type="file"]') as HTMLInputElement;
+    expect(input.accept).toBe('application/json,.json');
+    expect(input.labels?.[0]?.textContent).toBe('Import');
+    expect(describedBy(input)).toBe('Replace your stats with a file you saved.');
+    const file = new File(['{}'], 'rb-poker-coach-stats-2026-11-06.json');
+    fireEvent.change(input, { target: { files: [file] } });
+    expect(data.onImport).toHaveBeenCalledWith(file);
+    expect(input.value).toBe(''); // the same file can be picked again
+
+    const reset = within(region).getByRole('button', { name: 'Reset stats' });
+    expect(describedBy(reset)).toBe('Delete your stats. Your settings stay.');
+    fireEvent.click(reset);
+    expect(data.onReset).toHaveBeenCalledTimes(1);
+  });
+
+  it('"Protected from automatic clean-up: Yes/No" (§14.8); No (or never asked) says what to do', () => {
+    renderData(true);
+    expect(screen.getByText('Protected from automatic clean-up: Yes')).toBeTruthy();
+    expect(screen.queryByText(/may delete your stats/)).toBeNull();
+    cleanup();
+    for (const persisted of [false, null]) {
+      renderData(persisted);
+      expect(screen.getByText('Protected from automatic clean-up: No')).toBeTruthy();
+      expect(
+        screen.getByText(
+          'If not, the browser may delete your stats to free space. Export them now and then.',
+        ),
+      ).toBeTruthy();
+      cleanup();
+    }
+  });
+
+  it('Diagnostics: this launch`s counters, what this page lacks, "Export debug report"', () => {
+    const { diagnostics } = renderData(true, ['serviceWorker', 'webLocks']);
+    const region = screen.getByRole('region', { name: 'Diagnostics' });
+    const rows = [...region.querySelectorAll('dl > div')].map((row) => [
+      row.querySelector('dt')?.textContent,
+      row.querySelector('dd')?.textContent,
+    ]);
+    expect(rows).toEqual([
+      ['Errors', '2'],
+      ['Hands cancelled', '1'],
+      ['Bot moves made safe', '1,234'],
+    ]);
+    expect(
+      within(region).getByText('Not available here: Offline play, One tab at a time.'),
+    ).toBeTruthy();
+    const debug = within(region).getByRole('button', { name: 'Export debug report' });
+    expect(describedBy(debug)).toBe(
+      'A file with the hands that went wrong, for the developer. Nothing is sent by itself.',
+    );
+    fireEvent.click(debug);
+    expect(diagnostics.onExportDebug).toHaveBeenCalledTimes(1);
+    cleanup();
+    renderData(true, []);
+    expect(screen.getByText('Every feature works here.')).toBeTruthy();
+  });
+
+  it('every control is at least 44×44 px (§12.12), the file picker too', () => {
+    const { container } = renderData(false);
+    // 15 Game controls, Export, Import's file input, Reset stats, Export debug report.
+    expect(controlCount(container)).toBe(19);
+    expect(smallTargets(container, () => false)).toEqual([]);
   });
 });

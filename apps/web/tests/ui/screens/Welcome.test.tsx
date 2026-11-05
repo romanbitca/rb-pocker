@@ -93,3 +93,23 @@ describe('Welcome', () => {
     }
   });
 });
+
+describe('Welcome: "Played in Safari before?" (§12.11, §12.13; chunk 8.4)', () => {
+  it('the first launch of a home-screen app: the card under the buttons, Play still first', () => {
+    const onImportFile = vi.fn();
+    const onDismiss = vi.fn();
+    const { container } = renderWelcome({
+      nudge: { nudge: 'safariImport', onDismiss, onImportFile },
+    });
+    expect(document.querySelector('button')?.textContent).toBe('Play');
+    const card = screen.getByRole('region', { name: en.nudge.safariImport });
+    expect(within(card).getByText('Import')).toBeTruthy();
+    const input = container.querySelector('input[type="file"]') as HTMLInputElement;
+    const file = new File(['{}'], 'stats.json');
+    fireEvent.change(input, { target: { files: [file] } });
+    expect(onImportFile).toHaveBeenCalledWith(file);
+    fireEvent.click(within(card).getByRole('button', { name: 'Skip' }));
+    expect(onDismiss).toHaveBeenCalledTimes(1);
+    expect(smallTargets(container, (el) => el.classList.contains(PRIMARY))).toEqual([]);
+  });
+});
