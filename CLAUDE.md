@@ -66,6 +66,11 @@ fixed slice of the Claude plan.
   reaches 80%** (it was 34%; resets 2026-11-06 18:00Z), wait for the weekly reset, then continue
   under the same 80% cap: "don't stop" means no pausing to ask the owner. The `rb-poker-watchdog`
   safety net is back on (`.loop/watchdog.json`, `weeklyStopAt: 80`).
+- **Use as much as possible before the reset (owner, 2026-11-05 ~22:50Z, "I want to use as much as possible
+  of this limit until it resets", "run different sub-agents"):** until the weekly reset on 2026-11-06 18:00Z,
+  work up to the **95%** hard ceiling (no new agents above ~88%), with more agents in parallel. After that
+  reset the 80% / don't-stop rule above applies again. Same message: **Coolify is connected; deploy the app
+  to https://poker.romanbitca.com** (Coolify token and GitHub App in the global notes; Cloudflare DNS).
 - **Testing on this Mac, not GitHub Actions (owner, 2026-10-13):** the owner won't pay for GitHub and the
   repo stays private, so the 2,000 free Actions minutes a month are not enough (they ran out on 9 Oct).
   CI runs locally: before a merge, run the full local suite (the same steps as the `check`, `e2e` and
