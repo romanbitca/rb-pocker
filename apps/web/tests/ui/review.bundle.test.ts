@@ -1,20 +1,43 @@
 /**
- * PLAN §15.3: Review is lazy-loaded with a dynamic `import()` and still precached, and the initial
- * JS budget holds. This builds apps/web with its real config and checks the built files:
- * - the Review screen (found by `REVIEW_MARKER`) is in a chunk of its own, with its own CSS;
- * - that chunk is not part of the initial JS (what `index.html` loads and imports statically), and
- *   its marker is in no initial file; the entry reaches it only through `import()`;
- * - the service worker precaches it (so Review opens offline);
- * - the initial JS is within the CI budget (`scripts/size-budget.ts`).
+ * PLAN §15.3: what first paint does not need is lazy-loaded with a dynamic `import()` and still
+ * precached, and the budgets hold. This builds apps/web once with its real config and checks the
+ * built files:
+ * - the Review screen (found by `REVIEW_MARKER`) is in a chunk of its own;
+ * - the screens after the first tap (`ui/screensEntry.tsx`: the Table, Setup, Settings, the Menu
+ *   and the §3.1 dialogs) are not initial either, while Welcome and Home are (found through the
+ *   bundle's own module list, so no marker is needed);
+ * - each of them is not part of the initial JS (what `index.html` loads and imports statically),
+ *   and the entry reaches it only through `import()`;
+ * - the service worker precaches them (so they open offline);
+ * - all CSS is one stylesheet that `index.html` loads (`build.cssCodeSplit: false`);
+ * - the initial JS and the CSS are within the CI budgets (`scripts/size-budget.ts`).
  */
 import { readFileSync } from 'node:fs';
-import { build } from 'vite';
-import { describe, expect, it } from 'vitest';
-import { BUDGETS, measureBudgets } from '../../scripts/size-budget.ts';
+import { build, type Plugin } from 'vite';
+import { beforeAll, describe, expect, it } from 'vitest';
+import { BUDGETS, measureBudgets, type Row } from '../../scripts/size-budget.ts';
 import { REVIEW_MARKER } from '../../src/ui/screens/reviewMarker.ts';
 
 const ROOT = decodeURIComponent(new URL('../../', import.meta.url).pathname);
 const OUT = `${ROOT}node_modules/.cache/review-bundle-check`;
+
+/** Source file (relative to apps/web) → the chunk that holds it (relative to dist). */
+const chunkOf = new Map<string, string>();
+
+/** Records which chunk holds each source module. */
+function chunkMap(): Plugin {
+  return {
+    name: 'test:chunk-map',
+    generateBundle(_options, bundle) {
+      for (const out of Object.values(bundle)) {
+        if (out.type !== 'chunk') continue;
+        for (const id of Object.keys(out.modules)) {
+          if (id.startsWith(ROOT)) chunkOf.set(id.slice(ROOT.length), out.fileName);
+        }
+      }
+    },
+  };
+}
 
 /** Builds production into its own folder (NODE_ENV=production, as `vite build` sets it). */
 async function buildProduction(): Promise<void> {
@@ -28,6 +51,7 @@ async function buildProduction(): Promise<void> {
       configFile: `${ROOT}vite.config.ts`,
       mode: 'production',
       logLevel: 'silent',
+      plugins: [chunkMap()],
       build: { outDir: OUT, emptyOutDir: true },
     });
   } finally {
@@ -35,47 +59,92 @@ async function buildProduction(): Promise<void> {
   }
 }
 
-describe('the Review screen in the production build', () => {
-  it('is a lazy chunk: not initial, loaded by import(), precached, and the budget holds', async () => {
-    await buildProduction();
-    const rows = measureBudgets(OUT);
-    const initial = rows.find((r) => r.metric === 'Initial JS');
-    const precache = rows.find((r) => r.metric === 'Total precache');
-    if (initial === undefined || precache === undefined) throw new Error('missing size rows');
+let rows: Row[] = [];
 
-    const text = (file: string): string => readFileSync(`${OUT}/${file}`, 'utf8');
+beforeAll(async () => {
+  await buildProduction();
+  rows = measureBudgets(OUT);
+}, 120_000);
+
+const rowOf = (metric: string): Row => {
+  const found = rows.find((r) => r.metric === metric);
+  if (found === undefined) throw new Error(`no ${metric} row`);
+  return found;
+};
+const text = (file: string): string => readFileSync(`${OUT}/${file}`, 'utf8');
+
+/** `chunk` is reached from the initial files only through `import()`, never statically. */
+function expectOnlyDynamicImports(chunk: string): void {
+  const name = chunk.slice('assets/'.length);
+  const importers = rowOf('Initial JS').files.filter((f) => text(f).includes(name));
+  expect(importers.length, `who imports ${chunk}`).toBeGreaterThan(0);
+  const escaped = name.replace('.', '\\.');
+  for (const file of importers) {
+    expect(text(file)).toMatch(new RegExp(`import\\(\\s*["'\`]\\./${escaped}["'\`]`));
+    expect(text(file)).not.toMatch(new RegExp(`(?:from|import)\\s*["']\\./${escaped}["']`));
+  }
+}
+
+const chunk = (source: string): string => {
+  const file = chunkOf.get(source);
+  if (file === undefined) throw new Error(`${source} is in no chunk`);
+  return file;
+};
+
+describe('the Review screen in the production build', () => {
+  it('is a lazy chunk: not initial, loaded by import(), precached, and the budget holds', () => {
+    const initial = rowOf('Initial JS');
+    const precache = rowOf('Total precache');
+
     const scripts = precache.files.filter((f) => f.endsWith('.js'));
     const withMarker = scripts.filter((f) => text(f).includes(REVIEW_MARKER));
     // One chunk holds the screen, and it is named after it.
     expect(withMarker).toHaveLength(1);
-    const chunk = withMarker[0] as string;
-    expect(chunk).toMatch(/^assets\/Review-[\w-]+\.js$/);
+    const review = withMarker[0] as string;
+    expect(review).toMatch(/^assets\/Review-[\w-]+\.js$/);
 
     // Not initial: not loaded by index.html, and no initial file holds the screen.
-    expect(initial.files).not.toContain(chunk);
+    expect(initial.files).not.toContain(review);
     for (const file of initial.files) expect(text(file)).not.toContain(REVIEW_MARKER);
     // The entry reaches it only through a dynamic import().
-    const name = chunk.slice('assets/'.length);
-    const importers = initial.files.filter((f) => text(f).includes(name));
-    expect(importers.length).toBeGreaterThan(0);
-    for (const file of importers) {
-      expect(text(file)).toMatch(
-        new RegExp(`import\\(\\s*["'\`]\\./${name.replace('.', '\\.')}["'\`]`),
-      );
-      expect(text(file)).not.toMatch(
-        new RegExp(`(?:from|import)\\s*["']\\./${name.replace('.', '\\.')}["']`),
-      );
-    }
-
-    // Its styles are lazy too, and everything is precached (offline).
-    const css = precache.files.filter((f) => /^assets\/Review-[\w-]+\.css$/.test(f));
-    expect(css).toHaveLength(1);
-    expect(precache.files).toContain(chunk);
-    expect(rows.find((r) => r.metric === 'CSS')?.files).toContain(css[0]);
+    expectOnlyDynamicImports(review);
+    expect(precache.files).toContain(review);
 
     // The initial JS is within the CI budget (the 130 kB target only warns).
     expect(initial.gzipBytes).toBeLessThanOrEqual(BUDGETS.initialJs.max);
     expect(initial.status).not.toBe('fail');
     expect(precache.status).not.toBe('fail');
-  }, 120_000);
+  });
+});
+
+describe('the screens after the first tap in the production build', () => {
+  const LAZY = [
+    'src/ui/screensEntry.tsx',
+    'src/ui/screens/Table.tsx',
+    'src/ui/screens/Setup.tsx',
+    'src/ui/screens/Settings.tsx',
+    'src/ui/screens/Menu.tsx',
+    'src/ui/screens/Dialogs.tsx',
+  ];
+  const FIRST_PAINT = ['src/main.tsx', 'src/ui/App.tsx', 'src/ui/screens/Welcome.tsx', 'src/ui/screens/Home.tsx'];
+
+  it('are lazy: not initial, loaded by import(), precached; Welcome and Home are initial', () => {
+    const initial = rowOf('Initial JS');
+    const precache = rowOf('Total precache');
+    for (const source of LAZY) {
+      expect(initial.files, source).not.toContain(chunk(source));
+      expect(precache.files, source).toContain(chunk(source));
+    }
+    for (const source of FIRST_PAINT) expect(initial.files, source).toContain(chunk(source));
+    expectOnlyDynamicImports(chunk('src/ui/screensEntry.tsx'));
+  });
+
+  it('take their styles from the one stylesheet, which index.html loads', () => {
+    const css = rowOf('CSS');
+    expect(css.files).toHaveLength(1);
+    const [sheet] = css.files as [string];
+    expect(text('index.html')).toContain(`href="./${sheet}"`);
+    expect(rowOf('Total precache').files).toContain(sheet);
+    expect(css.status).not.toBe('fail');
+  });
 });

@@ -1,9 +1,10 @@
 // @vitest-environment jsdom
 import { act, cleanup, render, screen } from '@testing-library/react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { appStore, defaultGameSettings } from '../../src/app/store.ts';
 import { en } from '../../src/i18n/en.ts';
 import { App } from '../../src/ui/App.tsx';
+import { loadScreens } from '../../src/ui/screensModule.ts';
 
 const { useRegisterSW } = vi.hoisted(() => ({
   useRegisterSW: vi.fn(() => ({
@@ -13,6 +14,10 @@ const { useRegisterSW } = vi.hoisted(() => ({
   })),
 }));
 vi.mock('virtual:pwa-register/react', () => ({ useRegisterSW }));
+
+beforeAll(async () => {
+  await loadScreens(); // the screens lazy chunk, as App asks for it after the first paint
+});
 
 afterEach(cleanup);
 

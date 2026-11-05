@@ -83,6 +83,11 @@ export default defineConfig({
     }),
     metaCsp(),
   ],
+  // One stylesheet for the whole app, lazy screens included (PLAN §15.3). The CSS budget counts
+  // every CSS file, and each file is gzipped on its own: split per lazy chunk, the same CSS was
+  // 3.6 kB gzip bigger (19.94 against 16.31 kB in chunk `chore/initial-bundle-headroom`). A lazy
+  // chunk then loads no CSS of its own, so it never waits on a stylesheet either.
+  build: { cssCodeSplit: false },
   // Module workers (PLAN §2.2).
   worker: { format: 'es' },
   server: {

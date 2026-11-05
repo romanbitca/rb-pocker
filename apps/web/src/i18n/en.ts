@@ -42,6 +42,17 @@ export const en = {
   /** Back to the previous screen (Setup, Settings). */
   back: 'Back',
 
+  /**
+   * The screens after the first tap (the Table, Setup, Settings) are a lazy chunk, loaded right
+   * after the first paint (PLAN §15.3). Only a tap before it arrives shows `loading` (after half a
+   * second); `loadFailed` when it cannot load (no connection, not cached yet).
+   */
+  screens: {
+    loading: 'Loading…',
+    loadFailed: 'This screen could not be loaded. Check your connection and try again.',
+    tryAgain: 'Try again',
+  },
+
   /** First launch (PLAN §12.1). The wordmark and tagline are `app.name` and `app.tagline`. */
   welcome: {
     bullets: [

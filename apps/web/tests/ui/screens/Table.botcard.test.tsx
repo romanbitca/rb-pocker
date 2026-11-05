@@ -15,6 +15,7 @@ import type { BotLevel, HandState, TableState } from '../../../src/engine/types.
 import { en } from '../../../src/i18n/en.ts';
 import { App } from '../../../src/ui/App.tsx';
 import { formatChips } from '../../../src/ui/format.ts';
+import { loadScreens } from '../../../src/ui/screensModule.ts';
 import { elapse, playUntil, startTableHarness, type TableHarness } from '../tableHarness.ts';
 
 vi.mock('virtual:pwa-register/react', () => ({
@@ -24,6 +25,10 @@ vi.mock('virtual:pwa-register/react', () => ({
     updateServiceWorker: async () => {},
   }),
 }));
+
+beforeAll(async () => {
+  await loadScreens(); // the screens lazy chunk, as App asks for it after the first paint
+});
 
 // The card's chunk is loaded before the tests, so a tap shows it after a few microtasks (in the
 // app the chunk is precached and loads from the cache).

@@ -6,10 +6,11 @@
  * The real store, controller (fixed seeds, fake timers) and `App`.
  */
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { initialReview } from '../../src/app/review.ts';
 import { appStore } from '../../src/app/store.ts';
 import { App } from '../../src/ui/App.tsx';
+import { loadScreens } from '../../src/ui/screensModule.ts';
 import { elapse, playUntil, startTableHarness, type TableHarness } from './tableHarness.ts';
 
 vi.mock('virtual:pwa-register/react', () => ({
@@ -19,6 +20,10 @@ vi.mock('virtual:pwa-register/react', () => ({
     updateServiceWorker: async () => {},
   }),
 }));
+
+beforeAll(async () => {
+  await loadScreens(); // the screens lazy chunk, as App asks for it after the first paint
+});
 
 let h: TableHarness | null = null;
 beforeEach(() => {

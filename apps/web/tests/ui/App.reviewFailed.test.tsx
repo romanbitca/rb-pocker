@@ -4,10 +4,11 @@
  * cached yet), the app says so and leaves by Back; it never crashes.
  */
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { initialReview } from '../../src/app/review.ts';
 import { appStore, initialGame, initialUi } from '../../src/app/store.ts';
 import { App } from '../../src/ui/App.tsx';
+import { loadScreens } from '../../src/ui/screensModule.ts';
 
 vi.mock('virtual:pwa-register/react', () => ({
   useRegisterSW: () => ({
@@ -19,6 +20,10 @@ vi.mock('virtual:pwa-register/react', () => ({
 // The screen's module fails to load, as a chunk does when the network is down.
 vi.mock('../../src/ui/screens/Review.tsx', () => {
   throw new Error('the chunk did not load');
+});
+
+beforeAll(async () => {
+  await loadScreens(); // the screens lazy chunk, as App asks for it after the first paint
 });
 
 beforeEach(() => {
