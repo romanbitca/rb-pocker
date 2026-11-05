@@ -20,7 +20,8 @@
 # waits for the first. Environment: GH, the GitHub CLI used to post (default: .loop/gh of the main
 # checkout when it exists, else gh); CI_PORT, the e2e server's port (default 3100, so a server
 # already on port 3000 is never tested by mistake); CI_DOCKER_PORT, the container's host port
-# (default 3200); CI_DIR, where worktrees and logs go (default ${TMPDIR:-/tmp}/rb-pocker-ci).
+# (default 3200); CI_DIR, where worktrees and logs go (default ~/.cache/rb-pocker-ci, the same for
+# every shell and agent on the machine, so the one-run lock holds).
 set -euo pipefail
 
 die() {
@@ -67,7 +68,7 @@ SLUG=$(git remote get-url origin | sed -E 's#^(git@|ssh://git@|https://)github\.
 if [ -z "${GH:-}" ]; then
   if [ -x "$MAIN/.loop/gh" ]; then GH=$MAIN/.loop/gh; else GH=gh; fi
 fi
-CI_DIR=${CI_DIR:-${TMPDIR:-/tmp}/rb-pocker-ci}
+CI_DIR=${CI_DIR:-$HOME/.cache/rb-pocker-ci}
 CI_DIR=${CI_DIR%/}
 CI_PORT=${CI_PORT:-3100}
 CI_DOCKER_PORT=${CI_DOCKER_PORT:-3200}
