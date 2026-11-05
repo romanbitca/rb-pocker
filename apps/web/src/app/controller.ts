@@ -2323,13 +2323,11 @@ export class TableController {
           ? this.profile
           : loadProfile(storage, { now: this.now(), readOnly: true }).profile,
       profile: () => this.profile as Profile,
-      prepare: (cancel) => {
-        this.flushCommit(); // §14.3: counted in the stats that pc.v1.preimport keeps
-        return cancel && canChange() ? this.cancelUnfinished() : null;
-      },
+      prepare: () => this.flushCommit(), // §14.3: counted in the stats pc.v1.preimport keeps
+      cancelHand: () => (canChange() ? this.cancelUnfinished() : null),
       adopt: (profile, table) => {
         if (this.disposed) return;
-        if (profile !== null) this.adoptProfile(profile);
+        this.adoptProfile(profile);
         if (table !== null && this.tab === 'writer') this.startHandAt(table);
         this.publish();
       },

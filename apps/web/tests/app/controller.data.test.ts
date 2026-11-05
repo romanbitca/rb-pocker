@@ -387,6 +387,22 @@ describe('Import (§14.8): check, preview, Replace', () => {
     h.controller.dispose();
   }, 30_000);
 
+  it('a Replace that cannot be written leaves an unfinished hand as it was', async () => {
+    const backend = new FakeStorage();
+    const h = start(backend);
+    await drive(h, { hands: 1, hero: passive });
+    for (let i = 0; i < 800 && h.state().game.mode !== 'heroTurn'; i++) await tick();
+    const unfinished = h.state().game.hand;
+    expect(unfinished?.phase).toBe('betting');
+    await importText(h, otherDevice(backend, 50));
+    backend.failWrites = quotaError();
+    h.dispatch({ type: 'importConfirm' });
+    expect(toasts(h)).toContain('dataNotChanged');
+    expect(h.state().game.hand).toEqual(unfinished);
+    expect(h.state().game.mode).toBe('heroTurn');
+    h.controller.dispose();
+  }, 30_000);
+
   it('a browser that keeps nothing (private mode): Replace changes nothing, and says so', async () => {
     const backend = new FakeStorage();
     const h = start(backend);
@@ -401,22 +417,27 @@ describe('Import (§14.8): check, preview, Replace', () => {
   }, 30_000);
 
   it('crash injection at every write of Replace: the next launch has one whole profile and its own hands', async () => {
-    /** 2 hands played, then a file of another device (hands 18–20) replaces them; then the tab dies. */
-    async function run(backend: FakeStorage, dieAfter: number | null): Promise<string> {
+    /**
+     * 2 hands played, then a file of another device (hands 19–20) replaces them; then the tab
+     * dies. Returns the file and the writes Replace made.
+     */
+    async function run(backend: FakeStorage, dieAfter: number | null) {
       const h = start(backend);
       await drive(h, { hands: 2, hero: passive });
       const text = otherDevice(backend, 20);
       await importText(h, text);
+      const before = backend.writeLog.length;
       if (dieAfter !== null) backend.dieAfterWrites = backend.writes + dieAfter;
       h.dispatch({ type: 'importConfirm' });
       h.controller.dispose();
-      return text;
+      return { text, writes: backend.writeLog.length - before };
     }
     const reference = new FakeStorage();
-    const theirs = fileSeqs(await run(reference, null));
+    const { text, writes } = await run(reference, null);
+    const theirs = fileSeqs(text);
     expect(theirs).toEqual([19, 20]);
-    const writes = reference.writeLog.length;
-    for (let k = 0; k <= 6; k++) {
+    expect(writes).toBeGreaterThanOrEqual(5); // preimport, hands, bak, profile, hands
+    for (let k = 0; k <= writes; k++) {
       const dying = new FakeStorage();
       await run(dying, k);
       const backend = new FakeStorage(Object.fromEntries(dying.data));
@@ -440,8 +461,46 @@ describe('Import (§14.8): check, preview, Replace', () => {
       expect(profileOf(backend).lastCommittedHandSeq, `k = ${k}`).toBe(hand?.handSeq);
       next.controller.dispose();
     }
-    expect(writes).toBeGreaterThan(6);
   }, 120_000);
+
+  it('crash injection when Replace cancels an unfinished hand: no hand is ever counted twice', async () => {
+    /** As above, but Replace comes at the hero's turn of the third hand. */
+    async function run(backend: FakeStorage, dieAfter: number | null): Promise<number> {
+      const h = start(backend);
+      await drive(h, { hands: 2, hero: passive });
+      for (let i = 0; i < 800 && h.state().game.mode !== 'heroTurn'; i++) await tick();
+      expect(h.state().game.hand?.handSeq).toBe(3);
+      await importText(h, otherDevice(backend, 20));
+      const before = backend.writeLog.length;
+      if (dieAfter !== null) backend.dieAfterWrites = backend.writes + dieAfter;
+      h.dispatch({ type: 'importConfirm' });
+      h.controller.dispose();
+      return backend.writeLog.length - before;
+    }
+    const writes = await run(new FakeStorage(), null);
+    expect(writes).toBeGreaterThanOrEqual(7); // the protocol, the cancelled hand, the next hand
+    for (let k = 0; k <= writes; k++) {
+      const dying = new FakeStorage();
+      await run(dying, k);
+      const backend = new FakeStorage(Object.fromEntries(dying.data));
+      const next = launch(backend);
+      const start0 = profileOf(backend);
+      expect([2, 20], `k = ${k}`).toContain(start0.lastCommittedHandSeq);
+      next.dispatch({ type: 'settings', patch: { speed: 'instant' } });
+      next.dispatch({ type: 'play' });
+      const done = await drive(next, { hands: 2, hero: passive });
+      // A hand counts once, when its number is above what the profile had counted.
+      const fresh = done.filter((h) => h.handSeq > start0.lastCommittedHandSeq);
+      const after = profileOf(backend);
+      expect(counted(after) - counted(start0), `k = ${k}`).toBe(fresh.length);
+      const seqs = ringOf(backend).map((r) => r.handSeq);
+      expect(new Set(seqs).size, `k = ${k}`).toBe(seqs.length);
+      expect(after.lastCommittedHandSeq, `k = ${k}`).toBe(
+        Math.max(start0.lastCommittedHandSeq, ...fresh.map((h) => h.handSeq)),
+      );
+      next.controller.dispose();
+    }
+  }, 180_000);
 });
 
 describe('Reset stats (§14.8)', () => {

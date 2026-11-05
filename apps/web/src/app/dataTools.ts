@@ -74,15 +74,19 @@ export interface DataHost {
   profile(): Profile;
   /**
    * Before Replace or Reset: a finished hand waiting for its grade is counted, in the stats that go
-   * to `pc.v1.preimport` (§14.3). With `cancel` an unfinished hand is cancelled (Import: its number
-   * may be counted in the file already): its chips go back, and its table comes back.
+   * to `pc.v1.preimport` (§14.3).
    */
-  prepare(cancel: boolean): TableState | null;
+  prepare(): void;
   /**
-   * After Replace or Reset: `profile` (when not null) is the profile in memory now, and a
-   * cancelled hand's `table` deals the next hand at once.
+   * After Replace: an unfinished hand is cancelled (its number may be counted in the file already,
+   * §14.3): its chips go back, and its table comes back.
    */
-  adopt(profile: Profile | null, table: TableState | null): void;
+  cancelHand(): TableState | null;
+  /**
+   * After Replace or Reset: `profile` is the profile in memory now, and a cancelled hand's `table`
+   * deals the next hand at once, numbered above the new `lastCommittedHandSeq`.
+   */
+  adopt(profile: Profile, table: TableState | null): void;
   /** Another tab wrote the profile since (§14.3 step 2): this tab becomes read-only (§14.7). */
   conflict(storedRev: number): void;
   importCheck(check: ImportCheck | null): void;
@@ -254,11 +258,13 @@ export function dataCommands(host: DataHost): DataCommands {
     }
     if (result.status === 'conflict') host.conflict(result.storedRev);
     else host.log(`${done}: nothing changed`, result);
-    host.adopt(null, table);
     host.toast('dataNotChanged');
   };
 
-  /** Replace (§14.8): the checked file replaces the stats. */
+  /**
+   * Replace (§14.8): the checked file replaces the stats. An unfinished hand is cancelled only once
+   * the file is written, so "Nothing was changed" stays true when it could not be.
+   */
   const importConfirm = (): void => {
     const file = pending;
     forget();
@@ -266,21 +272,18 @@ export function dataCommands(host: DataHost): DataCommands {
       host.toast('dataNotChanged');
       return;
     }
-    const table = host.prepare(true);
+    host.prepare();
     if (!host.canChange()) {
       host.toast('dataNotChanged');
       return;
     }
-    finish(
-      importProfile(host.kit, host.storage, host.profile(), file, host.now()),
-      'imported',
-      table,
-    );
+    const result = importProfile(host.kit, host.storage, host.profile(), file, host.now());
+    finish(result, 'imported', result.status === 'done' ? host.cancelHand() : null);
   };
 
   /** Reset stats (§14.8), after its confirmation ("Delete my stats", chunk 8.4). */
   const resetStats = (): void => {
-    if (host.canChange()) host.prepare(false);
+    if (host.canChange()) host.prepare();
     if (!host.canChange()) {
       host.toast('dataNotChanged');
       return;
