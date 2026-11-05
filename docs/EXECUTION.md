@@ -117,6 +117,7 @@ Legend: `[ ]` todo · `[~]` in progress (branch exists) · `[x]` merged to `main
 
 - [~] 9.1 `feature/sounds-haptics-and-wake-lock`
 - [ ] 9.2 `feature/learn-lessons-and-glossary` - lessons, glossary, full-page rankings, "Which hand wins?".
+- [~] 9.2b `feature/hand-drill-page` - **owner request (6 Nov):** the owner's Poker Hand Drill (github.com/romanbitca/Poker-hand-drill, v5: 8 games, 3 difficulties, stats, All hands drawer) as a page of its own: ported to React/TypeScript on RB's evaluator, `Card`, rankings list, seeded RNG and tokens; key `pc.v1.drill`; Home + Menu entries; lazy chunk. The standalone GitHub Pages app stays as it is.
 - [ ] 9.3 `feature/first-table-tips-and-keyboard-shortcuts`
 - [ ] 9.4 `feature/provable-shuffle-check` - Review ✓ over 1,000 recorded hands.
 - [ ] 9.5 `feature/service-worker-update-between-hands`
