@@ -28,6 +28,9 @@ vi.mock('virtual:pwa-register/react', () => ({
 
 beforeAll(async () => {
   await loadScreens(); // the screens lazy chunk, as App asks for it after the first paint
+  // The card's chunk too (precached in the app): `cardShown` waits a few fake-clock steps, not
+  // for a slow first transform on a busy machine.
+  await import('../../../src/ui/components/FeedbackCard.tsx');
 });
 
 let h: TableHarness | null = null;
