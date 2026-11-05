@@ -582,11 +582,24 @@ export const en = {
       'Your saved data was damaged. We restored a backup. Your last hand may be missing.',
     /** After an Undo (§11.3 r3, Appendix F.10). */
     undone: 'Move taken back. The unseen cards were shuffled again.',
+    /** Export's last resort (§14.8): the file's text is on the clipboard. */
+    exportCopied: 'Your stats were copied. Paste them into a file to keep them.',
+    exportFailed: 'Export did not work. Please try again.',
+    imported: 'Your stats were imported.',
+    statsReset: 'Your stats were deleted.',
+    /** Import or Reset changed nothing: another tab has the game, or this browser keeps nothing. */
+    dataNotChanged: 'Nothing was changed. Your stats could not be saved.',
+  },
+
+  /** Another tab has the game (PLAN §12.11, §14.7): the game screens show this instead. */
+  otherTab: {
+    text: 'The game is open in another tab. Close it, or tap here to play here instead.',
+    playHere: 'Play here',
   },
 
   /**
    * The storage-failure banner (PLAN §12.11, §12.14), once per launch. Its second sentence
-   * ("Export before you close the tab.") arrives with Export in Stage 8.
+   * ("Export before you close the tab.") arrives with the Export button (chunk 8.4).
    */
   storage: {
     banner: "Stats can't be saved in this browser mode (for example private browsing).",

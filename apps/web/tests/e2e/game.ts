@@ -56,6 +56,12 @@ interface PcState {
       ev: Readonly<Record<string, number>>;
     } | null;
   };
+  /** Chunk 8.3 (§14.7, §14.8): the tab mode, persist(), Import's preview (`DataSlice`). */
+  data: {
+    tab: 'pending' | 'writer' | 'readOnly';
+    persisted: boolean | null;
+    importCheck: { status: string; hands?: number; exportedAt?: string; why?: string } | null;
+  };
 }
 
 /** `window.__pc.faults` (app/testFaults.ts, chunk 6.5): faults for brain.worker. */
@@ -102,6 +108,8 @@ interface PcHooks {
     next: TableState | null;
     inputs: unknown[];
     meta: { undoCount: number };
+    /** This tab writes the storage (§14.7, chunk 8.3). */
+    writer: boolean;
   };
 }
 

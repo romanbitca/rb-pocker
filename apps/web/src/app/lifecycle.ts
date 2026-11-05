@@ -102,6 +102,37 @@ export function installLayout(win: Window, store: AppStore): () => void {
   };
 }
 
+/**
+ * Launched from the Home Screen (§12.13 "Installed"): `display-mode: standalone`, or iOS's
+ * `navigator.standalone`. Never throws.
+ */
+export function isStandalone(win: Window): boolean {
+  try {
+    if (win.matchMedia?.('(display-mode: standalone)').matches === true) return true;
+    return (win.navigator as { standalone?: unknown }).standalone === true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * `navigator.storage` where it can `persist()` (secure pages only, §12.14), else null. Never
+ * throws (some private modes throw on `navigator.storage`). The same test as `app/secure.ts`
+ * `persistentStorage`, kept here: boot importing `secure.ts` splits the entry chunk (pitfall 47).
+ */
+export function storageManagerOf(
+  win: Window,
+): Pick<StorageManager, 'persist' | 'persisted'> | null {
+  try {
+    const storage = win.navigator.storage as StorageManager | undefined;
+    return typeof storage?.persist === 'function' && typeof storage.persisted === 'function'
+      ? storage
+      : null;
+  } catch {
+    return null;
+  }
+}
+
 /** Everything above; returns one uninstall. */
 export function installLifecycle(win: Window, store: AppStore): () => void {
   const off = [

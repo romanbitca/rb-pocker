@@ -95,7 +95,10 @@ test.describe('resume', () => {
     expect(saved.mode).toBe('heroTurn');
     expect(saved.inputs.length).toBeGreaterThan(0);
 
-    await page.close({ runBeforeUnload: true });
+    // A real close (chunk 8.3): with `runBeforeUnload` Playwright's WebKit leaves the page open,
+    // and a page still open keeps the game (§14.7: the new page would be read-only). Nothing
+    // needs the unload handlers: the session is saved after every step (§14.5).
+    await page.close();
     const again = await context.newPage();
     await again.goto('/');
     const play = again.getByRole('button', { name: 'Play', exact: true });
@@ -131,7 +134,7 @@ test.describe('resume', () => {
     const before = await hintAt(page);
     expect(before.hint).not.toBeNull();
 
-    await page.close({ runBeforeUnload: true });
+    await page.close(); // a real close: see the test above
     const again = await context.newPage();
     await again.goto('/');
     await again.getByRole('button', { name: 'Play', exact: true }).click();

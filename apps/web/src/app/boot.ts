@@ -11,8 +11,9 @@ import {
 } from './controller.ts';
 import { createSafeStorage } from '../persist/storage.ts';
 import { brainGrader } from './grading.ts';
-import { installLifecycle } from './lifecycle.ts';
+import { installLifecycle, isStandalone, storageManagerOf } from './lifecycle.ts';
 import { appStore } from './store.ts';
+import { browserTabLockEnv, createTabLock } from './tabLock.ts';
 import { startBrainWorker, startEquityWorker } from './workerClient.ts';
 import type { SafeStorage } from '../persist/storage.ts';
 import type * as TestHooks from './testHooks.ts';
@@ -55,6 +56,11 @@ export function startApp(options: StartOptions): TableController {
     hints: true,
     // The end-of-hand summary when the coach level shows one (§10.2, §12.9, chunk 6.4).
     summaries: true,
+    // One writer at a time (§14.7): Web Locks, else the rev check and the storage event.
+    tabLock: createTabLock(browserTabLockEnv(win)),
+    // Keeping the data (§14.8): persist() where it exists (secure pages), at once when installed.
+    storageManager: storageManagerOf(win),
+    standalone: isStandalone(win),
   });
   installLifecycle(win, appStore);
   if (hooks !== undefined) {

@@ -5,6 +5,10 @@
  *
  * Tiles for screens that do not exist yet are hidden, not disabled (§18 Stage 3): Learn, Stats and
  * Install app show only when their callback is given.
+ *
+ * Read-only (§14.7, chunk 8.3: another tab has the game): the §12.11 banner and its "Play here"
+ * take the place of Play and New table, and Settings is hidden (nothing could be saved); Learn and
+ * Stats stay.
  */
 import { Fragment, useId } from 'react';
 import type { BotLevel, CoachLevel } from '../../engine/types.ts';
@@ -36,6 +40,8 @@ export interface HomeProps {
   onOpenStats?: (() => void) | undefined;
   /** "Install app": only while the browser offers it (§12.13). */
   onInstall?: (() => void) | undefined;
+  /** Read-only (§14.7): "Play here" (the banner replaces Play and New table). */
+  onPlayHere?: (() => void) | undefined;
 }
 
 /** The parts of "Hand 23 · 6 players · You have 2,340 chips · Easy bots · Beginner coach". */
@@ -58,12 +64,14 @@ export function Home({
   onOpenLearn,
   onOpenStats,
   onInstall,
+  onPlayHere,
 }: HomeProps) {
   const sessionId = useId();
   const tiles: { key: string; label: string; onClick: () => void }[] = [];
   if (onOpenLearn) tiles.push({ key: 'learn', label: en.home.learn, onClick: onOpenLearn });
   if (onOpenStats) tiles.push({ key: 'stats', label: en.home.stats, onClick: onOpenStats });
-  tiles.push({ key: 'settings', label: en.home.settings, onClick: onOpenSettings });
+  if (!onPlayHere)
+    tiles.push({ key: 'settings', label: en.home.settings, onClick: onOpenSettings });
   if (onInstall) tiles.push({ key: 'install', label: en.home.install, onClick: onInstall });
 
   return (
@@ -74,30 +82,43 @@ export function Home({
           <p className={styles.tagline}>{en.app.tagline}</p>
         </header>
 
-        <div className={styles.actions}>
-          <button
-            type="button"
-            className={styles.primary}
-            onClick={() => onPlay()}
-            aria-describedby={session ? sessionId : undefined}
-          >
-            {en.home.play}
-          </button>
-          {session && (
-            <p id={sessionId} className={styles.session}>
-              {sessionParts(session).map((part, i) => (
-                <Fragment key={i}>
-                  {i > 0 && en.home.session.separator}
-                  <span className={styles.nowrap}>{part}</span>
-                </Fragment>
-              ))}
+        {onPlayHere ? (
+          <div className={styles.actions}>
+            <p className={styles.session} role="alert">
+              {en.otherTab.text}
             </p>
-          )}
-        </div>
+            <button type="button" className={styles.primary} onClick={() => onPlayHere()}>
+              {en.otherTab.playHere}
+            </button>
+          </div>
+        ) : (
+          <>
+            <div className={styles.actions}>
+              <button
+                type="button"
+                className={styles.primary}
+                onClick={() => onPlay()}
+                aria-describedby={session ? sessionId : undefined}
+              >
+                {en.home.play}
+              </button>
+              {session && (
+                <p id={sessionId} className={styles.session}>
+                  {sessionParts(session).map((part, i) => (
+                    <Fragment key={i}>
+                      {i > 0 && en.home.session.separator}
+                      <span className={styles.nowrap}>{part}</span>
+                    </Fragment>
+                  ))}
+                </p>
+              )}
+            </div>
 
-        <button type="button" className={styles.secondary} onClick={() => onNewTable()}>
-          {en.home.newTable}
-        </button>
+            <button type="button" className={styles.secondary} onClick={() => onNewTable()}>
+              {en.home.newTable}
+            </button>
+          </>
+        )}
 
         <div className={styles.tiles}>
           {tiles.map((tile) => (
