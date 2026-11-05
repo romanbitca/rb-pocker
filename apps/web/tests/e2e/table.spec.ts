@@ -55,6 +55,45 @@ test('one tap on Play deals a hand within 2 s, with nothing in between', async (
   expect(errors).toEqual([]);
 });
 
+// §15.3: the Table, Setup, Settings, the Menu and the dialogs are a lazy chunk that the app asks
+// for by itself once the first screen is painted. So when a person taps Play, the chunk is there
+// and the Table comes at once, without the "Loading…" page a tap before it would show.
+test('the Table loads after the first paint, without a tap, and Play never waits for it', async ({
+  page,
+}, testInfo) => {
+  test.skip(sizeOf(testInfo) !== '390x844', 'one phone size per browser');
+  const errors = collectErrors(page);
+  await page.goto('/');
+  const play = page.getByRole('button', { name: 'Play', exact: true });
+  await expect(play).toBeVisible();
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        performance
+          .getEntriesByType('resource')
+          .some((entry) => /\/assets\/screensEntry-[\w-]+\.js$/.test(entry.name)),
+      ),
+    )
+    .toBe(true);
+  // A person reads the screen before tapping; then no "Loading…" may appear on the way.
+  await page.waitForTimeout(1000);
+  await page.evaluate(() => {
+    const flag = window as unknown as { __sawLoading: boolean };
+    flag.__sawLoading = false;
+    new MutationObserver(() => {
+      if (document.body.textContent?.includes('Loading…') === true) flag.__sawLoading = true;
+    }).observe(document.body, { subtree: true, childList: true, characterData: true });
+  });
+  await play.click();
+  await expect(page.locator('[data-hero-cards] [role="img"]')).toHaveCount(2);
+  await expect(page.getByRole('heading', { level: 1, name: 'Poker table' })).toBeAttached();
+  const sawLoading = await page.evaluate(
+    () => (window as unknown as { __sawLoading: boolean }).__sawLoading,
+  );
+  expect(sawLoading, 'no "Loading…" page between Play and the Table').toBe(false);
+  expect(errors).toEqual([]);
+});
+
 test('a full hand at Normal speed plays to its end', async ({ page }, testInfo) => {
   test.skip(sizeOf(testInfo) !== '390x844', 'one phone size per browser');
   test.setTimeout(60_000);

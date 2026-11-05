@@ -87,7 +87,7 @@ type LaterScreenName = 'TableScreen' | 'SetupScreen' | 'SettingsScreen';
  * (§12.12). If the chunk cannot load: a line, Try again and Back.
  */
 function LaterScreen({ name }: { name: LaterScreenName }) {
-  const { mod, failed, retry } = useScreens();
+  const { mod, failed } = useScreens();
   const waited = useRef(mod === null);
   useEffect(() => {
     if (mod === null || !waited.current) return;
@@ -102,7 +102,7 @@ function LaterScreen({ name }: { name: LaterScreenName }) {
   }, [mod]);
   if (mod === null) {
     return failed ? (
-      <ScreenFailed onRetry={retry} />
+      <ScreenFailed />
     ) : (
       <div className={screenStyles.page}>
         <p className={`${screenStyles.hint} ${screenStyles.later}`}>{en.screens.loading}</p>
@@ -113,15 +113,23 @@ function LaterScreen({ name }: { name: LaterScreenName }) {
   return <Screen />;
 }
 
-/** The chunk could not be loaded (no connection and not cached yet): say so, try again or leave. */
-function ScreenFailed({ onRetry }: { onRetry: () => void }) {
+/**
+ * The chunk could not be loaded (no connection and not cached yet): say so, try again or leave.
+ * Try again reloads the page, the only way to load a module again once it has failed; the game
+ * loses nothing (the session is saved after every step, §14.5), and Home's Play goes on.
+ */
+function ScreenFailed() {
   const dispatch = useDispatch();
   return (
     <main className={screenStyles.page}>
       <p className={screenStyles.hint} role="alert">
         {en.screens.loadFailed}
       </p>
-      <button type="button" className={screenStyles.primary} onClick={onRetry}>
+      <button
+        type="button"
+        className={screenStyles.primary}
+        onClick={() => window.location.reload()}
+      >
         {en.screens.tryAgain}
       </button>
       <button
@@ -143,9 +151,9 @@ function LaterOverlay({ name }: { name: 'MenuOverlay' | 'OutOfChipsOverlay' | 'N
   return <Overlay />;
 }
 
-// Review (§12.10) is loaded when it is first opened: a dynamic `import()` keeps the screen and its
-// styles out of the initial bundle (§15.3). The service worker still precaches them, so it opens
-// offline.
+// Review (§12.10) is loaded when it is first opened: a dynamic `import()` keeps the screen out of
+// the initial bundle (§15.3; its styles are in the one stylesheet). The service worker still
+// precaches it, so it opens offline.
 const ReviewLazy = lazy(async () => {
   try {
     const { ReviewRoute } = await import('./screens/Review.tsx');

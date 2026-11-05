@@ -126,7 +126,12 @@ describe('the screens after the first tap in the production build', () => {
     'src/ui/screens/Menu.tsx',
     'src/ui/screens/Dialogs.tsx',
   ];
-  const FIRST_PAINT = ['src/main.tsx', 'src/ui/App.tsx', 'src/ui/screens/Welcome.tsx', 'src/ui/screens/Home.tsx'];
+  const FIRST_PAINT = [
+    'src/main.tsx',
+    'src/ui/App.tsx',
+    'src/ui/screens/Welcome.tsx',
+    'src/ui/screens/Home.tsx',
+  ];
 
   it('are lazy: not initial, loaded by import(), precached; Welcome and Home are initial', () => {
     const initial = rowOf('Initial JS');

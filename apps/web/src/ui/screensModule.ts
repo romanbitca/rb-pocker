@@ -10,14 +10,14 @@
  *   earliest 300 ms after its fallback (React 19), which a screen that is already loaded must
  *   never wait for.
  */
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 
 export type ScreensModule = typeof import('./screensEntry.tsx');
 
 let loaded: ScreensModule | null = null;
 let loading: Promise<ScreensModule> | null = null;
 
-/** Loads the chunk once (again after a failure). */
+/** Loads the chunk once (a later call asks again after a failure). */
 export function loadScreens(): Promise<ScreensModule> {
   loading ??= import('./screensEntry.tsx').then(
     (m) => {
@@ -48,15 +48,16 @@ export function usePreloadScreens(): void {
 export interface Screens {
   /** The chunk, or null while it loads or after it failed. */
   mod: ScreensModule | null;
-  /** The last attempt failed (no connection and not cached yet). */
+  /**
+   * It could not be loaded (no connection and not cached yet). Only a reload tries again: a
+   * browser keeps a module that failed to load as failed for the rest of the page's life.
+   */
   failed: boolean;
-  /** Tries again after a failure. */
-  retry: () => void;
 }
 
 /** The chunk for a screen or overlay that comes from it (see the module note). */
 export function useScreens(): Screens {
-  const [state, setState] = useState(() => ({ mod: loaded, failed: false }));
+  const [state, setState] = useState<Screens>(() => ({ mod: loaded, failed: false }));
   useEffect(() => {
     if (state.mod !== null || state.failed) return;
     let live = true;
@@ -72,6 +73,5 @@ export function useScreens(): Screens {
       live = false;
     };
   }, [state]);
-  const retry = useCallback(() => setState({ mod: null, failed: false }), []);
-  return { ...state, retry };
+  return state;
 }
