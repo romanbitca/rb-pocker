@@ -77,6 +77,7 @@ import {
   type TableState,
 } from '../engine/types.ts';
 import { commitHand } from '../persist/commit.ts';
+import { appendDiag } from '../persist/diag.ts';
 import { loadProfile, saveSettings } from '../persist/profile.ts';
 import { emptyHandMeta, isBotLevel, settingsProblem } from '../persist/schema.ts';
 import type {
@@ -365,7 +366,7 @@ export interface ControllerLogs {
   errors: ControllerEvent[];
   /** Brain requests, replies, drops and cancels, as the controller saw them (last 200). */
   brain: ControllerEvent[];
-  /** Replay records of the last 5 voided hands (§4.5; Stage 8 stores them under `pc.v1.diag`). */
+  /** Replay records of the last 5 voided hands (§4.5; also stored under `pc.v1.diag`, 8.1). */
   voided: ReplayRecord[];
   /** equity.worker's message log: requests, replies, drops, cancels, timeouts (last 200). */
   equity: WorkerLogEntry[];
@@ -1309,6 +1310,8 @@ export class TableController {
       const record = this.record(hand);
       if (input !== null) record.inputs.push(input);
       push(this.voided, record, RING.voided);
+      // §4.5, §14.2: stored under `pc.v1.diag` too (the last 5), unless another tab writes (§14.7).
+      if (this.storage !== null && this.writer) appendDiag(this.storage, record, this.now());
     }
     this.diag = { ...this.diag, voidedHands: this.diag.voidedHands + 1 };
     this.toast({ kind: 'handVoided' });

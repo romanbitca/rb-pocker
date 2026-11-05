@@ -27,6 +27,7 @@ import type {
   PersonalityId,
   PlayerAction,
   PlayerSlot,
+  ReplayRecord,
   SeatStats,
   Street,
   TableConfig,
@@ -115,6 +116,15 @@ export interface HandRecord {
 export interface HandRing {
   schema: 1;
   hands: HandRecord[];
+}
+
+/**
+ * `pc.v1.diag` (§4.5, §14.2, chunk 8.1): the replay records of the last 5 voided hands, oldest
+ * first. Written only when a broken invariant voids a hand (`persist/diag.ts`).
+ */
+export interface DiagRing {
+  schema: 1;
+  records: ReplayRecord[];
 }
 
 export interface ResultBucket {
@@ -737,6 +747,15 @@ const handRing: Check<{ schema: 1; hands: unknown[] }> = object<{ schema: 1; han
   hands: array<unknown>(() => null),
 });
 
+/** `pc.v1.diag`'s version and list (A.7 `DiagRing`); its replay records are written, not read here. */
+const diagRing: Check<{ schema: 1; records: unknown[] }> = object<{
+  schema: 1;
+  records: unknown[];
+}>({
+  schema: literal(1),
+  records: array<unknown>(() => null),
+});
+
 const resultBucket: Check<ResultBucket> = object<ResultBucket>({
   hands: count,
   handsWon: count,
@@ -951,6 +970,8 @@ export const handRecordProblem = (x: unknown): string | null => handRecord(x, 'r
  * by one (`handRecordProblem`), so one damaged record does not cost the others.
  */
 export const handRingProblem = (x: unknown): string | null => handRing(x, 'hands');
+/** The `pc.v1.diag` wrapper (A.7 `DiagRing`): its version and a list. */
+export const diagRingProblem = (x: unknown): string | null => diagRing(x, 'diag');
 export const isTableState = (x: unknown): x is TableState => tableState(x, 'table') === null;
 export const tableStateProblem = (x: unknown): string | null => tableState(x, 'table');
 export const isEngineInput = (x: unknown): x is EngineInput => engineInput(x, 'input') === null;
