@@ -747,7 +747,8 @@ function playMany(
   }
 }
 
-describe('nextTable over many hands (property)', () => {
+// 1–3 s each alone, over 5 s under V8 coverage on a busy machine: an explicit timeout (5× and more).
+describe('nextTable over many hands (property)', { timeout: 30_000 }, () => {
   it('v1: keeps the table size, moves the button one seat a hand, replaces busted bots', () => {
     fc.assert(
       fc.property(
