@@ -1,9 +1,9 @@
 // @vitest-environment jsdom
 /**
  * The screens after the first tap are a lazy chunk (PLAN §15.3). If it cannot be loaded (no
- * connection and not cached yet), the screen says so, offers Try again (a reload: a module that
- * failed to load stays failed until then) and Back; the app never crashes, and an overlay from the
- * chunk draws nothing.
+ * connection and not cached yet), the screen says so, offers Try again (a reload: a browser may
+ * keep a module that failed to load as failed until then) and Back; the app never crashes, and an
+ * overlay from the chunk draws nothing.
  */
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';

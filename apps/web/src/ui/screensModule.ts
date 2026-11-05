@@ -37,7 +37,7 @@ export function usePreloadScreens(): void {
   useEffect(() => {
     // An animation frame runs just before the browser paints, and the chunk arrives in a later
     // task, so loading it never delays the first paint. A failure is shown by the screen that
-    // needs the chunk, which tries again.
+    // needs the chunk (it asks once more, then offers a reload).
     const frame = requestAnimationFrame(() => {
       loadScreens().catch(() => {});
     });
@@ -49,8 +49,8 @@ export interface Screens {
   /** The chunk, or null while it loads or after it failed. */
   mod: ScreensModule | null;
   /**
-   * It could not be loaded (no connection and not cached yet). Only a reload tries again: a
-   * browser keeps a module that failed to load as failed for the rest of the page's life.
+   * It could not be loaded (no connection and not cached yet). A reload is the sure way to try
+   * again: a browser may keep a module that failed to load as failed until the page reloads.
    */
   failed: boolean;
 }

@@ -115,8 +115,9 @@ function LaterScreen({ name }: { name: LaterScreenName }) {
 
 /**
  * The chunk could not be loaded (no connection and not cached yet): say so, try again or leave.
- * Try again reloads the page, the only way to load a module again once it has failed; the game
- * loses nothing (the session is saved after every step, §14.5), and Home's Play goes on.
+ * Try again reloads the page, the sure way to load a module again once it has failed (a browser
+ * may keep the failure until then); the game loses nothing (the session is saved after every step,
+ * §14.5), and Home's Play goes on.
  */
 function ScreenFailed() {
   const dispatch = useDispatch();
