@@ -160,6 +160,7 @@ If the human's answer later reveals a problem, the fix becomes a new chunk ahead
 
 ### Notes for Stage 9 (polish)
 
+- Coach strip (from #64, 5 Nov): its single line already cuts off on phones narrower than about 400 px ("All 5 players: 17%. Raiser alone: about 38%." is as long as the old pair). The owner plays on a phone: wrap to two lines or shorten at 360–390 px.
 - R14 (open): at 1024×768 wide layout with the sizing tray open the table shrinks to 216 px and pods reach the pot/board (since 5.9). Portrait tray open can show one frame of stale pod positions (ResizeObserver lag) — left as is to protect tap→paint.
 
 ### Notes for Stage 6
