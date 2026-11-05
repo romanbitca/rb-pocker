@@ -1411,7 +1411,9 @@ export class TableController {
       if (input !== null) record.inputs.push(input);
       push(this.voided, record, RING.voided);
       // §4.5, §14.2: stored under `pc.v1.diag` too (the last 5), unless another tab writes (§14.7).
-      if (this.storage !== null && this.tab === 'writer') appendDiag(this.storage, record, this.now());
+      if (this.storage !== null && this.tab === 'writer') {
+        appendDiag(this.storage, record, this.now());
+      }
     }
     this.diag = { ...this.diag, voidedHands: this.diag.voidedHands + 1 };
     this.toast({ kind: 'handVoided' });
