@@ -127,6 +127,22 @@ export interface DiagRing {
   records: ReplayRecord[];
 }
 
+/**
+ * The export file `rb-poker-coach-stats-YYYY-MM-DD.json` (§14.8, chunk 8.3). `app` is an internal
+ * identifier and keeps its short form (§0.3). Import runs the profile's migrations and guards on
+ * it (H.2 rule 5); `persist/transfer.ts` writes and reads it.
+ */
+export interface ExportFile {
+  app: 'poker-coach';
+  /** The profile schema this app wrote (`PROFILE_VERSION`). */
+  schemaVersion: number;
+  /** ISO UTC. */
+  exportedAt: string;
+  profile: Profile;
+  /** The counted hand records, oldest first, one per `handSeq` (the ring's, §14.2). */
+  hands: HandRecord[];
+}
+
 export interface ResultBucket {
   hands: number;
   handsWon: number;
