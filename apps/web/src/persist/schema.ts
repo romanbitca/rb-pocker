@@ -27,6 +27,7 @@ import type {
   PersonalityId,
   PlayerAction,
   PlayerSlot,
+  ReplayRecord,
   SeatStats,
   Street,
   TableConfig,
@@ -106,6 +107,24 @@ export interface HandRecord {
   /** The hero's final category if they saw the river or the showdown. */
   bestCategory: HandCategory | null;
   allIn: { expected: number; actual: number; pot: number } | null;
+}
+
+/**
+ * `pc.v1.hands` (§14.2, chunk 8.1): the last `HANDS_KEEP` (100) hand records, oldest first, one
+ * per `handSeq`. Written at hand end before the profile (§14.3 step 1).
+ */
+export interface HandRing {
+  schema: 1;
+  hands: HandRecord[];
+}
+
+/**
+ * `pc.v1.diag` (§4.5, §14.2, chunk 8.1): the replay records of the last 5 voided hands, oldest
+ * first. Written only when a broken invariant voids a hand (`persist/diag.ts`).
+ */
+export interface DiagRing {
+  schema: 1;
+  records: ReplayRecord[];
 }
 
 export interface ResultBucket {
@@ -722,6 +741,21 @@ const handRecord: Check<HandRecord> = refine(
   },
 );
 
+/** The ring's version and list; each record has its own check (`handRecord`). */
+const handRing: Check<{ schema: 1; hands: unknown[] }> = object<{ schema: 1; hands: unknown[] }>({
+  schema: literal(1),
+  hands: array<unknown>(() => null),
+});
+
+/** `pc.v1.diag`'s version and list (A.7 `DiagRing`); its replay records are written, not read here. */
+const diagRing: Check<{ schema: 1; records: unknown[] }> = object<{
+  schema: 1;
+  records: unknown[];
+}>({
+  schema: literal(1),
+  records: array<unknown>(() => null),
+});
+
 const resultBucket: Check<ResultBucket> = object<ResultBucket>({
   hands: count,
   handsWon: count,
@@ -931,6 +965,13 @@ export const isDecisionRecord = (x: unknown): x is DecisionRecord =>
 export const isHandMeta = (x: unknown): x is HandMeta => handMeta(x, 'meta') === null;
 export const isHandRecord = (x: unknown): x is HandRecord => handRecord(x, 'record') === null;
 export const handRecordProblem = (x: unknown): string | null => handRecord(x, 'record');
+/**
+ * The `pc.v1.hands` wrapper (A.7 `HandRing`): its version and a list. The records are checked one
+ * by one (`handRecordProblem`), so one damaged record does not cost the others.
+ */
+export const handRingProblem = (x: unknown): string | null => handRing(x, 'hands');
+/** The `pc.v1.diag` wrapper (A.7 `DiagRing`): its version and a list. */
+export const diagRingProblem = (x: unknown): string | null => diagRing(x, 'diag');
 export const isTableState = (x: unknown): x is TableState => tableState(x, 'table') === null;
 export const tableStateProblem = (x: unknown): string | null => tableState(x, 'table');
 export const isEngineInput = (x: unknown): x is EngineInput => engineInput(x, 'input') === null;

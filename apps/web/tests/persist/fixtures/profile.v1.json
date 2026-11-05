@@ -1,0 +1,368 @@
+{
+  "schema": 1,
+  "rev": 412,
+  "lastCommittedHandSeq": 1287,
+  "createdAt": "2026-10-01T09:12:00.000Z",
+  "updatedAt": "2026-10-19T21:40:11.000Z",
+  "settings": {
+    "schema": 1,
+    "botLevel": "hard",
+    "coachLevel": "intermediate",
+    "players": 6,
+    "startingStack": 2000,
+    "sb": 10,
+    "bb": 20,
+    "seatLevels": [null, null, "expert", null, null, null],
+    "speed": "normal",
+    "autoNext": true,
+    "amounts": "chips",
+    "showEquity": true,
+    "fourColour": true,
+    "textSize": "normal",
+    "reduceMotion": "system",
+    "keepAwake": true,
+    "sound": true,
+    "haptics": true,
+    "handsPanel": "open"
+  },
+  "stats": {
+    "schema": 1,
+    "firstPlayedAt": "2026-10-01T09:15:02.000Z",
+    "lastPlayedAt": "2026-10-19T21:40:11.000Z",
+    "sessions": 0,
+    "reloads": 0,
+    "results": {
+      "clean": {
+        "hands": 1150,
+        "handsWon": 0,
+        "netChips": 16680,
+        "netMilliBB": 834000,
+        "vpipHands": 0,
+        "pfrHands": 0,
+        "sawFlop": 0,
+        "wentToShowdown": 0,
+        "wonAtShowdown": 0,
+        "biggestPotWon": 0,
+        "allInExpectedChips": 0,
+        "allInActualChips": 0
+      },
+      "practice": {
+        "hands": 137,
+        "handsWon": 0,
+        "netChips": -2140,
+        "netMilliBB": -107000,
+        "vpipHands": 0,
+        "pfrHands": 0,
+        "sawFlop": 0,
+        "wentToShowdown": 0,
+        "wonAtShowdown": 0,
+        "biggestPotWon": 0,
+        "allInExpectedChips": 0,
+        "allInActualChips": 0
+      },
+      "byBotLevel": {
+        "easy": {
+          "hands": 0,
+          "handsWon": 0,
+          "netChips": 0,
+          "netMilliBB": 0,
+          "vpipHands": 0,
+          "pfrHands": 0,
+          "sawFlop": 0,
+          "wentToShowdown": 0,
+          "wonAtShowdown": 0,
+          "biggestPotWon": 0,
+          "allInExpectedChips": 0,
+          "allInActualChips": 0
+        },
+        "medium": {
+          "hands": 0,
+          "handsWon": 0,
+          "netChips": 0,
+          "netMilliBB": 0,
+          "vpipHands": 0,
+          "pfrHands": 0,
+          "sawFlop": 0,
+          "wentToShowdown": 0,
+          "wonAtShowdown": 0,
+          "biggestPotWon": 0,
+          "allInExpectedChips": 0,
+          "allInActualChips": 0
+        },
+        "hard": {
+          "hands": 0,
+          "handsWon": 0,
+          "netChips": 0,
+          "netMilliBB": 0,
+          "vpipHands": 0,
+          "pfrHands": 0,
+          "sawFlop": 0,
+          "wentToShowdown": 0,
+          "wonAtShowdown": 0,
+          "biggestPotWon": 0,
+          "allInExpectedChips": 0,
+          "allInActualChips": 0
+        },
+        "expert": {
+          "hands": 0,
+          "handsWon": 0,
+          "netChips": 0,
+          "netMilliBB": 0,
+          "vpipHands": 0,
+          "pfrHands": 0,
+          "sawFlop": 0,
+          "wentToShowdown": 0,
+          "wonAtShowdown": 0,
+          "biggestPotWon": 0,
+          "allInExpectedChips": 0,
+          "allInActualChips": 0
+        }
+      }
+    },
+    "decisions": {
+      "all": {
+        "decisions": 0,
+        "byGrade": {
+          "best": 0,
+          "good": 0,
+          "inaccuracy": 0,
+          "mistake": 0,
+          "blunder": 0
+        },
+        "lossMilliBB": 0,
+        "own": 0,
+        "ownBestOrGood": 0,
+        "hintSeen": 0,
+        "hintFollowed": 0,
+        "undone": 0,
+        "quizAsked": 0,
+        "quizCorrect": 0
+      },
+      "byCoachLevel": {
+        "beginner": {
+          "decisions": 0,
+          "byGrade": {
+            "best": 0,
+            "good": 0,
+            "inaccuracy": 0,
+            "mistake": 0,
+            "blunder": 0
+          },
+          "lossMilliBB": 0,
+          "own": 0,
+          "ownBestOrGood": 0,
+          "hintSeen": 0,
+          "hintFollowed": 0,
+          "undone": 0,
+          "quizAsked": 0,
+          "quizCorrect": 0
+        },
+        "intermediate": {
+          "decisions": 0,
+          "byGrade": {
+            "best": 0,
+            "good": 0,
+            "inaccuracy": 0,
+            "mistake": 0,
+            "blunder": 0
+          },
+          "lossMilliBB": 0,
+          "own": 0,
+          "ownBestOrGood": 0,
+          "hintSeen": 0,
+          "hintFollowed": 0,
+          "undone": 0,
+          "quizAsked": 0,
+          "quizCorrect": 0
+        },
+        "advanced": {
+          "decisions": 0,
+          "byGrade": {
+            "best": 0,
+            "good": 0,
+            "inaccuracy": 0,
+            "mistake": 0,
+            "blunder": 0
+          },
+          "lossMilliBB": 0,
+          "own": 0,
+          "ownBestOrGood": 0,
+          "hintSeen": 0,
+          "hintFollowed": 0,
+          "undone": 0,
+          "quizAsked": 0,
+          "quizCorrect": 0
+        },
+        "exam": {
+          "decisions": 0,
+          "byGrade": {
+            "best": 0,
+            "good": 0,
+            "inaccuracy": 0,
+            "mistake": 0,
+            "blunder": 0
+          },
+          "lossMilliBB": 0,
+          "own": 0,
+          "ownBestOrGood": 0,
+          "hintSeen": 0,
+          "hintFollowed": 0,
+          "undone": 0,
+          "quizAsked": 0,
+          "quizCorrect": 0
+        }
+      },
+      "byStreet": {
+        "preflop": {
+          "decisions": 0,
+          "byGrade": {
+            "best": 0,
+            "good": 0,
+            "inaccuracy": 0,
+            "mistake": 0,
+            "blunder": 0
+          },
+          "lossMilliBB": 0,
+          "own": 0,
+          "ownBestOrGood": 0,
+          "hintSeen": 0,
+          "hintFollowed": 0,
+          "undone": 0,
+          "quizAsked": 0,
+          "quizCorrect": 0
+        },
+        "flop": {
+          "decisions": 0,
+          "byGrade": {
+            "best": 0,
+            "good": 0,
+            "inaccuracy": 0,
+            "mistake": 0,
+            "blunder": 0
+          },
+          "lossMilliBB": 0,
+          "own": 0,
+          "ownBestOrGood": 0,
+          "hintSeen": 0,
+          "hintFollowed": 0,
+          "undone": 0,
+          "quizAsked": 0,
+          "quizCorrect": 0
+        },
+        "turn": {
+          "decisions": 0,
+          "byGrade": {
+            "best": 0,
+            "good": 0,
+            "inaccuracy": 0,
+            "mistake": 0,
+            "blunder": 0
+          },
+          "lossMilliBB": 0,
+          "own": 0,
+          "ownBestOrGood": 0,
+          "hintSeen": 0,
+          "hintFollowed": 0,
+          "undone": 0,
+          "quizAsked": 0,
+          "quizCorrect": 0
+        },
+        "river": {
+          "decisions": 0,
+          "byGrade": {
+            "best": 0,
+            "good": 0,
+            "inaccuracy": 0,
+            "mistake": 0,
+            "blunder": 0
+          },
+          "lossMilliBB": 0,
+          "own": 0,
+          "ownBestOrGood": 0,
+          "hintSeen": 0,
+          "hintFollowed": 0,
+          "undone": 0,
+          "quizAsked": 0,
+          "quizCorrect": 0
+        }
+      }
+    },
+    "leaks": {},
+    "collection": {
+      "highCard": {
+        "count": 0,
+        "first": null
+      },
+      "pair": {
+        "count": 0,
+        "first": null
+      },
+      "twoPair": {
+        "count": 0,
+        "first": null
+      },
+      "trips": {
+        "count": 0,
+        "first": null
+      },
+      "straight": {
+        "count": 0,
+        "first": null
+      },
+      "flush": {
+        "count": 0,
+        "first": null
+      },
+      "fullHouse": {
+        "count": 0,
+        "first": null
+      },
+      "quads": {
+        "count": 0,
+        "first": null
+      },
+      "straightFlush": {
+        "count": 0,
+        "first": null
+      },
+      "royalFlush": {
+        "count": 0,
+        "first": null
+      }
+    },
+    "streak": {
+      "current": 0,
+      "best": 0
+    },
+    "recentSessions": [],
+    "currentSession": null,
+    "recentHands": []
+  },
+  "heroModel": {
+    "hands": 1287,
+    "vpip": [301, 1287],
+    "pfr": [198, 1287],
+    "threeBet": [41, 377],
+    "foldTo3bet": [22, 61],
+    "cbet": [97, 140],
+    "foldToCbet": [55, 102],
+    "wtsd": [130, 420],
+    "aggActions": 612,
+    "passiveActions": 344
+  },
+  "persistGranted": true,
+  "flags": {
+    "tips": {
+      "heroStrip": true,
+      "coachStrip": true
+    },
+    "iosInstall": true,
+    "safariImport": false,
+    "offlineReady": true,
+    "suggestionSnoozedUntil": {
+      "botsUp": null,
+      "botsDown": null,
+      "coachDown": null
+    }
+  }
+}

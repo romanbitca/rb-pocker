@@ -7,8 +7,16 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { TIMING } from '../../src/app/controller.ts';
+import { InvariantError } from '../../src/core/assert.ts';
 import { replay } from '../../src/engine/replay.ts';
-import type { EngineInput, HandState, LegalActions, PlayerAction } from '../../src/engine/types.ts';
+import { step } from '../../src/engine/step.ts';
+import type {
+  EngineInput,
+  HandState,
+  LegalActions,
+  PlayerAction,
+  ReplayRecord,
+} from '../../src/engine/types.ts';
 import type { SessionState } from '../../src/persist/schema.ts';
 import { createSafeStorage, STORAGE_KEYS, type SafeStorage } from '../../src/persist/storage.ts';
 import { FakeStorage, securityError } from '../persist/fakeStorage.ts';
@@ -162,7 +170,7 @@ describe('session: saved after every step, resumed deep-equal (§14.5, Stage 3 a
     expect(hand.startStacks).toEqual(next?.slots.map((slot) => slot.stack));
   });
 
-  it('a complete hand saved just before nextTable resumes into the hand end (§14.3 step 5)', async () => {
+  it('a complete hand saved just before nextTable: boot runs §14.3 step 5, Play deals the next', async () => {
     const backend = new FakeStorage();
     const a = launch(backend).h;
     a.dispatch({ type: 'play' });
@@ -175,11 +183,13 @@ describe('session: saved after every step, resumed deep-equal (§14.5, Stage 3 a
       JSON.stringify({ ...session, table, hand: done, handInputs: a.controller.snapshot().inputs }),
     );
     a.controller.dispose();
+    // The hand was counted already (the profile says so): only step 5, the next table.
     const b = launch(backend).h;
-    expect(b.state().game.hand).toEqual(done);
-    b.dispatch({ type: 'play' });
-    expect(b.state().game.mode).toBe('handEnd');
+    expect(b.state().game).toMatchObject({ hand: null, table: null });
     expect(b.state().game.next?.handsDealt).toBe((table?.handsDealt ?? 0) + 1);
+    expect(stored(backend)).toMatchObject({ hand: null, table: b.state().game.next });
+    b.dispatch({ type: 'play' });
+    expect(b.state().game.hand?.handSeq).toBe((done as HandState).handSeq + 1);
   });
 
   it('a bust hero resumes into the out-of-chips dialog', async () => {
@@ -354,5 +364,35 @@ describe('storage failures (§12.14, §14.6)', () => {
         inputs,
       }),
     ).toEqual(session.hand);
+  });
+});
+
+describe('pc.v1.diag (§4.5, §14.2)', () => {
+  it('a broken invariant stores the voided hand’s replay record; later steps leave the key', async () => {
+    const backend = new FakeStorage();
+    const storage = createSafeStorage(() => backend);
+    let calls = 0;
+    const failing: typeof step = (s, input) => {
+      if (++calls === 4) throw new InvariantError(['I1 chip conservation: test']);
+      return step(s, input);
+    };
+    const h = makeHarness({ storage, step: failing });
+    h.dispatch({ type: 'play' });
+    const voidedHand = h.state().game.hand as HandState;
+    await playUntil(h, () => h.state().game.diag.voidedHands === 1);
+    const diag = JSON.parse(backend.data.get(STORAGE_KEYS.diag) as string) as {
+      schema: number;
+      records: ReplayRecord[];
+    };
+    expect(diag.schema).toBe(1);
+    // The record in memory (Diagnostics' ring) and the stored one are the same hand.
+    expect(diag.records).toEqual(JSON.parse(JSON.stringify(h.controller.logs().voided)));
+    expect(diag.records[0]?.seed).toBe(voidedHand.seed);
+    expect(diag.records[0]?.inputs).toHaveLength(4);
+    // The game goes on: the next hand is dealt, and its steps do not write the key.
+    const writes = () => backend.writeLog.filter((key) => key === STORAGE_KEYS.diag).length;
+    const before = writes();
+    await playUntil(h, () => (h.state().game.hand?.handSeq ?? 0) > voidedHand.handSeq + 1);
+    expect(writes()).toBe(before);
   });
 });

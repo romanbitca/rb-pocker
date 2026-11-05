@@ -20,6 +20,8 @@ export class FakeStorage implements StorageBackend {
   quota = Number.POSITIVE_INFINITY;
   /** After this many successful setItem calls every call throws: the tab "dies" mid-protocol. */
   dieAfterWrites = Number.POSITIVE_INFINITY;
+  /** This setItem attempt (1-based, as counted in `writeLog`) throws a QuotaExceededError once. */
+  failAttempt = 0;
   /** Successful setItem calls so far. */
   writes = 0;
   /** Every setItem call, successful or not, in order. */
@@ -50,6 +52,7 @@ export class FakeStorage implements StorageBackend {
     this.writeLog.push(key);
     this.guard();
     if (this.failWrites !== null) throw this.failWrites;
+    if (this.writeLog.length === this.failAttempt) throw quotaError();
     const old = this.data.get(key);
     const after = this.used() - (old === undefined ? 0 : key.length + old.length);
     if (after + key.length + value.length > this.quota) throw quotaError();
