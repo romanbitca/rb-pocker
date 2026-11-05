@@ -1,10 +1,10 @@
-# PLAN §17.5 `check`: every push to main and every pull request.
+# PLAN §17.5 `check`. CI runs on the dev Mac (`scripts/ci-local.sh`, owner decision 13 Oct 2026:
+# no paid Actions minutes for the private repository); this workflow runs only by hand (Actions →
+# check → Run workflow) and is the reference for the steps that script runs.
 name: check
 
 on:
-  push:
-    branches: [main]
-  pull_request:
+  workflow_dispatch:
 
 # A newer push to the same pull request or branch cancels the run it replaces (saves minutes).
 concurrency:

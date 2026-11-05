@@ -42,7 +42,7 @@ Good to know:
 
 ## Checks
 
-Run these before you push. CI runs them too.
+Run these before you push. CI runs them too: `scripts/ci-local.sh` (last row).
 
 | Command | What it checks |
 |---|---|
@@ -50,12 +50,13 @@ Run these before you push. CI runs them too.
 | `npm run lint` | ESLint, including the module boundary rules and the `Math.random` ban |
 | `npm run format:check` | Prettier formatting (`npm run format` fixes it) |
 | `npm test` | Unit, component and server tests |
-| `npm run test:slow` | The long tests (CI runs them once a week) |
+| `npm run test:slow` | The long tests (`scripts/ci-local.sh --slow` runs them before a stage's last merge) |
 | `npm run e2e` | Playwright in Chromium and WebKit at six screen sizes, against the E2E build (`npm run build:e2e`: the production build plus the test hooks `?seed=` and `window.__pc`). It builds first when that build is missing, is a production build, or is older than the code. Before the first run: `npx playwright install chromium webkit` |
-| `npm run e2e:perf` | The speed checks, in Chromium only: the two of Stage 4 (win chance and long tasks, both with the CPU 6× slower; PLAN §15.3), 20 hands each, the Stage 6 grading-time check (the grade after your move: 50 ms with the coach's numbers cached, 150 ms for a bet size the coach had not rated; PLAN §8.11), and the Stage 3 long-task test (25 hands, no slow-down), which fails in CI too. **Here the Stage 4 and Stage 6 checks fail when a budget is missed.** Run it before you merge a change that can slow the game (the hand loop, the win chance, the workers, the grading), when the machine is quiet. In CI the Stage 4 and Stage 6 checks only report their numbers (job summary of the `e2e` run and of the weekly `slow` run), because the shared runner is too noisy for a speed budget. The real check is `#bench` on a phone (below). Builds first like `npm run e2e`; `npm run e2e:perf -w @rb/web` does not. `PERF_REPORT_ONLY=1` makes the Stage 4 and Stage 6 checks report only |
+| `npm run e2e:perf` | The speed checks, in Chromium only: the two of Stage 4 (win chance and long tasks, both with the CPU 6× slower; PLAN §15.3), 20 hands each, the Stage 6 grading-time check (the grade after your move: 50 ms with the coach's numbers cached, 150 ms for a bet size the coach had not rated; PLAN §8.11), and the Stage 3 long-task test (25 hands, no slow-down), which fails in CI too. **Here the Stage 4 and Stage 6 checks fail when a budget is missed.** Run it before you merge a change that can slow the game (the hand loop, the win chance, the workers, the grading), when the machine is quiet. In CI (`scripts/ci-local.sh`, and the GitHub workflows when run by hand) the Stage 4 and Stage 6 checks only report their numbers, because a busy machine is too noisy for a speed budget; `scripts/ci-local.sh --slow` enforces them. The real check is `#bench` on a phone (below). Builds first like `npm run e2e`; `npm run e2e:perf -w @rb/web` does not. `PERF_REPORT_ONLY=1` makes the Stage 4 and Stage 6 checks report only |
 | `npm run size` | Bundle sizes against the budget (after `npm run build`) |
 | `npm run gen:check` | The generated tables in `src/data/generated/` (preflop, ranges, push/fold): checksums, and 20 cells of the preflop and of the range table sampled again (a few seconds). `npm run gen` rebuilds them all (about 5 minutes on 8 cores; `gen:ranges` and `gen:pushfold` one at a time); never edit those files by hand |
 | `npm run check:html -w @rb/web` | The built `index.html` has no inline script and carries the CSP (after `npm run build`) |
+| `scripts/ci-local.sh [<ref>] [--post]` | **CI.** The steps of the `check`, `e2e` and `docker` workflows against one commit, in a clean worktree (about half an hour; Docker Desktop must run). `--post` reports the result to GitHub as the commit status `local-ci`: a pull request is merged only when it is green. `--slow` runs the long tests, the self-play gates and the enforced speed checks instead (`local-slow`). `--help` lists the options. GitHub Actions runs the same workflows only by hand (no paid minutes for this private repository) |
 
 ## Test on your phone
 
@@ -121,12 +122,12 @@ Only you can do steps 1 to 4, and only once. After that, every push to `main` de
    developer. Then open the address on your phone, install it (Add to Home Screen), and try it
    in airplane mode.
 8. **Optional:** in GitHub → Settings → Secrets and variables → Actions → **Variables**, add
-   `DEPLOY_URL` = your address. The weekly CI job then runs the same check.
+   `DEPLOY_URL` = your address. The `slow` workflow then runs the same check when it is run (by hand: Actions → slow → Run workflow).
 
 ## Where things are
 
 - `apps/web`: the game (React, Vite, installable offline app). Builds to `apps/web/dist`.
 - `apps/server`: the small NestJS server that serves the game and `/api/health`.
-- `scripts/`: `build-if-needed.mjs` (used by `npm run e2e`) and `check-deploy.mjs` (after a deploy).
+- `scripts/`: `build-if-needed.mjs` (used by `npm run e2e`), `check-deploy.mjs` (after a deploy) and `ci-local.sh` (CI on this machine).
 - `docs/PLAN.md`: what to build and why. `docs/EXECUTION.md`: what is done.
 - Third-party licences: [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md).

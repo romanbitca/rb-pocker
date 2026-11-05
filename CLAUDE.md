@@ -83,7 +83,8 @@ Each wake-up:
 2. Read EXECUTION.md "Current position". `git fetch`, check out / create that chunk's branch.
 3. Read the PLAN.md sections the chunk cites (not the whole 3,000-line file every time).
 4. Implement with tests. Run the chunk's checks locally (typecheck, lint, tests, build).
-5. Commit, push, open a PR, wait for CI; fix until green; squash-merge; delete the branch.
+5. Commit, push, open a PR, run the local CI on its head (`scripts/ci-local.sh origin/<branch> --post`);
+   fix until `local-ci` is green; squash-merge; delete the branch.
 6. Tick the chunk in EXECUTION.md, advance "Current position", add a Log row. Commit on `main`.
 7. Back to step 1.
 
@@ -110,7 +111,7 @@ needs the human (e.g. P1/P2 in EXECUTION.md), or the same CI failure survives th
   stays Node 22 for the owner's other projects). Prefix every node/npm/npx command in this repo with
   `PATH=/opt/homebrew/opt/node@24/bin:$PATH` and check `node -v` shows v24.
 - Docker Desktop must be running for Docker checks.
-- CI runs on this Mac (see "Testing on this Mac" above); the GitHub workflows, including the heavy
-  `slow` job, run only by hand.
+- CI runs on this Mac: `scripts/ci-local.sh <ref> --post` posts `local-ci`, and `--slow` (status `local-slow`)
+  runs before a stage's last merge (see "Testing on this Mac" above). The GitHub workflows run only by hand.
 - Owner tests on a phone and is not a native English speaker: keep user-facing copy plain,
   and keep notifications/reports short.

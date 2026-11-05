@@ -1,11 +1,11 @@
-# PLAN §17.5 `docker`: every pull request to main. Builds the image Coolify runs, waits until the
-# container is healthy, and checks it with the post-deploy script (§17.2 headers, cache rules,
-# /api/health with this commit, no Set-Cookie).
+# PLAN §17.5 `docker`: builds the image Coolify runs, waits until the container is healthy, and
+# checks it with the post-deploy script (§17.2 headers, cache rules, /api/health with this commit,
+# no Set-Cookie). CI runs on the dev Mac (`scripts/ci-local.sh`, owner decision 13 Oct 2026); this
+# workflow runs only by hand and is the reference for the steps that script runs.
 name: docker
 
 on:
-  pull_request:
-    branches: [main]
+  workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
