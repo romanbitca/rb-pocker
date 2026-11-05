@@ -6,13 +6,14 @@
  * banner.
  */
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { startApp } from '../../src/app/boot.ts';
 import { detectFeatures, missingFeatures, secureFeatures } from '../../src/app/secure.ts';
 import { appStore } from '../../src/app/store.ts';
 import { en } from '../../src/i18n/en.ts';
 import { createSafeStorage } from '../../src/persist/storage.ts';
 import { App } from '../../src/ui/App.tsx';
+import { loadScreens } from '../../src/ui/screensModule.ts';
 import { FakeStorage, securityError } from '../persist/fakeStorage.ts';
 
 vi.mock('virtual:pwa-register/react', () => ({
@@ -22,6 +23,10 @@ vi.mock('virtual:pwa-register/react', () => ({
     updateServiceWorker: async () => {},
   }),
 }));
+
+beforeAll(async () => {
+  await loadScreens(); // the screens lazy chunk, as App asks for it after the first paint
+});
 
 const SOURCES = import.meta.glob<string>('../../src/**/*.{ts,tsx}', {
   query: '?raw',

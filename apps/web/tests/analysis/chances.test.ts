@@ -62,7 +62,9 @@ const C5: [number, number, number, number, number, number][] = [
 
 const sumExactly = (c: Chances): number => HAND_CATEGORIES.reduce((n, k) => n + c[k].exactly, 0);
 
-describe('Appendix D.3: chances by the river, exact', () => {
+// A preflop enumeration (2,118,760 boards) takes 0.3–1 s alone and over 5 s under V8 coverage on a
+// busy machine: explicit timeouts here and in 'the chances record'.
+describe('Appendix D.3: chances by the river, exact', { timeout: 30_000 }, () => {
   for (const [hole, board, want] of D3) {
     it(`${hole}${board === '' ? ' preflop' : ` on ${board}`}`, { timeout: 60_000 }, () => {
       const got = chancesByRiver(cards(hole), cards(board));
@@ -155,7 +157,7 @@ describe('Appendix C.5: outs → exact chance to hit', () => {
   });
 });
 
-describe('the chances record', () => {
+describe('the chances record', { timeout: 30_000 }, () => {
   const hands: [string, string][] = [
     ['A♥ K♥', ''],
     ['7♣ 2♦', 'K♠ 9♥ 4♦'],

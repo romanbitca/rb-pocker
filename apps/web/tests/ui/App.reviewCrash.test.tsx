@@ -4,10 +4,11 @@
  * while rendering, the app goes Back to the Table instead of unmounting.
  */
 import { act, cleanup, render, screen } from '@testing-library/react';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { initialReview, type ReviewHand } from '../../src/app/review.ts';
 import { appStore, initialGame, initialUi } from '../../src/app/store.ts';
 import { App } from '../../src/ui/App.tsx';
+import { loadScreens } from '../../src/ui/screensModule.ts';
 
 vi.mock('virtual:pwa-register/react', () => ({
   useRegisterSW: () => ({
@@ -16,6 +17,10 @@ vi.mock('virtual:pwa-register/react', () => ({
     updateServiceWorker: async () => {},
   }),
 }));
+
+beforeAll(async () => {
+  await loadScreens(); // the screens lazy chunk, as App asks for it after the first paint
+});
 
 beforeEach(() => {
   appStore.setState({ game: initialGame(), ui: initialUi(false), review: initialReview() });

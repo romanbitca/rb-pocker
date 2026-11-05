@@ -26,7 +26,9 @@ function run(req: EquityRequest): EquityReply[] {
   return posted;
 }
 
-describe('handInfo (§6)', () => {
+// Up to 1 s alone, and one timed out at 5 s under V8 coverage on a busy machine: explicit timeouts
+// here and in 'equity'.
+describe('handInfo (§6)', { timeout: 30_000 }, () => {
   it('A♥K♥ on Q♥7♥2♣: 15 outs, exact next-card and by-river chances, D.3 flush chance', () => {
     const a = handInfo(two('Ah Kh'), parseCards('Qh 7h 2c'));
     expect(a.outs).toHaveLength(15);
@@ -98,7 +100,7 @@ describe('handInfo (§6)', () => {
   });
 });
 
-describe('equity (§7.2–7.3)', () => {
+describe('equity (§7.2–7.3)', { timeout: 30_000 }, () => {
   it('preflop is a table lookup: one final reply, at once, with the table numbers (§7.5)', () => {
     for (let nOpp = 1; nOpp <= 8; nOpp++) {
       const replies = run({

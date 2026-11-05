@@ -1,7 +1,7 @@
 /**
  * What the coach's advice does to the action bar and the sizing tray (PLAN §10.2, §12.7), without
- * any of its words: the main bundle needs this at once, while the text (`ui/coach.ts`, the F.1
- * templates, the sheet) loads as a lazy chunk (§15.3).
+ * any of its words: the Table needs this at once (it loads with the Table's code), while the text
+ * (`ui/coach.ts`, the F.1 templates, the sheet) loads as the coach's own lazy chunk (§15.3).
  *
  * The advice is on show at Beginner, and at the other levels after "Hint" (§10.2 "Hint before you
  * act", `LEVEL_RULES`). While it is on show the recommended Row A button has the accent ring and

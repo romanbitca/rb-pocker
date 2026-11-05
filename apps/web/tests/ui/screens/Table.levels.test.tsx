@@ -17,6 +17,7 @@ import type { Grade } from '../../../src/brain/types.ts';
 import type { CoachLevel, HandState } from '../../../src/engine/types.ts';
 import { App } from '../../../src/ui/App.tsx';
 import { loadCoach } from '../../../src/ui/coachModule.ts';
+import { loadScreens } from '../../../src/ui/screensModule.ts';
 import { stubGrader } from '../../app/graders.ts';
 import { passive, startTableHarness, type TableHarness } from '../tableHarness.ts';
 
@@ -27,6 +28,10 @@ vi.mock('virtual:pwa-register/react', () => ({
     updateServiceWorker: async () => {},
   }),
 }));
+
+beforeAll(async () => {
+  await loadScreens(); // the screens lazy chunk, as App asks for it after the first paint
+});
 
 let h: TableHarness | null = null;
 

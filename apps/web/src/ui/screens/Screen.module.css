@@ -249,6 +249,17 @@
   font-size: 0.875rem;
 }
 
+/* A screen whose lazy chunk has not arrived yet (ui/App.tsx): its "Loading…" line appears only
+   after half a second, so a short wait shows nothing (§15.3). */
+.later {
+  animation: later 0s 0.5s both;
+}
+@keyframes later {
+  from {
+    visibility: hidden;
+  }
+}
+
 .srOnly {
   position: absolute;
   width: 1px;

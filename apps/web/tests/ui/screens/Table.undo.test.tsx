@@ -10,10 +10,11 @@
  * - Placement: the coach row (portrait, wide), the right column (landscape), the top bar (compact).
  */
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { CoachLevel } from '../../../src/engine/types.ts';
 import { en } from '../../../src/i18n/en.ts';
 import { App } from '../../../src/ui/App.tsx';
+import { loadScreens } from '../../../src/ui/screensModule.ts';
 import { stubGrader, type StubAnswer } from '../../app/graders.ts';
 import { passive, startTableHarness, type TableHarness } from '../tableHarness.ts';
 
@@ -24,6 +25,13 @@ vi.mock('virtual:pwa-register/react', () => ({
     updateServiceWorker: async () => {},
   }),
 }));
+
+beforeAll(async () => {
+  await loadScreens(); // the screens lazy chunk, as App asks for it after the first paint
+  // The card's chunk too (precached in the app): `cardShown` waits a few fake-clock steps, not
+  // for a slow first transform on a busy machine.
+  await import('../../../src/ui/components/FeedbackCard.tsx');
+});
 
 let h: TableHarness | null = null;
 

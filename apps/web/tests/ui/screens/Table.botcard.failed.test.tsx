@@ -6,8 +6,9 @@
  * because `vi.mock` replaces the module for the whole file.
  */
 import { act, cleanup, fireEvent, render } from '@testing-library/react';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { App } from '../../../src/ui/App.tsx';
+import { loadScreens } from '../../../src/ui/screensModule.ts';
 import { elapse, playUntil, startTableHarness, type TableHarness } from '../tableHarness.ts';
 
 vi.mock('virtual:pwa-register/react', () => ({
@@ -21,6 +22,10 @@ vi.mock('virtual:pwa-register/react', () => ({
 // importing the module throws, so `import('./components/BotCard.tsx')` rejects
 vi.mock('../../../src/ui/components/BotCard.tsx', () => {
   throw new Error('chunk failed to load');
+});
+
+beforeAll(async () => {
+  await loadScreens(); // the screens lazy chunk, as App asks for it after the first paint
 });
 
 let h: TableHarness;

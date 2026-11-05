@@ -113,7 +113,9 @@ const coachMove = (s: AppState): PlayerAction => {
   return action;
 };
 
-describe('the E2E table (`?seed=46&script=river-min-bet`, 3 players)', () => {
+// 3 s alone (the first hands warm the real coach); explicit timeouts here and in 'real grades',
+// whose level test took 7 s under V8 coverage on a busy machine.
+describe('the E2E table (`?seed=46&script=river-min-bet`, 3 players)', { timeout: 30_000 }, () => {
   it('the hero has the nut flush on the river of hand 1 and faces a minimum bet', async () => {
     const h = table('beginner');
     const s = await toRiverBet(h);
@@ -127,7 +129,7 @@ describe('the E2E table (`?seed=46&script=river-min-bet`, 3 players)', () => {
   });
 });
 
-describe('real grades (chunk 6.1) through the flow (§11.3 r5)', () => {
+describe('real grades (chunk 6.1) through the flow (§11.3 r5)', { timeout: 30_000 }, () => {
   it('following the hint is Best at every decision; folding the nuts is at least a Mistake, with its card', async () => {
     const h = table('beginner');
     const s = await toRiverBet(h, coachMove);

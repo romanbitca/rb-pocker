@@ -223,13 +223,18 @@ test.describe('the bot card offline', () => {
   });
 
   // The card's code is a lazy chunk, so a browser that went offline must already have it: the
-  // service worker precaches every built file (§15.1), the lazy chunk and its CSS included.
-  test('its chunk and its CSS are in the offline cache', async ({ page }, testInfo) => {
+  // service worker precaches every built file (§15.1), the lazy chunk and the app's one stylesheet
+  // (the card's styles are in it, §15.3) included.
+  test('its chunk and the stylesheet are in the offline cache', async ({ page }, testInfo) => {
     test.setTimeout(60_000);
     await openApp(page, seedFor(testInfo));
     await page.evaluate(async () => {
       await navigator.serviceWorker.ready;
     });
+    const sheet = await page.evaluate(
+      () => document.querySelector<HTMLLinkElement>('link[rel="stylesheet"]')?.href ?? '',
+    );
+    expect(sheet).toMatch(/\.css$/);
     const cached = async (): Promise<string[]> => {
       const urls = await page.evaluate(async () => {
         const all: string[] = [];
@@ -239,7 +244,9 @@ test.describe('the bot card offline', () => {
         }
         return all;
       });
-      return urls.filter((url) => /\/BotCard-[^/?]*\.(js|css)(\?.*)?$/.test(url));
+      return urls.filter(
+        (url) => /\/BotCard-[^/?]*\.js(\?.*)?$/.test(url) || url.replace(/\?.*$/, '') === sheet,
+      );
     };
     // The worker fills its cache while it installs: a moment after it is ready.
     await expect

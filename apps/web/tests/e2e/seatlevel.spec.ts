@@ -286,12 +286,17 @@ test.describe('Setup’s More options', () => {
     expect(errors).toEqual([]);
   });
 
+  // Its styles are in the app's one stylesheet (§15.3): the chunk and that file are precached.
   test('its chunk is in the offline cache', async ({ page }, testInfo) => {
     test.setTimeout(60_000);
     await openApp(page, seedFor(testInfo));
     await page.evaluate(async () => {
       await navigator.serviceWorker.ready;
     });
+    const sheet = await page.evaluate(
+      () => document.querySelector<HTMLLinkElement>('link[rel="stylesheet"]')?.href ?? '',
+    );
+    expect(sheet).toMatch(/\.css$/);
     const cached = async (): Promise<string[]> => {
       const urls = await page.evaluate(async () => {
         const all: string[] = [];
@@ -301,7 +306,9 @@ test.describe('Setup’s More options', () => {
         }
         return all;
       });
-      return urls.filter((url) => /\/MoreOptions-[^/?]*\.(js|css)(\?.*)?$/.test(url));
+      return urls.filter(
+        (url) => /\/MoreOptions-[^/?]*\.js(\?.*)?$/.test(url) || url.replace(/\?.*$/, '') === sheet,
+      );
     };
     await expect
       .poll(async () => (await cached()).map((url) => /\.(js|css)/.exec(url)?.[0]).sort(), {
