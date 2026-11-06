@@ -179,6 +179,15 @@ export function prng(seedHex: string): () => number {
   };
 }
 
+/**
+ * The hero's choices for a spec that counts hands or hand numbers, not who wins: always the
+ * lowest roll, so `heroTap` folds to every bet and checks when checking is free (Fold is off then,
+ * §3.5). The hero never puts in more than a blind, so never runs out of chips: with `prng` choices
+ * (and the same seed, since the bots' timing varies) a hero now and then busted, and the banner's
+ * tap then opened the out-of-chips dialog in place of the next hand.
+ */
+export const foldOrCheck = (): number => 0;
+
 /** Console errors and uncaught exceptions, collected from now on. */
 export function collectErrors(page: Page): string[] {
   const errors: string[] = [];

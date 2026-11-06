@@ -29,6 +29,18 @@ const undoCount = (page: Page): Promise<number> =>
   page.evaluate(() => window.__pc?.snapshot().meta.undoCount ?? -1);
 
 /**
+ * Bot decisions from now on carry `ms` as their think time at Normal speed (half of it at Fast),
+ * so the hand waits for the spec; null: the bots' own times (`window.__pc.faults`, chunk 6.5).
+ */
+async function holdBots(page: Page, ms: number | null): Promise<void> {
+  await page.evaluate((ms) => {
+    const faults = window.__pc?.faults;
+    if (faults === null || faults === undefined) throw new Error('no window.__pc.faults');
+    faults.think(ms);
+  }, ms);
+}
+
+/**
  * A key that acts: pressed again while the controller has not taken it (a key within 250 ms of
  * the last action is ignored, as a tap is, §12.7).
  */
@@ -128,6 +140,12 @@ test('a full hand by keyboard only, from Play, with every §12.5 shortcut', asyn
     .toBe(true);
   await expect(page.locator('[data-coach-advice]')).toBeVisible();
 
+  // The bots think for a minute from here until the raise is taken back (`faults.think`, a test
+  // hook: no tap): at Fast speed the hand ran on to the hero's next decision while a busy WebKit
+  // checked the raise, and then neither the one-input check nor U could hold (§11.3 r2: no Undo
+  // once the hero has reached a newer decision).
+  await holdBots(page, 120_000);
+
   // B/R opens the sizing tray on its slider; 2 picks the second size, ↑ adds one step, Enter sends
   // exactly what the button shows.
   const before = await inputCount(page);
@@ -157,6 +175,7 @@ test('a full hand by keyboard only, from Play, with every §12.5 shortcut', asyn
   await expect(
     page.getByText('Move taken back. The unseen cards were shuffled again.'),
   ).toBeVisible();
+  await holdBots(page, null); // the bots' own think times again
 
   // C checks or calls this time. A second U at the same decision is refused (§11.5).
   expect(await nextPoint(page)).toBe('hero');

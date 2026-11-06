@@ -86,7 +86,11 @@ type Point = 'tip' | 'hero' | 'feedback' | 'end' | 'bust';
 
 /**
  * In the page: what the game waits for. The hero acts like a reader who waits for the tips of a
- * hero turn (the hero strip's and the coach's) before tapping Row A.
+ * hero turn (the hero strip's and the coach's) before tapping Row A, and for the Hands tab's when
+ * it is due at that turn (a flop the hero plays, `dueTip` in ui/tips.ts): a tip shows once its
+ * moment has lasted 400 ms, and a tap on Row A just after it showed closed it unseen by the spec
+ * (the tap still acts, §12.11), which then waited for a fourth tip that never came. (Undo's tip is
+ * never due at a hero turn: no Undo once a newer decision is due, §11.3.)
  */
 function readTipPoint(): Point | null {
   const s = window.__pc?.state();
@@ -104,7 +108,10 @@ function readTipPoint(): Point | null {
   }
   if (s.game.mode === 'heroTurn') {
     const seen = s.data.tips ?? {};
-    return seen['heroStrip'] === true && seen['coachStrip'] === true ? 'hero' : null;
+    const handsTabDue = seen['handsTab'] !== true && (s.game.hand?.board.length ?? 0) >= 3;
+    return seen['heroStrip'] === true && seen['coachStrip'] === true && !handsTabDue
+      ? 'hero'
+      : null;
   }
   return null;
 }
@@ -133,12 +140,28 @@ test('four tips, once each: never before the deal, beside their places, never ov
     });
   });
 
-  // One tap on Play: the dealt hand, with no tip (and no other layer) in between (§12.1).
+  // One tap on Play: the dealt hand, with no tip (and no other layer) in between (§12.1). When the
+  // hero acts first, the hero strip's tip is due as the cards are dealt and shows 400 ms later, so
+  // a busy browser can find it open already: a watch on every change of the page says whether a
+  // tip showed before the hero's cards.
+  await page.evaluate(() => {
+    const watch = { early: false };
+    Object.assign(window, { __tipBeforeCards: watch });
+    new MutationObserver((_, observer) => {
+      const cards = document.querySelectorAll('[data-hero-cards] [role="img"]').length;
+      if (cards < 2 && document.querySelector('[data-tip]') !== null) watch.early = true;
+      if (cards >= 2) observer.disconnect(); // dealt: from here on the shots check each tip
+    }).observe(document.body, { subtree: true, childList: true });
+  });
   await page.getByRole('button', { name: 'Play', exact: true }).click();
   await expect(page.locator('[data-hero-cards] [role="img"]')).toHaveCount(2);
   const dealt = await pcState(page);
   expect(dealt.ui.screen).toBe('table');
-  expect(dealt.ui.overlays).toEqual([]);
+  expect(dealt.ui.overlays.filter((o) => o !== 'tip')).toEqual([]);
+  const early = await page.evaluate(
+    () => (window as unknown as { __tipBeforeCards: { early: boolean } }).__tipBeforeCards.early,
+  );
+  expect(early, 'a tip before the hero’s cards').toBe(false);
 
   const shots: TipShot[] = [];
   let waited = false;
@@ -155,8 +178,11 @@ test('four tips, once each: never before the deal, beside their places, never ov
         expect(await inputCount(page)).toBe(before);
         waited = true;
       }
-      await page.locator('[data-tip]').click(); // a tap closes it
-      await page.waitForFunction(() => window.__pc?.state().ui.overlays.includes('tip') !== true);
+      // A tap closes it. The next tip may be due at once (the coach's after the hero strip's) and
+      // shows 400 ms later: wait for this one to close, not for a moment with none (a busy WebKit
+      // looked after the next one had opened, and waited for good).
+      await page.locator('[data-tip]').click();
+      await page.waitForFunction((tip) => window.__pc?.state().ui.tip !== tip, shot.tip);
     } else if (point === 'feedback') {
       await keepMove(page);
     } else if (point === 'end') {
