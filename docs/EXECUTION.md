@@ -6,7 +6,7 @@ This is the working checklist for building [PLAN.md](PLAN.md). PLAN.md is the so
 
 Legend: `[ ]` todo · `[~]` in progress (branch exists) · `[x]` merged to `main` · `[H]` waiting on the human
 
-**Current position:** ▶ **Running (5 Nov 19:45Z): owner: weekly cap 80%, don't stop** (resets 6 Nov 18:00Z; plan Ultra, no 5-hour window). **Stages 0–7 ✅, 8.1 ✅** (#61 7c41deb). Done today: `chore/local-ci` (#62), `chore/initial-bundle-headroom` (#63, initial JS 125 KB). Merge train now, each rebased on main and run through `scripts/ci-local.sh --post` in turn (the lock serialises them): [#64](https://github.com/romanbitca/rb-pocker/pull/64) `fix/coach-win-chance-labels` (+ the price bar's ✓/✗ follows the coach's own comparison; row 1.3.61) → [#66](https://github.com/romanbitca/rb-pocker/pull/66) 8.2 (row 1.3.62) → [#65](https://github.com/romanbitca/rb-pocker/pull/65) 8.3 (row 1.3.63). A PLAN-row conflict after an earlier merge is resolved without re-running CI; the Stage 8 gate (`ci-local.sh main --post` and `--slow`) runs on main after 8.4. Next: 8.4 (Settings Data section: the export/import/reset buttons 8.3 left, the Stats footer buttons, install nudge, level suggestions). Stage 9 in development (merges after Stage 8): 9.1 `feature/sounds-haptics-and-wake-lock` (agent, PORT 3305).
+**Current position:** ▶ **Running (owner, 5 Nov ~22:50Z): use the weekly limit fully until the reset (6 Nov 18:00Z), up to 95%; after it, weekly cap 80%, don't stop.** **Stages 0–7 ✅, 8.1 ✅, 8.3 ✅** (#65 a8d29dd). **Live:** https://poker.romanbitca.com (Coolify app `rb-poker`, redeploys on every push to main; PLAN §17.6; R22: /sw.js gets a 4 h browser TTL from Cloudflare, a cache rule waits for the owner's OK). Merge train (only the orchestrator runs `scripts/ci-local.sh`, one PR at a time; agents run targeted tests only since the Mac's load reached ~45): [#66](https://github.com/romanbitca/rb-pocker/pull/66) 8.2 → [#64](https://github.com/romanbitca/rb-pocker/pull/64) labels fix → 8.4 (agent) → Stage 8 gate (`ci-local.sh main --post` and `--slow`) → Stage 9 in order: [#67](https://github.com/romanbitca/rb-pocker/pull/67) 9.1, [#69](https://github.com/romanbitca/rb-pocker/pull/69) 9.2, 9.2b drill (agent), 9.3 (agent), [#68](https://github.com/romanbitca/rb-pocker/pull/68) 9.4, 9.5 (agent) → 9.6, 9.7 → Stage 9 gate → 9.8 [H].
 
 ---
 
@@ -109,21 +109,21 @@ Legend: `[ ]` todo · `[~]` in progress (branch exists) · `[x]` merged to `main
 
 - [x] 8.1 `feature/profile-commit-protocol` - schema guards, migrations scaffold, atomic commit + backup, crash injection tests.
 - [~] 8.2 `feature/stats-model-and-screen` - stats reducers, Stats screen (4 tabs, charts), 20-hand fixture.
-- [~] 8.3 `feature/tab-lock-and-export-import` - Web Locks writer, `rev` fallback, export/import/reset, `persist()`.
+- [x] 8.3 `feature/tab-lock-and-export-import` - Web Locks writer, `rev` fallback, export/import/reset, `persist()`.
 - [ ] 8.4 `feature/level-suggestions-and-install-hints` - Settings Data section, install nudge, suggestions.
 - [ ] 8.5 [H] **Human gate:** iOS Export → Save to Files → Import.
 
 ## Stage 9 - Polish, accessibility, fairness, release (PLAN §12.11–12.14, §15, §16)
 
-- [~] 9.1 `feature/sounds-haptics-and-wake-lock`
-- [ ] 9.2 `feature/learn-lessons-and-glossary` - lessons, glossary, full-page rankings, "Which hand wins?".
+- [~] 9.1 `feature/sounds-haptics-and-wake-lock` - draft [#67](https://github.com/romanbitca/rb-pocker/pull/67).
+- [~] 9.2 `feature/learn-lessons-and-glossary` - lessons, glossary, full-page rankings, "Which hand wins?". Draft [#69](https://github.com/romanbitca/rb-pocker/pull/69).
 - [~] 9.2b `feature/hand-drill-page` - **owner request (6 Nov):** the owner's Poker Hand Drill (github.com/romanbitca/Poker-hand-drill, v5: 8 games, 3 difficulties, stats, All hands drawer) as a page of its own: ported to React/TypeScript on RB's evaluator, `Card`, rankings list, seeded RNG and tokens; key `pc.v1.drill`; Home + Menu entries; lazy chunk. The standalone GitHub Pages app stays as it is.
-- [ ] 9.3 `feature/first-table-tips-and-keyboard-shortcuts`
-- [ ] 9.4 `feature/provable-shuffle-check` - Review ✓ over 1,000 recorded hands.
-- [ ] 9.5 `feature/service-worker-update-between-hands`
+- [~] 9.3 `feature/first-table-tips-and-keyboard-shortcuts` (agent)
+- [~] 9.4 `feature/provable-shuffle-check` - Review ✓ over 1,000 recorded hands. Draft [#68](https://github.com/romanbitca/rb-pocker/pull/68).
+- [~] 9.5 `feature/service-worker-update-between-hands` (agent; also the `/api/` navigateFallbackDenylist fix)
 - [ ] 9.6 `chore/accessibility-audit` - axe clean, reduced motion, keyboard-only hand.
 - [ ] 9.7 `chore/performance-pass` - Lighthouse ≥ 90 / 95, budgets.
-- [ ] 9.8 [H] **Human gate:** Coolify connected (Q6), device matrix, VoiceOver/TalkBack → release v1.0.
+- [ ] 9.8 [H] **Human gate:** Coolify ✅ (5 Nov, https://poker.romanbitca.com), device matrix, VoiceOver/TalkBack → release v1.0.
 
 ---
 
@@ -236,3 +236,4 @@ If the human's answer later reveals a problem, the fix becomes a new chunk ahead
 | 5 Nov 19:50–20:35Z | `chore/local-ci` | [PR #62](https://github.com/romanbitca/rb-pocker/pull/62) merged (8b228b9; f1aa01e moves its folder to `~/.cache/rb-pocker-ci`): `scripts/ci-local.sh` runs the check, e2e and docker steps in a clean worktree and posts `local-ci` (`--slow`: `local-slow`); the four workflows run by hand only; `docker-compose.yml` takes `HOST_PORT`; PLAN §17.5 + 1.3.58, README, CLAUDE.md step 5. Its own run: passed in 13 min (unit 2887, e2e 316, docker ✅). WebKit had gone from the Playwright cache; the script reinstalls browsers | weekly 34% → 34% |
 | 5 Nov 20:00–21:10Z | `chore/initial-bundle-headroom` | [PR #63](https://github.com/romanbitca/rb-pocker/pull/63) merged (1e02342): Table, Setup, Settings, Menu and dialogs in one screens chunk loaded right after first paint (no `React.lazy`: React 19 holds Suspense content 300 ms), reload-to-retry when it fails; one stylesheet (`cssCodeSplit: false`: the gate counts every CSS file and split files compress worse). Initial JS 149.88 → 125.14 KB, CSS 19.94 → 16.43 KB; Home → cards at 6× 113 → 105 ms. Explicit timeouts for four slow test files (load). `local-ci` ✅ 11 min, unit 2892, e2e 318 | weekly 34% → 38% (4 agents) |
 | 5 Nov 20:40–22:45Z | 8.1 merged; 8.2, 8.3, labels fix built | [#61](https://github.com/romanbitca/rb-pocker/pull/61) restacked onto main (row 1.3.60), `pc.v1.diag` stored (last 5 voided hands), initial JS 127.15 KB; `local-ci` ✅ 20 min, unit 2946, e2e 324 → merged 7c41deb. Built: [#66](https://github.com/romanbitca/rb-pocker/pull/66) 8.2 (20-hand fixture exact, Stats lazy 6.85 KB, +2.23 KB initial; R21: 10,000 hands = 553 KB of storage, budget raised to 600 KB, hand-end commit 19–30 ms at 6×, records average 3,963 chars), [#65](https://github.com/romanbitca/rb-pocker/pull/65) 8.3 (Web Locks + rev fallback, export/import/reset with crash injection, +2.40 KB; Settings buttons left for 8.4; pitfall 48: WebKit `close({runBeforeUnload})`), [#64](https://github.com/romanbitca/rb-pocker/pull/64) labels ("All 5 players: 17%. Raiser alone: about 38%."; the price bar showed ✓ next to Fold or ✗ next to Call in 114 of 634 facing-a-bet hints, now follows E·R / implied price) | weekly 38% → ~42% |
+| 5 Nov 22:45Z–6 Nov 00:35Z | 8.3 merged; Coolify live; 9.1, 9.2, 9.4 built | [#65](https://github.com/romanbitca/rb-pocker/pull/65) merged (a8d29dd). Coolify: app `rb-poker`, https://poker.romanbitca.com healthy; the first deploy failed (NODE_ENV=production at build time made `npm ci` skip devDependencies → runtime-only). check-deploy ✅ except /sw.js (Cloudflare Browser Cache TTL 4 h, R22). Drafts: [#67](https://github.com/romanbitca/rb-pocker/pull/67) 9.1, [#68](https://github.com/romanbitca/rb-pocker/pull/68) 9.4 (initial JS −1.46 KB → 128.10 KB), [#69](https://github.com/romanbitca/rb-pocker/pull/69) 9.2 (Learn chunk 4.54 KB gzip). Every ci-local run since 22:28Z failed on timeouts only (load 43–70; the owner's Docker projects take ~4 cores): agents now run targeted tests only, and only the orchestrator runs ci-local. | weekly 44% → 53% |
