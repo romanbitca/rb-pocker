@@ -1,6 +1,6 @@
 {
   "name": "@rb/web",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "private": true,
   "description": "RB Poker Coach: the game (React + Vite PWA).",
   "type": "module",

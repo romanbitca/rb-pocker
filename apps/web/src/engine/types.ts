@@ -17,9 +17,11 @@ export { EngineError, InvariantError } from '../core/assert.ts';
 export type { EngineErrorCode } from '../core/assert.ts';
 
 /**
- * The engine's semver, stored in every `TableState`, `HandState` and replay record (§4.6, §4.7).
- * It equals the `version` of apps/web/package.json; a test keeps the two equal (the engine may
- * import only `core` and `eval`, so it cannot read package.json itself).
+ * The engine's own semver, stored in every `TableState`, `HandState` and replay record (§4.6, §4.7).
+ * It began equal to the app's version; since the app's v1.0.0 the two move apart. It changes only
+ * when the engine's rules or the shape of its states change, because its major gates session resume
+ * (Appendix H.2 rule 4), Review's shuffle check and the review summary: a new major would void every
+ * unfinished hand and make every older hand uncheckable. A test pins it, so a bump is deliberate.
  */
 export const ENGINE_VERSION = '0.1.0';
 

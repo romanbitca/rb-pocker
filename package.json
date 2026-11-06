@@ -1,6 +1,6 @@
 {
   "name": "rb-poker-coach",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "private": true,
   "description": "RB Poker Coach: learn No-Limit Texas Hold'em against friendly bots, with a coach. Play money only.",
   "type": "module",
