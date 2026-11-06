@@ -324,13 +324,21 @@ export interface FeedbackView {
   reason: Line | null;
   /** [Undo: try again] works (else it shows disabled: this decision was undone once already). */
   canUndo: boolean;
+  /**
+   * Why it is disabled (`undoBlock`, §11.3 r2: in practice `used`, one undo per decision point),
+   * which the card says in place of its small print (1.3.86); null when it works.
+   */
+  undoBlock: UndoBlock | null;
 }
 
-/** The card for `result`, a grade of the decision at `decision` (its state before the act). */
+/**
+ * The card for `result`, a grade of the decision at `decision` (its state before the act); `block`
+ * is what keeps Undo from working now (`undoBlock` with the card open), null when it works.
+ */
 export function feedbackView(
   result: GradeResult,
   decision: HandState,
-  canUndo: boolean,
+  block: UndoBlock | null,
 ): FeedbackView {
   const legal = legalActions(decision);
   return {
@@ -338,6 +346,7 @@ export function feedbackView(
     grade: result.grade,
     coachMove: moveView(result.rec, legal, decision.bb),
     reason: result.feedback,
-    canUndo,
+    canUndo: block === null,
+    undoBlock: block,
   };
 }

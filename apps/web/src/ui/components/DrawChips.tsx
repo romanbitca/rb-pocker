@@ -28,6 +28,11 @@ export interface DrawChipsProps {
   placement: 'up' | 'down';
   /** Phones: the short chip text and a "!" mark (the full text does not fit). */
   compact?: boolean | undefined;
+  /**
+   * The chip may take two lines instead of ending in "…" (the landscape column, where it sits
+   * beside the win badge in 180 px, §12.5).
+   */
+  wrap?: boolean | undefined;
   className?: string | undefined;
 }
 
@@ -36,6 +41,7 @@ export const DrawChips = memo(function DrawChips({
   max,
   placement,
   compact = false,
+  wrap = false,
   className,
 }: DrawChipsProps) {
   const [open, setOpen] = useState(false);
@@ -55,7 +61,11 @@ export const DrawChips = memo(function DrawChips({
   };
 
   return (
-    <div ref={rootRef} className={cx(styles.row, className)} data-draw-chips="">
+    <div
+      ref={rootRef}
+      className={cx(styles.row, wrap && styles.wrap, className)}
+      data-draw-chips=""
+    >
       {shown.map((chip) => {
         const face = compact ? (
           <>

@@ -51,7 +51,20 @@ describe('DrawChips', () => {
     const chip = screen.getByRole('button', {
       name: 'Nut flush draw · 9 outs · 35% by river (1 risky)',
     });
-    expect(chip.textContent).toBe('Nut flush draw · 35% by river!');
+    expect(chip.textContent).toBe('Nut flush draw\u00A0· 35% by river!');
+  });
+
+  it('wrap (the landscape column): the chip may take two lines; nothing else changes', () => {
+    const chips = chipsFor('A♥ K♥', 'Q♥ 7♥ 2♣');
+    const { container } = render(
+      <DrawChips chips={chips} max={1} placement="down" compact={true} wrap={true} />,
+    );
+    const row = container.querySelector('[data-draw-chips]') as HTMLElement;
+    const plain = render(<DrawChips chips={chips} max={1} placement="down" compact={true} />);
+    const plainRow = plain.container.querySelector('[data-draw-chips]') as HTMLElement;
+    // One class more on the row (its CSS lets the pill grow to two lines); the same chips.
+    expect(row.classList.length).toBe(plainRow.classList.length + 1);
+    expect(row.textContent).toBe(plainRow.textContent);
   });
 
   it('two chips on a wide screen', () => {

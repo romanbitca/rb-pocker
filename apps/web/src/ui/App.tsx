@@ -441,9 +441,21 @@ function NoticeLayer() {
   const dispatch = useDispatch();
   const toasts = useAppStore(selectToasts);
   const storageBanner = useAppStore((s) => s.ui.storageBanner);
+  // On the Table the toasts sit over its top bar, one at a time (§12.11 notes).
+  const place = useAppStore(({ ui, settings }) =>
+    ui.screen !== 'table'
+      ? null
+      : ui.layout === 'wide' && settings.handsPanel === 'collapsed'
+        ? 'rail'
+        : ui.layout,
+  );
   return (
     <>
-      <Toasts toasts={toasts} onDismiss={(id) => dispatch({ type: 'dismissToast', id })} />
+      <Toasts
+        toasts={toasts}
+        onDismiss={(id) => dispatch({ type: 'dismissToast', id })}
+        place={place}
+      />
       {storageBanner && (
         <StorageBanner onDismiss={() => dispatch({ type: 'dismissStorageBanner' })} />
       )}

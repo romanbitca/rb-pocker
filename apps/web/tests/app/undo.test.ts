@@ -516,10 +516,11 @@ describe('the feedback card content (§12.6, F.4, F.5)', () => {
       trace: [],
       price: null,
     };
-    const fallback = feedbackView({ ...base, feedback: null }, p.state, true);
+    const fallback = feedbackView({ ...base, feedback: null }, p.state, null);
     expect(fallback.coachMove).toEqual({ kind: 'call', amount: 50, bb: 100 });
     expect(fallback.reason).toBeNull(); // the card says the fallback row (ui/feedback.ts)
     expect(fallback.canUndo).toBe(true);
+    expect(fallback.undoBlock).toBeNull();
     const line = feedbackLine({
       row: 'foldedPrice',
       E: 0.45,
@@ -527,8 +528,9 @@ describe('the feedback card content (§12.6, F.4, F.5)', () => {
       rangeAdjust: false,
       players: null,
     });
-    const priced = feedbackView({ ...base, feedback: line }, p.state, false);
-    expect(priced).toMatchObject({ grade: 'mistake', canUndo: false });
+    const priced = feedbackView({ ...base, feedback: line }, p.state, 'used');
+    // The card says why Undo is disabled (1.3.86): the block travels with it.
+    expect(priced).toMatchObject({ grade: 'mistake', canUndo: false, undoBlock: 'used' });
     expect(priced.reason).toBe(line);
     expect(lineText(line)).toBe('You folded with a 45% win chance. You needed only 25% to call.');
   });

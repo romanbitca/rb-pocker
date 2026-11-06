@@ -290,7 +290,8 @@ describe('the draw chips (Appendix F.3, §6.4, §10.2)', () => {
   it('the phone chip: "{name} · {pct}% {by river|next card}"; the full text stays its name', () => {
     const risky = draw({ cards: [{ card: card('2♥'), risky: true }] });
     const [view] = drawChipViews({ handSeq: 1, draws: [risky], namesOnly: false });
-    expect(view?.short).toBe('Flush draw · 35% by river');
+    // A no-break space before "·": a chip on two lines never starts its second with the dot.
+    expect(view?.short).toBe('Flush draw\u00A0· 35% by river');
     expect(view?.text).toBe('Flush draw · 9 outs · 35% by river (1 risky)');
     expect(view?.risky).toBe(1);
   });
@@ -347,7 +348,9 @@ describe('the HUD words come from docs/PLAN.md (Appendix F.3, F.10, §6.1, §12.
     threats2: `"${B.move.threat.straight}"`,
     threats3: `"${B.move.threat.fullHouse}"`,
     chip: `"${D.chip('{name}', 2, '{pct}%', `{${D.byRiver}|${D.nextCard}}`).replace('2', '{outs}')}"`,
-    chipShort: `"${D.chipShort('{name}', '{pct}%', `{${D.byRiver}|${D.nextCard}}`)}"`,
+    // Its no-break space before "·" (a two-line chip never starts a line with the dot) is a
+    // plain space in PLAN.md.
+    chipShort: `"${D.chipShort('{name}', '{pct}%', `{${D.byRiver}|${D.nextCard}}`).replace(/\u00A0/g, ' ')}"`,
     risky: `"(${D.risky(1).trim().slice(1, -1).replace('1', '{n}')})"`,
     riskyCaption: `"${D.riskyCaption}"`,
     nuts: `suffix "${en.table.nuts}"`,

@@ -596,7 +596,9 @@ export function DrillPage({ logic, Drawer }: DrillPageProps) {
           data-drill-games=""
         >
           <span style={css.gameText}>
-            <span style={css.ellipsis}>{'short' in game ? game.short : game.name}</span>
+            <span style={css.gameName} data-drill-game-name="">
+              {'short' in game ? game.short : game.name}
+            </span>
             <span style={css.accentCaps}>{difficulty.name}</span>
           </span>
           <span className={s.icon} style={css.icon18}>

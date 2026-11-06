@@ -42,20 +42,30 @@ export const controls: CSSProperties = {
   padding: '8px 0',
   background: 'var(--bg)',
 };
-/** The game button grows; its name shortens with an ellipsis (it may shrink to 44 px, §12.12). */
+/**
+ * The game button grows (it may shrink to 44 px, §12.12); its name takes a second line where one
+ * is too short ("Hand to" over "position"), so it is never cut: at Large text on a 360 px phone
+ * "Name the hand" read "Name the …" (1.3.86). Its row's other buttons grow with it.
+ */
 export const gameButton: CSSProperties = {
   display: 'flex',
   flex: 1,
   alignItems: 'center',
   gap: 8,
   minWidth: 44,
+  paddingTop: 4,
+  paddingBottom: 4,
   textAlign: 'left',
 };
 export const gameText: CSSProperties = { display: 'grid', flex: 1, minWidth: 0 };
-export const ellipsis: CSSProperties = {
+/** Two lines at most (a name breaks only between words); past them "…" (none does today). */
+export const gameName: CSSProperties = {
+  display: '-webkit-box',
   overflow: 'hidden',
-  textOverflow: 'ellipsis',
-  whiteSpace: 'nowrap',
+  lineHeight: 1.2,
+  textWrap: 'balance',
+  WebkitBoxOrient: 'vertical',
+  WebkitLineClamp: 2,
 };
 export const accentCaps: CSSProperties = { ...caps, color: 'var(--accent)' };
 export const icon18: CSSProperties = { display: 'block', flex: 'none', width: 18, height: 18 };

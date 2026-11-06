@@ -33,6 +33,7 @@ const view = (reason: FeedbackInput, grade: FeedbackView['grade'] = 'mistake'): 
   coachMove: move('call', 40),
   reason: feedbackLine(reason),
   canUndo: true,
+  undoBlock: null,
 });
 
 describe('moves (§12.7, F.10)', () => {
@@ -61,6 +62,7 @@ describe('the card (F.4, F.5)', () => {
       title: 'Big mistake',
       reason: 'You folded with a >99% win chance. You needed only 20% to call.',
       coachMove: "Coach's move: Call 40.",
+      small: 'Undo lets you try again. The first move still counts in your stats.',
     });
     const slightly = view({ row: 'checkedStrong' }, 'inaccuracy');
     expect(feedbackTexts(slightly, 'chips').title).toBe('Small mistake');
@@ -98,5 +100,20 @@ describe('the card (F.4, F.5)', () => {
     expect(feedbackTexts(none, 'bb').reason).toBe(
       "The coach's move wins more chips here: Call 2\u00A0BB.",
     );
+  });
+
+  it('the small print (\u00A711.4) while Undo works; else why not (\u00A711.3 r2, 1.3.86)', () => {
+    const base = view({ row: 'airHeadsUp' });
+    expect(feedbackTexts(base, 'chips').small).toBe(
+      'Undo lets you try again. The first move still counts in your stats.',
+    );
+    const blocked = (undoBlock: FeedbackView['undoBlock']): string =>
+      feedbackTexts({ ...base, canUndo: false, undoBlock }, 'chips').small;
+    // The one a player meets: a second mistake at a decision taken back once.
+    expect(blocked('used')).toBe('You used Undo here already. Undo works once per decision.');
+    expect(blocked('handOver')).toBe('Undo stops once cards are shown or the hand is over.');
+    expect(blocked('revealed')).toBe('Undo stops once cards are shown or the hand is over.');
+    expect(blocked('gradePending')).toBe('Undo is not possible now.');
+    expect(blocked(null)).toBe('Undo is not possible now.');
   });
 });

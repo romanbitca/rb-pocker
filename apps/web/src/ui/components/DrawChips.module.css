@@ -44,6 +44,27 @@ button.chip[aria-expanded='true'] {
   border-color: var(--text);
 }
 
+/* The landscape column (§12.5): beside the win badge the chip has 180 px, so its words take a
+   second line where one is too short ("Two overcards · 24%" over "by river !"), never "…". The
+   hit area still reaches 10 px above and below the pill. */
+.wrap {
+  height: auto;
+}
+.wrap .chip {
+  display: flex;
+  align-items: center;
+  height: auto;
+  min-height: 24px;
+  padding: 2px 10px;
+  line-height: 1.2;
+  text-overflow: clip;
+  text-wrap: balance;
+  white-space: normal;
+}
+.wrap .more {
+  justify-content: center;
+}
+
 /* The phone chip's "!" for risky outs (the same mark as on the out cards, §6.4). */
 .chipMark {
   display: inline-grid;

@@ -210,26 +210,34 @@ function Rows({ rows }: { rows: readonly [key: string, label: string, value: Rea
   );
 }
 
-/** A chart's numbers for screen readers (§14.4: a visually hidden data table). */
+/**
+ * A chart's numbers for screen readers (§14.4: a visually hidden data table). The hiding is on a
+ * wrapper, never on the table: a table is as wide as its cells whatever its `width` says, so the
+ * 1 px box stayed a 300 px table, and with `nowrap` it reached past the card and made the whole
+ * page pan sideways on a 360–390 px phone (`overflow: hidden` on a block clips it, and clipped
+ * overflow does not widen the page).
+ */
 function DataTable({ caption, values }: { caption: string; values: readonly (number | null)[] }) {
   return (
-    <table className={screen.srOnly}>
-      <caption>{caption}</caption>
-      <thead>
-        <tr>
-          <th scope="col">{W.progress.sessionCol}</th>
-          <th scope="col">{W.progress.value}</th>
-        </tr>
-      </thead>
-      <tbody>
-        {values.map((v, i) => (
-          <tr key={i}>
-            <th scope="row">{W.progress.sessionRow(i + 1)}</th>
-            <td>{v === null ? W.none : String(v)}</td>
+    <div className={screen.srOnly}>
+      <table>
+        <caption>{caption}</caption>
+        <thead>
+          <tr>
+            <th scope="col">{W.progress.sessionCol}</th>
+            <th scope="col">{W.progress.value}</th>
           </tr>
-        ))}
-      </tbody>
-    </table>
+        </thead>
+        <tbody>
+          {values.map((v, i) => (
+            <tr key={i}>
+              <th scope="row">{W.progress.sessionRow(i + 1)}</th>
+              <td>{v === null ? W.none : String(v)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }
 

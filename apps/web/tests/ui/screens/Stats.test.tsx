@@ -13,6 +13,7 @@ import { appStore, initialData, LESSON_COUNT } from '../../../src/app/store.ts';
 import { LESSONS } from '../../../src/data/lessons.ts';
 import { statsWords } from '../../../src/i18n/stats.ts';
 import { emptyStats, type Stats as StatsData } from '../../../src/persist/schema.ts';
+import styles from '../../../src/ui/screens/Screen.module.css';
 import { Stats, type StatsProps, type StatsTab } from '../../../src/ui/screens/Stats.tsx';
 import { LEAK_LESSON } from '../../../src/ui/stats.ts';
 import { SUIT_CODE_POINTS } from '../dom.ts';
@@ -127,6 +128,23 @@ describe('the Stats screen', () => {
     expect(onOpenHand).toHaveBeenCalledWith(40);
     // Long lists skip the work for rows off screen (§14.4).
     expect((rows[0]?.parentElement as HTMLElement).style.contentVisibility).toBe('auto');
+  }, 15_000);
+
+  it('each chart`s numbers are a table for screen readers, hidden by a wrapper (never on the table)', () => {
+    show({ tab: 'progress' });
+    const tables = screen.getAllByRole('table');
+    expect(tables.map((t) => t.querySelector('caption')?.textContent)).toEqual([
+      statsWords.progress.scoreChart,
+      statsWords.progress.mistakesChart,
+    ]);
+    for (const table of tables) {
+      // A table is as wide as its cells whatever its `width` says: the visually hidden box (1 px,
+      // clipped) must be a block around it, or the page pans sideways on a phone (1.3.86).
+      expect(table.getAttribute('class')).toBeNull();
+      expect(table.parentElement?.tagName).toBe('DIV');
+      expect(table.parentElement?.className).toBe(styles.srOnly);
+      expect(within(table).getAllByRole('rowheader').length).toBeGreaterThan(0);
+    }
   }, 15_000);
 
   it('every control is big enough to touch, and no suit symbol is drawn as text', () => {

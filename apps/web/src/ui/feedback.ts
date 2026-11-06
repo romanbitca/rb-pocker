@@ -4,7 +4,7 @@
  * templates in `en.coach.templates`, rendered by `i18n/coach.ts`); the coach's move uses the
  * action bar's words and the player's amount unit ("Call 40", "Raise to 6 BB").
  */
-import type { FeedbackView, MoveView } from '../app/store.ts';
+import type { FeedbackView, MoveView, UndoBlock } from '../app/store.ts';
 import type { Line } from '../brain/explain.ts';
 import { lineText } from '../i18n/coach.ts';
 import { en } from '../i18n/en.ts';
@@ -42,11 +42,29 @@ export function fallbackLine(move: MoveView, unit: AmountUnit): Line {
   };
 }
 
+/**
+ * Why [Undo: try again] is disabled (§11.3 r2), said where the small print was: a second mistake
+ * at a decision taken back once showed a grey Undo over "Undo lets you try again." (1.3.86).
+ */
+export function undoBlockText(block: UndoBlock | null): string {
+  switch (block) {
+    case 'used':
+      return en.feedback.undoUsed;
+    case 'handOver':
+    case 'revealed':
+      return en.feedback.undoOver;
+    default:
+      return en.feedback.undoNot;
+  }
+}
+
 /** Everything the card says. */
 export interface FeedbackTexts {
   title: string;
   reason: string;
   coachMove: string;
+  /** §11.4's small print while Undo works; else why it does not (`undoBlockText`). */
+  small: string;
 }
 
 export function feedbackTexts(view: FeedbackView, unit: AmountUnit): FeedbackTexts {
@@ -54,5 +72,6 @@ export function feedbackTexts(view: FeedbackView, unit: AmountUnit): FeedbackTex
     title: en.feedback.title[view.grade],
     reason: lineText(view.reason ?? fallbackLine(view.coachMove, unit)),
     coachMove: en.feedback.coachMove(moveText(view.coachMove, unit)),
+    small: view.canUndo ? en.feedback.smallPrint : undoBlockText(view.undoBlock),
   };
 }

@@ -96,7 +96,13 @@ export * from './botCardViews.ts';
 // The coach strip, sheet and recommendation (§10.2, §12.6, chunk 5.9): the same, for the coach.
 export * from './coachViews.ts';
 // Undo and the feedback card (§10.2, §11, chunk 6.2): the level rules and the card's shapes.
-export { UNDO_POLICY, type FeedbackView, type MoveView, type UndoPolicy } from './undo.ts';
+export {
+  UNDO_POLICY,
+  type FeedbackView,
+  type MoveView,
+  type UndoBlock,
+  type UndoPolicy,
+} from './undo.ts';
 // "Which hand wins?" (§13.2): two random hands that do not tie (the quiz is a lazy chunk).
 export { dealPair, type WhichPair } from './whichWins.ts';
 

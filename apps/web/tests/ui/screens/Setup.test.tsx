@@ -651,6 +651,11 @@ describe('Setup: More options (chunk 7.2, §12.2 item 5, §9.3)', () => {
     await open();
     expect(container.querySelectorAll('select')).toHaveLength(5);
     expect(smallTargets(container, (el) => el.classList.contains(PRIMARY))).toEqual([]);
+    // A height, not only a minimum: WebKit's own menu list ignored `min-height` and drew the
+    // selects 25 px tall (1.3.86; Playwright measures them, phoneLayout.spec.ts).
+    for (const select of container.querySelectorAll('select')) {
+      expect(getComputedStyle(select).height).toBe('var(--tap-min)');
+    }
   });
 
   it('every row has a label, and the section is named', async () => {
