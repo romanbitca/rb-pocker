@@ -1844,11 +1844,12 @@ export class TableController {
     const decisionId = heroDecisionsTaken(h);
     const level = this.levelOf(decisionId);
     const hud = hudEquityAt(this.store.getState().equity, h);
+    const obs = observe(h, HERO, this.extras(this.table as TableState));
     return {
       epoch: this.epoch,
       // Only an Observation crosses to the worker (§4.8).
       ask: {
-        obs: observe(h, HERO, this.extras(this.table as TableState)),
+        obs,
         taken: action,
         eRandom: hud.final,
         decisionId,
@@ -1859,6 +1860,9 @@ export class TableController {
         taken: action,
         eRandom: hud.latest,
         need: priceNeed(h),
+        // The hero's all-in here, so the summary says "All-in 200" (§12.9, QA-2 item 6).
+        allInTo: obs.legal.raise?.max ?? obs.legal.bet?.max ?? null,
+        callAllIn: obs.legal.callIsAllIn,
         // §10.2: the hint is always on show at Beginner; above it, the player opened it.
         hintSeen: LEVEL_RULES[level].hintAlwaysSeen || this.meta.hintShown[decisionId] === true,
         quiz: level === 'advanced' ? this.quizResult(h) : null,

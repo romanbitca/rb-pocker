@@ -52,11 +52,52 @@ describe('a call that ends the betting', () => {
     expect(d.trace[0]?.data.E as number).toBeGreaterThan(d.trace[0]?.data.need as number);
   });
 
-  it('a committed hand still calls (COMMITTED makes no price claim)', () => {
+  it('a committed hand calls only at a price it meets: nothing comes later (QA-2 item 4)', () => {
+    // Committed (SPR 1.5, top pair) at 28% against a 33% price, and the call ends the betting:
+    // "folding gives up too much" was false, nobody can bet later, the price alone decides.
     const { f, spot } = synth({ ...SHORT, spr: 1.5 });
+    expect(postflopRead(f, spot).committed).toBe(true);
     const d = postflopPolicy(f, spot);
-    expect(d.action).toEqual({ type: 'call' });
-    expect(d.trace[0]?.code).toBe('COMMITTED');
+    expect(d.action).toEqual({ type: 'fold' });
+    expect(d.trace[0]?.code).toBe('FOLD_PRICE');
+    // At a price it meets, COMMITTED still explains the call (E13).
+    const paid = postflopPolicy(synth({ ...SHORT, spr: 1.5, E: 0.4 }).f, spot);
+    expect(paid.action).toEqual({ type: 'call' });
+    expect(paid.trace[0]?.code).toBe('COMMITTED');
+    // With chips behind after the call, commitment still means never fold (§8.5 step 6).
+    const deep = synth({
+      ...SHORT,
+      spr: 1.5,
+      heroStack: 3000,
+      callEndsBetting: false,
+      legal: { raise: null },
+    });
+    expect(postflopRead(deep.f, deep.spot)).toMatchObject({ committed: true, ends: false });
+    expect(postflopRead(deep.f, deep.spot).ev).toBeLessThan(0);
+    const kept = postflopPolicy(deep.f, deep.spot);
+    expect(kept.action).toEqual({ type: 'call' });
+    expect(kept.trace[0]?.code).toBe('COMMITTED');
+  });
+
+  it('QA-2 item 4 (seed 5eed2101, hand 21): J♠J♦ on 6♦4♥6♣, three opponents, an all-in at 25% against 36%', () => {
+    // Pot commitment (SPR ≤ 3, an overpair multiway) called "Call all-in 1,580 · likely about
+    // 25%" beside "need 36%", "folding gives up too much", graded Best.
+    const { f, spot } = synth({
+      hole: 'Jd Js',
+      board: '6d 4h 6c',
+      E: 0.255,
+      nOpp: 3,
+      pot: 2860,
+      toCall: 1580,
+      heroStack: 1580,
+      spr: 1.6,
+      facing: 'allin',
+    });
+    expect(postflopRead(f, spot).committed).toBe(true);
+    expect(spot.callEndsBetting).toBe(true);
+    const d = postflopPolicy(f, spot);
+    expect(d.action).toEqual({ type: 'fold' });
+    expect(d.trace[0]).toMatchObject({ code: 'FOLD_ALLIN', data: { E: 0.255, need: f.need } });
   });
 
   it('reads R = 1 and no implied odds, as the EV model values the same call', () => {

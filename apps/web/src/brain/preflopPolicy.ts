@@ -47,7 +47,7 @@ import {
   unopenedPush,
   type PushFoldVerdict,
 } from './pushfold.ts';
-import { pushPct } from './pushFoldData.ts';
+import { pushFoldStack, pushPct } from './pushFoldData.ts';
 import { preflopOrder, rangeEquity, type RangeModel } from './ranges.ts';
 import { equityVsTopOfClass } from './rangesData.ts';
 import {
@@ -510,7 +510,10 @@ function facingRaise(spot: Spot): PreflopDecision {
   return decision(checkOrFold(obs.legal), 'FOLD_VS_RAISE', numbers);
 }
 
-/** Facing an all-in raise, at any depth: call if E ≥ need against the shover's range. */
+/**
+ * Facing an all-in raise, or a raise the hero can only call all-in (`callsAllIn`), at any depth:
+ * call if E ≥ need against the raiser's range (§8.4, R = 1).
+ */
 function facingAllIn(spot: Spot): PreflopDecision {
   const last = spot.raises[spot.raises.length - 1] as PreflopRaise;
   const V = villainRange(spot, last);
@@ -540,9 +543,24 @@ function fromVerdict(spot: Spot, verdict: PushFoldVerdict): PreflopDecision {
   return { ...built, trace: verdict.trace };
 }
 
+/**
+ * A raise the hero can only call all-in or fold (§8.3 notes 5, §8.4 "facing an all-in"): the
+ * raiser went all-in, or raised at least the hero's chips. Nobody folds to the hero's call and
+ * nothing comes after it, so the price decides (`R = 1`, no implied odds). Before, a raise over the
+ * short hero's stack read as "facing a raise" and got the shove words: "go all-in or fold. They
+ * fold only about 0%" (QA-2 of 6 Nov 2026, item 5); deeper, a 3-bet to the hero's stack counted
+ * later bets and set odds that cannot come.
+ */
+function callsAllIn(spot: Spot): boolean {
+  return spot.f.facing === 'allin' || (spot.obs.legal.callIsAllIn && spot.raises.length > 0);
+}
+
 /** §8.4: push or fold with an effective stack of at most 12 big blinds. */
 function shortStack(spot: Spot): PreflopDecision {
   const { f, obs } = spot;
+  // `S` is an opponent's stack when the hero has more chips than every live opponent (in the
+  // big blinds the words show: with 10.2 bb against 10, "Only 10 big blinds left" is true).
+  const theirs = Math.round(spot.chips / obs.bb) > pushFoldStack(f.effBB);
   if (f.facing === 'none' || f.facing === 'limpers') {
     return fromVerdict(
       spot,
@@ -554,10 +572,11 @@ function shortStack(spot: Spot): PreflopDecision {
         limped: f.facing === 'limpers',
         canCheck: obs.legal.canCheck,
         thresholdFactor: spot.style.thresholdFactor,
+        theirs,
       }),
     );
   }
-  if (f.facing === 'allin') return facingAllIn(spot);
+  if (callsAllIn(spot)) return facingAllIn(spot);
   const last = spot.raises[spot.raises.length - 1] as PreflopRaise;
   const hero = obs.seat;
   const heroBet = obs.streetBets[hero] as number;
@@ -573,6 +592,7 @@ function shortStack(spot: Spot): PreflopDecision {
       risk: covered - heroBet,
       finalPot: f.pot + (covered - heroBet) + (covered - raiserBet),
       equityNoise: spot.style.equityNoise,
+      theirs,
     }),
   );
 }
@@ -619,13 +639,12 @@ export function preflopPolicy(
   }
   const spot = readSpot(obs, f, options);
   if (pushFoldApplies(f)) return shortStack(spot);
+  if (callsAllIn(spot)) return facingAllIn(spot);
   switch (f.facing) {
     case 'none':
       return unopened(spot);
     case 'limpers':
       return limped(spot);
-    case 'allin':
-      return facingAllIn(spot);
     default:
       return facingRaise(spot);
   }

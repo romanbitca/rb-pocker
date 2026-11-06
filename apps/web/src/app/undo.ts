@@ -112,6 +112,13 @@ export interface DecisionFacts {
   eRandom: number | null;
   /** The price (§0.3 `need`), or null with nothing to call. */
   need: number | null;
+  /**
+   * The "to" of the hero's all-in bet or raise here (the legal maximum; null when none was legal)
+   * and whether a call puts the hero all-in: the summary says "All-in 200" (QA-2 item 6).
+   * Optional for callers that do not know them.
+   */
+  allInTo?: number | null;
+  callAllIn?: boolean;
   /** The hint was on show (Beginner) or opened (§10.2 "Counts as on your own"). */
   hintSeen: boolean;
   /**
@@ -132,9 +139,14 @@ export function decisionRecord(f: DecisionFacts, result: GradeResult | null): De
     lossMilliBB: result === null ? 0 : Math.round(result.lossMilliBB),
     eRandom: f.eRandom,
     need: f.need,
-    // The grade's own price numbers (§8.9), for the summary's labelled numbers (§12.9, QA-1).
+    // The grade's own price numbers (§8.9), for the summary's labelled numbers (§12.9, QA-1):
+    // the hint's number and whom it counts (QA-2 item 3).
     eRange: result?.price?.E ?? null,
     R: result?.price?.R ?? null,
+    callers: result?.price?.callers ?? null,
+    players: result?.price?.players ?? null,
+    allInTo: f.allInTo ?? null,
+    callAllIn: f.callAllIn ?? false,
     hintSeen: f.hintSeen,
     undone: false,
     leak: result?.leak ?? null,

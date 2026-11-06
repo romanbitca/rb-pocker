@@ -383,6 +383,11 @@ describe('records, price and the HUD number (A.7, §0.3, §8.2)', () => {
       // No grade: no grade numbers either (the summary then shows the HUD's, §12.9).
       eRange: null,
       R: null,
+      callers: null,
+      players: null,
+      // Not known to this caller (the controller passes the hero's all-in, QA-2 item 6).
+      allInTo: null,
+      callAllIn: false,
       hintSeen: false,
       undone: false,
       leak: null,
@@ -399,16 +404,19 @@ describe('records, price and the HUD number (A.7, §0.3, §8.2)', () => {
       leak: 'overfold',
       trace: [],
       feedback: null,
-      price: { E: 0.42, R: 0.85, need: 0.25 },
+      price: { E: 0.42, R: 0.85, need: 0.25, callers: 0, players: 3 },
     });
     expect(graded).toMatchObject({
       grade: 'blunder',
       rec: { type: 'call' },
       lossMilliBB: 20000,
       leak: 'overfold',
-      // The grade's own numbers, for the summary's labelled line (§12.9, QA-1).
+      // The grade's own numbers, for the summary's labelled line (§12.9, QA-1), and whom the
+      // number counts (QA-2 item 3).
       eRange: 0.42,
       R: 0.85,
+      callers: 0,
+      players: 3,
     });
   });
 
@@ -526,7 +534,7 @@ describe('the feedback card content (§12.6, F.4, F.5)', () => {
       E: 0.45,
       need: 0.25,
       rangeAdjust: false,
-      players: null,
+      callers: null,
     });
     const priced = feedbackView({ ...base, feedback: line }, p.state, 'used');
     // The card says why Undo is disabled (1.3.86): the block travels with it.

@@ -337,7 +337,15 @@ export function candidateDecisions(s: Situation, rng: Rng): CheckDecision[] {
     if (f.effBB <= 12) {
       const S = Math.min(15, Math.max(1, Math.round(f.effBB)));
       const shove = allInAction(obs);
-      const data = { S, behind: Math.min(8, Math.max(1, f.k)), hand, rankPct: f.rankPct };
+      // `S` is an opponent's stack when the hero has more chips (§8.4 notes, QA-2 item 2).
+      const chips = (obs.stacks[obs.seat] as number) + (obs.streetBets[obs.seat] as number);
+      const data = {
+        S,
+        behind: Math.min(8, Math.max(1, f.k)),
+        hand,
+        rankPct: f.rankPct,
+        ...(Math.round(chips / bb) > S ? { short: 'them' } : {}),
+      };
       add(shove, [r('PUSH_FOLD', { action: 'allin', ...data, Pfold: 0.55, E: noisy() })]);
       add(fold, [r('PUSH_FOLD', { action: 'fold', ...data, Pfold: 0.3, E: noisy() })]);
     }

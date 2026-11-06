@@ -15,7 +15,7 @@
  */
 import type { DrawKind } from '../analysis/types.ts';
 import type { Explanation, GlossaryKey, Line, Param, TemplateKey } from '../brain/explain.ts';
-import { en } from './en.ts';
+import { about, en } from './en.ts';
 import { enCoach } from './enCoach.ts';
 
 /** A template: one string, or a form for a count of 1 and one for every other count. */
@@ -193,6 +193,9 @@ export function renderLine(line: Line, strings: CoachStrings = EN_COACH): Segmen
   return merge(capitalise(segmentsOf(line, strings)));
 }
 
+/** "about " (or "About ") right before a value: an estimate's word (`about`). */
+const ABOUT = /(^|[\s(])about $/i;
+
 function segmentsOf(line: Line, strings: CoachStrings): Segment[] {
   const template = strings.templates[line.key] as CoachTemplate | undefined;
   if (template === undefined) throw new Error(`coach text: no template for ${line.key}`);
@@ -205,7 +208,20 @@ function segmentsOf(line: Line, strings: CoachStrings): Segment[] {
       const p = line.params[part.name];
       if (p === undefined)
         throw new Error(`coach text: ${line.key} has no value for {${part.name}}`);
-      out.push({ text: valueText(p, strings), value: true });
+      const text = valueText(p, strings);
+      // A bound or a sure number needs no "about": ">99%", not "about >99%" (QA-2, item 8).
+      const before = out[out.length - 1];
+      if (
+        p.kind === 'pct' &&
+        about(text) === text &&
+        before !== undefined &&
+        before.glossary === undefined &&
+        before.value === undefined &&
+        ABOUT.test(before.text)
+      ) {
+        out[out.length - 1] = { text: before.text.replace(ABOUT, '$1') };
+      }
+      out.push({ text, value: true });
     }
   }
   return out;

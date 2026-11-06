@@ -79,13 +79,28 @@ export interface DecisionRecord {
   eRandom: number | null;
   need: number | null;
   /**
-   * The grade's own numbers for the price (`GradeResult.price`, §8.9): `eRange`, against the
-   * likely hands of every live opponent, and the call's realisation `R`; null with nothing to call
-   * or without a grade. Optional (Appendix H rule 2): absent in older records, whose summary rows
-   * show the HUD's number as before. The hand summary reads them (§12.9, QA-1).
+   * The grade's own numbers for the price (`GradeResult.price`, §8.9): `eRange`, the "likely
+   * hands" number the hint showed and the grade compared (§8.10's range number; until 1.3.90 the
+   * decision's `eRange` against every live opponent), and the call's realisation `R`; null with
+   * nothing to call or without a grade. Optional (Appendix H rule 2): absent in older records,
+   * whose summary rows show the HUD's number as before. The hand summary reads them (§12.9, QA-1).
    */
   eRange?: number | null;
   R?: number | null;
+  /**
+   * Whom `eRange` counts (1.3.90, QA-2 item 3): the raiser and `callers` callers already in, when
+   * that is fewer than the `players` live opponents the HUD's number counts; `callers` null: every
+   * live opponent. Optional (Appendix H rule 2): absent before 1.3.90 and without a grade.
+   */
+  callers?: number | null;
+  players?: number | null;
+  /**
+   * The "to" of the hero's all-in bet or raise at the decision (null when none was legal), and
+   * whether a call put the hero all-in, so the summary says "All-in 200" (1.3.90, QA-2 item 6).
+   * Optional (Appendix H rule 2): absent before 1.3.90.
+   */
+  allInTo?: number | null;
+  callAllIn?: boolean;
   hintSeen: boolean;
   undone: boolean;
   leak: LeakId | null;
@@ -765,6 +780,10 @@ const decisionRecord: Check<DecisionRecord> = object<DecisionRecord>({
   need: nullable(num()),
   eRange: optional(nullable(num())),
   R: optional(nullable(num())),
+  callers: optional(nullable(count)),
+  players: optional(nullable(count)),
+  allInTo: optional(nullable(num())),
+  callAllIn: optional(bool),
   hintSeen: bool,
   undone: bool,
   leak: nullable(oneOf(LEAK)),

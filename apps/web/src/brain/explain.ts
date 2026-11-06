@@ -153,6 +153,8 @@ export const TEMPLATES = {
   OPEN_RANGE: { params: ['hand', 'rankPct', 'behind', 'openPct', 'size'] },
   FOLD_RANGE: { params: ['hand', 'behind'] },
   ISOLATE: { params: ['size'] },
+  // Heads-up there are no other players to keep out (QA-2 of 6 Nov 2026, item 7).
+  'ISOLATE.headsUp': { params: ['hand', 'size'] },
   CHECK_FREE: { params: [] },
   THREE_BET_VALUE: { params: ['hand', 'E', 'size'] },
   FOUR_BET_VALUE: { params: ['hand', 'size'] },
@@ -187,6 +189,11 @@ export const TEMPLATES = {
   'CHECK_WEAK.draw': { params: ['draw'] },
   PUSH_FOLD: { params: ['S', 'Pfold', 'E'], glossary: ['big blind', 'all-in'] },
   'PUSH_FOLD.fold': { params: ['S', 'Pfold', 'E'], glossary: ['big blind', 'all-in'] },
+  // `S` is an opponent's stack, not the hero's (QA-2 item 2): whose it is, heads-up or not.
+  'PUSH_FOLD.them': { params: ['S', 'Pfold', 'E'], glossary: ['big blind', 'all-in'] },
+  'PUSH_FOLD.themFold': { params: ['S', 'Pfold', 'E'], glossary: ['big blind', 'all-in'] },
+  'PUSH_FOLD.others': { params: ['S', 'Pfold', 'E'], glossary: ['big blind', 'all-in'] },
+  'PUSH_FOLD.othersFold': { params: ['S', 'Pfold', 'E'], glossary: ['big blind', 'all-in'] },
   CALL_ALLIN: { params: E_NEED },
   'CALL_ALLIN.close': { params: E_NEED },
   FOLD_ALLIN: { params: E_NEED },
@@ -263,10 +270,11 @@ export const TEMPLATES = {
 
   'feedback.foldedPrice': { params: E_NEED },
   'feedback.foldedPriceRange': { params: E_NEED },
-  'feedback.foldedPriceAll': { params: ['E', 'n', 'need'] },
+  'feedback.foldedPriceRaiser': { params: ['E', 'who', 'need'] },
   'feedback.calledPrice': { params: E_NEED },
   'feedback.calledPriceRange': { params: E_NEED },
-  'feedback.calledPriceAll': { params: ['E', 'n', 'need'] },
+  'feedback.calledPriceRaiser': { params: ['E', 'who', 'need'] },
+  'feedback.calledValue': { params: [] },
   'feedback.checkedStrong': { params: [] },
   'feedback.airMultiway': { params: ['n'] },
   'feedback.airHeadsUp': { params: [] },
@@ -274,9 +282,16 @@ export const TEMPLATES = {
   'feedback.sizeSmall': { params: ['size'] },
   'feedback.openLoose': { params: ['hand'] },
   'feedback.foldedStrong': { params: ['hand', 'rankPct'] },
-  'feedback.pushFoldAllIn': { params: ['S', 'hand'] },
-  'feedback.pushFoldFold': { params: ['S', 'hand'] },
+  'feedback.pushFoldAllIn': { params: ['stack', 'hand'] },
+  'feedback.pushFoldFold': { params: ['stack', 'hand'] },
   'feedback.fallback': { params: ['alt'] },
+  // F.5 `{who}`: whom the hint's range number counts, when fewer than every live opponent
+  // (§8.10); `{stack}`: whose stack the push/fold row's `S` is (QA-2 items 2 and 3).
+  'who.raiser': { params: [] },
+  'who.callers': { params: ['callers'] },
+  'stack.own': { params: ['S'] },
+  'stack.them': { params: ['S'] },
+  'stack.others': { params: ['S'] },
 } as const satisfies Record<string, TemplateSpec>;
 
 export type TemplateKey = keyof typeof TEMPLATES;
@@ -884,6 +899,11 @@ function reasonLine(r: Reason, c: Context): Line {
     case 'FOLD_RANGE':
       return line('FOLD_RANGE', { hand: name(input.preflopName), behind: count(input.k) });
     case 'ISOLATE':
+      // Heads-up nobody else is left to keep out: "Players only called … fewer players" was
+      // false (QA-2 of 6 Nov 2026, item 7). The hand is the reason (§8.3: the isolation range).
+      return input.nOpp === 1
+        ? line('ISOLATE.headsUp', { hand: name(input.preflopName), size: size() })
+        : line('ISOLATE', { size: size() });
     case 'VALUE_RAISE':
     case 'CBET_DRY':
       return line(r.code, { size: size() });
@@ -1000,7 +1020,7 @@ function reasonLine(r: Reason, c: Context): Line {
       // On the river there are no draws left to make pay: the raise is for value (§8.10).
       return line(input.street === 'river' ? 'RAISE_PROTECT.river' : 'RAISE_PROTECT');
     case 'PUSH_FOLD':
-      return line(r.data.action === 'fold' ? 'PUSH_FOLD.fold' : 'PUSH_FOLD', {
+      return line(pushFoldKey(r, input), {
         S: count(num(r.data.S) as number),
         Pfold: pct(num(r.data.Pfold) as number),
         E: pE,
@@ -1015,6 +1035,19 @@ function reasonLine(r: Reason, c: Context): Line {
     default:
       return line('FALLBACK');
   }
+}
+
+/**
+ * PUSH_FOLD's sentence: `{S}` is the effective stack (§8.4), the hero's own ("Only 5 big blinds
+ * left") unless an opponent is the short one (`data.short` 'them', §8.4 notes): then whose it is,
+ * "They have only 5 big blinds" heads-up, "No one else has more than 5 big blinds" against more
+ * (QA-2 of 6 Nov 2026, item 2: "Only 5 big blinds left" beside the hero's 35 bb).
+ */
+function pushFoldKey(r: Reason, input: Pick<ExplainInput, 'nOpp'>): TemplateKey {
+  const fold = r.data.action === 'fold';
+  if (r.data.short !== 'them') return fold ? 'PUSH_FOLD.fold' : 'PUSH_FOLD';
+  if (input.nOpp === 1) return fold ? 'PUSH_FOLD.themFold' : 'PUSH_FOLD.them';
+  return fold ? 'PUSH_FOLD.othersFold' : 'PUSH_FOLD.others';
 }
 
 /** RANGE_ADJUST and its wording (see the header); `callers` as `RangeNumber`'s. */
@@ -1246,29 +1279,41 @@ function sameAction(a: PlayerAction, b: PlayerAction): boolean {
 export type FeedbackInput =
   | {
       row: 'foldedPrice' | 'calledPrice';
+      /** The hint's range number (the grade compares it, §8.9) and the price. */
       E: number;
       need: number;
       rangeAdjust: boolean;
       /**
-       * The live opponents `E` counts, said with `rangeAdjust` when the hint's range number
-       * counted only the raiser and its callers (§8.10): "against the likely hands of all 5
-       * players". Null: "against their likely hands".
+       * Whom `E` counts, said with `rangeAdjust` when it is only the raiser and `callers` callers
+       * already in (§8.10, the hint's own words): "against the raiser's likely hands alone".
+       * Null: every live opponent, "against their likely hands".
        */
-      players: number | null;
+      callers: number | null;
     }
-  | { row: 'checkedStrong' | 'airHeadsUp' }
+  | { row: 'calledValue' | 'checkedStrong' | 'airHeadsUp' }
   | { row: 'airMultiway'; players: number }
   | { row: 'size'; tooBig: boolean; to: number; bb: number }
   | { row: 'openLoose'; hand: string }
   | { row: 'foldedStrong'; hand: string; rankPct: number }
-  | { row: 'pushFold'; S: number; hand: string; move: 'allin' | 'fold' }
+  | {
+      row: 'pushFold';
+      S: number;
+      hand: string;
+      move: 'allin' | 'fold';
+      /**
+       * Whose stack `S` is (§8.4's effective stack): the hero's ('own', the default), the only
+       * opponent's ('them') or every opponent's at most ('others') (QA-2 item 2).
+       */
+      stack?: 'own' | 'them' | 'others';
+    }
   | { row: 'fallback'; alt: PlayerAction; legal: LegalActions; toCall: number; bb: number };
 
 /**
  * The line of one F.5 feedback row. With RANGE_ADJUST's condition (§8.10) a price row says
  * "against their likely hands" (`*Range`), so it never contradicts the HUD badge; and "against
- * the likely hands of all {n} players" (`*All`) when the hint's range number counted only the
- * raiser and its callers, so it never contradicts the hint either.
+ * the raiser's likely hands alone" (`*Raiser`, `{who}`) when the hint's range number counted only
+ * the raiser and its callers, the hint's own words (1.3.90: the grade compares the hint's number,
+ * QA-2 item 3; before, "against the likely hands of all {n} players" with the decision's eRange).
  */
 export function feedbackLine(f: FeedbackInput): Line {
   switch (f.row) {
@@ -1276,9 +1321,14 @@ export function feedbackLine(f: FeedbackInput): Line {
     case 'calledPrice': {
       const numbers = { E: pct(f.E), need: pct(f.need) };
       if (!f.rangeAdjust) return line(`feedback.${f.row}`, numbers);
-      if (f.players === null) return line(`feedback.${f.row}Range`, numbers);
-      return line(`feedback.${f.row}All`, { ...numbers, n: count(f.players) });
+      if (f.callers === null) return line(`feedback.${f.row}Range`, numbers);
+      const who =
+        f.callers === 0
+          ? nested('who.raiser')
+          : nested('who.callers', { callers: count(f.callers) });
+      return line(`feedback.${f.row}Raiser`, { ...numbers, who });
     }
+    case 'calledValue':
     case 'checkedStrong':
     case 'airHeadsUp':
       return line(`feedback.${f.row}`);
@@ -1297,7 +1347,7 @@ export function feedbackLine(f: FeedbackInput): Line {
       });
     case 'pushFold':
       return line(f.move === 'allin' ? 'feedback.pushFoldAllIn' : 'feedback.pushFoldFold', {
-        S: count(f.S),
+        stack: nested(`stack.${f.stack ?? 'own'}`, { S: count(f.S) }),
         hand: name(f.hand),
       });
     case 'fallback':

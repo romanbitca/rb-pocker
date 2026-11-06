@@ -10,6 +10,15 @@
  */
 import { enStart } from './start.ts';
 
+/**
+ * "about 62%" for an estimate, but a bound or a sure number as it is: ">99%", "<1%", "0%",
+ * "100%" (with or without the "%"). "About >99%" said the bound twice (QA-2 of 6 Nov 2026, item
+ * 8; PLAN §7.6, Appendix F.1). The coach's templates get the same rule from `i18n/coach.ts`.
+ */
+export function about(x: string): string {
+  return /^(?:[<>]|(?:0|100)%?$)/.test(x) ? x : `about ${x}`;
+}
+
 export const en = {
   ...enStart,
 
@@ -406,7 +415,7 @@ export const en = {
     approx: (pct: string) => `~${pct}`,
     /** Screen-reader names of the badge. */
     label: (pct: string) => `Win chance ${pct}`,
-    labelApprox: (pct: string) => `Win chance about ${pct}`,
+    labelApprox: (pct: string) => `Win chance ${about(pct)}`,
     labelComputing: 'Win chance: working it out',
     labelFolded: 'Win chance: you folded',
     labelNone: 'Win chance not available',
