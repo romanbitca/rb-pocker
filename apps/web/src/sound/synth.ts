@@ -222,6 +222,20 @@ export function schedule(
 }
 
 /**
+ * The master gain: RECIPE.master, except in the E2E build (`vite build --mode e2e`), where every cue
+ * plays at gain 0 so the test browsers on the dev Mac stay silent (owner, 6 Nov 2026: the specs'
+ * sounds came out of the speakers). The graph is the same, so specs still see every cue; one that
+ * wants to hear them sets `window.__pcAudible = true` before the app loads. Vite replaces
+ * `import.meta.env.MODE` at build time, so a production build keeps RECIPE.master only.
+ */
+export function masterGain(host: AudioHost): number {
+  // A direct `import.meta.env.MODE`: a production build folds it and drops the rest, so the
+  // `__pc` name never ships (tests/app/testHooks.bundle.test.ts).
+  if (import.meta.env.MODE !== 'e2e') return RECIPE.master;
+  return (host as { readonly __pcAudible?: unknown }).__pcAudible === true ? RECIPE.master : 0;
+}
+
+/**
  * The synth for `host` (the window), or null when this browser has no Web Audio. `now` is a clock
  * in ms (tests pass their own).
  */
@@ -265,7 +279,7 @@ export function createSynth(host: AudioHost, now: () => number = Date.now): Synt
         try {
           made = new Context();
           const gain = made.createGain();
-          gain.gain.value = RECIPE.master;
+          gain.gain.value = masterGain(host);
           gain.connect(made.destination);
           ctx = made;
           master = gain;

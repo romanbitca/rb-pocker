@@ -154,7 +154,8 @@ async function measure(url: string): Promise<{ result: FlowResult; install: stri
     // Lighthouse sets the screen; Puppeteer's own 800×600 would only get in its way.
     defaultViewport: null,
     // As Playwright does on Linux: CI runners do not allow Chromium's sandbox.
-    args: process.platform === 'linux' ? ['--no-sandbox'] : [],
+    // Muted: the run taps Play, and the game's sounds must not come out of the dev Mac's speakers.
+    args: [...(process.platform === 'linux' ? ['--no-sandbox'] : []), '--mute-audio'],
   });
   try {
     const page = await browser.newPage();

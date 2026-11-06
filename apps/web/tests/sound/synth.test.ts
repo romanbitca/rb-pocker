@@ -4,10 +4,11 @@
  * has the §12.8 numbers; nothing plays without a running (or just resuming) context; Web Audio
  * missing or refusing never throws. Runs on a stand-in AudioContext (`fakeAudio.ts`).
  */
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   createSynth,
   CUES,
+  masterGain,
   noiseBuffer,
   RECIPE,
   RESUME_GRACE_MS,
@@ -57,6 +58,18 @@ function cueNodes(ctx: FakeAudioContext, play: () => void) {
 const freq = (o: FakeOscillator) => o.frequency.events[0]?.value;
 
 describe('createSynth and unlock (§12.13)', () => {
+  it('plays at gain 0 in the E2E build unless the page asks to hear it; RECIPE.master elsewhere', () => {
+    expect(masterGain({})).toBe(RECIPE.master);
+    vi.stubEnv('MODE', 'e2e');
+    try {
+      expect(masterGain({})).toBe(0);
+      expect(masterGain({ __pcAudible: true } as never)).toBe(RECIPE.master);
+      expect(masterGain({ __pcAudible: 'yes' } as never)).toBe(0);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
   it('is null without Web Audio, and takes the prefixed context of old Safari', () => {
     expect(createSynth({})).toBeNull();
     expect(createSynth({ AudioContext: 'not a class' })).toBeNull();
