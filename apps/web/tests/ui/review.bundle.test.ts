@@ -278,3 +278,16 @@ describe('the hand drill in the production build (PLAN §13.5)', () => {
     expectOnlyDynamicImports(chunk(LOGIC));
   });
 });
+
+describe('the service worker code in the production build (§15.1, chunk 9.5)', () => {
+  it('is a lazy chunk with no imports: not initial, loaded by import(), precached', () => {
+    const port = chunk('src/app/swUpdate.ts');
+    expect(rowOf('Initial JS').files).not.toContain(port);
+    expect(rowOf('Total precache').files).toContain(port);
+    expectOnlyDynamicImports(port);
+    // Nothing of the entry chunk moves into a chunk shared with it (pitfall 47).
+    expect(text(port)).not.toMatch(/\bimport\b/);
+    // The plugin's own registration code (`virtual:pwa-register`, workbox-window) is gone.
+    expect(rowOf('Total precache').files.some((f) => f.includes('workbox-window'))).toBe(false);
+  });
+});

@@ -607,6 +607,10 @@ export const en = {
     separator: ' · ',
     /** "Export debug report" could only copy the report (Settings → Diagnostics, §4.5). */
     debugCopied: 'The report was copied. Paste it into a message to send it.',
+    /** A new version waits for the end of the hand in play (§15.1). */
+    updateReady: 'Update ready. It installs after this hand.',
+    /** Once ever: the first service worker is installed (§15.1). */
+    offlineReady: 'Ready to play offline.',
   },
 
   /** Another tab has the game (PLAN §12.11, §14.7): the game screens show this instead. */

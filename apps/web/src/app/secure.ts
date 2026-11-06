@@ -7,7 +7,8 @@
  * feature that needs one of them asks this module first and degrades when it is off; nothing may
  * crash the boot:
  * - no service worker → playable online, no "Ready to play offline" toast, no update toast, no
- *   Install tile (§15.1; `useRegisterSW` already does nothing without `navigator.serviceWorker`);
+ *   Install tile (§15.1; boot starts no service worker port without `navigator.serviceWorker`:
+ *   `serviceWorkerOf` in `app/lifecycle.ts`);
  * - no Web Locks → the `rev` + `storage`-event fallback (§14.7);
  * - no `crypto.subtle` → hand records store `commit: null` (§16.3);
  * - no `persist()` → skipped; Settings says "Protected from automatic clean-up: No" (§14.8);

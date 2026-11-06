@@ -72,6 +72,15 @@
  * one-time install card of Home (`data.nudge`), keeps the browser's install offer (`data.install`)
  * and the level suggestion card (`data.suggestion`, `app/suggestions.ts`), and writes their
  * answers in the profile's flags.
+ *
+ * New versions (§15.1, chunk 9.5; the service worker is `app/swUpdate.ts`): a new version never
+ * reloads the page mid-hand. It goes in before the next hand is dealt (the session is saved with
+ * `resumeAfterUpdate`, so the new version goes straight back to the Table and deals that hand), or
+ * at once when no hand is unfinished and Welcome or Home shows with nothing open. While a hand is
+ * in play the toast "Update ready. It installs after this hand." says so. Only the tab with the
+ * game lets a waiting version in, and never when the browser storage failed (a reload would lose
+ * the game kept in memory). The controller asks the server for a new version when the page comes
+ * back to the front and every hour.
  */
 import { EngineError } from '../core/assert.ts';
 import { deriveSeed, randomSeed, type Seed128 } from '../core/rng.ts';
@@ -119,7 +128,7 @@ import type {
 } from '../persist/schema.ts';
 import { clearSession, loadSession, saveSession } from '../persist/session.ts';
 import { endSession, SESSION_IDLE_MS } from '../persist/stats.ts';
-import type { SafeStorage } from '../persist/storage.ts';
+import { STORAGE_KEYS, type SafeStorage } from '../persist/storage.ts';
 import { updateSeatStats } from '../brain/opponentStats.ts';
 import { profileFor } from '../brain/profiles.ts';
 import type { BrainProfile, GradeResult } from '../brain/types.ts';
@@ -142,8 +151,9 @@ import { addHand, addStoredHand, initialReview, type ReviewHand } from './review
 import { startShuffleCode, type Sha256, type ShuffleCode } from './shuffleCode.ts';
 import { handEndViewOf, labelVisible, seatLevelOf } from './tableViews.ts';
 import type { DataCommand, DataCommands, DataHost, ShareEnv } from './dataTools.ts';
-import type { InstallEnv } from './lifecycle.ts';
+import { updateMayReload, type InstallEnv } from './lifecycle.ts';
 import type { Suggestion, SuggestionTools } from './suggestions.ts';
+import type { UpdateEvent, UpdatePort } from './swUpdate.ts';
 import type { TabLock, TabLockEvent } from './tabLock.ts';
 import {
   NO_SEAT_STATS,
@@ -224,6 +234,15 @@ export const TIMING = {
   settingsDebounceMs: 250,
   /** After a hero act the hand waits this long for the grade (§11.3 r5, `app/grading.ts`). */
   gradePauseMs: GRADE_PAUSE_MS,
+  /** §15.1: ask the server for a new version every hour while the page is in front… */
+  updateCheckMs: 3_600_000,
+  /** …and when it comes back to the front, but not twice within a minute. */
+  updateCheckMinMs: 60_000,
+  /**
+   * After letting a new version in, the page reloads when it has taken over (within milliseconds),
+   * and at the latest after this long.
+   */
+  updateReloadMs: 5000,
 } as const;
 
 /** Pause and animation factor per speed (§12.8: Normal 1, Fast 0.5, Instant 0). */
@@ -422,6 +441,18 @@ export interface ControllerOptions {
    * deal as before and every hand's `commit` is null.
    */
   sha256?: Sha256 | null;
+  /**
+   * The service worker (§15.1, chunk 9.5, `app/swUpdate.ts`): new versions and offline-ready.
+   * Null or missing: no service worker (an insecure page, §12.14; tests): nothing happens.
+   */
+  updates?: UpdatePort | null;
+  /**
+   * §12.11 "Ready to play offline." when the first service worker is installed (chunk 9.5).
+   * Default on. The E2E build turns it off unless a spec asks for it (`app/testHooks.ts`): every
+   * spec starts in a fresh browser profile, so the toast would show over the top of the screen at
+   * a moment no spec controls (and stay there on a paused clock).
+   */
+  offlineToast?: boolean;
 }
 
 /** The parts of `navigator.storage` used to keep the data (§14.8). */
@@ -537,7 +568,15 @@ type NewToast =
   | { kind: 'undone' }
   | { kind: 'exportCopied' | 'exportFailed' | 'imported' | 'statsReset' | 'dataNotChanged' }
   | { kind: 'session'; session: SessionSummary }
-  | { kind: 'debugCopied' };
+  | { kind: 'debugCopied' }
+  | { kind: 'updateReady' | 'offlineReady' };
+
+/**
+ * A new version of the game (§15.1): none found; one waits (`ready`); this tab let it in and
+ * waits for it to take over (`applying`); it controls the page (`activated`), which reloads at the
+ * next safe moment.
+ */
+type UpdateState = 'none' | 'ready' | 'applying' | 'activated';
 
 const RING = { events: 500, errors: 50, brain: 200, voided: 5 } as const;
 
@@ -613,6 +652,22 @@ export class TableController {
   private suggestionsLoading = false;
   /** `persist()` was asked this launch (§14.8: at most once). */
   private keepAsked = false;
+  /** The service worker (§15.1); null without one. */
+  private readonly updates: UpdatePort | null;
+  /** `ControllerOptions.offlineToast`. */
+  private readonly offlineToast: boolean;
+  private update: UpdateState = 'none';
+  /** "Update ready. It installs after this hand." was shown (once per launch). */
+  private updateToastShown = false;
+  /** When the app last asked the server for a new version (`timers.now()`). */
+  private updateCheckedAt = Number.NEGATIVE_INFINITY;
+  private updateCheckTimer: unknown = null;
+  /** The reload's safety net after `apply()`. */
+  private updateReloadTimer: unknown = null;
+  /** The page reloads into a new version: nothing more is dealt. */
+  private reloading = false;
+  /** The session says the page reloaded for a new version at the Table: Play once this tab writes. */
+  private resumeTable = false;
   /** When this table's session began (§14.4); stored in the session. */
   private sessionStart: string | null = null;
   private settingsTimer: unknown = null;
@@ -729,6 +784,8 @@ export class TableController {
       if (!this.disposed) this.publish();
     });
     this.sha256 = options.sha256 ?? null;
+    this.updates = options.updates ?? null;
+    this.offlineToast = options.offlineToast !== false;
     this.unsubscribe = this.store.subscribe((s, prev) => {
       if (s.ui.nav !== prev.ui.nav) this.onNav(s.ui, prev.ui);
       if (s.ui.gates !== prev.ui.gates) this.onGates();
@@ -748,6 +805,9 @@ export class TableController {
    * comes a few milliseconds later, so boot only reads (no write-back, no commit) and the lock's
    * answer decides: granted reads the storage again, writing this time; denied makes the tab
    * read-only. A Play tapped meanwhile waits for it (`queued`).
+   *
+   * §15.1: then the service worker starts (`updates`), and a page that reloaded into a new version
+   * at the Table (`resumeAfterUpdate`) goes back there and deals the next hand, once it writes.
    */
   boot(): void {
     if (this.mode !== 'booting') return;
@@ -761,6 +821,8 @@ export class TableController {
     this.mode = 'idle';
     this.publish();
     void this.keepData();
+    this.startUpdates();
+    this.resumeAfterUpdate();
   }
 
   /**
@@ -787,7 +849,10 @@ export class TableController {
       this.toast({ kind: loaded.status === 'reset' ? 'dataRecovered' : 'dataRestored' });
     }
     const session = loadSession(storage, { engineVersion: ENGINE_VERSION, now, readOnly });
-    if (session.status === 'ok' || session.status === 'voided') this.resume(session.session);
+    const saved = session.status === 'ok' || session.status === 'voided' ? session.session : null;
+    if (saved !== null) this.resume(saved);
+    // §15.1: the page reloaded into a new version at a hand's end: back to the Table.
+    this.resumeTable = saved?.resumeAfterUpdate === true;
     if (notify && session.status === 'voided') {
       this.error('session hand voided', session.problem);
       this.toast({ kind: 'handNotRestored' });
@@ -907,6 +972,10 @@ export class TableController {
     this.toastTimers.clear();
     if (this.settingsTimer !== null) this.timers.clearTimeout(this.settingsTimer);
     this.settingsTimer = null;
+    if (this.updateCheckTimer !== null) this.timers.clearTimeout(this.updateCheckTimer);
+    this.updateCheckTimer = null;
+    if (this.updateReloadTimer !== null) this.timers.clearTimeout(this.updateReloadTimer);
+    this.updateReloadTimer = null;
   }
 
   snapshot(): ControllerSnapshot {
@@ -1141,6 +1210,8 @@ export class TableController {
       this.flushSettings(); // §12.13: flush storage when hidden (the session is already saved)
       return;
     }
+    // §15.1: back in front (a phone often resumes the app instead of loading it): a new version?
+    this.checkForUpdate();
     if (!this.store.getState().ui.hidden) return;
     this.visibleTimer = this.timers.setTimeout(() => {
       if (token !== this.visibleSeq) return; // hidden again since (pitfall 22)
@@ -1195,10 +1266,16 @@ export class TableController {
     }
   }
 
-  /** Deals the next hand at `table` (§2.3 `startNextHand`), at the bot levels the settings name now. */
-  private startHandAt(table: TableState): void {
+  /**
+   * Deals the next hand at `table` (§2.3 `startNextHand`), at the bot levels the settings name now.
+   * When a new version waits (§15.1), it goes in now instead: the page reloads into it and deals
+   * this hand there (`updateBeforeHand`). `toTable`: the player goes on at the Table (false for a
+   * hand dealt while they are elsewhere: Import's, §14.8).
+   */
+  private startHandAt(table: TableState, toTable = true): void {
     this.flushCommit();
     if (this.tab === 'readOnly') return; // the commit found another writer (§14.7)
+    if (this.updateBeforeHand(table, toTable)) return;
     this.bumpEpoch();
     const levelled = this.withSettingsLevels(table);
     // §14.3 handSeq rule: global across tables, and above every hand the profile has counted.
@@ -1540,7 +1617,10 @@ export class TableController {
     this.toast({ kind: 'handVoided' });
     this.closeTable();
     if (table === null) return;
-    this.startHandAt({ ...table, nextHandSeq: Math.max(table.nextHandSeq + 1, this.handSeqFloor) });
+    this.startHandAt(
+      { ...table, nextHandSeq: Math.max(table.nextHandSeq + 1, this.handSeqFloor) },
+      this.store.getState().ui.screen === 'table',
+    );
   }
 
   /**
@@ -1885,6 +1965,8 @@ export class TableController {
     ) {
       this.withData({ type: 'importCancel' });
     }
+    // §15.1: back on Home with nothing open, a waiting version may go in now.
+    this.updateWhenSafe();
     if (this.hold !== 'feedback' || ui.overlays.includes('feedback')) return;
     if (ui.screen !== 'table') return;
     if (prev.screen === 'table' && prev.overlays.includes('feedback')) this.keepMove();
@@ -2314,6 +2396,8 @@ export class TableController {
   /** Writes the session, after every step (§14.5). */
   private saveSession(): void {
     if (this.storage === null || this.headless || this.tab !== 'writer') return;
+    // §15.1: the page reloads into a new version: the session it saved for that stays as it is.
+    if (this.reloading || this.update === 'applying') return;
     const session = this.sessionState();
     if (session === null) return;
     const saved = saveSession(this.storage, session);
@@ -2408,6 +2492,9 @@ export class TableController {
     const queued = this.queued;
     this.queued = null;
     if (queued !== null) this.dispatch(queued);
+    // §15.1: back to the Table after a reload into a new version; or a waiting version goes in.
+    this.resumeAfterUpdate();
+    this.updateWhenSafe();
   }
 
   /** A profile write found another tab's `rev` (§14.3 step 2): that tab has the game now. */
@@ -2586,6 +2673,184 @@ export class TableController {
   }
 
   // -------------------------------------------------------------------------------------------
+  // New versions (§15.1, chunk 9.5; the service worker is `app/swUpdate.ts`)
+
+  /** Starts the service worker and the hourly check for a new version. */
+  private startUpdates(): void {
+    const port = this.updates;
+    if (port === null) return;
+    port.start((event) => this.onUpdateEvent(event));
+    this.scheduleUpdateCheck();
+  }
+
+  private onUpdateEvent(event: UpdateEvent): void {
+    if (this.disposed) return;
+    this.trace('update', event);
+    switch (event) {
+      case 'offlineReady':
+        this.offlineReady();
+        break;
+      case 'updateReady':
+        if (this.update === 'none') this.update = 'ready';
+        this.updateWhenSafe();
+        break;
+      case 'activated':
+        if (this.update === 'applying') {
+          // This tab let it in, at a safe moment, with everything saved: reload now.
+          this.reloadForUpdate();
+          return;
+        }
+        // Another tab let it in: this page still runs the old code; it reloads when safe.
+        this.update = 'activated';
+        this.updateWhenSafe();
+        break;
+    }
+    this.publish();
+  }
+
+  /**
+   * §15.1: a new version reloads the page only where nothing is lost and nobody is interrupted:
+   * now, when no hand is unfinished and Welcome or Home shows with nothing open
+   * (`updateMayReload`); else before the next hand is dealt (`startHandAt`). Meanwhile, at the
+   * Table, the toast says it installs after this hand (once per launch).
+   */
+  private updateWhenSafe(): void {
+    if (this.update === 'none' || this.update === 'applying' || this.reloading) return;
+    const { screen, overlays } = this.store.getState().ui;
+    const unfinished = this.hand !== null && this.hand.phase !== 'complete';
+    const busy = this.mode === 'booting' || this.headless || this.commitPending || unfinished;
+    const moment = { tab: this.tab, busy, screen, overlays, update: this.update };
+    if (updateMayReload(moment) && this.takeUpdate(false)) return;
+    if (
+      this.tab === 'writer' &&
+      this.hand !== null &&
+      !this.updateToastShown &&
+      this.storage?.failure === null
+    ) {
+      this.updateToastShown = true;
+      this.toast({ kind: 'updateReady' });
+    }
+  }
+
+  /**
+   * §15.1: a hand is about to be dealt at `table` and a new version waits. It goes in now: the
+   * session is saved as between hands at `table` (with `resumeAfterUpdate` when the player goes on
+   * at the Table, so the new version deals this hand at once) and the page reloads. Returns false
+   * to deal as usual: no new version, another tab has the game, or nothing could be saved.
+   */
+  private updateBeforeHand(table: TableState, toTable: boolean): boolean {
+    if (this.reloading || this.update === 'applying') return true; // the reload is on its way
+    if (this.update === 'none' || this.tab !== 'writer') return false;
+    this.next = table; // the session's table; the finished hand stays on show until the reload
+    return this.takeUpdate(toTable);
+  }
+
+  /**
+   * Saves what the reload must not lose (the session, between hands, and the settings), then lets
+   * the new version in and reloads. Returns false, and nothing happens, when that cannot be saved
+   * (§14.6: the game lives in memory, so the new version waits for the next launch) or when this
+   * tab does not know yet whether it has the game.
+   */
+  private takeUpdate(resumeAfterUpdate: boolean): boolean {
+    const storage = this.storage;
+    const port = this.updates;
+    if (storage === null || port === null || storage.failure !== null || this.tab === 'pending') {
+      return false;
+    }
+    if (this.tab === 'writer') {
+      this.flushSettings();
+      const session = this.sessionState();
+      if (session !== null && !saveSession(storage, { ...session, resumeAfterUpdate }).ok) {
+        return false;
+      }
+      // The settings could not be written, or a write found another tab's game (§14.7).
+      if (storage.failure !== null || this.tab !== 'writer') return false;
+    }
+    this.trace('update: reload', { resumeAfterUpdate });
+    if (this.update === 'activated') {
+      this.reloadForUpdate();
+      return true;
+    }
+    this.update = 'applying';
+    this.updateReloadTimer = this.timers.setTimeout(() => {
+      this.updateReloadTimer = null;
+      this.reloadForUpdate();
+    }, TIMING.updateReloadMs);
+    port.apply(); // `activated` follows, then the reload
+    return true;
+  }
+
+  /** The page reloads into the new version; from now on nothing is dealt or written here. */
+  private reloadForUpdate(): void {
+    if (this.reloading || this.disposed) return;
+    this.reloading = true;
+    if (this.updateReloadTimer !== null) this.timers.clearTimeout(this.updateReloadTimer);
+    this.updateReloadTimer = null;
+    this.bumpEpoch();
+    this.updates?.reload();
+  }
+
+  /**
+   * §15.1: the page reloaded into a new version at a hand's end (`resumeAfterUpdate`): back to
+   * the Table, and the next hand is dealt, as Play would. Only once this tab writes (§14.7).
+   */
+  private resumeAfterUpdate(): void {
+    if (!this.resumeTable || this.tab !== 'writer' || this.mode === 'booting') return;
+    this.resumeTable = false;
+    this.trace('update: back to the table');
+    this.play();
+    this.publish();
+  }
+
+  /**
+   * §12.11: "Ready to play offline.", once ever (`profile.flags.offlineReady`), in the tab with
+   * the game. On a first launch the flag waits in memory and is written with the profile at the
+   * first Play (until then the next launch is a first launch too, §12.1).
+   */
+  private offlineReady(): void {
+    const { profile, storage } = this;
+    if (!this.offlineToast) return;
+    if (profile === null || storage === null || profile.flags.offlineReady) return;
+    if (this.tab !== 'writer') return;
+    this.toast({ kind: 'offlineReady' });
+    const marked: Profile = { ...profile, flags: { ...profile.flags, offlineReady: true } };
+    this.profile = marked;
+    const stored = storage.get(STORAGE_KEYS.profile);
+    if (!stored.ok || stored.value === null) return;
+    const saved = saveProfile(storage, marked, this.now());
+    if (!saved.result.ok && saved.result.reason === 'conflict') {
+      this.anotherWriter(marked.rev, saved.result.storedRev);
+      return;
+    }
+    this.profile = saved.profile;
+  }
+
+  /**
+   * §15.1: asks the server for a new version (one GET of `sw.js`), at most once a minute. The
+   * browser checks by itself only when a page loads.
+   */
+  private checkForUpdate(): void {
+    const port = this.updates;
+    if (port === null || this.reloading) return;
+    if (this.update === 'applying' || this.update === 'activated') return;
+    const now = this.timers.now();
+    if (now - this.updateCheckedAt < TIMING.updateCheckMinMs) return;
+    this.updateCheckedAt = now;
+    this.trace('update: check');
+    port.check();
+  }
+
+  /** Every hour while the page is in front (a hidden page checks when it comes back). */
+  private scheduleUpdateCheck(): void {
+    this.updateCheckTimer = this.timers.setTimeout(() => {
+      this.updateCheckTimer = null;
+      if (this.disposed) return;
+      if (!this.store.getState().ui.hidden) this.checkForUpdate();
+      this.scheduleUpdateCheck();
+    }, TIMING.updateCheckMs);
+  }
+
+  // -------------------------------------------------------------------------------------------
   // Keeping the data: persist(), Export, Import, Reset (§14.8, chunk 8.3)
 
   /**
@@ -2675,7 +2940,7 @@ export class TableController {
       adopt: (profile, table) => {
         if (this.disposed) return;
         this.adoptProfile(profile);
-        if (table !== null && this.tab === 'writer') this.startHandAt(table);
+        if (table !== null && this.tab === 'writer') this.startHandAt(table, false);
         this.publish();
       },
       conflict: (storedRev) => this.anotherWriter(this.profile?.rev ?? 0, storedRev),

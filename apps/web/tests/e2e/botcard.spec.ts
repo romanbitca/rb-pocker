@@ -42,6 +42,18 @@ const settled = (page: Page): Promise<unknown> =>
     );
   });
 
+/**
+ * Until no bot acts: the hero is to act, or the hand is over (autoNext is off). At Instant speed the
+ * bots act every few milliseconds, and a pod re-renders as its bot starts to act (its "thinking"
+ * dots appear where the pod is tapped): in CI, under load, WebKit once lost a tap that landed just
+ * then (webkit-landscape, the card never opened). A tap on a still table cannot race that.
+ */
+const still = (page: Page): Promise<unknown> =>
+  page.waitForFunction(() => {
+    const mode = window.__pc?.state().game.mode;
+    return mode === 'heroTurn' || mode === 'handEnd';
+  });
+
 /** Starts a table at `botLevel` (what Setup's Start game sends) and waits for the first hand. */
 async function tableAt(page: Page, botLevel: string): Promise<void> {
   await page.evaluate((botLevel) => {
@@ -195,6 +207,7 @@ test.describe('the bot card', () => {
     ] as const) {
       await tableAt(page, level);
       await expect(page.locator('[data-seat] use[href^="#p-"]'), level).toHaveCount(shown ? 5 : 0);
+      await still(page);
       await pod(page, 3).click();
       const dialog = sheet(page);
       await expect(dialog).toBeVisible();

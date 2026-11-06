@@ -18,14 +18,6 @@ import { loadScreens } from '../../../src/ui/screensModule.ts';
 import { stubGrader, type StubAnswer } from '../../app/graders.ts';
 import { passive, startTableHarness, type TableHarness } from '../tableHarness.ts';
 
-vi.mock('virtual:pwa-register/react', () => ({
-  useRegisterSW: () => ({
-    needRefresh: [false, () => {}],
-    offlineReady: [false, () => {}],
-    updateServiceWorker: async () => {},
-  }),
-}));
-
 beforeAll(async () => {
   await loadScreens(); // the screens lazy chunk, as App asks for it after the first paint
   // The card's chunk too (precached in the app): `cardShown` waits a few fake-clock steps, not

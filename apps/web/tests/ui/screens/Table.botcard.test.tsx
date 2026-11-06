@@ -9,7 +9,7 @@
  * hand.
  */
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
-import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, describe, expect, it } from 'vitest';
 import type { GameSettings } from '../../../src/app/store.ts';
 import type { BotLevel, HandState, TableState } from '../../../src/engine/types.ts';
 import { en } from '../../../src/i18n/en.ts';
@@ -17,14 +17,6 @@ import { App } from '../../../src/ui/App.tsx';
 import { formatChips } from '../../../src/ui/format.ts';
 import { loadScreens } from '../../../src/ui/screensModule.ts';
 import { elapse, playUntil, startTableHarness, type TableHarness } from '../tableHarness.ts';
-
-vi.mock('virtual:pwa-register/react', () => ({
-  useRegisterSW: () => ({
-    needRefresh: [false, () => {}],
-    offlineReady: [false, () => {}],
-    updateServiceWorker: async () => {},
-  }),
-}));
 
 beforeAll(async () => {
   await loadScreens(); // the screens lazy chunk, as App asks for it after the first paint

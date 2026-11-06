@@ -13,14 +13,6 @@ import { en } from '../../src/i18n/en.ts';
 import { App } from '../../src/ui/App.tsx';
 import { startTableHarness, type TableHarness } from './tableHarness.ts';
 
-vi.mock('virtual:pwa-register/react', () => ({
-  useRegisterSW: () => ({
-    needRefresh: [false, () => {}],
-    offlineReady: [false, () => {}],
-    updateServiceWorker: async () => {},
-  }),
-}));
-
 let h: TableHarness | null = null;
 afterEach(() => {
   cleanup();

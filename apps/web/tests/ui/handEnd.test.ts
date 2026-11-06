@@ -160,6 +160,9 @@ describe('toastText (§12.11)', () => {
       expect(PLAN).toContain(`toast "${toastText({ id: 1, kind })}"`);
     }
     expect(PLAN).toContain(`banner "${en.otherTab.text}" | [${en.otherTab.playHere}]`);
+    // Chunk 9.5 (§15.1): a new version waits for the hand's end; the first offline install.
+    expect(PLAN).toContain(`toast "${toastText({ id: 1, kind: 'updateReady' })}"`);
+    expect(PLAN).toContain(`toast (once) "${toastText({ id: 1, kind: 'offlineReady' })}"`);
   });
 
   it('Leave table: the session`s line (§14.4, chunk 8.2)', () => {

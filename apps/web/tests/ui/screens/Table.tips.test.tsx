@@ -7,7 +7,7 @@
  * what it does; while it shows, the bots wait. The Table stays within its 600 DOM nodes (§15.3).
  */
 import { act, cleanup, fireEvent, render } from '@testing-library/react';
-import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, describe, expect, it } from 'vitest';
 import type { AppState, TipId } from '../../../src/app/store.ts';
 import { tipWords } from '../../../src/i18n/tips.ts';
 import { createSafeStorage, STORAGE_KEYS } from '../../../src/persist/storage.ts';
@@ -23,14 +23,6 @@ import {
   startTableHarness,
   type TableHarness,
 } from '../tableHarness.ts';
-
-vi.mock('virtual:pwa-register/react', () => ({
-  useRegisterSW: () => ({
-    needRefresh: [false, () => {}],
-    offlineReady: [false, () => {}],
-    updateServiceWorker: async () => {},
-  }),
-}));
 
 beforeAll(async () => {
   await loadScreens(); // the screens lazy chunk, as App asks for it after the first paint

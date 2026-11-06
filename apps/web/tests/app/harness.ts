@@ -22,6 +22,7 @@ import {
 } from '../../src/app/controller.ts';
 import type { ShareEnv } from '../../src/app/dataTools.ts';
 import type { InstallEnv } from '../../src/app/lifecycle.ts';
+import type { UpdatePort } from '../../src/app/swUpdate.ts';
 import type { TabLock } from '../../src/app/tabLock.ts';
 import {
   createAppStore,
@@ -92,6 +93,10 @@ export interface HarnessOptions {
   install?: InstallEnv;
   /** Chunk 9.4: the provable shuffle's hash (default none: every `commit` is null). */
   sha256?: Sha256;
+  /** Chunk 9.5: the service worker (§15.1), a fake in tests. */
+  updates?: UpdatePort;
+  /** Chunk 9.5: "Ready to play offline." (default on; the E2E fixture turns it off). */
+  offlineToast?: boolean;
 }
 
 export function makeHarness(options: HarnessOptions = {}): Harness {
@@ -120,6 +125,8 @@ export function makeHarness(options: HarnessOptions = {}): Harness {
     ...(options.standalone !== undefined && { standalone: options.standalone }),
     ...(options.install !== undefined && { install: options.install }),
     ...(options.sha256 !== undefined && { sha256: options.sha256 }),
+    ...(options.updates !== undefined && { updates: options.updates }),
+    ...(options.offlineToast !== undefined && { offlineToast: options.offlineToast }),
   });
   controller.boot();
   return {

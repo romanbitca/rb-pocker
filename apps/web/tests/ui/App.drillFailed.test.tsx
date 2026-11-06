@@ -10,14 +10,6 @@ import { appStore, initialUi, setDrillLoader } from '../../src/app/store.ts';
 import { en } from '../../src/i18n/en.ts';
 import { App } from '../../src/ui/App.tsx';
 
-vi.mock('virtual:pwa-register/react', () => ({
-  useRegisterSW: () => ({
-    needRefresh: [false, () => {}],
-    offlineReady: [false, () => {}],
-    updateServiceWorker: async () => {},
-  }),
-}));
-
 afterEach(cleanup);
 
 describe('the hand drill when its chunks cannot load', { timeout: 20_000 }, () => {

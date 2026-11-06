@@ -50,8 +50,9 @@ export default defineConfig({
     VitePWA({
       strategies: 'generateSW',
       registerType: 'prompt',
-      // No injected registration script (an inline one is blocked by the CSP, pitfall 32):
-      // App registers through useRegisterSW() from virtual:pwa-register/react, which is bundled.
+      // No injected registration script (an inline one is blocked by the CSP, pitfall 32): the
+      // app registers `./sw.js` itself, in bundled code (src/app/swUpdate.ts: SW_URL, SW_SCOPE),
+      // and decides when a waiting version may take over (chunk 9.5: never mid-hand).
       injectRegister: false,
       manifest: {
         name: en.app.name,
@@ -78,6 +79,9 @@ export default defineConfig({
       workbox: {
         globPatterns: ['**/*.{js,css,html,svg,png,webp,json,webmanifest}'],
         navigateFallback: 'index.html',
+        // A browser with the worker installed still gets the server's JSON at /api/health (§2.6),
+        // not the app (chunk 9.5).
+        navigateFallbackDenylist: [/^\/api\//],
         cleanupOutdatedCaches: true,
       },
     }),

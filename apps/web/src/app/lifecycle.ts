@@ -15,9 +15,12 @@
  * - Layout (§12.3): the three media queries → `{ type: 'layout' }` (`ui.layout` mirrors the CSS).
  * - Sounds, vibration and the screen wake lock (§12.8, §12.13): `app/device.ts`, a lazy chunk
  *   asked for at boot (`loadDevice`), so the initial bundle does not carry them (§15.3).
+ * - New versions (§15.1, chunk 9.5): `updateMayReload` says when a waiting version may reload the
+ *   page (the controller decides; the service worker itself is `app/swUpdate.ts`, a lazy chunk),
+ *   and `serviceWorkerOf` whether the page has service workers at all.
  */
-import { historyDepth, type Nav } from './navigation.ts';
-import type { AppStore, Layout } from './store.ts';
+import { historyDepth, type Nav, type Overlay, type Screen } from './navigation.ts';
+import type { AppStore, Layout, TabMode } from './store.ts';
 
 /** §12.3 layout queries; the first match wins, `portrait` is everything else. */
 export const LAYOUT_QUERIES = {
@@ -235,6 +238,48 @@ export function installEnv(win: Window): InstallEnv {
       }
     },
   };
+}
+
+/**
+ * `navigator.serviceWorker`, or null: an insecure page (a phone on a plain-http LAN address,
+ * §12.14), an old browser, or a getter that throws. Kept here, not in the lazy `swUpdate.ts`,
+ * because boot asks before it loads that chunk.
+ */
+export function serviceWorkerOf(win: Window): ServiceWorkerContainer | null {
+  try {
+    const container = (win.navigator as { serviceWorker?: unknown }).serviceWorker;
+    return typeof container === 'object' &&
+      container !== null &&
+      typeof (container as { register?: unknown }).register === 'function'
+      ? (container as ServiceWorkerContainer)
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+/** What `updateMayReload` looks at. */
+export interface UpdateMoment {
+  /** One writer at a time (§14.7): only the tab with the game lets a waiting version in. */
+  tab: TabMode;
+  /** A hand is unfinished, its commit waits for a grade (§14.3), or the app is still booting. */
+  busy: boolean;
+  screen: Screen;
+  overlays: readonly Overlay[];
+  /** `ready`: a new version waits; `activated`: it controls the page already (another tab let it in). */
+  update: 'ready' | 'activated';
+}
+
+/**
+ * §15.1: may a new version reload the page right now? Only where nothing is lost and nobody is
+ * interrupted: no hand unfinished, Welcome or Home on show with nothing open over it. (Before the
+ * next hand is dealt is the other moment: the controller's `startHandAt`.) A tab without the game
+ * never lets a waiting version in: the tab that has the game may be mid-hand.
+ */
+export function updateMayReload(m: UpdateMoment): boolean {
+  if (m.busy || m.tab === 'pending') return false;
+  if (m.update === 'ready' && m.tab !== 'writer') return false;
+  return (m.screen === 'welcome' || m.screen === 'home') && m.overlays.length === 0;
 }
 
 /** Everything above; returns one uninstall. */

@@ -5,8 +5,9 @@ import { fileURLToPath } from 'node:url';
 
 /**
  * A private copy of the Nest server (what the root `npm start` runs), for a test that must take
- * the server away: the offline test. The shared server of `playwright.config.ts` serves every
- * other test in parallel, so it must stay up.
+ * the server away: the offline test, or the update test that restarts it with another build
+ * (chunk 9.5). The shared server of `playwright.config.ts` serves every other test in parallel, so
+ * it must stay up.
  */
 export interface OwnServer {
   /** `http://localhost:<port>`. */
@@ -15,10 +16,17 @@ export interface OwnServer {
   stop(): Promise<void>;
 }
 
+export interface OwnServerOptions {
+  /** The port (default: a free one). The update test restarts on the same origin. */
+  port?: number;
+  /** The built game to serve (`WEB_DIST_DIR`; default `apps/web/dist`). */
+  webDist?: string;
+}
+
 const REPO_ROOT = fileURLToPath(new URL('../../../..', import.meta.url));
 
 /** A port nobody listens on right now. */
-async function freePort(): Promise<number> {
+export async function freePort(): Promise<number> {
   const probe = createServer();
   probe.listen(0);
   await once(probe, 'listening');
@@ -28,12 +36,15 @@ async function freePort(): Promise<number> {
   return port;
 }
 
-export async function startOwnServer(): Promise<OwnServer> {
-  const port = await freePort();
+export async function startOwnServer(options: OwnServerOptions = {}): Promise<OwnServer> {
+  const port = options.port ?? (await freePort());
   const origin = `http://localhost:${port}`;
+  const env: NodeJS.ProcessEnv = { ...process.env, PORT: String(port) };
+  if (options.webDist === undefined) delete env['WEB_DIST_DIR'];
+  else env['WEB_DIST_DIR'] = options.webDist;
   const server = spawn(process.execPath, ['apps/server/dist/main.js'], {
     cwd: REPO_ROOT,
-    env: { ...process.env, PORT: String(port) },
+    env,
     stdio: 'ignore',
   });
   const exited = once(server, 'exit');

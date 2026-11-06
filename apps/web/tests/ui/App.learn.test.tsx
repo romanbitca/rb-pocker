@@ -13,14 +13,6 @@ import { App } from '../../src/ui/App.tsx';
 import { loadScreens } from '../../src/ui/screensModule.ts';
 import { elapse, playUntil, startTableHarness, type TableHarness } from './tableHarness.ts';
 
-vi.mock('virtual:pwa-register/react', () => ({
-  useRegisterSW: () => ({
-    needRefresh: [false, () => {}],
-    offlineReady: [false, () => {}],
-    updateServiceWorker: async () => {},
-  }),
-}));
-
 beforeAll(async () => {
   await loadScreens(); // the screens lazy chunk (the Table, the Menu), as App asks for it after first paint
 });

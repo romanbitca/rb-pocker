@@ -215,7 +215,12 @@ export type Toast =
   /** Leave table (§14.4): "This session: 45 hands · +640 chips · Decision score 82 · 4 mistakes." */
   | { id: number; kind: 'session'; session: SessionSummary }
   /** Settings → Diagnostics → "Export debug report" could only copy the report (§4.5, chunk 8.4). */
-  | { id: number; kind: 'debugCopied' };
+  | { id: number; kind: 'debugCopied' }
+  /**
+   * §15.1 (chunk 9.5): "Update ready. It installs after this hand." (a new version waits for the
+   * hand's end) and, once ever, "Ready to play offline." (the first service worker installed).
+   */
+  | { id: number; kind: 'updateReady' | 'offlineReady' };
 
 /**
  * The first-table tips (§12.11, chunk 9.3), each shown at most once (`profile.flags.tips`): on the
