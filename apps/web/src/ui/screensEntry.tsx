@@ -153,6 +153,7 @@ export function MenuOverlay() {
       onOpenHands={hands > 0 ? () => dispatch({ type: 'review', handSeq: null }) : undefined}
       onOpenSettings={() => dispatch({ type: 'go', screen: 'settings' })}
       onOpenStats={() => dispatch({ type: 'go', screen: 'stats' })}
+      onOpenLearn={() => dispatch({ type: 'go', screen: 'learn' })}
       onInstall={
         install
           ? () => {

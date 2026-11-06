@@ -7,7 +7,8 @@
  *   acceptance 9).
  * - The first screen is Welcome or Home; everything after a tap (the Table, Setup, Settings, the
  *   Menu, the §3.1 dialogs) is one lazy chunk, `screensEntry.tsx`, asked for as soon as the first
- *   screen is painted (`usePreloadScreens`), so it is there before the first tap (§15.3).
+ *   screen is painted (`usePreloadScreens`), so it is there before the first tap (§15.3). Review,
+ *   Stats and Learn (its four screens, chunk 9.2) load their own chunks when they are first opened.
  * - The UI talks to the game only through the store (`useAppStore`, `dispatch`, §2.1): screens
  *   stay presentational; the small wrappers below (and in `screensEntry.tsx`) give them their
  *   props.
@@ -17,7 +18,7 @@
  *   Instant 0); `data-motion` follows "reduce motion" (the system's choice unless the setting says
  *   otherwise), and `data-deck="two"` the two-colour deck.
  */
-import { lazy, Suspense, useCallback, useEffect, useRef } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useRef, type ComponentType } from 'react';
 import { useRegisterSW } from 'virtual:pwa-register/react';
 import {
   selectBotCard,
@@ -32,6 +33,7 @@ import {
   type Command,
   type Nav,
   type Nudge,
+  type Screen,
   type Speed,
 } from '../app/store.ts';
 import { en } from '../i18n/en.ts';
@@ -43,6 +45,7 @@ import { Home } from './screens/Home.tsx';
 import { ScreenSwitcher } from './screens/ScreenSwitcher.tsx';
 import screenStyles from './screens/Screen.module.css';
 import { Welcome } from './screens/Welcome.tsx';
+import type { LearnPage } from './learn.ts';
 import { usePreloadScreens, useScreens, type ScreensModule } from './screensModule.ts';
 
 /** §12.8: animation and pause factor per speed. */
@@ -80,6 +83,7 @@ function WelcomeScreen() {
     <Welcome
       onPlay={() => dispatch({ type: 'play' })}
       onSetup={() => dispatch({ type: 'go', screen: 'setup' })}
+      onOpenGuide={() => dispatch({ type: 'lesson', lesson: 1 })}
       nudge={nudgeProps(nudge, dispatch)}
     />
   );
@@ -97,6 +101,7 @@ function HomeScreen() {
       onPlay={() => dispatch({ type: 'play' })}
       onNewTable={() => dispatch({ type: 'go', screen: 'setup' })}
       onOpenSettings={() => dispatch({ type: 'go', screen: 'settings' })}
+      onOpenLearn={() => dispatch({ type: 'go', screen: 'learn' })}
       onOpenStats={() => dispatch({ type: 'go', screen: 'stats' })}
       // "Install app" while the browser offers it; its dialog opens from the tap itself (§12.13).
       onInstall={install ? () => dispatch({ type: 'install' }) : undefined}
@@ -255,15 +260,28 @@ const StatsLazy = lazy(async () => {
   }
 });
 
+// Learn (§12.1, chunk 9.2): its four screens (the list, a lesson, the hand rankings, the glossary)
+// are one lazy chunk, loaded when Learn is first opened (§15.3; its styles are in the one
+// stylesheet) and precached, so it opens offline.
+const LearnLazy = lazy<ComponentType<{ page: LearnPage }>>(async () => {
+  try {
+    const { LearnRoute } = await import('./screens/Learn.tsx');
+    return { default: LearnRoute };
+  } catch {
+    return { default: LearnFailed };
+  }
+});
+
 /**
- * While the Stats chunk loads (its heading, so the focus has somewhere to go, and "Loading…" after
- * half a second, as for the screens after the first tap), or when it cannot load (a line and Back).
+ * While a lazy screen's chunk loads (its heading, so the focus has somewhere to go, and "Loading…"
+ * after half a second, as for the screens after the first tap), or when it cannot load (a line
+ * and Back).
  */
-function StatsWaiting({ failed }: { failed: boolean }) {
+function LazyWaiting({ title, failed }: { title: string; failed: boolean }) {
   const dispatch = useDispatch();
   return (
     <main className={screenStyles.page}>
-      <h1 className={screenStyles.title}>{en.stats.title}</h1>
+      <h1 className={screenStyles.title}>{title}</h1>
       {failed ? (
         <>
           <p className={screenStyles.hint} role="alert">
@@ -284,7 +302,7 @@ function StatsWaiting({ failed }: { failed: boolean }) {
   );
 }
 
-const StatsFailed = () => <StatsWaiting failed />;
+const StatsFailed = () => <LazyWaiting title={en.stats.title} failed />;
 
 /** The Stats screen over its lazy chunk; a render error leaves it (Back), as for Review. */
 function StatsScreen() {
@@ -292,8 +310,23 @@ function StatsScreen() {
   const leave = useCallback(() => dispatch({ type: 'back' }), [dispatch]);
   return (
     <LoadBoundary onError={leave}>
-      <Suspense fallback={<StatsWaiting failed={false} />}>
+      <Suspense fallback={<LazyWaiting title={en.stats.title} failed={false} />}>
         <StatsLazy />
+      </Suspense>
+    </LoadBoundary>
+  );
+}
+
+const LearnFailed = () => <LazyWaiting title={en.home.learn} failed />;
+
+/** A Learn screen over its lazy chunk; a render error leaves it (Back), as for Review. */
+function LearnScreen({ page }: { page: LearnPage }) {
+  const dispatch = useDispatch();
+  const leave = useCallback(() => dispatch({ type: 'back' }), [dispatch]);
+  return (
+    <LoadBoundary onError={leave}>
+      <Suspense fallback={<LazyWaiting title={en.home.learn} failed={false} />}>
+        <LearnLazy page={page} />
       </Suspense>
     </LoadBoundary>
   );
@@ -307,13 +340,36 @@ const SCREENS = {
   settings: () => <LaterScreen name="SettingsScreen" />,
   review: () => <ReviewScreen />,
   stats: () => <StatsScreen />,
+  learn: () => <LearnScreen page="learn" />,
+  lesson: () => <LearnScreen page="lesson" />,
+  handRankings: () => <LearnScreen page="handRankings" />,
+  glossary: () => <LearnScreen page="glossary" />,
 } as const;
 
 /**
  * §14.7: a read-only tab (another tab has the game) shows Home, whose §12.11 banner and "Play
- * here" replace Play: the game screens are not shown. The controller goes Home too.
+ * here" replace Play: the game screens are not shown. The controller goes Home too. "Stats and
+ * Learn stay readable": Stats (with a History hand's Review over it) and Learn write nothing, so
+ * they stay open to such a tab (Home keeps their tiles). Review over the Table does not: the Table
+ * is a game screen.
  */
 const READ_ONLY_NAV: Nav = { screens: ['home'], overlays: [] };
+const READ_ONLY_SCREENS: ReadonlySet<Screen> = new Set<Screen>([
+  'home',
+  'stats',
+  'review',
+  'learn',
+  'lesson',
+  'handRankings',
+  'glossary',
+]);
+
+/** What a read-only tab shows of `nav`: all of it when it holds only those screens, else Home. */
+function readOnlyNav(nav: Nav): Nav {
+  return nav.overlays.length === 0 && nav.screens.every((s) => READ_ONLY_SCREENS.has(s))
+    ? nav
+    : READ_ONLY_NAV;
+}
 
 // ---------------------------------------------------------------------------------------------
 // Overlays wired to the store (the Menu and the §3.1 dialogs are in the lazy chunk; the rankings
@@ -401,7 +457,11 @@ export function App() {
   return (
     <>
       <SvgSprite />
-      <ScreenSwitcher nav={readOnly ? READ_ONLY_NAV : nav} screens={SCREENS} overlays={OVERLAYS} />
+      <ScreenSwitcher
+        nav={readOnly ? readOnlyNav(nav) : nav}
+        screens={SCREENS}
+        overlays={OVERLAYS}
+      />
       <NoticeLayer />
     </>
   );

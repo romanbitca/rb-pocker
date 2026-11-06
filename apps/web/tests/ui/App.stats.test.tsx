@@ -3,12 +3,13 @@
  * The ways into Stats in the real app (PLAN §12.1, §14.4, chunk 8.2): Home's Stats tile and the
  * Table's Menu open the lazy Stats screen; the game waits while it is open and Back returns. Its
  * History lists the stored hands and a tap opens one in Review; Back from Review comes back to
- * History. The real store, controller (fixed seeds, fake timers, a fake storage) and `App`.
+ * History. A read-only tab (§14.7) still opens Stats from Home. The real store, controller (fixed
+ * seeds, fake timers, a fake storage) and `App`.
  */
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { initialReview } from '../../src/app/review.ts';
-import { appStore } from '../../src/app/store.ts';
+import { appStore, initialData, initialUi } from '../../src/app/store.ts';
 import { defaultProfile } from '../../src/persist/schema.ts';
 import { createSafeStorage, STORAGE_KEYS } from '../../src/persist/storage.ts';
 import { App } from '../../src/ui/App.tsx';
@@ -107,5 +108,35 @@ describe('Stats in the app', () => {
     expect((screen.getByRole('radio', { name: 'History' }) as HTMLInputElement).checked).toBe(true);
     tap('Back');
     expect(harness.state().ui.screen).toBe('table');
+  }, 30_000);
+
+  it('a read-only tab (§14.7): Stats stays readable from Home, but not over the Table', async () => {
+    // The store alone (no controller): another tab has the game.
+    appStore.setGameHandler(() => {});
+    appStore.setState({ ui: initialUi(false), data: { ...initialData(), tab: 'readOnly' } });
+    try {
+      render(<App />);
+      expect(screen.getByRole('button', { name: 'Play here' })).toBeTruthy();
+      tap('Stats');
+      await loaded();
+      expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('Stats');
+      expect(screen.getByRole('radio', { name: 'Progress' })).toBeTruthy();
+      tap('Back');
+      expect(screen.getByRole('button', { name: 'Play here' })).toBeTruthy();
+      // A game screen in the stack still shows Home only.
+      act(() =>
+        appStore.setState({
+          ui: {
+            ...appStore.getState().ui,
+            nav: { screens: ['home', 'table', 'stats'], overlays: [] },
+          },
+        }),
+      );
+      expect(screen.getByRole('button', { name: 'Play here' })).toBeTruthy();
+      expect(screen.queryByRole('heading', { name: 'Stats', level: 1 })).toBeNull();
+    } finally {
+      appStore.setGameHandler(null);
+      appStore.setState({ data: initialData(), ui: initialUi(false) });
+    }
   }, 30_000);
 });

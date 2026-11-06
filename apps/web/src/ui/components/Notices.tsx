@@ -8,7 +8,7 @@
 import type { SessionSummary, Toast } from '../../app/store.ts';
 import { en } from '../../i18n/en.ts';
 import { formatChips } from '../format.ts';
-import { joinNames } from '../handEnd.ts';
+import { joinNames } from '../names.ts';
 import styles from './Notices.module.css';
 
 /** A toast's text (§12.11): each kind is a key of `en.toast` (Leave table's line, chunk 8.2, is built). */

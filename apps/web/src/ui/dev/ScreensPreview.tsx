@@ -282,9 +282,14 @@ function Flow({ navigation }: { navigation: PreviewNavigation }) {
             onBack={back}
           />
         ),
-        // Review is a lazy screen of the real app (ui/screens/Review.tsx); not previewed here.
+        // Review, Stats and Learn are lazy screens of the real app (ui/screens/Review.tsx,
+        // Stats.tsx, Learn.tsx); not previewed here.
         review: () => <h1>Review</h1>,
         stats: () => <h1>Stats</h1>,
+        learn: () => <h1>Learn</h1>,
+        lesson: () => <h1>Lesson</h1>,
+        handRankings: () => <h1>Poker hands</h1>,
+        glossary: () => <h1>Glossary</h1>,
       }}
       overlays={{
         menu: () => (

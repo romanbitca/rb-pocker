@@ -22,6 +22,9 @@
  *    shows `eRandom` unless RANGE_ADJUST labelled the range number (pitfall 35); "Why not fold?"
  *    only when the win chance beats the price; the headline is the action; the price bar (§12.6)
  *    only facing a bet, never ✓ next to a fold nor ✗ next to a call or a raise.
+ * 4. **Lessons** (`checkLessons`, `data/lessons.ts`, F.8; chunk 9.2): at most 150 words a lesson
+ *    (its picture's labels and line, the price bar's numbers and its text), every sentence at most
+ *    15 words, whole-number percentages, no stray brace.
  */
 import {
   CLOSE_POINTS,
@@ -52,7 +55,9 @@ import {
   type GlossaryEntry,
   type Segment,
 } from '../src/i18n/coach.ts';
+import { LESSONS, type Lesson, type LessonBlock } from '../src/data/lessons.ts';
 import { enCoach } from '../src/i18n/enCoach.ts';
+import { learnWords } from '../src/i18n/learn.ts';
 
 /** §8.10: at most 15 words a sentence. */
 export const MAX_WORDS = 15;
@@ -447,5 +452,63 @@ function barProblems(e: Explanation, input: ExplainInput): string[] {
     const mark = bar.good ? '✓' : '✗';
     problems.push(`the price bar shows ${mark} next to ${input.action.type} (${bar.basis})`);
   }
+  return problems;
+}
+
+// ── 4. Lessons ─────────────────────────────────────────────────────────────────────────────────
+
+/** F.8: at most 150 words a lesson. */
+export const MAX_LESSON_WORDS = 150;
+
+/** One block of a lesson as the lines a reader sees ("Fold: Give up the hand." for a term). */
+export function blockLines(block: LessonBlock): string[] {
+  if (typeof block === 'string') return [block];
+  if ('steps' in block) return [...block.steps];
+  if ('points' in block) return [...block.points];
+  return block.terms.map(([term, meaning]) => `${term}: ${meaning}`);
+}
+
+/**
+ * Every line a lesson shows besides its title: the picture's labels, the price bar's numbers,
+ * the line under the picture and the text.
+ */
+export function lessonLines(lesson: Lesson): string[] {
+  const { diagram } = lesson;
+  return [
+    ...diagram.groups.map((g) => g.label),
+    ...(diagram.price ? [learnWords.price(diagram.price.win, diagram.price.need)] : []),
+    diagram.caption,
+    ...lesson.body.flatMap(blockLines),
+  ];
+}
+
+/** A lesson's words, counted as sentences count them (a symbol such as "÷" or "=" is none). */
+export function lessonWords(lesson: Lesson): number {
+  return lessonLines(lesson).reduce(
+    (n, line) => n + sentenceWords([{ text: line }]).reduce((m, words) => m + words.length, 0),
+    0,
+  );
+}
+
+/**
+ * Every problem of the lessons (F.8, chunk 9.2): at most 150 words each, every sentence at most
+ * 15 words (§8.10's rule, for the same readers), whole-number percentages, no stray brace.
+ */
+export function checkLessons(lessons: readonly Lesson[] = LESSONS): string[] {
+  const problems: string[] = [];
+  lessons.forEach((lesson, i) => {
+    const name = `lesson ${i + 1} "${lesson.title}"`;
+    const words = lessonWords(lesson);
+    if (words > MAX_LESSON_WORDS) {
+      problems.push(`${name}: ${words} words (at most ${MAX_LESSON_WORDS})`);
+    }
+    for (const line of [lesson.title, ...lessonLines(lesson)]) {
+      for (const long of longSentences([{ text: line }])) {
+        problems.push(`${name}: a sentence of ${long}`);
+      }
+      if (/\d\.\d/.test(line)) problems.push(`${name}: a decimal number in "${line}"`);
+      if (/[{}]/.test(line)) problems.push(`${name}: a stray brace in "${line}"`);
+    }
+  });
   return problems;
 }
