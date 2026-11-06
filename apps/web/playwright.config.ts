@@ -59,6 +59,9 @@ const PROJECTS = (['chromium', 'webkit'] as const).flatMap((browserName) =>
       browserName,
       viewport: { width, height },
       screen: { width, height },
+      // Silent test browsers on the dev Mac (owner, 6 Nov 2026). WebKit has no such switch; the
+      // E2E build plays its cues at gain 0 (`masterGain` in src/sound/synth.ts).
+      ...(browserName === 'chromium' ? { launchOptions: { args: ['--mute-audio'] } } : {}),
     },
   })),
 );
