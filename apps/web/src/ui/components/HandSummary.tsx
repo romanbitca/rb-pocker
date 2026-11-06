@@ -2,8 +2,9 @@
  * The end-of-hand summary (PLAN §10.2, §12.9; chunk 6.4): a bottom sheet over the table when the
  * level shows one (Beginner every hand; Intermediate after an Inaccuracy or worse; Advanced after
  * a Mistake or worse; Exam every hand, as the "Exam result"). Title "Hand 12: +160"; one row per
- * hero decision: street, what you did, the grade chip, the coach's move when it was another, and
- * the numbers at the decision ("You had 45%, needed 25%."). Exam adds the score of the hand
+ * hero decision: street, what you did, the grade chip, the coach's move when it was another (with
+ * a Best grade: "Calling was as good as folding here."), and the numbers at the decision ("You
+ * had 45%, needed 25%."). Exam adds the score of the hand
  * (§14.4). Buttons [Review hand] and [Next hand ›]; ✕, Esc, the scrim and Back close it (the
  * banner stays, and the next hand waits its 3 s again). Above the buttons, the level suggestion
  * card when there is one (§10.4, chunk 8.4).
@@ -88,10 +89,38 @@ function coachText(a: PlayerAction, money: (x: number) => string): string {
   }
 }
 
-/** The second line of a row: the coach's move when it was another, then the numbers. */
+/** "Calling", "Raising to 60" (`doing`) or "folding", "raising to 60" (`coachDoing`). */
+function doingText(
+  a: PlayerAction,
+  words: typeof W.doing | typeof W.coachDoing,
+  money: (x: number) => string,
+): string {
+  switch (a.type) {
+    case 'fold':
+    case 'check':
+    case 'call':
+      return words[a.type];
+    case 'bet':
+      return words.bet(money(a.to));
+    case 'raise':
+      return words.raise(money(a.to));
+  }
+}
+
+/**
+ * The second line of a row: the coach's move when it was another, then the numbers. A Best grade
+ * for another move says it was as good ("Calling was as good as folding here."), never "Best move"
+ * next to a bare "Coach: Fold" (§8.9: the close alternative, or a loss of at most 1% of the pot).
+ */
 export function rowNotes(row: SummaryRow, money: (x: number) => string): string {
   const notes: string[] = [];
-  if (!sameMove(row.taken, row.rec)) notes.push(coachText(row.rec, money));
+  if (!sameMove(row.taken, row.rec)) {
+    notes.push(
+      row.grade === 'best'
+        ? W.asGood(doingText(row.taken, W.doing, money), doingText(row.rec, W.coachDoing, money))
+        : coachText(row.rec, money),
+    );
+  }
   if (row.eRandom !== null) {
     const pct = (x: number): string => percentText(100 * x);
     notes.push(

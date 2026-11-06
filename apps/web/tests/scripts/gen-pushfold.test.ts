@@ -10,9 +10,12 @@ import {
   PUSH_FOLD_BYTES,
   PUSH_MAX_PLAYERS_BEHIND,
   PUSH_MAX_STACK_BB,
+  PUSH_SET_BYTES,
+  pushSetHas,
   RANGE_CLASSES,
 } from '../../src/data/rangesLayout.ts';
 import {
+  addToPushSet,
   encodePushFold,
   freeCombos,
   generate,
@@ -23,6 +26,7 @@ import {
   pairJobs,
   pairSeed,
   PUSH_FOLD_FILE,
+  PUSH_SET_MIN,
   solveTables,
   TABLE_SEED,
 } from '../../scripts/gen-pushfold.ts';
@@ -215,14 +219,32 @@ describe('the tables', () => {
       (_, i) => i / 3,
     );
     const call = Array.from({ length: PUSH_MAX_STACK_BB }, (_, i) => 100 - i);
-    const bytes = encodePushFold({ push, call });
+    const sets = new Uint8Array(PUSH_SET_BYTES);
+    addToPushSet(sets, 0, 0);
+    addToPushSet(sets, 24, 168);
+    const bytes = encodePushFold({ push, call, sets });
     expect(bytes).toHaveLength(PUSH_FOLD_BYTES);
     const table = decodePushFold(Buffer.from(bytes).toString('base64'));
     expect(Array.from(table.push)).toEqual(push.map(hundredths));
     expect(Array.from(table.call)).toEqual(call.map(hundredths));
-    expect(() => encodePushFold({ push: push.slice(1), call })).toThrow(RangeError);
-    expect(() => encodePushFold({ push: [101, ...push.slice(1)], call })).toThrow(RangeError);
+    expect(Array.from(table.sets)).toEqual(Array.from(sets));
+    expect(pushSetHas(table.sets, 0, 0)).toBe(true);
+    expect(pushSetHas(table.sets, 24, 168)).toBe(true);
+    expect(pushSetHas(table.sets, 24, 167)).toBe(false);
+    expect(() => encodePushFold({ push: push.slice(1), call, sets })).toThrow(RangeError);
+    expect(() => encodePushFold({ push: [101, ...push.slice(1)], call, sets })).toThrow(RangeError);
+    expect(() => encodePushFold({ push, call, sets: sets.slice(1) })).toThrow(RangeError);
   });
+
+  it('the push set of a game is the classes the solver shoves at least half the time', () => {
+    const mu = synthetic();
+    const tables = solveTables(mu, 20);
+    const solution = solvePushFold(mu, 2, 10, 20);
+    for (let cls = 0; cls < 169; cls++) {
+      const push = solution.push[cls] as number;
+      expect(pushSetHas(tables.sets, 24, cls), String(cls)).toBe(push >= PUSH_SET_MIN);
+    }
+  }, 60_000);
 
   it('solves every stack and number of players behind, and reports the drift', () => {
     const mu = synthetic();

@@ -31,6 +31,27 @@ export const summaryWords = {
     bet: (x: string) => `Coach: Bet ${x}`,
     raise: (x: string) => `Coach: Raise to ${x}`,
   },
+  /**
+   * A Best grade for a move other than the coach's (§8.9: the close alternative, or a loss of at
+   * most 1% of the pot) says so, in place of "Coach: Fold": "Calling was as good as folding here."
+   * (fix/coach-strategy-audit: "Best move" next to "Coach: Fold" left the player guessing.)
+   */
+  asGood: (did: string, coach: string) => `${did} was as good as ${coach} here.`,
+  /** The moves in `asGood`: what you did, then the coach's. */
+  doing: {
+    fold: 'Folding',
+    check: 'Checking',
+    call: 'Calling',
+    bet: (x: string) => `Betting ${x}`,
+    raise: (x: string) => `Raising to ${x}`,
+  },
+  coachDoing: {
+    fold: 'folding',
+    check: 'checking',
+    call: 'calling',
+    bet: (x: string) => `betting ${x}`,
+    raise: (x: string) => `raising to ${x}`,
+  },
   /** The numbers at the decision: "You had 45%, needed 25%." (each with its % sign). */
   numbers: (win: string, need: string) => `You had ${win}, needed ${need}.`,
   win: (win: string) => `You had ${win}.`,

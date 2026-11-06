@@ -13,8 +13,14 @@
 export const RANGE_CLASSES = 169;
 /** C(52, 2): every two-card hand. A class counts 6 (pair), 4 (suited) or 12 (offsuit) of them. */
 export const COMBOS_TOTAL = 1326;
-/** The ranges of `eqVsRange`: "the top X%" of the 1,326 combos, X in percent (§8.3). */
-export const RANGE_KNOTS: readonly number[] = [3, 5, 8, 12, 15, 20, 25, 30, 40, 50, 65, 80, 100];
+/**
+ * The ranges of `eqVsRange`: "the top X%" of the 1,326 combos, X in percent (§8.3). 2.5 is the
+ * 4-bet range (`FOUR_BET_RANGE_PCT`), read at its own column (fix/coach-strategy-audit: the 3%
+ * column holds most of 99 as well and read JJ at 45% against the 4-bet range, 37% in truth).
+ */
+export const RANGE_KNOTS: readonly number[] = [
+  2.5, 3, 5, 8, 12, 15, 20, 25, 30, 40, 50, 65, 80, 100,
+];
 /** Push/fold: `k` = players still to act behind the pusher, 1..8 (§8.4). */
 export const PUSH_MAX_PLAYERS_BEHIND = 8;
 /** Push/fold: the effective stack `S` in big blinds, 1..15 (§8.4). */
@@ -27,8 +33,15 @@ export const RANGES_BYTES = RANGE_CLASSES + RANGES_EQ_WORDS * 2;
 /** Words of `pushPct` (8 × 15) and of `callPct` (15), both in hundredths of a percent. */
 export const PUSH_WORDS = PUSH_MAX_PLAYERS_BEHIND * PUSH_MAX_STACK_BB;
 export const CALL_WORDS = PUSH_MAX_STACK_BB;
-/** The `pushfold` blob: `pushPct` row by row (k = 1..8, S = 1..15), then `callPct` (S = 1..15). */
-export const PUSH_FOLD_BYTES = (PUSH_WORDS + CALL_WORDS) * 2;
+/** One game's push set: a bit per class (bit `c % 8` of byte `c >> 3`), 22 bytes. */
+export const PUSH_SET_BYTES_PER_GAME = Math.ceil(RANGE_CLASSES / 8);
+/** The push sets of the 120 games, in `pushPct` order. */
+export const PUSH_SET_BYTES = PUSH_WORDS * PUSH_SET_BYTES_PER_GAME;
+/**
+ * The `pushfold` blob: `pushPct` row by row (k = 1..8, S = 1..15), then `callPct` (S = 1..15),
+ * both as Uint16 words; then the push set of each game (the classes the solver shoves, §8.4).
+ */
+export const PUSH_FOLD_BYTES = (PUSH_WORDS + CALL_WORDS) * 2 + PUSH_SET_BYTES;
 
 /** 6 for a pair, 4 for a suited class, 12 for an offsuit class (the `classCombos` of core/cards). */
 export function comboCount(cls: number): 6 | 4 | 12 {
@@ -98,9 +111,31 @@ export interface PushFoldTable {
   readonly push: Uint16Array;
   /** `callPct` in hundredths of a percent: word `S - 1`. */
   readonly call: Uint16Array;
+  /** The push sets, `PUSH_SET_BYTES_PER_GAME` bytes per game in `push` order (`pushSetHas`). */
+  readonly sets: Uint8Array;
 }
 
-/** The `pushfold` blob: little-endian Uint16 words, `pushPct` first and then `callPct`. */
+/** The game `(k, S)`'s index in the `pushPct` order: `(k - 1) * 15 + (S - 1)`. */
+export function pushGameIndex(k: number, S: number): number {
+  if (!Number.isInteger(k) || k < 1 || k > PUSH_MAX_PLAYERS_BEHIND) {
+    throw new RangeError(`pushGameIndex: k must be 1..${PUSH_MAX_PLAYERS_BEHIND}: ${k}`);
+  }
+  if (!Number.isInteger(S) || S < 1 || S > PUSH_MAX_STACK_BB) {
+    throw new RangeError(`pushGameIndex: S must be 1..${PUSH_MAX_STACK_BB}: ${S}`);
+  }
+  return (k - 1) * PUSH_MAX_STACK_BB + (S - 1);
+}
+
+/** Does the solver shove class `cls` in game `game` (`pushGameIndex`)? */
+export function pushSetHas(sets: Uint8Array, game: number, cls: number): boolean {
+  const at = game * PUSH_SET_BYTES_PER_GAME + (cls >> 3);
+  return (((sets[at] as number) >> (cls & 7)) & 1) === 1;
+}
+
+/**
+ * The `pushfold` blob: little-endian Uint16 words, `pushPct` first and then `callPct`, then the
+ * push sets (bits).
+ */
 export function decodePushFold(base64: string): PushFoldTable {
   const bytes = decodeBase64(base64);
   if (bytes.length !== PUSH_FOLD_BYTES) {
@@ -109,7 +144,11 @@ export function decodePushFold(base64: string): PushFoldTable {
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   const words = new Uint16Array(PUSH_WORDS + CALL_WORDS);
   for (let i = 0; i < words.length; i++) words[i] = view.getUint16(2 * i, true);
-  return { push: words.slice(0, PUSH_WORDS), call: words.slice(PUSH_WORDS) };
+  return {
+    push: words.slice(0, PUSH_WORDS),
+    call: words.slice(PUSH_WORDS),
+    sets: bytes.slice(2 * words.length),
+  };
 }
 
 /** Why `order` is not a ranking of the 169 classes (a class missing or twice), or null. */
@@ -178,9 +217,23 @@ const TOP_15 = [
 ];
 
 /**
- * The range acceptance of §8.3, on `rankPct` (percent, `rankPctFromOrder`): the top 5% contains AA to JJ and
- * AKs; the top 15% contains 88+, ATs+, KQs, AJo+ and KQo; 72o is in the bottom 1%; 76s ranks
- * above K2o. One sentence per failure; an empty list means it passes.
+ * Late-position opens (§8.3, fix/coach-strategy-audit): standard opening ranges hold every pair
+ * and the suited connectors from late position. The limits are the §8.3 `openPct` of the seat:
+ * the small blind 40% (22 and 33; the button's is 43%), the cutoff 27% (44), the hijack 21% (55),
+ * the button 43% (76s).
+ */
+const LATE_OPENS: readonly (readonly [readonly string[], number])[] = [
+  [['22', '33'], 40],
+  [['44'], 27],
+  [['55'], 21],
+  [['76s'], 43],
+];
+
+/**
+ * The range acceptance of §8.3, on `rankPct` (percent, `rankPctFromOrder`): the top 5% contains AA
+ * to JJ and AKs; the top 15% contains 88+, ATs+, KQs, AJo+ and KQo; 72o is in the bottom 1%; 76s
+ * ranks above K2o; the late-position opens hold the small pairs and 76s (`LATE_OPENS`). One
+ * sentence per failure; an empty list means it passes.
  */
 export function rangeAcceptance(rankPct: (cls: number) => number): string[] {
   const problems: string[] = [];
@@ -193,6 +246,7 @@ export function rangeAcceptance(rankPct: (cls: number) => number): string[] {
   };
   need(TOP_5, 5);
   need(TOP_15, 15);
+  for (const [names, limit] of LATE_OPENS) need(names, limit);
   const worst = rankPct(classByName('72o'));
   if (!(worst >= 99)) problems.push(`72o is at ${worst.toFixed(2)}%, not in the bottom 1%`);
   const connector = rankPct(classByName('76s'));

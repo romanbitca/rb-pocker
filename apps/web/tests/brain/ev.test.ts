@@ -19,11 +19,14 @@ import {
   evFold,
   evModel,
   foldEquity,
+  foldSituation,
   mdf,
+  measuredFoldFactor,
   readContinueFraction,
   seatStickiness,
   type EvSpot,
 } from '../../src/brain/ev.ts';
+import { FOLD_FACTOR } from '../../src/brain/tunables.ts';
 import { emptySeatStats } from '../../src/brain/opponentStats.ts';
 import { coachSeed, features } from '../../src/brain/features.ts';
 import { isLegalAction } from '../../src/brain/guardrails.ts';
@@ -271,6 +274,91 @@ describe('§8.9 EV model on spots played through the engine', () => {
     expect(seatStickiness(obs, 1)).toBe(1.4); // visible Station (its level does not matter)
     expect(seatStickiness(obs, 2)).toBeCloseTo(10.1 / 8, 12); // hidden, Easy list
     expect(seatStickiness(obs, 0)).toBeCloseTo(9.3 / 8, 12); // hidden, Medium list
+  });
+});
+
+describe('the coach’s measured folds (§8.9, audit #1)', () => {
+  const at = (spec: SpotSpec): Observation => {
+    const h = playSpot(spec);
+    return observeSpot(h, h.toAct as number);
+  };
+  const six = new Array<number>(6).fill(10000);
+
+  it('the situation of a bet or raise, and its factor φ', () => {
+    const open = at({ stacks: six, button: 0, inputs: [] });
+    expect(foldSituation(open, false)).toBe('open');
+    expect(foldSituation(open, true)).toBe('reraise'); // an open shove: called only with good hands
+    const facing = at({ stacks: six, button: 0, inputs: [raise(3, 250)] });
+    expect(foldSituation(facing, false)).toBe('reraise');
+    const flop = at({ stacks: HU, button: 0, board: 'Kd 8h 3c', inputs: [raise(0, 250), call(1)] });
+    expect(foldSituation(flop, false)).toBe('flopBet');
+    const raised = at({
+      stacks: HU,
+      button: 0,
+      board: 'Kd 8h 3c',
+      inputs: [raise(0, 250), call(1), bet(1, 200)],
+    });
+    expect(foldSituation(raised, false)).toBe('raise');
+    const turn = { ...flop, street: 'turn' } as const;
+    const river = { ...flop, street: 'river' } as const;
+    expect([foldSituation(turn, false), foldSituation(river, false)]).toEqual([
+      'turnBet',
+      'riverBet',
+    ]);
+    expect(measuredFoldFactor(open, false)).toBe(0.4);
+    expect(measuredFoldFactor(raised, false)).toBe(0.2);
+    expect(FOLD_FACTOR).toEqual({
+      open: 0.4,
+      reraise: 0.75,
+      flopBet: 0.3,
+      turnBet: 0.5,
+      riverBet: 0.9,
+      raise: 0.2,
+    });
+  });
+
+  it('the nuts in closed form: FE = φ(1 − c), the caller keeps 1 − φ(1 − c) of its range', () => {
+    const { spot } = modelAt(royal(), { R: 0.5, stickiness: 1 });
+    const measured = { ...spot, measuredFolds: true };
+    // Half pot (T = 300) on the river: c = 2/3, φ = 0.9 → FE = 0.3; called 70%:
+    // 0.3 × 600 + 0.7 × (0.5 × 1,200 − 300) = 390 (the MDF model: 400).
+    expect(actionEV(measured, { type: 'bet', to: 300 })).toBeCloseTo(390, 9);
+    expect(actionEV(spot, { type: 'bet', to: 300 })).toBeCloseTo(400, 9);
+  });
+
+  it('a pure bluff loses about (1 − φ) of what it puts in; with MDF alone it broke even', () => {
+    // 7♣2♦ on A♠K♠Q♠J♦9♥, checked to the hero on the river: almost no equity when called.
+    const spec: SpotSpec = {
+      stacks: HU,
+      button: 0,
+      holes: { 0: '7c 2d' },
+      board: 'As Ks Qs Jd 9h',
+      inputs: [raise(0, 300), call(1), check(1), check(0), check(1), check(0), check(1)],
+    };
+    const { spot } = modelAt(spec, { R: 1, stickiness: 1 });
+    const bluff = { type: 'bet', to: 600 } as const; // a pot-size bet: MDF 50%
+    const mdfEV = actionEV(spot, bluff);
+    const honest = actionEV({ ...spot, measuredFolds: true }, bluff);
+    expect(Math.abs(mdfEV)).toBeLessThan(0.05 * 600);
+    expect(honest).toBeLessThan(-0.08 * 600); // −(1 − 0.9) × 600 = −60, plus a little equity
+    expect(honest).toBeLessThan(actionEV({ ...spot, measuredFolds: true }, CHECK) - 0.03 * 600);
+  });
+
+  it('after the flop every opponent who can act calls: A-high does not bet into three players', () => {
+    // Four-handed flop, checked to the hero on the button with A♥4♣ (no pair, no draw).
+    const spec: SpotSpec = {
+      stacks: [10000, 10000, 10000, 10000],
+      button: 0,
+      holes: { 0: 'Ah 4c' },
+      board: 'Qs 8s 7h',
+      inputs: [call(3), call(0), call(1), check(2), check(1), check(2), check(3)],
+    };
+    const { spot } = modelAt(spec, { R: 0.85, stickiness: 1 });
+    const measured = { ...spot, measuredFolds: true };
+    const bet = { type: 'bet', to: 300 } as const;
+    // One caller, heads-up against its range (the MDF model), flatters the bet.
+    expect(actionEV(measured, bet)).toBeLessThan(actionEV(spot, bet));
+    expect(actionEV(measured, bet)).toBeLessThan(actionEV(measured, CHECK) - 0.03 * spot.f.pot);
   });
 });
 

@@ -285,6 +285,17 @@ describe('the recommendation, the close spot, and moves rated higher (C8, §8.9)
     expect(scoreGrade(facts({ rec: CALL, taken: CALL, takenEV: 100, E: 0 })).grade).toBe('best');
   });
 
+  it('a preflop bluff re-raise (C10) is never Best, even within 1% of the pot: at most Good', () => {
+    // Facing an open the coach folds (EV 0); a 3-bet the model rates at −1 chip of a 1,000 pot.
+    const bluff = (bluffReraise: boolean) =>
+      scoreGrade({
+        ...facts({ rec: FOLD, recEV: 0, taken: raiseTo(750), takenEV: -1 }),
+        bluffReraise,
+      });
+    expect(bluff(false).grade).toBe('best');
+    expect(bluff(true).grade).toBe('good');
+  });
+
   it('in a Close spot the alternative is Best too ("Close call: {alt} is also fine")', () => {
     // The coach bets 300 (EV 400); checking is within 3% of the 1,000 pot (EV 375).
     const close = (taken: PlayerAction, takenEV: number, alt: PlayerAction | null = CHECK) =>
@@ -699,13 +710,13 @@ describe('real spots: following the hint is Best (C8), the coach never contradic
   });
 
   it('a Close spot: the alternative is Best; a move rated above the recommendation is Good', () => {
-    // Pocket sixes on K♦ 8♥ 3♣, checked to the button: bet 150, or check (within 3% of the pot).
+    // Pocket eights on K♠ 9♥ 4♣, checked to the button: bet 150, or check (within 3% of the pot).
     const s = spot(
       {
         stacks: [10000, 10000],
         button: 0,
-        holes: { 0: '6d 6c' },
-        board: 'Kd 8h 3c',
+        holes: { 0: '8d 8c' },
+        board: 'Ks 9h 4c',
         inputs: [raise(0, 250), call(1), check(1)],
       },
       0,
@@ -759,6 +770,80 @@ describe('real spots: following the hint is Best (C8), the coach never contradic
   });
 });
 
+describe('audit #1: bluffs come out clearly worse, never "also fine", never Best', () => {
+  it('7♣2♦ folded to the cutoff: the open is no close call and is Slightly off, open-loose', () => {
+    const s = spot(
+      { stacks: SIX, button: 0, holes: { 5: '7c 2d' }, inputs: [fold(3), fold(4)] },
+      5,
+    );
+    const d = s.answer.hint.decision;
+    expect(s.rec).toEqual(FOLD);
+    expect(d.confidence).not.toBe('close');
+    expect(d.alt).toBeNull();
+    const pot = s.obs.pot;
+    const open = d.ev[candidateKey(s.obs.legal, raiseTo(250))] as number;
+    expect(open).toBeLessThan(-0.1 * pot); // the MDF model had it at −1 chip: within 3% of folding
+    const g = s.answer.grade(raiseTo(250), 0);
+    expect(g).toMatchObject({ grade: 'inaccuracy', leak: 'open-loose' });
+  });
+
+  it('6♣3♦ in the big blind, 41 bb, facing an open and a 3-bet: the shove is a Mistake', () => {
+    const s = spot(
+      {
+        stacks: new Array<number>(6).fill(4100),
+        button: 4,
+        holes: { 0: '6c 3d' },
+        inputs: [raise(1, 250), fold(2), fold(3), fold(4), raise(5, 1000)],
+      },
+      0,
+    );
+    const d = s.answer.hint.decision;
+    expect(s.rec).toEqual(FOLD);
+    expect(d.alt).toBeNull(); // C10: the coach never offers a bluff re-raise
+    // The MDF model: −14 chips of a 1,350 pot, "Close call: All-in is also fine".
+    expect(d.ev.allin as number).toBeLessThan(-0.2 * s.obs.pot);
+    const shove = raiseTo(s.obs.legal.raise?.max ?? 0);
+    expect(s.answer.grade(shove, 0).grade).toBe('mistake');
+  });
+
+  it('T♠T♦ on the river at about 5% against a 4-bettor’s bet: all-in is a Big mistake', () => {
+    // The audit's g2-t11-h0-d5: the hero limps the button, the small blind raises, the hero
+    // 3-bets, the small blind 4-bets, the hero calls; checked to the river, which it bets.
+    const s = spot(
+      {
+        stacks: new Array<number>(6).fill(15000),
+        button: 0,
+        holes: { 0: 'Ts Td' },
+        board: '9c 8c Ad 6d Qh',
+        inputs: [
+          fold(3),
+          fold(4),
+          fold(5),
+          call(0),
+          raise(1, 400),
+          fold(2),
+          raise(0, 1200),
+          raise(1, 2750),
+          call(0),
+          check(1),
+          check(0),
+          check(1),
+          check(0),
+          bet(1, 3750),
+        ],
+      },
+      0,
+    );
+    const d = s.answer.hint.decision;
+    expect(s.rec).toEqual(FOLD);
+    expect(d.confidence).not.toBe('close');
+    const pot = s.obs.pot;
+    const shove = raiseTo(s.obs.legal.raise?.max ?? 0);
+    expect(d.ev.allin as number).toBeLessThan(-0.3 * pot); // MDF: −234 of a 9,350 pot, "close"
+    expect(s.answer.grade(shove, 0).grade).toBe('blunder');
+  });
+});
+
 describe('real spots: the grade, the leak and the F.5 reason a player meets', () => {
   it('folding the nut flush to a 1 bb bet: a Big mistake only with 5 bb lost (the bb floor)', () => {
     const hu = spot(NUT_FLUSH_HU, 0).answer.grade(FOLD, 3);
@@ -795,12 +880,12 @@ describe('real spots: the grade, the leak and the F.5 reason a player meets', ()
   });
 
   it('calling an early raise with players behind: the price row names every player (§8.10)', () => {
-    // UTG raises to 3 bb, two folds, the hero on the button with Q♥8♦; both blinds to act.
+    // UTG raises to 3 bb, two folds, the hero on the button with Q♥10♦; both blinds to act.
     const s = spot(
       {
         stacks: SIX,
         button: 0,
-        holes: { 0: 'Qh 8d' },
+        holes: { 0: 'Qh Td' },
         inputs: [raise(3, 300), fold(4), fold(5)],
       },
       0,
@@ -887,12 +972,15 @@ describe('real spots: the grade, the leak and the F.5 reason a player meets', ()
     expect(g.feedback).toEqual(
       feedbackLine({ row: 'pushFold', S: 8, hand: 'Ace-Five offsuit', move: 'allin' }),
     );
-    // A min-raise loses 0.15 bb: at most Good, no leak, no card.
-    expect(s.answer.grade(raiseTo(250), 0)).toMatchObject({
-      grade: 'good',
-      leak: null,
-      feedback: null,
-    });
+    // A min-raise is a push/fold deviation too: with the measured folds (§8.9, audit #1) an open
+    // to 2.5 bb is folded to far less often than the MDF model said, and it loses about 0.7 bb
+    // against the shove (it lost 0.15 bb, "at most Good", before).
+    const min = s.answer.grade(raiseTo(250), 0);
+    expect(min).toMatchObject({ grade: 'inaccuracy', leak: 'pushfold' });
+    expect(min.lossMilliBB).toBeGreaterThan(500);
+    expect(min.feedback).toEqual(
+      feedbackLine({ row: 'pushFold', S: 8, hand: 'Ace-Five offsuit', move: 'allin' }),
+    );
   });
 
   it('calling a 10 bb shove with 7-2 in the big blind: the call ends the betting (R = 1)', () => {

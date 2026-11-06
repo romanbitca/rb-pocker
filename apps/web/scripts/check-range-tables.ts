@@ -10,8 +10,9 @@
  * 3. The `ranges` table is sound: the order is a ranking of the 169 classes, it passes the §8.3
  *    acceptance, and every equity row grows with the width of the range (within the noise).
  * 4. The `pushfold` table is sound: percentages in range, the small blind shoves every hand with
- *    1 bb (the big blind's call is free), and it passes the §8.4 acceptance at 10 and 12 bb (the
- *    published no-ante chart ± 3 points).
+ *    1 bb (the big blind's call is free), it passes the §8.4 acceptance at 10 and 12 bb (the
+ *    published no-ante chart ± 3 points), and every game's push set holds about its `pushPct`
+ *    of the combos (within `PUSH_SET_SLACK_POINTS`: the classes the solver mixes).
  * 5. 20 cells of the `eqVsRange` table, chosen at random with a fixed seed (every range at least
  *    once), are sampled again with 200,000 trials and a seed of this script's own: each must be
  *    within 0.5 points of the committed cell (two independent estimates differ by up to 0.16
@@ -25,11 +26,15 @@ import { parseArgs } from 'node:util';
 import { className } from '../src/core/cards.ts';
 import { deriveSeed, randInt, rngFromSeed, ZERO_SEED, type Seed128 } from '../src/core/rng.ts';
 import {
+  comboCount,
+  COMBOS_TOTAL,
   decodePushFold,
   decodeRanges,
   orderProblem,
   PUSH_MAX_STACK_BB,
+  PUSH_WORDS,
   pushFoldAcceptance,
+  pushSetHas,
   RANGE_CLASSES,
   RANGE_KNOTS,
   rangeAcceptance,
@@ -71,6 +76,12 @@ export const TOLERANCE_POINTS = 0.5;
 
 /** How far an equity may fall as the range widens before the row counts as damaged (noise ≈ 0.3). */
 export const MONOTONE_SLACK_POINTS = 1;
+
+/**
+ * How far a game's push set may be from its `pushPct`, in points: the set holds the classes the
+ * solver shoves at least half the time, `pushPct` counts the mixed ones in part.
+ */
+export const PUSH_SET_SLACK_POINTS = 3;
 
 /** The seed of the re-sampling: not the table seed, so the two estimates are independent. */
 export const CHECK_SEED: Seed128 = deriveSeed(ZERO_SEED, 'check-range-tables');
@@ -189,6 +200,21 @@ export function checkPushFoldTable(table: PushFoldTable): string[] {
     problems.push(`pushfold: the small blind with 1 bb shoves ${at(1, 1)}%, not 100%`);
   }
   problems.push(...pushFoldAcceptance(at).map((miss) => `pushfold: ${miss}`));
+  for (let game = 0; game < PUSH_WORDS; game++) {
+    let combos = 0;
+    for (let cls = 0; cls < RANGE_CLASSES; cls++) {
+      if (pushSetHas(table.sets, game, cls)) combos += comboCount(cls);
+    }
+    const setPct = (100 * combos) / COMBOS_TOTAL;
+    const pct = (table.push[game] as number) / 100;
+    if (Math.abs(setPct - pct) > PUSH_SET_SLACK_POINTS) {
+      const k = Math.floor(game / PUSH_MAX_STACK_BB) + 1;
+      const S = (game % PUSH_MAX_STACK_BB) + 1;
+      problems.push(
+        `pushfold: the push set of k = ${k}, S = ${S} holds ${setPct.toFixed(1)}% of the combos, pushPct is ${pct}%`,
+      );
+    }
+  }
   return problems;
 }
 

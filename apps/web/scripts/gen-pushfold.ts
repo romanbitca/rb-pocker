@@ -7,7 +7,10 @@
  * cards removed) for every `k` = 1..8 players behind and `S` = 1..15 big blinds, no antes,
  * 3,000 rounds (`ITERATIONS`): `pushPct[k][S]` is the share of all combos
  * the pusher shoves, `callPct[S]` the share the big blind calls a small-blind shove with (the
- * `k = 1` game). The game needs the equity of every class against every class: 14,196 pairs,
+ * `k = 1` game), and the push set of each game: the classes the pusher shoves at least half the
+ * time (`PUSH_SET_MIN`), which the app shoves (fix/coach-strategy-audit: shoving the top
+ * `pushPct`% of the general ranking folded 22–44 and A2o–A3o on the button with 10 bb, which the
+ * solver always shoves, and shoved K9o and J9o, which it folds). The game needs the equity of every class against every class: 14,196 pairs,
  * each the mean over the rival's free combos (`PairJob`), sampled with a fixed seed and dealt
  * across `worker_threads`; the diagonal is exactly one half.
  *
@@ -23,8 +26,11 @@ import {
   PUSH_FOLD_BYTES,
   PUSH_MAX_PLAYERS_BEHIND,
   PUSH_MAX_STACK_BB,
+  PUSH_SET_BYTES,
+  PUSH_SET_BYTES_PER_GAME,
   PUSH_WORDS,
   pushFoldAcceptance,
+  pushGameIndex,
   RANGE_CLASSES,
 } from '../src/data/rangesLayout.ts';
 import { binaryModule, GENERATED_DIR, writeGenerated } from './generated.ts';
@@ -33,7 +39,10 @@ import { runRangeJobs, type PairJob, type Shares } from './range-jobs.ts';
 import { ITERATIONS, solvePushFold, type Matchups } from './pushfold-solver.ts';
 
 /** Bumped whenever the method or the layout changes: `check-tables` then demands a regeneration. */
-export const GENERATOR = 'gen-pushfold@2';
+export const GENERATOR = 'gen-pushfold@3';
+
+/** A class is in a game's push set when the solver's average strategy shoves it this often. */
+export const PUSH_SET_MIN = 0.5;
 
 /** Monte Carlo trials behind every class-against-class equity (spread over the rival's combos). */
 export const PAIR_TRIALS = 40_000;
@@ -103,8 +112,16 @@ export interface Tables {
   readonly push: number[];
   /** `call[S - 1]`, percent. */
   readonly call: number[];
+  /** The push sets, `PUSH_SET_BYTES_PER_GAME` bytes per game in `push` order (bit per class). */
+  readonly sets: Uint8Array;
   /** The largest change of a `pushPct` between round 150 and round 300, in points. */
   readonly drift: number;
+}
+
+/** Sets class `cls`'s bit in game `game` of `sets`. */
+export function addToPushSet(sets: Uint8Array, game: number, cls: number): void {
+  const at = game * PUSH_SET_BYTES_PER_GAME + (cls >> 3);
+  sets[at] = (sets[at] as number) | (1 << (cls & 7));
 }
 
 /** Solves every (k, S). `log` hears each stack as it finishes. */
@@ -115,23 +132,32 @@ export function solveTables(
 ): Tables {
   const push = new Array<number>(PUSH_WORDS).fill(0);
   const call = new Array<number>(CALL_WORDS).fill(0);
+  const sets = new Uint8Array(PUSH_SET_BYTES);
   let drift = 0;
   for (let S = 1; S <= PUSH_MAX_STACK_BB; S++) {
     for (let k = 1; k <= PUSH_MAX_PLAYERS_BEHIND; k++) {
       const solution = solvePushFold(mu, k, S, iterations);
-      push[(k - 1) * PUSH_MAX_STACK_BB + (S - 1)] = solution.pushPct;
+      const game = pushGameIndex(k, S);
+      push[game] = solution.pushPct;
+      for (let cls = 0; cls < RANGE_CLASSES; cls++) {
+        if ((solution.push[cls] as number) >= PUSH_SET_MIN) addToPushSet(sets, game, cls);
+      }
       drift = Math.max(drift, Math.abs(solution.pushPct - solution.halfwayPushPct));
       if (k === 1) call[S - 1] = solution.callPct;
     }
     log?.(`  S = ${S} bb solved`);
   }
-  return { push, call, drift };
+  return { push, call, sets, drift };
 }
 
-/** The blob `decodePushFold` reads: `pushPct` then `callPct`, hundredths of a percent, LE words. */
-export function encodePushFold(tables: Pick<Tables, 'push' | 'call'>): Uint8Array {
+/**
+ * The blob `decodePushFold` reads: `pushPct` then `callPct`, hundredths of a percent, LE words;
+ * then the push sets as they are.
+ */
+export function encodePushFold(tables: Pick<Tables, 'push' | 'call' | 'sets'>): Uint8Array {
   const words = [...tables.push, ...tables.call];
   if (words.length !== PUSH_WORDS + CALL_WORDS) throw new RangeError('wrong number of values');
+  if (tables.sets.length !== PUSH_SET_BYTES) throw new RangeError('wrong size of the push sets');
   const out = new Uint8Array(PUSH_FOLD_BYTES);
   const view = new DataView(out.buffer);
   words.forEach((pct, i) => {
@@ -139,6 +165,7 @@ export function encodePushFold(tables: Pick<Tables, 'push' | 'call'>): Uint8Arra
     if (w < 0 || w > 10_000) throw new RangeError(`value ${i}: ${pct} is not a percent`);
     view.setUint16(2 * i, w, true);
   });
+  out.set(tables.sets, 2 * words.length);
   return out;
 }
 
@@ -153,10 +180,12 @@ function pushFoldModule(bytes: Uint8Array, trials: number, iterations: number): 
       `${iterations} rounds, for k = 1..8 players behind and S = 1..15 big blinds. The class against`,
       `class equities: ${trials} trials per pair, table seed ${TABLE_SEED}.`,
       '',
-      `Layout: ${bytes.length} bytes = ${bytes.length / 2} little-endian Uint16 words, in hundredths of a percent`,
-      `(1 = 0.01 %) of all 1,326 combos. Words 0..${PUSH_WORDS - 1}: pushPct, word (k - 1) * 15 + (S - 1), the`,
+      `Layout: ${bytes.length} bytes. First ${PUSH_WORDS + CALL_WORDS} little-endian Uint16 words, in hundredths of a`,
+      `percent (1 = 0.01 %) of all 1,326 combos. Words 0..${PUSH_WORDS - 1}: pushPct, word (k - 1) * 15 + (S - 1), the`,
       `share the pusher shoves. Words ${PUSH_WORDS}..${PUSH_WORDS + CALL_WORDS - 1}: callPct, word ${PUSH_WORDS} + (S - 1), the share the big blind`,
-      'calls a small-blind shove with (the k = 1 game).',
+      `calls a small-blind shove with (the k = 1 game). Then ${PUSH_WORDS} push sets of ${PUSH_SET_BYTES_PER_GAME} bytes, game`,
+      '(k - 1) * 15 + (S - 1): bit c % 8 of byte c >> 3 is set when the solver shoves class c at',
+      `least ${PUSH_SET_MIN * 100}% of the time (class index: core/cards.ts classOf).`,
     ],
     { PUSH_FOLD_TRIALS: trials, PUSH_FOLD_ITERATIONS: iterations },
     'PUSH_FOLD_B64',

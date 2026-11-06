@@ -421,7 +421,15 @@ function finish(s: Situation, proposals: readonly [PlayerAction, Reason[]][]): C
   const R = f.street === 'preflop' ? preflopRealisation(f.position, obs.hole) : realisation(f);
   let ranked: EvCandidate[];
   try {
-    const evs = candidateEVs({ obs, f, R, implied: 0, seed: coachSeed(obs), trials: EV_TRIALS });
+    const evs = candidateEVs({
+      obs,
+      f,
+      R,
+      implied: 0,
+      seed: coachSeed(obs),
+      trials: EV_TRIALS,
+      measuredFolds: true, // the coach's model (§8.9)
+    });
     ranked = [...evs].sort((a, b) => b.ev - a.ev);
   } catch {
     ranked = []; // no opponent can act: nothing to bet into

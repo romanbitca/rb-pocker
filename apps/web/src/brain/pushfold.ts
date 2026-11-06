@@ -4,9 +4,14 @@
  * (`preflopPolicy.ts`) reads from the observation; each returns a verdict (`allin`, `call`, `fold`
  * or `check`) and its reason codes, and the policy turns the verdict into a legal action.
  *
- * - **Unopened:** shove if `rankPct ≤ pushPct(k, S)`, else fold (check when free). With limpers:
- *   shove if `rankPct ≤ 0.8 × pushPct` (HEURISTIC). `S = clamp(round(effBB), 1, 15)`,
- *   `k = clamp(k, 1, 8)`.
+ * - **Unopened:** shove the solver's push set of the game (`inPushSet`, the classes the build-time
+ *   game shoves at least half the time), else fold (check when free): `pushOrderPct ≤ pushSetPct`
+ *   in the game's push order (the set first, then the rest, each by `rankPct`). With limpers:
+ *   the top `0.8 ×` of that (HEURISTIC). A bot's looseness scales the same threshold, so a loose
+ *   bot shoves the set and the next hands of the general ranking (§9.4). `S = clamp(round(effBB),
+ *   1, 15)`, `k = clamp(k, 1, 8)`. Until fix/coach-strategy-audit the rule was `rankPct ≤
+ *   pushPct(k, S)`: the right share of hands, but the general ranking's hands (on the button with
+ *   10 bb it folded 22–44 and A2o–A3o, which the solver always shoves, and shoved K9o and J9o).
  * - **Facing a raise:** only fold or all-in. `EV(shove) = Pfold·pot + (1 − Pfold)·(E_called·finalPot
  *   − risk)`; the raiser calls with `min(1, callPct(S) / V)` of their range (the top
  *   `min(V, callPct(S))`% of hands). Shove if `EV(shove) > 0`.
@@ -19,12 +24,19 @@
  * beat its price against the pushing range; it explains the table, it does not decide.
  *
  * Units in `Reason.data`: equities, `need` and `Pfold` are fractions in [0, 1]; `rankPct`,
- * `pushPct` and `V` are percents of the 1,326 combos; `S` is big blinds; `behind` is `k`;
+ * `pushRank` (the place in the push order), `pushPct` (the threshold) and `V` are percents of the
+ * 1,326 combos; `S` is big blinds; `behind` is `k`;
  * `callers` (facing an all-in) is how many callers already in `E` counts besides the shover.
  */
 import { className } from '../core/cards.ts';
 import { COMBOS_TOTAL, comboCount, RANGE_CLASSES } from '../data/rangesLayout.ts';
-import { callPct, pushFoldPlayers, pushFoldStack, pushPct } from './pushFoldData.ts';
+import {
+  callPct,
+  pushFoldPlayers,
+  pushFoldStack,
+  pushOrderPct,
+  pushSetPct,
+} from './pushFoldData.ts';
 import { equityVsTopOfClass } from './rangesData.ts';
 import { PUSH_FOLD_MAX_BB, PUSH_LIMPERS_FACTOR } from './tunables.ts';
 import type { Features, Reason } from './types.ts';
@@ -96,7 +108,7 @@ export interface UnopenedPushInput {
   /** Players still to act behind the hero (§8.2 `k`) and the effective stack in big blinds. */
   k: number;
   effBB: number;
-  /** Someone limped: shove only the top `0.8 × pushPct`. */
+  /** Someone limped: shove only the top `0.8 ×` of the push set. */
   limped: boolean;
   /** The hero can check (the big blind facing limpers): a non-shove checks instead of folding. */
   canCheck: boolean;
@@ -104,18 +116,22 @@ export interface UnopenedPushInput {
   thresholdFactor: number;
 }
 
-/** Unopened or limped pot, short stack: shove the top `pushPct(k, S)`, else fold or check. */
+/**
+ * Unopened or limped pot, short stack: shove the solver's push set of `(k, S)` (`pushOrderPct ≤`
+ * the threshold, `pushSetPct × thresholdFactor`, × 0.8 with limpers), else fold or check.
+ */
 export function unopenedPush(input: UnopenedPushInput): PushFoldVerdict {
   const S = pushFoldStack(input.effBB);
   const behind = pushFoldPlayers(input.k);
-  const table = pushPct(behind, S);
+  const set = pushSetPct(behind, S);
   const threshold = Math.min(
     100,
-    (input.limped ? PUSH_LIMPERS_FACTOR : 1) * table * input.thresholdFactor,
+    (input.limped ? PUSH_LIMPERS_FACTOR : 1) * set * input.thresholdFactor,
   );
-  const shove = input.rankPct <= threshold;
+  const pushRank = pushOrderPct(behind, S, input.cls);
+  const shove = pushRank <= threshold + 1e-9;
   if (!shove && input.canCheck) return { move: 'check', trace: [{ code: 'CHECK_FREE', data: {} }] };
-  const { pfold, eCalled } = pushOutcome(input.cls, behind, S, table);
+  const { pfold, eCalled } = pushOutcome(input.cls, behind, S, set);
   return {
     move: shove ? 'allin' : 'fold',
     trace: [
@@ -127,6 +143,7 @@ export function unopenedPush(input: UnopenedPushInput): PushFoldVerdict {
           behind,
           hand: className(input.cls),
           rankPct: input.rankPct,
+          pushRank,
           pushPct: threshold,
           Pfold: pfold,
           E: eCalled,

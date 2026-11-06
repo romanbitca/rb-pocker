@@ -417,7 +417,8 @@ describe('Appendix E golden spots through hint(obs, null)', () => {
       labels: { 5: 'tag' },
     });
     expect(codes(g.d)).toContain('WHY_NOT_FOLD');
-    expect(codes(g.d)).toContain('WHY_NOT_RAISE');
+    // A 3-bet with 66 would be a bluff re-raise (E < 0.58), never an alternative (C10, audit #1).
+    expect(codes(g.d)).not.toContain('WHY_NOT_RAISE');
     expect(g.d.ev.call).toBeDefined();
     if (g.d.confidence !== 'close') expect(g.d.alt).toBeNull();
   });

@@ -44,6 +44,17 @@
  *   bots fold 0–25% against bets and raises after the flop whatever the size, where the model
  *   predicts 31–55%; Expert follows its EVs most closely (T 0.04), so the model's fold equity made
  *   it raise and bluff into callers. The coach keeps the model: its EVs only explain its advice.
+ * - **The coach's measured folds** (fix/coach-strategy-audit; `measuredFolds`, `measuredFoldFactor`):
+ *   `FE = φ × Π (1 − c_i / √n)` with `φ` of the situation (`FOLD_FACTOR`: before the flop an open
+ *   0.4, a re-raise or an all-in 0.75; a bet 0.3 on the flop, 0.5 on the turn, 0.9 on the river;
+ *   a raise after the flop 0.2). A caller who folds less also calls with more: the top
+ *   `1 − φ × (1 − c)` of its range, except against an open before the flop (its top `c`); after
+ *   the flop every opponent who can act calls (pot′ counts each call). With `MDF` alone every
+ *   opponent defends just enough to make a pure bluff break even, so a bluff with 7♣2♦ or a river
+ *   all-in with 5% came out within 3% of the pot of folding: "Close call: raise is also fine",
+ *   graded Best. The bots fold far less than that (measured in self-play), and a pure bluff
+ *   heads-up now loses `(1 − φ)` of what it puts in. The bots keep `φ = 1` and one caller: their
+ *   personalities were calibrated with it (§9.7).
  */
 import { deriveSeed, type Seed128 } from '../core/rng.ts';
 import type {
@@ -75,6 +86,7 @@ import {
   EV_OPEN_BB,
   EV_OPEN_PER_LIMPER_BB,
   EV_RAISE_MULTIPLES,
+  FOLD_FACTOR,
   FOLD_READ_MDF,
   LEVEL_PERSONALITIES,
   PERSONALITIES,
@@ -131,6 +143,40 @@ export function readContinueFraction(stats: SeatStats | null, stickiness: number
 export function foldEquity(continueFractions: readonly number[]): number {
   const root = Math.sqrt(continueFractions.length);
   return continueFractions.reduce((fe, c) => fe * (1 - c / root), 1);
+}
+
+/** Which row of `FOLD_FACTOR` a bet or raise of the observer is (§8.9). */
+export type FoldSituation = keyof typeof FOLD_FACTOR;
+
+/**
+ * The situation of a bet or raise now (`allIn`: it puts the hero all-in): before the flop an
+ * all-in or a re-raise ('reraise': the players behind call it only with good hands, as they do a
+ * re-raise), else the first raise (an open, also over limpers); after it a bet (nothing to call)
+ * on its street, or a raise.
+ */
+export function foldSituation(
+  obs: Pick<Observation, 'street' | 'history' | 'legal'>,
+  allIn: boolean,
+): FoldSituation {
+  if (obs.street === 'preflop') {
+    const raised = obs.history.some((a) => a.street === 'preflop' && a.type === 'raise');
+    return raised || allIn ? 'reraise' : 'open';
+  }
+  if (obs.legal.toCall > 0) return 'raise';
+  return obs.street === 'flop' ? 'flopBet' : obs.street === 'turn' ? 'turnBet' : 'riverBet';
+}
+
+/**
+ * §8.9 (fix/coach-strategy-audit): the coach's fold factor `φ` of a bet or raise (`FOLD_FACTOR`,
+ * the bots' measured folds against the MDF model's). Its EVs read `FE = φ × Π (1 − c_i / √n)`, and
+ * a caller keeps `1 − φ × (1 − c)` of its range (an open's caller its top `c`): a pure bluff
+ * heads-up loses `(1 − φ)` of what it puts in where the MDF model has it break even.
+ */
+export function measuredFoldFactor(
+  obs: Pick<Observation, 'street' | 'history' | 'legal'>,
+  allIn: boolean,
+): number {
+  return FOLD_FACTOR[foldSituation(obs, allIn)];
 }
 
 /** What a bet or raise puts in play, for `evBetOrRaise`. */
@@ -287,6 +333,14 @@ export interface EvSpot {
    * statistics instead of `MDF × stickiness`. Default false: the coach and Easy to Hard.
    */
   readsFolds?: boolean;
+  /**
+   * §8.9 (fix/coach-strategy-audit): `FE = φ × Π (1 − c_i / √n)` with `φ = measuredFoldFactor`
+   * of each bet or raise; a caller keeps the top `1 − φ × (1 − c)` of its range (an open's caller
+   * its top `c`), and after the flop every opponent who can act calls. True for the coach;
+   * default false: `φ = 1` and one caller (the bots: the MDF model their personalities were
+   * calibrated with, §9.7).
+   */
+  measuredFolds?: boolean;
 }
 
 export interface EvModel {
@@ -312,6 +366,7 @@ export function evModel(spot: EvSpot): EvModel {
   const stickiness = spot.stickiness ?? ((seat: number) => seatStickiness(obs, seat));
   const trials = spot.trials ?? E_CALLED_TRIALS;
   const reads = spot.readsFolds === true && obs.board.length > 0;
+  const measured = spot.measuredFolds === true;
   const chips = (seat: number): number =>
     (obs.streetBets[seat] as number) + (obs.stacks[seat] as number);
   const villain = responders.reduce<OpponentRange | null>((best, r) => {
@@ -347,15 +402,27 @@ export function evModel(spot: EvSpot): EvModel {
         ? readContinueFraction(obs.seatStats[r.seat] ?? null, stickiness(r.seat))
         : continueFraction(f.pot, heroIn, stickiness(r.seat)),
     );
-    const FE = anyAllIn ? 0 : foldEquity(cs);
-    // One caller, as pot′ counts it: the villain's continuing range, plus the whole range of every
-    // all-in opponent (in the pot, it cannot fold); the others have folded (chunk 5.7, PLAN §8.9).
+    const situation = measured ? foldSituation(obs, to === heroMax) : null;
+    const phi = situation === null ? 1 : FOLD_FACTOR[situation];
+    const FE = anyAllIn ? 0 : phi * foldEquity(cs);
+    // Who calls. The MDF model (the bots): one caller, as pot′ counts it, the villain's continuing
+    // range (its top `c`), plus the whole range of every all-in opponent (in the pot, it cannot
+    // fold); the others have folded (chunk 5.7, PLAN §8.9). The coach's measured model: a caller
+    // who folds less also calls with more, the top `1 − φ × (1 − c)` of its range, except against
+    // an open (one caller, its top `c`: widened, the big blind would defend 75% and a 7♣2♦ open
+    // break even); after the flop every opponent who can act calls and pot′ counts each call (the
+    // bots seldom fold there; one caller who folds out the rest flattered a bet into three players
+    // with A-high).
+    const everyone = measured && obs.board.length > 0;
+    const widen = everyone || situation === 'reraise';
     const ranges: Float64Array[] = [];
+    let callInAll = 0;
     for (const r of f.ranges) {
       if (allInSeat(r)) ranges.push(r.weights);
-      else if (r === villain) {
+      else if (r === villain || everyone) {
         const c = cs[responders.indexOf(r)] as number;
-        ranges.push(continuingWeights(r.weights, orderOf(r), c));
+        ranges.push(continuingWeights(r.weights, orderOf(r), widen ? 1 - phi * (1 - c) : c));
+        callInAll += Math.min(to, chips(r.seat)) - (obs.streetBets[r.seat] as number);
       }
     }
     const eCalled = rangeEquity({
@@ -366,7 +433,14 @@ export function evModel(spot: EvSpot): EvModel {
       seed: deriveSeed(spot.seed, 'ev-called', to),
     });
     const ends = to === heroMax || (responders.length === 1 && villainMax <= to);
-    return evBetOrRaise({ pot: f.pot, heroIn, callIn, FE, eCalled, R: ends ? 1 : spot.R });
+    return evBetOrRaise({
+      pot: f.pot,
+      heroIn,
+      callIn: everyone ? callInAll : callIn,
+      FE,
+      eCalled,
+      R: ends ? 1 : spot.R,
+    });
   };
 
   const ev = (action: PlayerAction): number => {

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   classByName,
+  comboCount,
   PUSH_FOLD_SPOTS,
   PUSH_FOLD_TOLERANCE_POINTS,
   pushFoldAcceptance,
@@ -8,9 +9,12 @@ import {
 } from '../../src/data/rangesLayout.ts';
 import {
   callPct,
+  inPushSet,
   pushFoldPlayers,
   pushFoldStack,
+  pushOrderPct,
   pushPct,
+  pushSetPct,
   PUSH_MAX_PLAYERS_BEHIND,
   PUSH_MAX_STACK_BB,
 } from '../../src/brain/pushFoldData.ts';
@@ -140,11 +144,51 @@ describe('the golden spots of Appendix E that read this table', () => {
   const rank = (name: string): number => rankPctOfClass(classByName(name));
 
   it('E7: on the button (k = 2) with 10 bb, A5o goes all-in', () => {
+    expect(inPushSet(2, 10, classByName('A5o'))).toBe(true);
     expect(rank('A5o')).toBeLessThanOrEqual(pushPct(2, 10));
   });
 
   it('E18: 9-handed first to act (k = 8) with 8 bb, 94o folds', () => {
+    expect(inPushSet(8, 8, classByName('94o'))).toBe(false);
     expect(rank('94o')).toBeGreaterThan(pushPct(8, 8));
+  });
+});
+
+describe('the push sets (the solver’s own hands, fix/coach-strategy-audit)', () => {
+  it('the push order puts the set first: pushOrderPct ≤ pushSetPct exactly for its classes', () => {
+    for (const [k, S] of [
+      [1, 1],
+      [1, 10],
+      [2, 10],
+      [3, 8],
+      [5, 12],
+      [8, 15],
+    ] as const) {
+      const set = pushSetPct(k, S);
+      let combos = 0;
+      for (let cls = 0; cls < 169; cls++) {
+        const inSet = inPushSet(k, S, cls);
+        expect(pushOrderPct(k, S, cls) <= set + 1e-9, `${k} ${S} ${cls}`).toBe(inSet);
+        if (inSet) combos += comboCount(cls);
+      }
+      expect(set).toBeCloseTo((100 * combos) / 1326, 9);
+      expect(Math.abs(set - pushPct(k, S))).toBeLessThan(3);
+    }
+    // With 1 bb the small blind shoves every hand (the big blind calls for free).
+    expect(pushSetPct(1, 1)).toBeCloseTo(100, 9);
+  });
+
+  it('inside the set and outside it, the order follows the general ranking', () => {
+    const order = (name: string) => pushOrderPct(2, 10, classByName(name));
+    expect(order('AA')).toBeLessThan(order('KK'));
+    expect(order('22')).toBeLessThan(order('K9o')); // 22 in the set, K9o not (rankPct 33 and 27)
+    expect(rankPctOfClass(classByName('22'))).toBeGreaterThan(rankPctOfClass(classByName('K9o')));
+    expect(order('72o')).toBe(100);
+  });
+
+  it('refuses a class that does not exist', () => {
+    expect(() => inPushSet(2, 10, 169)).toThrow(RangeError);
+    expect(() => pushOrderPct(2, 10, -1)).toThrow(RangeError);
   });
 });
 

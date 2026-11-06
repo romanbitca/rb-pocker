@@ -16,7 +16,13 @@ import {
   realisation,
 } from '../../src/brain/preflopPolicy.ts';
 import { pushOutcome, shoveVsRaise } from '../../src/brain/pushfold.ts';
-import { callPct, pushPct } from '../../src/brain/pushFoldData.ts';
+import {
+  callPct,
+  inPushSet,
+  pushOrderPct,
+  pushPct,
+  pushSetPct,
+} from '../../src/brain/pushFoldData.ts';
 import { rangeEquity, type RangeModel } from '../../src/brain/ranges.ts';
 import { equityVsTopOfClass, rankPctOfClass } from '../../src/brain/rangesData.ts';
 import type { PreflopDecision, PreflopStyle } from '../../src/brain/types.ts';
@@ -206,6 +212,53 @@ describe('limpers only (§8.3)', () => {
   });
 });
 
+describe('opening ranges by position (§8.3 ranking, audit #5)', () => {
+  // 6-max (button 0): UTG seat 3 (k = 5, 17%), HJ 4 (21%), CO 5 (27%), BTN 0 (43%), SB 1 (40%).
+  const SEATS = {
+    UTG: { hero: 3, inputs: [] as EngineInput[] },
+    HJ: { hero: 4, inputs: folds(3) },
+    CO: { hero: 5, inputs: folds(3, 4) },
+    BTN: { hero: 0, inputs: folds(3, 4, 5) },
+    SB: { hero: 1, inputs: folds(3, 4, 5, 0) },
+  } as const;
+  type Seat = keyof typeof SEATS;
+  const opens = (hole: string, seat: Seat): boolean =>
+    ask({ players: 6, ...SEATS[seat], hole }).d.kind === 'raise';
+  const where = (hole: string): Seat[] =>
+    (Object.keys(SEATS) as Seat[]).filter((seat) => opens(hole, seat));
+
+  it('opens the premiums everywhere and never 7-2 offsuit', () => {
+    for (const hole of ['As Ah', 'Ks Kh', 'As Ks']) expect(where(hole), hole).toHaveLength(5);
+    expect(where('7c 2d')).toEqual([]);
+    const utg9 = (hole: string) => ask({ players: 9, hero: 3, hole }).d.kind;
+    expect([utg9('As Ah'), utg9('Ks Kh'), utg9('As Ks'), utg9('7c 2d')]).toEqual([
+      'raise',
+      'raise',
+      'raise',
+      'fold',
+    ]);
+  });
+
+  it('opens the small pairs from late position: 22–33 from the button and the small blind, 44 from the cutoff, 55 from the hijack', () => {
+    // The audit: at 100 bb the coach folded 22/33 on the button and in the small blind, 44 in the
+    // cutoff and 55 in the hijack (22 ranked at 54%, 33 at 45%).
+    expect(where('2c 2d')).toEqual(['BTN', 'SB']);
+    expect(where('3c 3d')).toEqual(['BTN', 'SB']);
+    expect(where('4c 4d')).toEqual(['CO', 'BTN', 'SB']);
+    expect(where('5c 5d')).toEqual(['HJ', 'CO', 'BTN', 'SB']);
+    expect(where('6c 6d')).toHaveLength(5);
+    // Nine-handed under the gun (11%): 77 and up.
+    expect(ask({ players: 9, hero: 3, hole: '7c 7d' }).d.kind).toBe('raise');
+    expect(ask({ players: 9, hero: 3, hole: '6c 6d' }).d.kind).toBe('fold');
+  });
+
+  it('opens the suited connectors late: 76s from the button and the small blind, 65s from the button', () => {
+    expect(where('7h 6h')).toEqual(['BTN', 'SB']);
+    expect(where('6h 5h')).toEqual(['BTN']);
+    expect(where('Th 9h')).toEqual(['CO', 'BTN', 'SB']);
+  });
+});
+
 describe('facing one raise (§8.3)', () => {
   // The cutoff opens 2.5 bb with a visible TAG label: V = openPct(3) × 1 = 27%.
   const coOpen = [fold(3), fold(4), raise(5, 250)];
@@ -243,10 +296,10 @@ describe('facing one raise (§8.3)', () => {
   });
 
   it('calls with EV(call) > 0 inside min(50, 1.5·V); a small pair calls for a set', () => {
-    expect(equityVsTopOfClass(classByName('99'), 27)).toBeLessThan(0.58);
-    const nines = ask({ players: 6, hero: 0, hole: '9c 9d', inputs: coOpen, labels: tag }).d;
-    expect(nines.action).toEqual({ type: 'call' });
-    expect(code(nines)).toBe('SET_MINING');
+    expect(equityVsTopOfClass(classByName('88'), 27)).toBeLessThan(0.58);
+    const eights = ask({ players: 6, hero: 0, hole: '8c 8d', inputs: coOpen, labels: tag }).d;
+    expect(eights.action).toEqual({ type: 'call' });
+    expect(code(eights)).toBe('SET_MINING');
     const ak = ask({ players: 6, hero: 0, hole: 'Ac Kd', inputs: coOpen, labels: tag }).d;
     expect(code(ak)).toBe('THREE_BET_VALUE'); // AKo: 0.634
     const kq = ask({ players: 6, hero: 0, hole: 'Kc Qd', inputs: coOpen, labels: tag }).d;
@@ -255,20 +308,58 @@ describe('facing one raise (§8.3)', () => {
   });
 
   it('folds outside min(50, 1.5·V) even with EV(call) > 0, except in the big blind', () => {
-    expect(rank('22')).toBeGreaterThan(40.5);
-    const btn = ask({ players: 6, hero: 0, hole: '2c 2d', inputs: coOpen, labels: tag }).d;
+    // A TAG opens under the gun (V = 17%, cap 25.5%); 30 bb deep, where the set alone does not
+    // pay for the call (the 15–20× rule), the button folds 2♣2♦ (33%) and the big blind calls.
+    const utgOpen = [raise(3, 250), fold(4), fold(5)];
+    const utgTag = { 3: 'tag' } as const;
+    expect(rank('22')).toBeGreaterThan(1.5 * 17);
+    const btn = ask({
+      players: 6,
+      bb: 30,
+      hero: 0,
+      hole: '2c 2d',
+      inputs: utgOpen,
+      labels: utgTag,
+    }).d;
     expect(btn.action).toEqual({ type: 'fold' });
     expect(code(btn)).toBe('FOLD_VS_RAISE');
     expect(btn.trace[0]?.data.evCall as number).toBeGreaterThan(0);
     const bb = ask({
       players: 6,
+      bb: 30,
       hero: 2,
       hole: '2c 2d',
-      inputs: [...coOpen, fold(0), fold(1)],
-      labels: tag,
+      inputs: [...utgOpen, fold(0), fold(1)],
+      labels: utgTag,
     }).d;
     expect(bb.action).toEqual({ type: 'call' });
     expect(code(bb)).toBe('SET_MINING');
+  });
+
+  it('set-mines outside the cap when the set alone pays: about 15 × the call behind (audit #6)', () => {
+    // The audit: 22 never called a raise to set-mine. 100 bb deep against the same UTG open the
+    // button calls 2♣2♦: 0.118 × (pot + call) + 0.118 × 0.4 × 97.5 bb ≥ the 2.5 bb call.
+    const utgOpen = [raise(3, 250), fold(4), fold(5)];
+    const deep = ask({
+      players: 6,
+      hero: 0,
+      hole: '2c 2d',
+      inputs: utgOpen,
+      labels: { 3: 'tag' },
+    }).d;
+    expect(deep.action).toEqual({ type: 'call' });
+    expect(code(deep)).toBe('SET_MINING');
+    expect(deep.trace[0]?.data.V).toBeCloseTo(17, 9);
+    // The edge: a 2.5 bb call into 4 bb pays from about 37.5 bb (0.118 × 6.5 + 0.0472 × 34.5 =
+    // 2.40 < 2.5 at 37 bb; 2.54 at 40 bb).
+    const at = (bb: number) =>
+      ask({ players: 6, bb, hero: 0, hole: '2c 2d', inputs: utgOpen, labels: { 3: 'tag' } }).d;
+    expect(at(37).action).toEqual({ type: 'fold' });
+    expect(at(40).action).toEqual({ type: 'call' });
+    // And against the cutoff's open, inside the cap now: 22 is in the top 33%, the cap 40.5%.
+    const co = ask({ players: 6, hero: 0, hole: '2c 2d', inputs: coOpen, labels: tag }).d;
+    expect(co.action).toEqual({ type: 'call' });
+    expect(code(co)).toBe('SET_MINING');
   });
 
   it('folds when EV(call) ≤ 0 (FOLD_VS_RAISE)', () => {
@@ -353,14 +444,41 @@ describe('facing a 3-bet and a 4-bet (§8.3)', () => {
       fold(2),
       raise(5, 1750),
     ];
+    const kk = ask({ players: 6, hero: 0, hole: 'Kc Kd', inputs: fourBet }).d;
+    expect(kk.trace[0]?.data.V).toBe(2.5);
+    expect(kk.kind).toBe('allin');
+    expect(code(kk)).toBe('FOUR_BET_VALUE');
+    // QQ has 49.6% against the 2.5% range (its own column, audit #2): a call, not all-in.
     const qq = ask({ players: 6, hero: 0, hole: 'Qc Qd', inputs: fourBet }).d;
-    expect(qq.trace[0]?.data.V).toBe(2.5);
-    expect(qq.kind).toBe('allin');
-    expect(code(qq)).toBe('FOUR_BET_VALUE');
+    expect(qq.trace[0]?.data.E as number).toBeLessThan(0.5);
+    expect(qq.action).toEqual({ type: 'call' });
     const aks = ask({ players: 6, hero: 0, hole: 'Ac Kc', inputs: fourBet }).d;
     expect(aks.action).toEqual({ type: 'call' });
     const junk = ask({ players: 6, hero: 0, hole: '7c 2d', inputs: fourBet }).d;
     expect(junk.action).toEqual({ type: 'fold' });
+  });
+
+  it('JJ folds to a 100 bb 5-bet shove: 36% against the 2.5% range, 41% needed (audit #2, P25)', () => {
+    // UTG opens, the button 3-bets, UTG 4-bets to 17.5 bb, the button shoves 100 bb.
+    const fiveBet = [
+      raise(3, 250),
+      fold(4),
+      fold(5),
+      raise(0, 750),
+      fold(1),
+      fold(2),
+      raise(3, 1750),
+      raise(0, 100 * BB),
+    ];
+    const jj = ask({ players: 6, hero: 3, hole: 'Jc Jd', inputs: fiveBet }).d;
+    expect(jj.action).toEqual({ type: 'fold' });
+    expect(code(jj)).toBe('FOLD_ALLIN');
+    const data = jj.trace[0]?.data as { E: number; need: number; V: number };
+    expect(data.V).toBe(2.5);
+    expect(data.E).toBeLessThan(0.38);
+    expect(data.need).toBeGreaterThan(0.4);
+    const aks = ask({ players: 6, hero: 3, hole: 'Ac Kc', inputs: fiveBet }).d;
+    expect(aks.action).toEqual({ type: 'call' });
   });
 });
 
@@ -377,15 +495,20 @@ describe('facing an all-in, deep (§8.3 with the §8.4 rule)', () => {
 });
 
 describe('push or fold with effBB ≤ 12 (§8.4)', () => {
-  it('unopened: shoves rankPct ≤ pushPct(k, S); with limpers only 0.8 × pushPct', () => {
-    // On the button with 10 bb, A5o is inside pushPct(2, 10) but not inside 0.8 × pushPct.
-    expect(rank('A5o')).toBeLessThanOrEqual(pushPct(2, 10));
-    expect(rank('A5o')).toBeGreaterThan(0.8 * pushPct(2, 10));
+  it('unopened: shoves the solver’s push set; with limpers only the top 0.8 × of it', () => {
+    // On the button with 10 bb, A2o is in the set (its place in the push order is inside the
+    // set's share) but not inside 0.8 × that share.
+    const a2o = classByName('A2o');
+    expect(inPushSet(2, 10, a2o)).toBe(true);
+    expect(pushOrderPct(2, 10, a2o)).toBeLessThanOrEqual(pushSetPct(2, 10));
+    expect(pushOrderPct(2, 10, a2o)).toBeGreaterThan(0.8 * pushSetPct(2, 10));
+    const alone = ask({ players: 6, bb: 10, hero: 0, hole: 'Ac 2d', inputs: folds(3, 4, 5) }).d;
+    expect(alone.kind).toBe('allin');
     const limped = ask({
       players: 6,
       bb: 10,
       hero: 0,
-      hole: 'Ac 5d',
+      hole: 'Ac 2d',
       inputs: [call(3), fold(4), fold(5)],
     }).d;
     expect(limped.action).toEqual({ type: 'fold' });
@@ -412,9 +535,43 @@ describe('push or fold with effBB ≤ 12 (§8.4)', () => {
     expect(code(d)).toBe('CHECK_FREE');
   });
 
+  it('the push set is the solver’s, not the top pushPct% of the general ranking (audit #3)', () => {
+    // The audit: with 10 bb on the button the coach folded 22–44 and A2o–A3o, which the app's own
+    // solver shoves every time, and shoved K9o and J9o, which it folds; heads-up it folded K2o.
+    const btn = (hole: string) =>
+      ask({ players: 6, bb: 10, hero: 0, hole, inputs: folds(3, 4, 5) }).d;
+    for (const hole of ['2c 2d', '3c 3d', '4c 4d', 'Ac 2d', 'Ac 3d']) {
+      expect(btn(hole).kind, hole).toBe('allin');
+    }
+    for (const hole of ['Kc 9d', 'Jc 9d']) expect(btn(hole).action, hole).toEqual({ type: 'fold' });
+    const hu = ask({ players: 2, bb: 10, hero: 0, hole: 'Kc 2d' }).d;
+    expect(hu.kind).toBe('allin');
+    expect(code(hu)).toBe('PUSH_FOLD');
+    // The set holds about pushPct of the combos (the classes the solver mixes sit on its edge).
+    for (const [k, S] of [
+      [1, 10],
+      [2, 10],
+      [3, 10],
+      [5, 10],
+      [8, 12],
+    ] as const) {
+      expect(Math.abs(pushSetPct(k, S) - pushPct(k, S)), `${k} ${S}`).toBeLessThan(3);
+    }
+  });
+
+  it('a looser bot shoves the set and the next hands of the general ranking (§9.4)', () => {
+    // K9o is outside the button's 10 bb set; a 1.3 × threshold reaches it, 0.5 × drops A2o.
+    const loose: PreflopStyle = { equityNoise: 0, thresholdFactor: 1.3, positionAwareness: 1 };
+    const tight: PreflopStyle = { equityNoise: 0, thresholdFactor: 0.5, positionAwareness: 1 };
+    const spot = { players: 6, bb: 10, hero: 0, inputs: folds(3, 4, 5) };
+    expect(ask({ ...spot, hole: 'Kc 9d', style: loose }).d.kind).toBe('allin');
+    expect(ask({ ...spot, hole: 'Ac 2d', style: tight }).d.action).toEqual({ type: 'fold' });
+    expect(ask({ ...spot, hole: 'Ac Kd', style: tight }).d.kind).toBe('allin');
+  });
+
   it('PUSH_FOLD says how often the players behind fold and the equity when called', () => {
     const d = ask({ players: 6, bb: 10, hero: 0, hole: 'Ac 5d', inputs: folds(3, 4, 5) }).d;
-    const want = pushOutcome(classByName('A5o'), 2, 10, pushPct(2, 10));
+    const want = pushOutcome(classByName('A5o'), 2, 10, pushSetPct(2, 10));
     expect(d.trace[0]?.data).toMatchObject({ Pfold: want.pfold, E: want.eCalled });
     expect(want.pfold).toBeGreaterThan(0.3);
     expect(want.pfold).toBeLessThan(0.9);
@@ -479,17 +636,17 @@ describe('profile styles (§9.2, §9.4)', () => {
     expect(ask({ ...btn, hole: 'Ac 5d' }).d.kind).toBe('fold');
   });
 
-  it('equity noise moves the value threshold: 99 3-bets the cutoff with +0.1', () => {
+  it('equity noise moves the value threshold: 77 3-bets the cutoff with +0.1', () => {
     const lucky: PreflopStyle = { equityNoise: 0.1, thresholdFactor: 1, positionAwareness: 1 };
-    const d = ask({
+    const spot = {
       players: 6,
       hero: 0,
-      hole: '9c 9d',
+      hole: '7c 7d',
       inputs: [fold(3), fold(4), raise(5, 250)],
-      labels: { 5: 'tag' },
-      style: lucky,
-    }).d;
-    expect(code(d)).toBe('THREE_BET_VALUE');
+      labels: { 5: 'tag' as const },
+    };
+    expect(code(ask(spot).d)).toBe('SET_MINING');
+    expect(code(ask({ ...spot, style: lucky }).d)).toBe('THREE_BET_VALUE');
   });
 });
 

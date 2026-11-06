@@ -6,6 +6,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   bluff3betHand,
+  bluffReraise,
   botCandidates,
   closeAlternative,
   hintConfidence,
@@ -311,19 +312,38 @@ describe('the coach (C1, §8.2)', () => {
   });
 
   it('one WHY_NOT per other sensible action: the coach`s own size, its EV and what it loses', () => {
-    const obs = sixMax(0, '6c 6d', [fold(3), fold(4), raise(5, 250)]);
+    // K♣9♦ under the gun: fold; the raise is the §8.3 open of the spot (2.5 bb), not the EV-best.
+    const obs = sixMax(3, 'Kc 9d');
     const d = hint(obs, null);
-    expect(d.action).toEqual({ type: 'call' });
+    expect(d.action).toEqual({ type: 'fold' });
     const whyNot = d.trace.filter((r) => r.code.startsWith('WHY_NOT_'));
-    expect(whyNot.map((r) => r.code).sort()).toEqual(['WHY_NOT_FOLD', 'WHY_NOT_RAISE']);
-    const recEV = d.ev.call as number;
+    expect(whyNot.map((r) => r.code)).toEqual(['WHY_NOT_RAISE']);
+    const recEV = d.ev.fold as number;
     for (const r of whyNot) {
       const key = r.data.alt as keyof typeof d.ev;
       expect(r.data.ev).toBe(d.ev[key]);
       expect(r.data.loss).toBeCloseTo(recEV - (d.ev[key] as number), 9);
     }
-    // The raise is the §8.3 3-bet of the spot (3 × the open in position), not the EV-best size.
-    expect(whyNot.find((r) => r.code === 'WHY_NOT_RAISE')?.data.alt).toBe('raise:750');
+    expect(whyNot[0]?.data.alt).toBe('raise:250');
+  });
+
+  it('never offers a preflop bluff re-raise (C10, audit #1): only the rule’s value re-raises', () => {
+    // 6♣6♦ on the button against the cutoff's open: the rule calls (set-mining); a 3-bet would be
+    // a bluff (E < 0.58), which the coach never recommends, so it is no alternative either.
+    const obs = sixMax(0, '6c 6d', [fold(3), fold(4), raise(5, 250)]);
+    const d = hint(obs, null);
+    expect(d.action).toEqual({ type: 'call' });
+    expect(d.trace.filter((r) => r.code.startsWith('WHY_NOT_')).map((r) => r.code)).toEqual([
+      'WHY_NOT_FOLD',
+    ]);
+    expect(d.alt?.type).not.toBe('raise');
+    const f = { street: 'preflop', facing: 'open' } as const;
+    const raise750 = { type: 'raise', to: 750 } as const;
+    expect(bluffReraise(f, { type: 'call' }, raise750)).toBe(true);
+    expect(bluffReraise(f, { type: 'fold' }, raise750)).toBe(true);
+    expect(bluffReraise(f, { type: 'raise', to: 800 }, raise750)).toBe(false); // the rule's own
+    expect(bluffReraise({ ...f, facing: 'none' }, { type: 'fold' }, raise750)).toBe(false); // an open
+    expect(bluffReraise({ street: 'flop', facing: 'bet' }, { type: 'call' }, raise750)).toBe(false);
   });
 
   it('never offers a limp, a complete or a short stack`s flat call as an alternative (C10, §8.4)', () => {
