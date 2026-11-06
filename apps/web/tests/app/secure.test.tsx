@@ -141,6 +141,9 @@ describe('boot on an insecure page', () => {
       expect(appStore.getState().ui.screen).toBe('table');
       expect(document.querySelectorAll('[data-hero-cards] [role="img"]')).toHaveLength(2);
       expect(randomUUID).not.toHaveBeenCalled();
+      // §16.3: no crypto.subtle, so no shuffle code: the hand is dealt as usual, its code null.
+      const start = controller.logs().events.find((e) => e.what === 'hand start');
+      expect(start?.detail).toMatchObject({ shuffleCode: 'off' });
     } finally {
       controller.dispose();
     }

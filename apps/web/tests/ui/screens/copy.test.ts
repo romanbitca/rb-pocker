@@ -14,6 +14,7 @@ import { summaryWords } from '../../../src/i18n/summary.ts';
 import { drillWords } from '../../../src/i18n/drill.ts';
 import { tipWords } from '../../../src/i18n/tips.ts';
 import { whichWinsWords } from '../../../src/i18n/whichWins.ts';
+import { enReview } from '../../../src/i18n/review.ts';
 
 const PLAN = Object.values(
   import.meta.glob<string>('../../../../../docs/PLAN.md', {
@@ -364,6 +365,11 @@ describe('screen copy comes from docs/PLAN.md', () => {
     );
     expect(PLAN).toContain(`"${rows}", then "${shortcutWords.note}" and [${shortcutWords.close}]`);
     expect(PLAN).toContain(`The Menu's "${shortcutWords.title}" opens it too`);
+  });
+
+  // Chunk 9.4 (§16.3, F.10): Review's "Check the shuffle" row, each string quoted in PLAN.
+  it.each(Object.entries(enReview.shuffle))('9.4 shuffle.%s', (_key, words) => {
+    expect(PLAN).toContain(`"${words}"`);
   });
 
   it('the Welcome bullets are the four §12.1 bullets, capitalised', () => {

@@ -7,9 +7,10 @@
  * in force for the hand's latest decision (the settings' when the hero made none); `bestCategory`
  * is the hero's category when the hero was still in the hand as the river card came (it may fold
  * after it); `allIn` is the hero's share of the main pot against the face-up hands, as expected
- * (`equity.allIn`, the board at the reveal) and as it happened, with that pot in chips; `commit`
- * is null until the provable shuffle (Stage 9). Chunk 8.2: `heroPlay`, what the hero did (VPIP,
- * PFR, flop, showdown, payout), read from the log here because `persist` may not replay a hand.
+ * (`equity.allIn`, the board at the reveal) and as it happened, with that pot in chips. `commit`
+ * is the hand's shuffle code (chunk 9.4, §16.3), made before the deal; null without `crypto.subtle`.
+ * Chunk 8.2: `heroPlay`, what the hero did (VPIP, PFR, flop, showdown, payout), read from the log
+ * here because `persist` may not replay a hand.
  */
 import { describe } from '../eval/describe.ts';
 import { updateSeatStats } from '../brain/opponentStats.ts';
@@ -34,6 +35,8 @@ export interface HandEnd {
   allIn: KnownEquity | null;
   /** ISO UTC. */
   at: string;
+  /** The shuffle code made before the deal (§16.3), or null. */
+  commit: string | null;
 }
 
 /** The hero's category if the hero was in the hand when the river came (or at the showdown). */
@@ -84,7 +87,7 @@ export function handRecordOf(end: HandEnd): HandRecord | null {
     handSeq: h.handSeq,
     at: end.at,
     seed: h.seed,
-    commit: null,
+    commit: end.commit,
     engineVersion: h.engineVersion,
     table,
     inputs: [...end.inputs],

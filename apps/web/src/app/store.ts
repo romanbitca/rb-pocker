@@ -82,6 +82,12 @@ export * from './tableViews.ts';
 export * from './equityViews.ts';
 // Secure-context feature detection (§12.14, pitfall 43): the UI reads it from here too (§2.1).
 export { missingFeatures, secureFeatures, type SecureFeatures } from './secure.ts';
+// The provable shuffle (§16.3, chunk 9.4): Review's "Check the shuffle" row; the check itself is
+// a lazy chunk, loaded when the player asks for it.
+export { shuffleRowOf, type ShuffleRow } from './shuffleCode.ts';
+export type { ShuffleCheck } from './shuffleCheck.ts';
+export const loadShuffleCheck = (): Promise<typeof import('./shuffleCheck.ts')> =>
+  import('./shuffleCheck.ts');
 // All-in TV mode and the luck line (§7.6, chunk 4.7): the same, for the table.
 export * from './runoutViews.ts';
 // The bot card of a tapped seat (§9.3, chunk 5.10): the same.

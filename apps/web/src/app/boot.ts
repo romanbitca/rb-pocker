@@ -12,6 +12,7 @@ import {
 import { launchStorage } from '../persist/storage.ts';
 import { brainGrader } from './grading.ts';
 import { installEnv, installLifecycle, isStandalone, storageManagerOf } from './lifecycle.ts';
+import { pageSha256 } from './shuffleCode.ts';
 import { appStore, setDrillLoader } from './store.ts';
 import { browserTabLockEnv, createTabLock } from './tabLock.ts';
 import { startBrainWorker, startEquityWorker } from './workerClient.ts';
@@ -66,6 +67,9 @@ export function startApp(options: StartOptions): TableController {
     standalone: isStandalone(win),
     // Installing (§12.13): the browser's offer, kept for "Install app"; iOS gets the Share tip.
     install: installEnv(win),
+    // The provable shuffle (§16.3): `crypto.subtle` hashes each hand's shuffle code before the
+    // deal; on a plain-http page there is none and the codes are null (§12.14).
+    sha256: pageSha256(win),
   });
   installLifecycle(win, appStore);
   // The hand drill's logic, loaded when its page opens (§13.5).

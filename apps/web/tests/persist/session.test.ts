@@ -92,6 +92,19 @@ describe('persist/session save and resume (§14.5)', () => {
     expect(load).toStrictEqual({ status: 'ok', session: original });
   });
 
+  it('the hand’s shuffle code (chunk 9.4, §16.3) round-trips; a session without one is fine too', () => {
+    const code = 'c0de'.repeat(16);
+    for (const commit of [code, null]) {
+      const original: SessionState = { ...midHandSession(), commit };
+      expect(isSessionState(original)).toBe(true);
+      expect(reload(original).load).toStrictEqual({ status: 'ok', session: original });
+    }
+    // Saved before chunk 9.4: no field at all (Appendix H rule 2: an optional field, no new version).
+    const old = midHandSession();
+    expect('commit' in old).toBe(false);
+    expect(reload(old).load).toStrictEqual({ status: 'ok', session: old });
+  });
+
   it('saving is one setItem and nothing else (it runs after every engine step)', () => {
     const { fake, launch } = setup();
     const store = launch();
@@ -191,6 +204,11 @@ describe('persist/session voiding a hand that cannot be restored (§14.3, §14.6
       'session.undoSnapshot.inputCount',
     ],
     ['broken hand meta', (c: SessionState) => (c.meta.undoCount = -1), 'session.meta.undoCount'],
+    [
+      'a shuffle code that is not text',
+      (c: SessionState) => ((c as { commit?: unknown }).commit = 7),
+      'session.commit',
+    ],
     [
       'an input for a missing seat',
       (c: SessionState) => c.handInputs.push({ kind: 'act', seat: 4, action: { type: 'fold' } }),

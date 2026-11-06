@@ -62,4 +62,22 @@ export const enReview = {
       hero ? `You get ${x} back. Nobody called.` : `${name} gets ${x} back. Nobody called.`,
     reshuffle: 'Move taken back. The unseen cards were shuffled again.',
   },
+  /** The provable shuffle (§16.3, chunk 9.4): the row under the step controls. */
+  shuffle: {
+    /** The row's name for screen readers. */
+    title: 'Fair shuffle',
+    code: 'Shuffle code',
+    seed: 'Seed',
+    saved: 'The shuffle code was saved before the cards were dealt.',
+    check: 'Check the shuffle',
+    ok: 'The cards came from this shuffle. Nobody changed them.',
+    badCode: 'The shuffle code does not match this hand.',
+    badCards: 'The cards do not match this shuffle.',
+    broken: 'This hand cannot be checked.',
+    deck: 'Deck order, top card first',
+    reshuffled: 'After Undo, the unseen cards were shuffled again from the same seed.',
+    /** No `crypto.subtle` on this page (§12.14, F.10). */
+    insecure: 'Needs a secure connection (https)',
+    none: 'This hand has no shuffle code.',
+  },
 } as const;

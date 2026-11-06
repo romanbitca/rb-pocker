@@ -73,6 +73,8 @@ export function reviewHandOf(record: HandRecord): ReviewHand {
     at: record.at,
     record: replayRecord,
     heroHole: record.heroHole,
+    // The board as the hand ended: "Check the shuffle" compares it (§16.3, chunk 9.4).
+    board: [...record.board],
     end: end ?? {
       handSeq: record.handSeq,
       endedBy: 'fold',

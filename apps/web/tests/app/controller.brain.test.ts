@@ -7,6 +7,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { botSeed, HERO, realTimers, TIMING } from '../../src/app/controller.ts';
 import type { SeedSource } from '../../src/app/controller.ts';
+import { commitText } from '../../src/app/shuffleCode.ts';
 import { createBrainClient } from '../../src/app/workerClient.ts';
 import { simpleDecide } from '../helpers/simpleDecide.ts';
 import { profileFor } from '../../src/brain/profiles.ts';
@@ -23,6 +24,7 @@ import type {
   PlayerAction,
   TableState,
 } from '../../src/engine/types.ts';
+import { nodeSha256, sha256Hex } from '../helpers/sha256.ts';
 import { fakeBrainWorker, type FakeBrainInstance } from '../workers/fakeBrainWorker.ts';
 import {
   drive,
@@ -162,6 +164,8 @@ describe('what is posted to brain.worker (§2.2, §9.6, pitfall 13; Stage 5 acce
     h = makeHarness({
       brain: spy.client,
       settings: { players: 9, startingStack: 400, sb: 10, bb: 20 },
+      // Chunk 9.4: the shuffle codes are made too (§16.3), and must not cross either.
+      sha256: nodeSha256,
     });
     h.dispatch({ type: 'play' });
     // The hero jams half the time, so run-outs and showdowns (public cards) are in the sample.
@@ -189,11 +193,13 @@ describe('what is posted to brain.worker (§2.2, §9.6, pitfall 13; Stage 5 acce
       expect(msg.profile.id).toBe(`${personality}/easy`);
       expect(Object.keys(msg.obs).sort()).toEqual(OBS_KEYS);
 
-      // No HandState field at any depth, and nothing that is the hand seed or contains it.
+      // No HandState field at any depth, and nothing that is the hand seed or contains it, nor
+      // the hand's shuffle code (§16.3: a hash of the seed, §9.6 3b).
       const keys = keysOf({ obs: msg.obs, profile: msg.profile });
       for (const key of HAND_STATE_ONLY_KEYS) expect(keys.has(key)).toBe(false);
       const text = JSON.stringify(msg);
       expect(text).not.toContain(hand.seed);
+      expect(text).not.toContain(sha256Hex(commitText(hand.seed, table.tableId, hand.handSeq)));
       expect(msg.seed).not.toBe(hand.seed);
       expect(msg.seed).toBe(botSeed(table.tableSeed, hand.handSeq, msg.obs.seat, hand.log.length));
 

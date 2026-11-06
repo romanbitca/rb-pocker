@@ -89,6 +89,7 @@ export interface HandRecord {
   /** ISO UTC. */
   at: string;
   seed: Seed128;
+  /** The shuffle code (§16.3): SHA-256 hex of `seed:tableId:handSeq`, made before the deal; null without `crypto.subtle`. */
   commit: string | null;
   engineVersion: string;
   /** As at hand start. */
@@ -283,6 +284,12 @@ export interface SessionState {
   /** Index = seat; [0] mirrors profile.heroModel; reset to null when a bot is replaced (§9.5). */
   seatStats: (SeatStats | null)[];
   resumeAfterUpdate: boolean;
+  /**
+   * Chunk 9.4 (§16.3): `hand`'s shuffle code, made before its deal (null: not computed yet, or no
+   * `crypto.subtle`). Optional (Appendix H rule 2): a session saved before 9.4 has none, and the
+   * controller computes it again from the hand's seed. Written only with a hand.
+   */
+  commit?: string | null;
 }
 
 export type UndoSnapshot = NonNullable<SessionState['undoSnapshot']>;
@@ -358,6 +365,11 @@ function oneOf<T extends string>(members: Readonly<Record<T, true>>): Check<T> {
 
 function nullable<T>(check: Check<T>): Check<T | null> {
   return (x, path) => (x === null ? null : check(x, path));
+}
+
+/** A field added later (Appendix H rule 2): absent is fine, present must pass `check`. */
+function optional<T>(check: Check<T>): Check<T | undefined> {
+  return (x, path) => (x === undefined ? null : check(x, path));
 }
 
 function array<T>(item: Check<T>, min = 0, max = Number.MAX_SAFE_INTEGER): Check<T[]> {
@@ -970,6 +982,7 @@ const sessionState: Check<SessionState> = refine(
     undoSnapshot: nullable(undoSnapshot),
     seatStats: array(nullable(seatStats), 2, MAX_SEATS),
     resumeAfterUpdate: bool,
+    commit: optional(nullable(text)),
   }),
   (s, path) => {
     const n = s.table.config.seatCount;
