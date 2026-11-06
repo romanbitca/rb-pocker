@@ -12,6 +12,9 @@
  *   card, so no rank or suit can reach the DOM or the accessibility tree.
  * - Fixed size per `size` (no layout shift, PLAN §15.3). `board` takes its width from the
  *   `--card-w` custom property (the board sets it from `boardCardSize()`).
+ * - On the Table (board, hero strip, seats) the best five carry `highlight`: the gold edge, `core`
+ *   raised too, and `cardViewLabel` names them for screen readers. Nothing there is faded for being
+ *   out of the five (1.3.97); `dim` is the rankings examples' and the lessons' style only.
  */
 import { memo } from 'react';
 import {
@@ -23,7 +26,7 @@ import {
   type Card as CardValue,
 } from '../../core/cards.ts';
 import { en } from '../../i18n/en.ts';
-import type { CardHighlight } from '../views.ts';
+import type { CardHighlight, CardView } from '../views.ts';
 import styles from './Card.module.css';
 
 /**
@@ -40,16 +43,27 @@ const SUIT_CLASS = [styles.clubs, styles.diamonds, styles.hearts, styles.spades]
 const HIGHLIGHT_CLASS: Record<CardHighlight, string | undefined> = {
   core: styles.core,
   kicker: styles.kicker,
-  off: styles.off,
 };
+
+/**
+ * A Table card's screen-reader name (§12.12): undefined (the plain "King of hearts") unless it has
+ * the gold edge (§6.1), which reads "King of hearts, part of your hand", or after a showdown
+ * "King of hearts, part of the winning hand" (§12.9).
+ */
+export function cardViewLabel(view: CardView): string | undefined {
+  if (view.card === null || view.highlight === undefined) return undefined;
+  const name = cardAriaLabel(view.card);
+  return view.winning === true ? en.cards.winningHand(name) : en.cards.yourHand(name);
+}
 
 export interface CardProps {
   /** The card, or `null` for a face-down card. */
   card: CardValue | null;
   size: CardSize;
-  /** §6.1 highlight: core (raised, 3 px outline), kicker (1 px outline), off (60% opacity). */
+  /** §6.1 highlight, one of the best five: the gold edge (a 3 px outline); core is raised too. */
   highlight?: CardHighlight | undefined;
-  /** 45% opacity: a kicker in the rankings examples (§13.2). */
+  /** 45% opacity: a kicker in the rankings examples (§13.2), a lesson's card that does not count.
+   * Never on the Table (1.3.97). */
   dim?: boolean | undefined;
   /** Outlined: one of the hero's own cards on the rankings "You" line (§13.3). */
   used?: boolean | undefined;

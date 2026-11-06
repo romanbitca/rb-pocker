@@ -12,14 +12,20 @@
 import type { Card } from '../core/cards.ts';
 import type { HandCategory } from '../eval/evaluate.ts';
 
-/** How a face-up card is marked (PLAN §6.1): core = raised + 3 px outline, kicker = 1 px outline,
- * off = dimmed to 60% (board cards outside the best five, after the flop). */
-export type CardHighlight = 'core' | 'kicker' | 'off';
+/** How a face-up card of the best five is marked (PLAN §6.1, 1.3.97): every one has the gold edge,
+ * and `core` (the cards that make the category) is raised too. A card outside the five has no
+ * highlight and looks like any other: nothing on the Table is faded for it. */
+export type CardHighlight = 'core' | 'kicker';
 
 /** One card. `card: null` = face down. */
 export interface CardView {
   readonly card: Card | null;
   readonly highlight?: CardHighlight;
+  /**
+   * The highlight marks a winner's five after a showdown (§12.9), not the hero's hand in play:
+   * screen readers hear "part of the winning hand" instead of "part of your hand" (§12.12).
+   */
+  readonly winning?: boolean;
 }
 
 /** Bot personality ids, the same strings as `PersonalityId` (PLAN Appendix A.3). */

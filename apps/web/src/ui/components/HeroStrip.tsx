@@ -15,7 +15,7 @@ import { memo, useId } from 'react';
 import type { HeroView } from '../../app/store.ts';
 import { en } from '../../i18n/en.ts';
 import { formatChips } from '../format.ts';
-import { Card } from './Card.tsx';
+import { Card, cardViewLabel } from './Card.tsx';
 import styles from './HeroStrip.module.css';
 
 const cx = (...names: (string | false | null | undefined)[]): string =>
@@ -48,12 +48,14 @@ export const HeroCards = memo(function HeroCards({ hero, size, className }: Hero
         card={hero.hole[0].card}
         size={size}
         highlight={hero.hole[0].highlight}
+        label={cardViewLabel(hero.hole[0])}
         className={styles.dealt}
       />
       <Card
         card={hero.hole[1].card}
         size={size}
         highlight={hero.hole[1].highlight}
+        label={cardViewLabel(hero.hole[1])}
         className={cx(styles.dealt, styles.second)}
       />
     </span>

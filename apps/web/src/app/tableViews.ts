@@ -34,10 +34,14 @@ const HERO = 0;
 // ---------------------------------------------------------------------------------------------
 // The shapes (structurally equal to ui/views.ts)
 
-/** `CardView`: `card: null` = face down; `highlight` per §6.1. */
+/**
+ * `CardView`: `card: null` = face down; `highlight` per §6.1 (the gold edge of a best five, `core`
+ * raised too); `winning` when that five is a winner's after a showdown (§12.9).
+ */
 export interface CardViewData {
   readonly card: Card | null;
-  readonly highlight?: 'core' | 'kicker' | 'off';
+  readonly highlight?: 'core' | 'kicker';
+  readonly winning?: boolean;
 }
 
 export type SeatCardsData =
@@ -81,7 +85,10 @@ export interface HeroHandViewData {
 /** The hero strip (§12.3): cards with highlights, chips, and `describe()`'s label (main thread). */
 export interface HeroView {
   readonly handSeq: number;
-  /** The hero's hole cards, highlighted per §6.1 while the hero is in the hand. */
+  /**
+   * The hero's hole cards, highlighted per §6.1 while the hero is in the hand; after a showdown
+   * only when the hero won a pot (the gold edge then marks the winners' fives, §12.9).
+   */
   readonly hole: readonly [CardViewData, CardViewData];
   readonly stack: number;
   readonly bet: number;
@@ -171,13 +178,25 @@ export function heroInfo(hand: HandState): HandInfo | null {
   return info;
 }
 
-/** §6.1 highlight of a card for the hero's best five (none preflop or once the hero folded). */
-function highlightOf(info: HandInfo | null, card: Card, board: boolean): CardViewData {
+/**
+ * §6.1 highlight of a card for the best five `info` describes (none for `info` null, or preflop):
+ * the gold edge on each of the five, `core` raised too. A card outside the five gets nothing, so
+ * it looks like any other card (1.3.97: the owner read the old 60% fade as "not active").
+ * `winning`: the five is a winner's after a showdown (§12.9).
+ */
+function highlightOf(info: HandInfo | null, card: Card, winning: boolean): CardViewData {
   if (info === null || info.best5.length === 0) return { card };
-  if (info.core.includes(card)) return { card, highlight: 'core' };
-  if (info.kickers.includes(card)) return { card, highlight: 'kicker' };
-  return board ? { card, highlight: 'off' } : { card };
+  const highlight = info.core.includes(card)
+    ? 'core'
+    : info.kickers.includes(card)
+      ? 'kicker'
+      : null;
+  if (highlight === null) return { card };
+  return winning ? { card, highlight, winning } : { card, highlight };
 }
+
+/** The hand ended at a showdown (cards were compared, §3.9), not by folds. */
+const atShowdown = (hand: HandState): boolean => hand.result?.endedBy === 'showdown';
 
 const blindOf = (hand: HandState, seat: number): 'sb' | 'bb' | null =>
   seat === hand.sbSeat ? 'sb' : seat === hand.bbSeat ? 'bb' : null;
@@ -199,15 +218,20 @@ function isWinner(hand: HandState, seat: number): boolean {
   return hand.result !== null && hand.result.potWinners.some((w) => w.includes(seat));
 }
 
+/**
+ * A bot's hole cards. Face up only once revealed; after a showdown a winner's cards that are in its
+ * best five get the gold edge, raised where they make the category, as on the board (§12.9; with a
+ * split, each winner's). Its other cards look like any card.
+ */
 function cardsOf(hand: HandState, seat: number): SeatCardsData {
   const s = hand.seats[seat] as SeatState;
   if (!s.dealtIn || s.folded || s.hole === null) return { kind: 'none' };
   if (!hand.revealed.includes(seat)) return { kind: 'hidden' };
-  const shown = hand.result?.shown.find((x) => x.seat === seat);
-  const best5 = shown !== undefined && isWinner(hand, seat) ? shown.best5 : null;
-  const face = (card: Card): CardViewData =>
-    best5 === null ? { card } : { card, highlight: best5.includes(card) ? 'core' : 'off' };
-  return { kind: 'revealed', cards: [face(s.hole[0]), face(s.hole[1])] };
+  const info = atShowdown(hand) && isWinner(hand, seat) ? describe(s.hole, hand.board) : null;
+  return {
+    kind: 'revealed',
+    cards: [highlightOf(info, s.hole[0], true), highlightOf(info, s.hole[1], true)],
+  };
 }
 
 /** The level that decides a seat's play and label: its own override, else the table's (§9.3). */
@@ -246,7 +270,7 @@ export function seatView(hand: HandState, table: TableState, seat: number): Seat
 }
 
 function sameCard(a: CardViewData, b: CardViewData): boolean {
-  return a.card === b.card && a.highlight === b.highlight;
+  return a.card === b.card && a.highlight === b.highlight && a.winning === b.winning;
 }
 
 function sameCards(a: SeatCardsData, b: SeatCardsData): boolean {
@@ -299,10 +323,13 @@ export function heroViewOf(hand: HandState, legal: LegalActions | null): HeroVie
   const s = hand.seats[HERO];
   const info = heroInfo(hand);
   if (s === undefined || s.hole === null || info === null) return null;
-  const live = s.folded ? null : info;
+  // The gold edge marks the hero's five while the hero plays; after a showdown it marks the
+  // winners' fives (§12.9), so a hero who lost it keeps plain cards.
+  const showdown = atShowdown(hand);
+  const live = s.folded || (showdown && !isWinner(hand, HERO)) ? null : info;
   return {
     handSeq: hand.handSeq,
-    hole: [highlightOf(live, s.hole[0], false), highlightOf(live, s.hole[1], false)],
+    hole: [highlightOf(live, s.hole[0], showdown), highlightOf(live, s.hole[1], showdown)],
     stack: s.stack,
     bet: betOf(hand, s),
     dealer: hand.button === HERO,
@@ -319,22 +346,26 @@ export function heroViewOf(hand: HandState, legal: LegalActions | null): HeroVie
 
 /**
  * The board with §6.1 highlights for the hero's best five (none once the hero folded). After a
- * showdown that a bot won (the main pot), its winning five instead (§12.9 "winning five
- * highlighted"); its cards are face up by then (`hand.revealed`), so nothing hidden shows.
+ * showdown, the winning five of the main pot's first winner instead (§12.9 "winning five
+ * highlighted"), the hero's when the hero won it; a bot's cards are face up by then
+ * (`hand.revealed`), so nothing hidden shows.
  */
 export function boardViewOf(hand: HandState): CardViewData[] {
   const result = hand.result;
-  const winner = result?.endedBy === 'showdown' ? result.potWinners[0]?.[0] : undefined;
-  const winnerHole = winner === undefined ? null : (hand.seats[winner]?.hole ?? null);
-  if (winner !== undefined && winner !== HERO && winnerHole !== null) {
-    if (hand.revealed.includes(winner)) {
-      const info = describe(winnerHole, hand.board);
-      return hand.board.map((card) => highlightOf(info, card, true));
-    }
+  if (result !== null && atShowdown(hand)) {
+    const winner = result.potWinners[0]?.[0];
+    const hole = winner === undefined ? null : (hand.seats[winner]?.hole ?? null);
+    const info =
+      winner === HERO
+        ? heroInfo(hand)
+        : winner !== undefined && hole !== null && hand.revealed.includes(winner)
+          ? describe(hole, hand.board)
+          : null;
+    return hand.board.map((card) => highlightOf(info, card, true));
   }
   const hero = hand.seats[HERO];
   const info = hero === undefined || hero.folded ? null : heroInfo(hand);
-  return hand.board.map((card) => highlightOf(info, card, true));
+  return hand.board.map((card) => highlightOf(info, card, false));
 }
 
 /**

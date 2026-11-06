@@ -690,12 +690,12 @@ test.describe('axe: the first-table tips', () => {
     test.skip(!SIZES.includes(sizeOf(testInfo)), 'one phone and one desktop size per browser');
   });
 
-  test('the four tips, each where it shows', async ({ page }, testInfo) => {
+  test('the five tips, each where it shows', async ({ page }, testInfo) => {
     test.setTimeout(150_000);
     const errors = collectErrors(page);
     const audit = new Audit(page, testInfo);
-    // As tips.spec.ts: the bots check and call, so a hand sees a flop (the Hands tab's tip), at the
-    // Normal speed (a tip waits until its moment has lasted 400 ms, §12.11).
+    // As tips.spec.ts: the bots check and call, so a hand sees a flop (the gold edge's and the Hands
+    // tab's tips), at the Normal speed (a tip waits until its moment has lasted 400 ms, §12.11).
     await openApp(page, seedFor(testInfo, 'axe-tips'), '&script=passive');
     await page.evaluate(() =>
       window.__pc?.dispatch({
@@ -705,7 +705,7 @@ test.describe('axe: the first-table tips', () => {
     );
     await button(page, 'Play').click();
     const seen = new Set<string>();
-    for (let steps = 0; seen.size < 4 && steps < 200; steps++) {
+    for (let steps = 0; seen.size < 5 && steps < 200; steps++) {
       const point = await page
         .waitForFunction(
           () => {
@@ -746,7 +746,7 @@ test.describe('axe: the first-table tips', () => {
         await page.waitForFunction(() => window.__pc?.state().ui.overlays.includes('tip') !== true);
       }
     }
-    expect([...seen].sort()).toEqual(['coachStrip', 'handsTab', 'heroStrip', 'undo']);
+    expect([...seen].sort()).toEqual(['bestFive', 'coachStrip', 'handsTab', 'heroStrip', 'undo']);
 
     await audit.done();
     expect(errors).toEqual([]);
