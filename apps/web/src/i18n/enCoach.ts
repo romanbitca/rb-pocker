@@ -77,13 +77,18 @@ export const enCoach = {
         'Against any cards you win {eRandom}%. This player {actionDescription} only with good hands. Against those, you win about {eRange}%.',
       WHY_NOT_FOLD: 'Why not fold? You win more often than you need to.',
       WHY_NOT_CHECK: 'Why not check? Worse hands would get a free card.',
+      'WHY_NOT_CHECK.river': 'Why not check? Worse hands would call a bet.',
       WHY_NOT_CALL: 'Why not call? You need {need}%, and you win about {E}%.',
       WHY_NOT_BET: 'Why not bet? Better hands call, and worse hands fold.',
       WHY_NOT_RAISE: 'Why not raise? Worse hands fold, and better hands call.',
       CLOSE_SPOT: 'Close call: {alt} is also fine.',
       GUARDRAIL: 'This decision is clear. {detail}',
-      RULE_2_4:
-        'Quick trick: outs × 2 ≈ % for the next card. Outs × 4 ≈ % by the river. Exact: {exact}%.',
+      RULE_2_4: {
+        count: 'outs',
+        one: 'Quick trick: outs × 2 ≈ % for the next card. Outs × 4 ≈ % by the river. With your {outs} out, exact: {exact}%.',
+        other:
+          'Quick trick: outs × 2 ≈ % for the next card. Outs × 4 ≈ % by the river. With your {outs} outs, exact: {exact}%.',
+      },
       RULE_2_4_BIG: 'The trick guesses too high for big draws.',
 
       // Variants (Appendix F.1 notes, chunk 5.6): the coach never contradicts its own numbers.
@@ -108,6 +113,17 @@ export const enCoach = {
         'Your {handName} is strong against {n} players (about {E}%). Bet {size}.',
       'SEMI_BLUFF.turn':
         '{draw}: {outs} {g:outs}. You hit about {hitNext}% on the river. Betting can win now or later.',
+      // Outs of more than one kind (§6.3): each group by what it makes, weak ones marked.
+      'SEMI_BLUFF.groups':
+        '{draw}. Your {g:outs}: {groups}. You hit about {hitNext}% next card and {hitRiver}% by the river. Betting can win now or later.',
+      'SEMI_BLUFF.turnGroups':
+        '{draw}. Your {g:outs}: {groups}. You hit about {hitNext}% on the river. Betting can win now or later.',
+      'CHECK_WEAK.draw': 'Your {draw} has not hit yet. Check and see the next card for free.',
+      'RAISE_PROTECT.river': 'Your hand is strong. Raise now: worse hands can still call.',
+      'FOLD_VS_RAISE.realise':
+        'You need {need}% to call. {hand} wins about {E}% against their likely hands if you see every card. Later bets can make you fold before that.',
+      'FOLD_VS_RAISE.range':
+        '{hand} is in the top {rankPct}% of starting hands. Against this raise, that is too weak to call.',
       'PUSH_FOLD.fold': {
         count: 'S',
         one: 'Only {S} {g:big blind} left: go {g:all-in} or fold. They fold only about {Pfold}%. If called, you win only about {E}%.',
@@ -156,6 +172,18 @@ export const enCoach = {
       'example.straight': 'two pair and sets',
       'example.flush': 'straights and sets',
       'example.fullHousePlus': 'flushes and straights',
+      'outs.list': '{group} · {rest}',
+      'outs.group': '{outs} for {makes}',
+      'outs.groupWeak': '{outs} for {makes} (weak)',
+      'makes.pair': 'a pair',
+      'makes.twoPair': 'two pair',
+      'makes.trips': 'three of a kind',
+      'makes.straight': 'a straight',
+      'makes.flush': 'a flush',
+      'makes.fullHouse': 'a full house',
+      'makes.quads': 'four of a kind',
+      'makes.straightFlush': 'a straight flush',
+      'makes.royalFlush': 'a royal flush',
       'villain.betsBig': 'bets big',
       'villain.bets': 'bets',
       'villain.raises': 'raises',

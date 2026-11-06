@@ -7,7 +7,7 @@
  * above straight flush), the same scale `OutCard.makes` and the chances use.
  */
 import { isCard, makeCard, rankOf, suitOf, type Card } from '../core/cards.ts';
-import { categoryOf, score7 } from '../eval/evaluate.ts';
+import { categoryOf, score7, scoreNibbles } from '../eval/evaluate.ts';
 import * as tables from '../eval/tables.ts';
 import type { DrawKind, HandAnalysis, OutCard, RiskRule } from './types.ts';
 
@@ -18,8 +18,10 @@ const STRAIGHT_HIGH = tables.STRAIGHT_HIGH;
 const HIGH_CARD = 0;
 const PAIR = 1;
 const TWO_PAIR = 2;
+const TRIPS = 3;
 const STRAIGHT = 4;
 const FLUSH = 5;
+const QUADS = 7;
 const ROYAL_FLUSH = 9;
 
 /** Score category code of a straight (PLAN §5.2), for building a straight's score. */
@@ -154,6 +156,20 @@ function higherFlushPossible(h: Hand, x: Card, next: Card[], score: number): boo
   return theirs.length >= 5 && score7(theirs, theirs.length) > score;
 }
 
+/**
+ * §6.3 weak out (decided 6 Nov 2026, open question Q): the new hand's pair, two pair, trips or
+ * quads holds a rank the hero has no card of, so it comes from the board's own pair. With rule 3
+ * that happens only on a paired board: two pair with the board's pair (a hole card pairs and the
+ * board's pair is the other one), or three or four of a kind of the board's rank. `score` and
+ * `lv` are the hero's new score and level.
+ */
+function weakOut(holeRanks: number, score: number, lv: number): boolean {
+  const [n0, n1] = scoreNibbles(score);
+  const mine = (r: number): boolean => (holeRanks & (1 << r)) !== 0;
+  if (lv === TWO_PAIR) return !mine(n0) || !mine(n1);
+  return (lv === TRIPS || lv === QUADS) && !mine(n0);
+}
+
 /** §6.3 outs with their §6.4 risky rules: strongest category first, then card high to low. */
 function outsOf(h: Hand): OutCard[] {
   const n = h.cards.length;
@@ -178,7 +194,12 @@ function outsOf(h: Hand): OutCard[] {
     const bit = 1 << rankOf(x);
     if ((boardRanks & bit) !== 0 && (holeRanks & bit) === 0 && lv <= TWO_PAIR) continue;
     found.push({
-      out: { card: x, makes: categoryOf(score), risky: riskRules(h, x, next, score, lv) },
+      out: {
+        card: x,
+        makes: categoryOf(score),
+        risky: riskRules(h, x, next, score, lv),
+        weak: weakOut(holeRanks, score, lv),
+      },
       lv,
     });
   }
@@ -314,9 +335,11 @@ function beatersOf(h: Hand): Beaters {
 }
 
 /**
- * Outs (§6.3) on the flop and turn, each with its risky rules (§6.4); `[]` preflop and on the
- * river. An unseen card is an out when (1) the category goes up, (2) the new best five uses a
- * hole card, and (3) it is not a board-pairing card that only makes two pair or less.
+ * Outs (§6.3) on the flop and turn, each with its risky rules (§6.4) and whether it is weak (§6.3:
+ * on a paired board it only makes two pair with the board's pair, or trips or quads of the
+ * board's rank); `[]` preflop and on the river. An unseen card is an out when (1) the category
+ * goes up, (2) the new best five uses a hole card, and (3) it is not a board-pairing card that
+ * only makes two pair or less.
  */
 export function findOuts(hole: readonly Card[], board: readonly Card[]): OutCard[] {
   const h = readHand('findOuts', hole, board);

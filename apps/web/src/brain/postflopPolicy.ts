@@ -29,7 +29,7 @@ import { rankOf, suitOf, type Card } from '../core/cards.ts';
 import type { Observation } from '../engine/types.ts';
 import type { HandInfo } from '../eval/describe.ts';
 import { score7, scoreNibbles, type HandCategory } from '../eval/evaluate.ts';
-import { bucketOf, perOpponentStrength } from './features.ts';
+import { bucketOf, mainDraw, perOpponentStrength } from './features.ts';
 import { liveOpponents } from './ranges.ts';
 import { sizeIntent, type SizedAction } from './sizing.ts';
 import {
@@ -264,7 +264,7 @@ export function callEV(
 export function withEquity(f: Features, e: number): Features {
   const eRange = Math.min(1, Math.max(0, e));
   const p = perOpponentStrength(eRange, f.nOpp);
-  return { ...f, eRange, p, bucket: bucketOf(p, f.outs, f.street) };
+  return { ...f, eRange, p, bucket: bucketOf(p, f.drawOuts, f.street, f.drawOnly) };
 }
 
 // ── §9.4 step 4 defence (bots) ─────────────────────────────────────────────────────────────────
@@ -406,13 +406,6 @@ export function postflopIntent(
 
 const reason = (code: ReasonCode, data: Reason['data'] = {}): Reason => ({ code, data });
 
-/** The largest draw (most outs; the first of equals), for `{draw}` (Appendix F.1). */
-function largestDraw(f: Features): DrawKind | null {
-  let best: Features['draws'][number] | null = null;
-  for (const d of f.draws) if (best === null || d.outs > best.outs) best = d;
-  return best === null ? null : best.kind;
-}
-
 /** Reason codes for the sized action, main first (§8.10; data per Appendix F.1). */
 function traceOf(
   f: Features,
@@ -441,7 +434,7 @@ function traceOf(
       if (f.facing === 'allin') return [reason('CALL_ALLIN', { E, need })];
       if (read.evPrice <= 0 && read.implied > 0) {
         const needImplied = f.toCall / (f.winPot + f.toCall + read.implied);
-        return [reason('IMPLIED', { E, need, needImplied, draw: largestDraw(f) ?? '' })];
+        return [reason('IMPLIED', { E, need, needImplied, draw: mainDraw(f.draws) ?? '' })];
       }
       return [reason('CALL_PROFITABLE', { E, need, toCall: f.toCall, pot: f.winPot })];
     }
@@ -450,7 +443,11 @@ function traceOf(
       if (f.bucket === 'monster' || f.bucket === 'strong' || f.bucket === 'medium') {
         return [reason('POT_CONTROL', { handName })];
       }
-      return [reason(f.street === 'river' ? 'CHECK_FREE' : 'CHECK_WEAK')];
+      if (f.street === 'river') return [reason('CHECK_FREE')];
+      // A Draw that does not semi-bluff (§8.5 step 5) checks with its draw named (F.1).
+      return f.bucket === 'draw'
+        ? [reason('CHECK_WEAK', { draw: mainDraw(f.draws) ?? '' })]
+        : [reason('CHECK_WEAK')];
     case 'raise': {
       const main = nuts ? 'NUTS' : rule.purpose === 'protect' ? 'RAISE_PROTECT' : 'VALUE_RAISE';
       const trace = [reason(main, size)];
@@ -465,7 +462,7 @@ function traceOf(
         const hit = outsChances(f.outs, spot.board.length);
         return [
           reason('SEMI_BLUFF', {
-            draw: largestDraw(f) ?? '',
+            draw: mainDraw(f.draws) ?? '',
             outs: f.outs,
             hitNext: (hit.nextCardPct as number) / 100,
             hitRiver: (hit.byRiverPct as number) / 100,

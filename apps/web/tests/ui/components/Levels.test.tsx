@@ -203,6 +203,8 @@ const SUMMARY: SummaryData = {
       grade: 'best',
       eRandom: 0.4,
       need: 0.2,
+      eRange: null,
+      R: null,
       undone: false,
     },
     {
@@ -213,6 +215,8 @@ const SUMMARY: SummaryData = {
       grade: 'mistake',
       eRandom: 0.45,
       need: 0.25,
+      eRange: null,
+      R: null,
       undone: true,
     },
     {
@@ -223,6 +227,8 @@ const SUMMARY: SummaryData = {
       grade: null,
       eRandom: null,
       need: 0.25,
+      eRange: null,
+      R: null,
       undone: false,
     },
   ],
@@ -336,8 +342,9 @@ describe('the hand summary (§12.9) and the Exam result (§10.2)', () => {
     });
     const call = { type: 'call' } as const;
     const fold = { type: 'fold' } as const;
+    // No price that argues against the coach's fold (`rowNumbers`, QA-1): 23% against 17% would.
     expect(rowNotes(row(call, fold, 'best'), money)).toBe(
-      'Calling was as good as folding here. · You had 23%, needed 17%.',
+      'Calling was as good as folding here. · You had 23%.',
     );
     expect(rowNotes(row({ type: 'raise', to: 65 }, { type: 'raise', to: 60 }, 'best'), money)).toBe(
       'Raising to 65 was as good as raising to 60 here. · You had 23%, needed 17%.',
@@ -346,7 +353,7 @@ describe('the hand summary (§12.9) and the Exam result (§10.2)', () => {
       'Folding was as good as betting 40 here. · You had 23%, needed 17%.',
     );
     // Any other grade keeps "Coach: …"; the coach's own move needs no note.
-    expect(rowNotes(row(call, fold, 'good'), money)).toBe('Coach: Fold · You had 23%, needed 17%.');
+    expect(rowNotes(row(call, fold, 'good'), money)).toBe('Coach: Fold · You had 23%.');
     expect(rowNotes(row(call, call, 'best'), money)).toBe('You had 23%, needed 17%.');
     render(
       <SummarySheet

@@ -78,6 +78,14 @@ export interface DecisionRecord {
    */
   eRandom: number | null;
   need: number | null;
+  /**
+   * The grade's own numbers for the price (`GradeResult.price`, §8.9): `eRange`, against the
+   * likely hands of every live opponent, and the call's realisation `R`; null with nothing to call
+   * or without a grade. Optional (Appendix H rule 2): absent in older records, whose summary rows
+   * show the HUD's number as before. The hand summary reads them (§12.9, QA-1).
+   */
+  eRange?: number | null;
+  R?: number | null;
   hintSeen: boolean;
   undone: boolean;
   leak: LeakId | null;
@@ -755,6 +763,8 @@ const decisionRecord: Check<DecisionRecord> = object<DecisionRecord>({
   lossMilliBB: integer,
   eRandom: nullable(num()),
   need: nullable(num()),
+  eRange: optional(nullable(num())),
+  R: optional(nullable(num())),
   hintSeen: bool,
   undone: bool,
   leak: nullable(oneOf(LEAK)),

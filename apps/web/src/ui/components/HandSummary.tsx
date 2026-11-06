@@ -4,10 +4,11 @@
  * a Mistake or worse; Exam every hand, as the "Exam result"). Title "Hand 12: +160"; one row per
  * hero decision: street, what you did, the grade chip, the coach's move when it was another (with
  * a Best grade: "Calling was as good as folding here."), and the numbers at the decision ("You
- * had 45%, needed 25%."). Exam adds the score of the hand
- * (§14.4). Buttons [Review hand] and [Next hand ›]; ✕, Esc, the scrim and Back close it (the
- * banner stays, and the next hand waits its 3 s again). Above the buttons, the level suggestion
- * card when there is one (§10.4, chunk 8.4).
+ * had 45%, needed 25%."; the grade's own, labelled when they differ: "Any cards: 45%. Their likely
+ * hands: about 20%, needed 30%.", `rowNumbers` in `ui/summary.ts`, QA-1). Exam adds the score of
+ * the hand (§14.4). Buttons [Review hand] and [Next hand ›]; ✕, Esc, the scrim and Back close it
+ * (the banner stays, and the next hand waits its 3 s again). Above the buttons, the level
+ * suggestion card when there is one (§10.4, chunk 8.4).
  *
  * The Table hosts it while the `summary` overlay is open (its `sheet` gate keeps the next hand
  * waiting, §12.8); it reads the hand and its records from the store (`ui/summary.ts` builds the
@@ -17,7 +18,7 @@
 import { memo, useEffect, useId, useMemo } from 'react';
 import { selectCoachLevel, useAppStore, type AppState } from '../../app/store.ts';
 import type { PlayerAction } from '../../engine/types.ts';
-import { summaryOf, type SummaryData, type SummaryRow } from '../summary.ts';
+import { rowNumbers, summaryOf, type SummaryData, type SummaryRow } from '../summary.ts';
 import { summaryWords as W } from '../../i18n/summary.ts';
 import { formatAmount } from '../actionBar.ts';
 import { percentText } from '../equity.ts';
@@ -107,6 +108,25 @@ function doingText(
   }
 }
 
+/** The numbers of a row in words (`rowNumbers`: the ones that tell the grade's story). */
+function numbersText(row: SummaryRow): string | null {
+  const pct = (x: number): string => percentText(100 * x);
+  const n = rowNumbers(row);
+  const later = (x: number | null): string => (x === null ? '' : ` ${W.later(pct(x))}`);
+  switch (n.kind) {
+    case 'none':
+      return null;
+    case 'win':
+      return W.win(pct(n.win));
+    case 'price':
+      return W.numbers(pct(n.win), pct(n.need)) + later(n.later);
+    case 'likelyOnly':
+      return W.likelyOnly(pct(n.win), pct(n.likely));
+    case 'likely':
+      return W.likely(pct(n.win), pct(n.likely), pct(n.need)) + later(n.later);
+  }
+}
+
 /**
  * The second line of a row: the coach's move when it was another, then the numbers. A Best grade
  * for another move says it was as good ("Calling was as good as folding here."), never "Best move"
@@ -121,12 +141,8 @@ export function rowNotes(row: SummaryRow, money: (x: number) => string): string 
         : coachText(row.rec, money),
     );
   }
-  if (row.eRandom !== null) {
-    const pct = (x: number): string => percentText(100 * x);
-    notes.push(
-      row.need === null ? W.win(pct(row.eRandom)) : W.numbers(pct(row.eRandom), pct(row.need)),
-    );
-  }
+  const numbers = numbersText(row);
+  if (numbers !== null) notes.push(numbers);
   return notes.join(' · ');
 }
 

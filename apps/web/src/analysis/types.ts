@@ -21,6 +21,13 @@ export interface OutCard {
   card: Card;
   makes: HandCategory;
   risky: RiskRule[];
+  /**
+   * A weak out (§6.3, decided 6 Nov 2026, open question Q): on a paired board it only makes two
+   * pair with the board's pair, or three or four of a kind of the board's rank (no hole card in
+   * it). It stays an out, but it does not make the hand a draw (§8.2's bucket, §8.5, the coach's
+   * draw words).
+   */
+  weak: boolean;
 }
 
 /** The equity.worker 'handInfo' result (§6). */

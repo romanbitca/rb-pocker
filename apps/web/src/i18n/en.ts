@@ -534,6 +534,12 @@ export const en = {
     /** At a showdown the hero won: "Ben: Two Pair — loses to your Flush". */
     loses: (name: string, hand: string, yours: string) =>
       `${name}: ${hand} — loses to your ${yours}`,
+    /** The same hand name: the kicker decided ("Priya: Two Pair, Fours and Threes — …"). */
+    losesKicker: (name: string, hand: string, yours: string, theirs: string) =>
+      `${name}: ${hand} — your ${yours} kicker beats their ${theirs}`,
+    /** The same flush name: the first card that differs decided. */
+    losesCard: (name: string, hand: string, yours: string, theirs: string) =>
+      `${name}: ${hand} — your ${yours} beats their ${theirs}`,
     nextHand: 'Next hand',
     /** Under the banner: opens Review on this hand (§12.9, §12.10). */
     review: 'Review this hand',

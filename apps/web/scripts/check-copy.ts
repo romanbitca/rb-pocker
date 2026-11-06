@@ -29,7 +29,7 @@ import {
 } from '../src/brain/explain.ts';
 import { deliberate } from '../src/brain/decide.ts';
 import { candidateEVs, confidence } from '../src/brain/ev.ts';
-import { coachSeed, features } from '../src/brain/features.ts';
+import { coachSeed, features, mainDraw, REAL_DRAWS } from '../src/brain/features.ts';
 import {
   preflopCallers,
   preflopPolicy,
@@ -315,7 +315,10 @@ export function candidateDecisions(s: Situation, rng: Rng): CheckDecision[] {
       // set-mining implied odds); fold on range.
       const E = noisy();
       const R = f.position === 'IP' ? 0.95 : 0.8;
-      const numbers = { hand, E, need: f.need, V: 15, R, evCall: 1, callers };
+      // §8.3 step 5 (a pocket pair's set-mining odds as CALL_PREFLOP's `implied` below): its sign
+      // picks FOLD_VS_RAISE's words (F.1: `.realise` at or above the price, `.range` when > 0).
+      const evCall = E * R * (f.winPot + f.toCall) - f.toCall + (pair ? 3 * bb : 0);
+      const numbers = { hand, E, need: f.need, V: 15, R, evCall, callers };
       const reraise = aggressive(obs, 3 * currentBet);
       if (E >= 0.58) {
         add(reraise, [
@@ -342,23 +345,20 @@ export function candidateDecisions(s: Situation, rng: Rng): CheckDecision[] {
     return finish(s, proposals);
   }
 
-  // §8.5: the bucket from p, the price from E·R (+ implied odds for a draw), §8.8 guardrails.
+  // §8.5: the bucket (§8.2: from p, or a Draw), the price from E·R (+ implied odds for a draw),
+  // §8.8 guardrails.
   const E = f.eRange;
   const need = f.need;
   const R = realisation(f);
   const p = f.p;
   const handName = f.handInfo.name;
-  const largest = f.draws.reduce<Features['draws'][number] | null>(
-    (best, d) => (best === null || d.outs > best.outs ? d : best),
-    null,
-  );
-  const madeDraw =
-    largest !== null &&
-    ['flush', 'nutFlush', 'oesd', 'doubleGutshot', 'gutshot'].includes(largest.kind);
+  const draw = mainDraw(f.draws);
+  const madeDraw = draw !== null && REAL_DRAWS.has(draw);
+  const valueHand = f.bucket === 'monster' || f.bucket === 'strong';
   if (f.toCall > 0) {
     const raise = aggressive(obs, 3 * currentBet);
     const shove = allInAction(obs);
-    if (p >= 0.65) {
+    if (valueHand) {
       add(raise, [r('VALUE_RAISE', sizedPost(raise))]);
       add(raise, [r('RAISE_PROTECT', sizedPost(raise))]);
       add(shove, [r('VALUE_RAISE', sizedPost(shove)), r('COMMITTED', { handName, E, need })]);
@@ -375,11 +375,11 @@ export function candidateDecisions(s: Situation, rng: Rng): CheckDecision[] {
       add(call, [r('CALL_PROFITABLE', { E, need, toCall: f.toCall, pot: f.winPot })]);
     } else {
       add(fold, [r('FOLD_PRICE', { E, need, R })]);
-      if (madeDraw && largest !== null) {
+      if (madeDraw) {
         // Just enough implied odds to make the call pay (§8.5 step 3).
         const implied = f.toCall - E * R * (f.winPot + f.toCall) + 0.05 * f.toCall;
         const needImplied = f.toCall / (f.winPot + f.toCall + implied);
-        add(call, [r('IMPLIED', { E, need, needImplied, draw: largest.kind })]);
+        add(call, [r('IMPLIED', { E, need, needImplied, draw })]);
       }
     }
     if (f.handInfo.playsTheBoard) add(fold, [r('BOARD_PLAYS')]);
@@ -392,17 +392,19 @@ export function candidateDecisions(s: Situation, rng: Rng): CheckDecision[] {
     const bet = aggressive(obs, f.pot / 2);
     const third = aggressive(obs, f.pot / 3);
     const category = f.handInfo.category;
-    if (p >= 0.65) add(bet, [r('VALUE_BET', { handName, category, E, ...sizedPost(bet) })]);
-    if (p >= 0.85) add(bet, [r('NUTS', { handName, category, E, ...sizedPost(bet) })]);
-    if (p >= 0.45 && p < 0.65) add(third, [r('THIN_VALUE', { handName, E, ...sizedPost(third) })]);
-    if (p >= 0.45) add(check, [r('POT_CONTROL', { handName })]);
-    if (p < 0.45) {
+    if (valueHand) add(bet, [r('VALUE_BET', { handName, category, E, ...sizedPost(bet) })]);
+    if (f.bucket === 'monster') add(bet, [r('NUTS', { handName, category, E, ...sizedPost(bet) })]);
+    if (f.bucket === 'medium') add(third, [r('THIN_VALUE', { handName, E, ...sizedPost(third) })]);
+    if (valueHand || f.bucket === 'medium') add(check, [r('POT_CONTROL', { handName })]);
+    if (f.bucket === 'air' || f.bucket === 'draw') {
       add(third, [r('CBET_DRY', sizedPost(third))]);
       add(check, [r(f.street === 'river' ? 'CHECK_FREE' : 'CHECK_WEAK')]);
-      if (f.street !== 'river' && f.outs >= 8) {
+      if (f.bucket === 'draw') {
+        // A Draw semi-bluffs, or checks with its draw named (§8.5 step 5, F.1).
         const hits = { hitNext: 0.2, hitRiver: 0.35 };
-        const data = { draw: largest?.kind ?? '', outs: f.outs, ...hits, ...sizedPost(bet) };
+        const data = { draw: draw ?? '', outs: f.outs, ...hits, ...sizedPost(bet) };
         add(bet, [r('SEMI_BLUFF', data)]);
+        add(check, [r('CHECK_WEAK', { draw: draw ?? '' })]);
       }
     }
     if (f.handInfo.playsTheBoard) add(check, [r('BOARD_PLAYS')]);

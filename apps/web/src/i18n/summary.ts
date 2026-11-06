@@ -55,6 +55,16 @@ export const summaryWords = {
   /** The numbers at the decision: "You had 45%, needed 25%." (each with its % sign). */
   numbers: (win: string, need: string) => `You had ${win}, needed ${need}.`,
   win: (win: string) => `You had ${win}.`,
+  /**
+   * The HUD's number and the grade's, labelled as the coach labels them (§8.10, the strip's
+   * "Any cards: 62%. Their likely hands: about 35%."): the grade compared the second (QA-1).
+   */
+  likely: (any: string, likely: string, need: string) =>
+    `Any cards: ${any}. Their likely hands: about ${likely}, needed ${need}.`,
+  likelyOnly: (any: string, likely: string) =>
+    `Any cards: ${any}. Their likely hands: about ${likely}.`,
+  /** The realised number behind a fold the price alone would pay (the sheet's price bar, §12.6). */
+  later: (x: string) => `Counting later bets: about ${x}.`,
   /** A decision taken back with Undo (it still counts, §11.4). */
   undone: 'Taken back with Undo',
   /** Grading failed for this decision (§11.3 r5). */

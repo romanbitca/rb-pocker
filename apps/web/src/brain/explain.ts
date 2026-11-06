@@ -49,12 +49,28 @@
  * - **Why not.** For each legal action group other than the recommendation's (fold, check, call,
  *   bet, raise; all-in joins bet or raise), only when its sentence is true: fold when facing a bet
  *   and the shown win chance beats the price; check before a bet or raise for value (not a
- *   semi-bluff or a continuation bet); call when the shown win chance is below the price (never a
- *   limp, never in push/fold); bet instead of a check; raise instead of a call, a check or a fold.
- *   The close alternative's group gets the "Close call" line instead.
+ *   semi-bluff or a continuation bet; on the river "worse hands would call a bet", there is no
+ *   free card); call when the shown win chance is below the price (never a limp, never in
+ *   push/fold); bet instead of a check; raise instead of a call, a check or a fold. The close
+ *   alternative's group gets the "Close call" line instead.
+ *
+ * The coach-advice audit of 6 Nov 2026 (branch `fix/coach-words-and-draws`) added:
+ * - **No limp's price.** Before the flop with nobody raised, a call would be a limp (C10): the
+ *   numbers line shows the win chance and the pot only, there is no price bar and no "Why not
+ *   fold?" (`shown.price` false; the sheet follows it).
+ * - **Draws.** `{draw}` is the strongest real draw (`mainDraw`: a flush draw, then a straight
+ *   draw), never the draw with the most outs; with outs of more than one kind SEMI_BLUFF names
+ *   each group by what it makes (`.groups`: "9 for a flush · 6 for a pair (weak)", weak outs and
+ *   pairs marked, §6.3), and the rule of 2 and 4 says how many outs its exact chance counts. A
+ *   Draw that checks names its draw (`CHECK_WEAK.draw`).
+ * - **FOLD_VS_RAISE** says "wins only about {E}%" only below the price; at or above it the true
+ *   reason: `.realise` when the policy's EV(call) still says fold (later bets, R < 1), `.range`
+ *   when EV(call) > 0 and the hand is outside the range that calls the raise (§8.3 step 6).
+ * - **River.** RAISE_PROTECT's "so draws pay" becomes `.river` ("worse hands can still call").
  */
 import { outsChances } from '../analysis/chances.ts';
-import type { DrawKind } from '../analysis/types.ts';
+import { findOuts } from '../analysis/handinfo.ts';
+import type { DrawKind, OutCard } from '../analysis/types.ts';
 import type {
   LegalActions,
   Observation,
@@ -63,8 +79,8 @@ import type {
   Street,
 } from '../engine/types.ts';
 import { describe } from '../eval/describe.ts';
-import type { HandCategory } from '../eval/evaluate.ts';
-import { showsRangeAdjust } from './features.ts';
+import { HAND_CATEGORIES, type HandCategory } from '../eval/evaluate.ts';
+import { mainDraw, REAL_DRAWS, showsRangeAdjust } from './features.ts';
 import type { Decision, Facing, Features, Position, Reason, ReasonCode } from './types.ts';
 
 // ── Keys ───────────────────────────────────────────────────────────────────────────────────────
@@ -144,6 +160,8 @@ export const TEMPLATES = {
   'CALL_PREFLOP.close': { params: E_NEED },
   'CALL_PREFLOP.implied': { params: E_NEED, glossary: ['set'] },
   FOLD_VS_RAISE: { params: ['hand', 'E'] },
+  'FOLD_VS_RAISE.realise': { params: ['need', 'hand', 'E'] },
+  'FOLD_VS_RAISE.range': { params: ['hand', 'rankPct'] },
   SET_MINING: { params: [], glossary: ['pocket pair', 'set'] },
   CALL_PROFITABLE: { params: ['E', 'need', 'toCall', 'pot'] },
   'CALL_PROFITABLE.close': { params: ['E', 'need', 'toCall', 'pot'] },
@@ -157,12 +175,16 @@ export const TEMPLATES = {
   'VALUE_BET.multiwayNoExample': { params: ['handName', 'n', 'E', 'size'] },
   VALUE_RAISE: { params: ['size'] },
   RAISE_PROTECT: { params: [] },
+  'RAISE_PROTECT.river': { params: [] },
   THIN_VALUE: { params: ['handName', 'size'] },
   POT_CONTROL: { params: ['handName'] },
   SEMI_BLUFF: { params: ['draw', 'outs', 'hitNext', 'hitRiver'], glossary: ['outs'] },
   'SEMI_BLUFF.turn': { params: ['draw', 'outs', 'hitNext'], glossary: ['outs'] },
+  'SEMI_BLUFF.groups': { params: ['draw', 'groups', 'hitNext', 'hitRiver'], glossary: ['outs'] },
+  'SEMI_BLUFF.turnGroups': { params: ['draw', 'groups', 'hitNext'], glossary: ['outs'] },
   CBET_DRY: { params: ['size'] },
   CHECK_WEAK: { params: [] },
+  'CHECK_WEAK.draw': { params: ['draw'] },
   PUSH_FOLD: { params: ['S', 'Pfold', 'E'], glossary: ['big blind', 'all-in'] },
   'PUSH_FOLD.fold': { params: ['S', 'Pfold', 'E'], glossary: ['big blind', 'all-in'] },
   CALL_ALLIN: { params: E_NEED },
@@ -179,12 +201,13 @@ export const TEMPLATES = {
   'RANGE_ADJUST.callers': { params: ['n', 'eRandom', 'callers', 'eRange'] },
   WHY_NOT_FOLD: { params: [] },
   WHY_NOT_CHECK: { params: [] },
+  'WHY_NOT_CHECK.river': { params: [] },
   WHY_NOT_CALL: { params: E_NEED },
   WHY_NOT_BET: { params: [] },
   WHY_NOT_RAISE: { params: [] },
   CLOSE_SPOT: { params: ['alt'] },
   GUARDRAIL: { params: ['detail'] },
-  RULE_2_4: { params: ['exact'] },
+  RULE_2_4: { params: ['outs', 'exact'] },
   RULE_2_4_BIG: { params: [] },
   FALLBACK: { params: [] },
 
@@ -212,6 +235,20 @@ export const TEMPLATES = {
   'example.straight': { params: [] },
   'example.flush': { params: [] },
   'example.fullHousePlus': { params: [] },
+  // SEMI_BLUFF's `{groups}` (§6.3: the outs by what they make): "9 for a flush · 6 for a pair
+  // (weak)", one `outs.list` per extra group.
+  'outs.list': { params: ['group', 'rest'] },
+  'outs.group': { params: ['outs', 'makes'] },
+  'outs.groupWeak': { params: ['outs', 'makes'] },
+  'makes.pair': { params: [] },
+  'makes.twoPair': { params: [] },
+  'makes.trips': { params: [] },
+  'makes.straight': { params: [] },
+  'makes.flush': { params: [] },
+  'makes.fullHouse': { params: [] },
+  'makes.quads': { params: [] },
+  'makes.straightFlush': { params: [] },
+  'makes.royalFlush': { params: [] },
   'villain.betsBig': { params: [] },
   'villain.bets': { params: [] },
   'villain.raises': { params: [] },
@@ -364,7 +401,33 @@ export interface ExplainInput {
   /** §6.2 draws and §6.3 outs (flop and turn; none on the river). */
   draws: readonly { kind: DrawKind; outs: number }[];
   outs: number;
+  /** The same outs grouped by what they make (`outGroups`): SEMI_BLUFF names each group. */
+  outGroups: readonly OutGroup[];
   villain: VillainAction | null;
+}
+
+/** §6.3: the outs that make one category, the weak ones apart. */
+export interface OutGroup {
+  makes: HandCategory;
+  outs: number;
+  /** Shown "(weak)": weak outs (§6.3), or a Pair (§6.2: two overcards are always weak). */
+  weak: boolean;
+}
+
+/**
+ * The §6.3 outs grouped by the category they make, strongest first (a weak group after the
+ * strong one of its category): together they count every out once, as `outs` does.
+ */
+export function outGroupsOf(outs: readonly OutCard[]): OutGroup[] {
+  const groups: OutGroup[] = [];
+  for (const o of outs) {
+    const weak = o.weak || o.makes === 'pair';
+    const g = groups.find((x) => x.makes === o.makes && x.weak === weak);
+    if (g === undefined) groups.push({ makes: o.makes, outs: 1, weak });
+    else g.outs++;
+  }
+  const level = (c: HandCategory): number => HAND_CATEGORIES.indexOf(c);
+  return groups.sort((a, b) => level(b.makes) - level(a.makes) || Number(a.weak) - Number(b.weak));
 }
 
 /** The input for the observer of `obs`, its features `f` and its decision `d`. */
@@ -397,6 +460,7 @@ export function explainInput(
     preflopName: describe(obs.hole, []).name,
     draws: f.draws,
     outs: f.outs,
+    outGroups: f.outs > 0 ? outGroupsOf(findOuts(obs.hole, obs.board)) : [],
     villain: villainAction(obs),
   };
 }
@@ -428,6 +492,12 @@ export interface Explanation {
     need: number;
     players: number;
     callers: number | null;
+    /**
+     * The hint shows a price (need, to call): something to call that the advice weighs. False
+     * with nothing to call, and before the flop when nobody has raised yet (the call would be a
+     * limp, C10): the numbers line and the sheet show the win chance and the pot only (F.1).
+     */
+    price: boolean;
     /** The sheet's price bar (§12.6), facing a bet; null when the coach did not decide on it. */
     bar: PriceBar | null;
   };
@@ -678,17 +748,46 @@ const DRAW_KINDS: ReadonlySet<string> = new Set<DrawKind>([
   'backdoorStraight',
 ]);
 
-/** The draw a reason names (`data.draw`), else the hero's largest draw (most outs), else none. */
+/**
+ * The draw a reason names (`data.draw`), else the hero's strongest real draw (`mainDraw`: a
+ * flush draw, then a straight draw, then two overcards), else none.
+ */
 function drawOf(r: Reason, input: ExplainInput): DrawKind | null {
   const named = r.data.draw;
   if (typeof named === 'string' && DRAW_KINDS.has(named)) return named as DrawKind;
-  let best: ExplainInput['draws'][number] | null = null;
-  for (const d of input.draws) if (best === null || d.outs > best.outs) best = d;
-  return best === null ? null : best.kind;
+  return mainDraw(input.draws);
 }
 
 /** Board cards by street, for the §6.6 outs chances. */
 const BOARD_LENGTH: Record<Street, number> = { preflop: 0, flop: 3, turn: 4, river: 5 };
+
+/** One `{groups}` item: "9 for a flush", "6 for a pair (weak)". */
+function groupLine(g: OutGroup): Line {
+  return line(g.weak ? 'outs.groupWeak' : 'outs.group', {
+    outs: count(g.outs),
+    makes: nested(`makes.${g.makes as Exclude<HandCategory, 'highCard'>}`),
+  });
+}
+
+/** SEMI_BLUFF's `{groups}` (§6.3): every group by what it makes, joined by " · ". */
+function groupsParam(groups: readonly OutGroup[]): Param {
+  let rest = groupLine(groups[groups.length - 1] as OutGroup);
+  for (let i = groups.length - 2; i >= 0; i--) {
+    rest = line('outs.list', {
+      group: { kind: 'line', line: groupLine(groups[i] as OutGroup) },
+      rest: { kind: 'line', line: rest },
+    });
+  }
+  return { kind: 'line', line: rest };
+}
+
+/** Before the flop, nobody has raised yet: a call would be a limp, which is never advice (C10). */
+const unopened = (input: Pick<ExplainInput, 'street' | 'facing'>): boolean =>
+  input.street === 'preflop' && (input.facing === 'none' || input.facing === 'limpers');
+
+/** Does the advice weigh the price of a call? Something to call, and not a limp (`unopened`). */
+const priced = (input: Pick<ExplainInput, 'toCall' | 'street' | 'facing'>): boolean =>
+  input.toCall > 0 && !unopened(input);
 
 /** Headline-style keys of an action: `headline.*` (with big blinds) or `alt.*` (chips only). */
 function actionLine(
@@ -713,10 +812,14 @@ function actionLine(
   }
 }
 
-/** The numbers line (§8.10 hint structure 3): always the HUD's `eRandom`. */
+/**
+ * The numbers line (§8.10 hint structure 3): always the HUD's `eRandom`. The price only when the
+ * advice weighs it (`priced`): not with nothing to call, nor before the flop in an unopened or
+ * limped pot, where the call would be a limp and the advice is a raise or a fold (F.1).
+ */
 function numbersLine(input: ExplainInput): Line {
   const eRandom = pct(input.eRandom);
-  if (input.toCall <= 0) return line('numbers.free', { eRandom, pot: chips(input.pot) });
+  if (!priced(input)) return line('numbers.free', { eRandom, pot: chips(input.pot) });
   const short = input.winPot < input.pot;
   return line(short ? 'numbers.short' : 'numbers', {
     eRandom,
@@ -788,8 +891,21 @@ function reasonLine(r: Reason, c: Context): Line {
       return line('THREE_BET_VALUE', { hand: name(input.preflopName), E: pE, size: size() });
     case 'FOUR_BET_VALUE':
       return line('FOUR_BET_VALUE', { hand: name(input.preflopName), size: size() });
-    case 'FOLD_VS_RAISE':
-      return line('FOLD_VS_RAISE', { hand: name(input.preflopName), E: pE });
+    case 'FOLD_VS_RAISE': {
+      // "wins only about E%" only below the price (F.1); else the reason that is true: the
+      // policy's EV(call) counts later bets (R < 1) and still says fold, or EV(call) > 0 and
+      // the hand is outside the range that calls this raise (§8.3 step 6).
+      const hand = name(input.preflopName);
+      if (holds('less', E, need)) return line('FOLD_VS_RAISE', { hand, E: pE });
+      const evCall = num(r.data.evCall);
+      if (evCall !== null && evCall > 0) {
+        return line('FOLD_VS_RAISE.range', {
+          hand,
+          rankPct: { kind: 'top', value: input.rankPct },
+        });
+      }
+      return line('FOLD_VS_RAISE.realise', { need: pNeed, hand, E: pE });
+    }
     case 'CALL_PREFLOP': {
       const variant = holds('atLeast', E, need)
         ? 'CALL_PREFLOP'
@@ -850,15 +966,39 @@ function reasonLine(r: Reason, c: Context): Line {
     case 'COMMITTED':
       return line(r.code, { handName: name(input.handName) });
     case 'SEMI_BLUFF': {
+      // The strongest real draw names the hand (F.1 `{draw}`); with outs of more than one kind
+      // each group says what it makes (§6.3), so "Flush draw: 19 outs" is never said.
       const hit = outsChances(input.outs, BOARD_LENGTH[input.street]);
-      const params: Record<string, Param> = {
-        draw: { kind: 'draw', draw: drawOf(r, input) },
+      const draw: Param = { kind: 'draw', draw: drawOf(r, input) };
+      const hitNext = points(hit.nextCardPct ?? 0);
+      const turn = input.street === 'turn';
+      const hitRiver = turn ? {} : { hitRiver: points(hit.byRiverPct ?? 0) };
+      if (input.outGroups.length > 1) {
+        const groups = groupsParam(input.outGroups);
+        return line(turn ? 'SEMI_BLUFF.turnGroups' : 'SEMI_BLUFF.groups', {
+          draw,
+          groups,
+          hitNext,
+          ...hitRiver,
+        });
+      }
+      return line(turn ? 'SEMI_BLUFF.turn' : 'SEMI_BLUFF', {
+        draw,
         outs: count(input.outs),
-        hitNext: points(hit.nextCardPct ?? 0),
-      };
-      if (input.street === 'turn') return line('SEMI_BLUFF.turn', params);
-      return line('SEMI_BLUFF', { ...params, hitRiver: points(hit.byRiverPct ?? 0) });
+        hitNext,
+        ...hitRiver,
+      });
     }
+    case 'CHECK_WEAK': {
+      // A Draw that checks (§8.5 step 5) says which draw it waits for.
+      const named = r.data.draw;
+      return typeof named === 'string' && REAL_DRAWS.has(named as DrawKind)
+        ? line('CHECK_WEAK.draw', { draw: { kind: 'draw', draw: named as DrawKind } })
+        : line('CHECK_WEAK');
+    }
+    case 'RAISE_PROTECT':
+      // On the river there are no draws left to make pay: the raise is for value (§8.10).
+      return line(input.street === 'river' ? 'RAISE_PROTECT.river' : 'RAISE_PROTECT');
     case 'PUSH_FOLD':
       return line(r.data.action === 'fold' ? 'PUSH_FOLD.fold' : 'PUSH_FOLD', {
         S: count(num(r.data.S) as number),
@@ -869,8 +1009,6 @@ function reasonLine(r: Reason, c: Context): Line {
       return line('GUARDRAIL', { detail: nested(`detail.${r.data.detail as GuardDetail}`) });
     case 'CHECK_FREE':
     case 'SET_MINING':
-    case 'RAISE_PROTECT':
-    case 'CHECK_WEAK':
     case 'NUTS':
     case 'BOARD_PLAYS':
       return line(r.code);
@@ -921,7 +1059,7 @@ function impliedPrice(r: Reason, input: ExplainInput): number | null {
  */
 function priceBar(c: Context, main: Reason | null, win: number): PriceBar | null {
   const { input } = c;
-  if (input.toCall <= 0) return null;
+  if (!priced(input)) return null;
   const fold = input.action.type === 'fold';
   const { need } = input;
   const good = win >= need;
@@ -951,6 +1089,10 @@ function legalGroups(legal: LegalActions): Record<ActionGroup, boolean> {
     raise: legal.raise !== null,
   };
 }
+
+/** A range code's line that shows its `{E}` (FOLD_VS_RAISE.range shows none). */
+const showsRangeE = (l: Line): boolean =>
+  RANGE_CODES.has(l.key.split('.')[0] as ReasonCode) && l.params.E !== undefined;
 
 /** Codes that bet or raise without value: "worse hands would get a free card" is not the reason. */
 const NOT_FOR_VALUE: ReadonlySet<ReasonCode> = new Set<ReasonCode>(['SEMI_BLUFF', 'CBET_DRY']);
@@ -1021,19 +1163,19 @@ export function explain(input: ExplainInput): Explanation {
   const valueBet =
     (group === 'bet' || group === 'raise') && (main === null || !NOT_FOR_VALUE.has(main.code));
   // A limp is never advice (C10), and with a short stack the choice is only fold or all-in (§8.4).
-  const noCall =
-    (input.street === 'preflop' && (input.facing === 'none' || input.facing === 'limpers')) ||
-    main?.code === 'PUSH_FOLD';
+  const noCall = unopened(input) || main?.code === 'PUSH_FOLD';
   for (const g of GROUPS) {
     if (g === group || g === closeGroup || !can[g]) continue;
     let reason: Reason | null = null;
     let text: Line | null = null;
-    if (g === 'fold' && input.toCall > 0 && holds('more', win, input.need)) {
+    // "You win more often than you need to": only against a price the advice weighs.
+    if (g === 'fold' && priced(input) && holds('more', win, input.need)) {
       reason = { code: 'WHY_NOT_FOLD', data: {} };
       text = line('WHY_NOT_FOLD');
     } else if (g === 'check' && valueBet) {
+      // On the river there is no free card to give: worse hands would call the bet (§8.10).
       reason = { code: 'WHY_NOT_CHECK', data: {} };
-      text = line('WHY_NOT_CHECK');
+      text = line(input.street === 'river' ? 'WHY_NOT_CHECK.river' : 'WHY_NOT_CHECK');
     } else if (g === 'call' && !noCall && holds('less', win, input.need)) {
       reason = { code: 'WHY_NOT_CALL', data: { E: win, need: input.need } };
       text = line('WHY_NOT_CALL', { E: pct(win), need: pct(input.need) });
@@ -1059,8 +1201,9 @@ export function explain(input: ExplainInput): Explanation {
     (d) => d.kind !== 'backdoorFlush' && d.kind !== 'backdoorStraight',
   );
   if ((input.street === 'flop' || input.street === 'turn') && input.outs > 0 && hasDraw) {
+    // `{outs}`: the exact chance is for every out (§6.3), so the line says how many those are.
     const exact = outsChances(input.outs, BOARD_LENGTH[input.street]).byRiverPct ?? 0;
-    trick.push(line('RULE_2_4', { exact: points(exact) }));
+    trick.push(line('RULE_2_4', { outs: count(input.outs), exact: points(exact) }));
     trace.push({ code: 'RULE_2_4', data: { outs: input.outs, exact: exact / 100 } });
     if (input.street === 'flop' && input.outs > 8) {
       trick.push(line('RULE_2_4_BIG'));
@@ -1084,7 +1227,8 @@ export function explain(input: ExplainInput): Explanation {
       players: input.nOpp,
       // Whom the range number counts, when the words show it: in RANGE_ADJUST, or in a range
       // code's sentence ("wins only about 44% against it", `eOf`), next to `eRandom`.
-      callers: adjust || said.some((r) => RANGE_CODES.has(r.code)) ? range.callers : null,
+      callers: adjust || reasons.some(showsRangeE) ? range.callers : null,
+      price: priced(input),
       bar: priceBar(c, main, win),
     },
   };

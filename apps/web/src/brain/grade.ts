@@ -443,6 +443,7 @@ export function gradeDecision(
     leak,
     trace: recommendationTrace(decision.trace),
     feedback,
+    price: f.toCall > 0 ? { E: f.eRange, R, need: f.need } : null,
   };
 }
 

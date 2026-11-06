@@ -21,7 +21,11 @@
  *    apart, "if you see every card" only at or above the price); a code that does not name a range
  *    shows `eRandom` unless RANGE_ADJUST labelled the range number (pitfall 35); "Why not fold?"
  *    only when the win chance beats the price; the headline is the action; the price bar (§12.6)
- *    only facing a bet, never ✓ next to a fold nor ✗ next to a call or a raise.
+ *    only facing a bet, never ✓ next to a fold nor ✗ next to a call or a raise. Since the coach
+ *    audit of 6 Nov 2026: FOLD_VS_RAISE's "wins only about {E}%" only below the price (and its
+ *    `.realise` only at or above it); before the flop with nobody raised no price at all (numbers
+ *    line, bar, "Why not fold?": a limp's price); a draw sentence's groups add up to the hint's
+ *    outs, and one count only for one kind of out; no "free card" or "draws pay" on the river.
  * 4. **Lessons** (`checkLessons`, `data/lessons.ts`, F.8; chunk 9.2): at most 150 words a lesson
  *    (its picture's labels and line, the price bar's numbers and its text), every sentence at most
  *    15 words, whole-number percentages, no stray brace.
@@ -141,9 +145,36 @@ function sampleParam(name: string, n: number): Param {
         kind: 'line',
         line: { key: 'alt.call', params: { amount: { kind: 'chips', value: 40 } }, glossary: [] },
       };
+    case 'makes':
+      return { kind: 'line', line: { key: 'makes.flush', params: {}, glossary: [] } };
+    case 'group':
+      return { kind: 'line', line: sampleGroup('outs.group', 9, 'makes.flush') };
+    case 'rest':
+      return { kind: 'line', line: sampleGroup('outs.groupWeak', 6, 'makes.pair') };
+    case 'groups':
+      return {
+        kind: 'line',
+        line: {
+          key: 'outs.list',
+          params: { group: sampleParam('group', n), rest: sampleParam('rest', n) },
+          glossary: [],
+        },
+      };
     default:
       return { kind: 'pct', value: 37.4 };
   }
+}
+
+/** One `{groups}` item of the samples: "9 for a flush". */
+function sampleGroup(key: TemplateKey, outs: number, makes: TemplateKey): Line {
+  return {
+    key,
+    params: {
+      outs: { kind: 'count', value: outs },
+      makes: { kind: 'line', line: { key: makes, params: {}, glossary: [] } },
+    },
+    glossary: [],
+  };
 }
 
 /** A line of `key` with sample values, its plural count set to `n`. */
@@ -421,8 +452,16 @@ export function checkHint(
         problems.push(`${said()} says "close", but ${x}% and ${y}% are not`);
       }
       // "You win about E% if you see every card": only a fold with at least the price.
-      if (line.key === 'FOLD_PRICE.realise' && x < y) {
+      if ((line.key === 'FOLD_PRICE.realise' || line.key === 'FOLD_VS_RAISE.realise') && x < y) {
         problems.push(`${said()}: ${x}% is below ${y}%, so it is not about later bets`);
+      }
+    }
+    // FOLD_VS_RAISE's "wins only about E%" stands for a price it does not reach (audit #6).
+    if (line.key === 'FOLD_VS_RAISE' && E !== null) {
+      if (shownPct(E / 100) >= shownPct(input.need)) {
+        problems.push(
+          `FOLD_VS_RAISE: "${lineText(line, strings)}" at or above the ${pctText(100 * input.need)}% price`,
+        );
       }
     }
     if (E !== null && !RANGE_SENTENCES.has(baseOf(line.key)) && !adjusted) {
@@ -431,12 +470,59 @@ export function checkHint(
       }
     }
   }
+  const unopened =
+    input.street === 'preflop' && (input.facing === 'none' || input.facing === 'limpers');
   if (e.whyNot.some((l) => l.key === 'WHY_NOT_FOLD')) {
     if (!(shownPct(e.shown.win) > shownPct(input.need))) {
       problems.push('WHY_NOT_FOLD is shown but the win chance does not beat the price');
     }
+    if (unopened) problems.push('WHY_NOT_FOLD compares the price of a limp (an unopened pot)');
   }
+  // Audit #7: before the flop with nobody raised, a call is a limp: no price in the numbers.
+  if (unopened && (e.numbers.key !== 'numbers.free' || e.shown.price)) {
+    problems.push(`numbers line "${numbers}" shows the price of a limp`);
+  }
+  problems.push(...outsProblems(e, input, strings));
   problems.push(...barProblems(e, input));
+  return problems;
+}
+
+/** The `{outs}` counts inside a line, nested lines included (SEMI_BLUFF's `{groups}`). */
+function groupOuts(line: Line): number {
+  let sum = 0;
+  for (const [name, p] of Object.entries(line.params)) {
+    if (p.kind === 'line') sum += groupOuts(p.line);
+    else if (name === 'outs' && p.kind === 'count' && line.key.startsWith('outs.')) sum += p.value;
+  }
+  return sum;
+}
+
+/**
+ * Audit #9 and #10: a draw sentence counts every out once (its groups add up to the hint's outs,
+ * and one count is said only for one kind of out); the river speaks of no free card and no draws.
+ */
+function outsProblems(e: Explanation, input: ExplainInput, strings: CoachStrings): string[] {
+  const problems: string[] = [];
+  for (const line of e.reasons) {
+    const said = (): string => `${line.key}: "${lineText(line, strings)}"`;
+    if (line.key === 'SEMI_BLUFF.groups' || line.key === 'SEMI_BLUFF.turnGroups') {
+      const sum = groupOuts(line);
+      if (sum !== input.outs)
+        problems.push(`${said()}: its groups count ${sum} of ${input.outs} outs`);
+    }
+    if (line.key === 'SEMI_BLUFF' || line.key === 'SEMI_BLUFF.turn') {
+      const outs = line.params.outs;
+      if (outs?.kind !== 'count' || outs.value !== input.outs || input.outGroups.length > 1) {
+        problems.push(`${said()}: one draw name on outs of ${input.outGroups.length} kinds`);
+      }
+    }
+  }
+  if (input.street === 'river') {
+    for (const line of hintLines(e)) {
+      const text = lineText(line, strings);
+      if (/free card|draws pay/.test(text)) problems.push(`on the river: "${text}"`);
+    }
+  }
   return problems;
 }
 
@@ -448,6 +534,7 @@ function barProblems(e: Explanation, input: ExplainInput): string[] {
   const bar = e.shown.bar;
   if (bar === null) return [];
   if (input.toCall <= 0) return ['a price bar with nothing to call'];
+  if (!e.shown.price) return ['a price bar where the hint shows no price (an unopened pot)'];
   const problems: string[] = [];
   const enough = bar.win >= bar.need;
   if (bar.good !== enough) {

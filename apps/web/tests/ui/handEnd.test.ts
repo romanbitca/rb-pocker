@@ -4,8 +4,12 @@
  */
 import { describe, expect, it } from 'vitest';
 import type { HandEndView } from '../../src/app/store.ts';
+import { deciderOf, handEndViewOf } from '../../src/app/tableViews.ts';
 import { parseCards } from '../../src/core/cards.ts';
+import { describe as describeHand } from '../../src/eval/describe.ts';
 import { en } from '../../src/i18n/en.ts';
+import { deal, rigDeck, tableWith } from '../engine/helpers.ts';
+import { ADVANCE, call, check, play } from '../engine/play.ts';
 import { toastText } from '../../src/ui/components/Notices.tsx';
 import { handEndLines, luckLine } from '../../src/ui/handEnd.ts';
 import { joinNames } from '../../src/ui/names.ts';
@@ -32,12 +36,14 @@ const shown = (
   name: string,
   handName: string,
   category: HandEndView['shown'][number]['category'],
+  decider: HandEndView['shown'][number]['decider'] = null,
 ) => ({
   seat,
   name,
   handName,
   category,
   best5: parseCards('As Ks Qs Js 9s'),
+  decider,
 });
 
 describe('handEndLines', () => {
@@ -126,6 +132,74 @@ describe('handEndLines', () => {
     ).toEqual(['Ben wins 1,250. Everyone else folded.']);
     expect(PLAN).toContain('"Everyone folded. You win 120."');
     expect(PLAN).toContain(`"${en.handEnd.winsFold('{name}', '{x}')}"`);
+  });
+
+  it('the same name too: the card that decided it (QA-5, §12.9)', () => {
+    const fours = 'Two Pair, Fours and Threes';
+    const lines = handEndLines(
+      view({
+        winners: [{ seat: 0, name: 'You', amount: 50 }],
+        shown: [
+          shown(0, 'You', fours, 'twoPair'),
+          shown(3, 'Priya', fours, 'twoPair', { yours: 11, theirs: 9, kicker: true }),
+        ],
+      }),
+    );
+    expect(lines).toEqual(['You win 50!', `Priya: ${fours} — your King kicker beats their Jack`]);
+    expect(PLAN).toContain(`"${lines[1]}"`);
+    // A flush is compared card by card: no kicker.
+    const flush = handEndLines(
+      view({
+        winners: [{ seat: 0, name: 'You', amount: 50 }],
+        shown: [
+          shown(0, 'You', 'Flush, Ace-high', 'flush'),
+          shown(2, 'Ben', 'Flush, Ace-high', 'flush', { yours: 11, theirs: 10, kicker: false }),
+        ],
+      }),
+    );
+    expect(flush[1]).toBe('Ben: Flush, Ace-high — your King beats their Queen');
+  });
+
+  it('QA-5 through the engine: 9♦K♣ beats 7♦8♥ on 4♦J♣4♠3♣3♦ by the King kicker', () => {
+    const table = tableWith([2000, 2000], { button: 0 });
+    let h = rigDeck(deal(table), { holes: { 0: '9d Kc', 1: '7d 8h' }, board: '4d Jc 4s 3c 3d' });
+    // The button calls, then everyone checks to the showdown.
+    for (const input of [
+      call(0),
+      check(1),
+      check(1),
+      check(0),
+      check(1),
+      check(0),
+      check(1),
+      check(0),
+    ]) {
+      while (h.phase === 'roundComplete') h = play(h, ADVANCE);
+      h = play(h, input);
+    }
+    while (h.phase !== 'complete') h = play(h, ADVANCE);
+    const end = handEndViewOf(h, table) as HandEndView;
+    const theirs = end.shown.find((s) => s.seat === 1);
+    expect(theirs?.handName).toBe('Two Pair, Fours and Threes');
+    expect(theirs?.decider).toEqual({ yours: 11, theirs: 9, kicker: true });
+    expect(end.shown.find((s) => s.seat === 0)?.decider).toBeNull();
+    expect(handEndLines(end)).toEqual([
+      `You win ${end.winners[0]?.amount ?? 0}!`,
+      `${table.slots[1]?.name}: Two Pair, Fours and Threes — your King kicker beats their Jack`,
+    ]);
+  });
+
+  it('deciderOf: names that differ say it already; a split or a loss has no decider', () => {
+    const info = (hole: string, board: string) =>
+      describeHand(parseCards(hole) as [number, number], parseCards(board));
+    const board = 'Kh Kd 7c 7s 2h';
+    // Pair of Kings with an Ace kicker against a Queen kicker... both "Two Pair, Kings and Sevens".
+    const ace = info('As 3c', board);
+    const queen = info('Qs 3d', board);
+    expect(deciderOf(ace, queen)).toEqual({ yours: 12, theirs: 10, kicker: true });
+    expect(deciderOf(queen, ace)).toBeNull(); // the hero's hand did not win
+    expect(deciderOf(ace, info('Ad 4c', board))).toBeNull(); // the same five cards' ranks: a split
+    expect(deciderOf(info('9s 9d', board), queen)).toBeNull(); // Kings and Nines: names differ
   });
 
   it('no winner yet: no lines', () => {

@@ -115,6 +115,7 @@ export function explanationOf(d: Decision, over: Partial<ExplainInput> = {}): Ex
     preflopName: 'King-Queen suited',
     draws: [],
     outs: 0,
+    outGroups: [],
     villain: facing ? 'bets' : null,
     ...over,
   });

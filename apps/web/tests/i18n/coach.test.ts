@@ -216,6 +216,7 @@ describe('hint lines in reading order', () => {
         need: 0,
         players: 1,
         callers: null,
+        price: false,
         bar: null,
       },
     };
