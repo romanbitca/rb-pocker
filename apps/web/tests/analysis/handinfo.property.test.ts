@@ -9,7 +9,7 @@ import { describe, expect, it } from 'vitest';
 import { analyzeHand, countBeaters, findOuts } from '../../src/analysis/handinfo.ts';
 import type { DrawKind, RiskRule } from '../../src/analysis/types.ts';
 import { formatCard } from '../../src/core/cards.ts';
-import { oracleBeaters, oracleDraws, oracleOuts, oracleRisky } from './outs.oracle.ts';
+import { oracleBeaters, oracleDraws, oracleOuts, oracleRisky, oracleWeak } from './outs.oracle.ts';
 import { FC_SEED, heroHand } from './states.ts';
 
 const RUNS = 2_500; // per street and property
@@ -26,11 +26,14 @@ describe('outs and risky outs match the brute-force oracle (§6.3, §6.4)', () =
       fc.assert(
         fc.property(heroHand(boardLength), ({ hole, board }) => {
           const got = findOuts(hole, board).map(
-            (o) => `${formatCard(o.card)} ${o.makes} [${o.risky.join(',')}]`,
+            (o) =>
+              `${formatCard(o.card)} ${o.makes} [${o.risky.join(',')}]${o.weak ? ' weak' : ''}`,
           );
           const want = [...oracleOuts(hole, board)].map(
             ([x, o]) =>
-              `${formatCard(x)} ${o.makes} [${oracleRisky(hole, board, x, o.makes).join(',')}]`,
+              `${formatCard(x)} ${o.makes} [${oracleRisky(hole, board, x, o.makes).join(',')}]${
+                oracleWeak(hole, board, x) ? ' weak' : ''
+              }`,
           );
           expect(got.slice().sort()).toEqual(want.sort());
           seen.hands = (seen.hands ?? 0) + 1;
@@ -38,13 +41,16 @@ describe('outs and risky outs match the brute-force oracle (§6.3, §6.4)', () =
             seen.outs = (seen.outs ?? 0) + 1;
             seen[o.makes] = (seen[o.makes] ?? 0) + 1;
             for (const r of o.risky) seen[r] = (seen[r] ?? 0) + 1;
+            if (o.weak) seen[`weak ${o.makes}`] = (seen[`weak ${o.makes}`] ?? 0) + 1;
           }
         }),
         { seed: FC_SEED, numRuns: RUNS },
       );
-      // The sample reaches every risky rule and every kind of improvement.
+      // The sample reaches every risky rule, every kind of improvement and both kinds of weak
+      // out (two pair with the board's pair, trips on the board).
       const rules: RiskRule[] = ['R1', 'R2', 'R3', 'R4', 'R5'];
-      for (const key of [...rules, 'pair', 'twoPair', 'trips', 'straight', 'flush', 'fullHouse']) {
+      const kinds = ['pair', 'twoPair', 'trips', 'straight', 'flush', 'fullHouse'];
+      for (const key of [...rules, ...kinds, 'weak twoPair', 'weak trips']) {
         expect(seen[key] ?? 0, key).toBeGreaterThan(0);
       }
     });

@@ -10,11 +10,12 @@
 import { equity } from '../analysis/equity.ts';
 import { findDraws, findOuts } from '../analysis/handinfo.ts';
 import { preflopEquity } from '../analysis/preflop.ts';
+import type { DrawKind } from '../analysis/types.ts';
 import { classOf } from '../core/cards.ts';
 import { deriveSeed, ZERO_SEED, type Seed128 } from '../core/rng.ts';
 import { observationKey } from '../engine/types.ts';
 import type { Observation, Street } from '../engine/types.ts';
-import { describe } from '../eval/describe.ts';
+import { describe, type HandInfo } from '../eval/describe.ts';
 import {
   liveOpponents,
   opponentRanges,
@@ -69,13 +70,59 @@ export function perOpponentStrength(eRange: number, nOpp: number): number {
   return (nOpp * eRange) / (1 + (nOpp - 1) * eRange);
 }
 
-/** §8.2 bucket from the per-opponent strength `p` (null preflop). */
-export function bucketOf(p: number, outs: number, street: Street): Bucket | null {
+/**
+ * §8.2 bucket from the per-opponent strength `p` (null preflop). `drawOuts` = the §6.3 outs that
+ * are not weak (`Features.drawOuts`); `drawOnly` = a flush or straight draw with no made hand of
+ * its own (`Features.drawOnly`): before the river it is a Draw below Monster whatever its `p`, so
+ * "Your Ace-high is probably best" is never said about a flush draw.
+ */
+export function bucketOf(
+  p: number,
+  drawOuts: number,
+  street: Street,
+  drawOnly = false,
+): Bucket | null {
   if (street === 'preflop') return null;
   if (p >= BUCKET_MONSTER) return 'monster';
+  const draw = street !== 'river';
+  if (draw && drawOnly) return 'draw';
   if (p >= BUCKET_STRONG) return 'strong';
   if (p >= BUCKET_MEDIUM) return 'medium';
-  return street !== 'river' && outs >= DRAW_MIN_OUTS ? 'draw' : 'air';
+  return draw && drawOuts >= DRAW_MIN_OUTS ? 'draw' : 'air';
+}
+
+/** §6.2 draws that complete to a flush or a straight (not overcards, not backdoor draws). */
+export const REAL_DRAWS: ReadonlySet<DrawKind> = new Set<DrawKind>([
+  'flush',
+  'nutFlush',
+  'oesd',
+  'doubleGutshot',
+  'gutshot',
+]);
+
+/**
+ * The hero's strongest real draw (`REAL_DRAWS`: a flush draw before a straight draw, §6.2's
+ * order), else its first draw with outs (two overcards), else null: the `{draw}` of the coach's
+ * words (Appendix F.1).
+ */
+export function mainDraw(draws: readonly Features['draws'][number][]): DrawKind | null {
+  return (
+    draws.find((d) => REAL_DRAWS.has(d.kind))?.kind ?? draws.find((d) => d.outs > 0)?.kind ?? null
+  );
+}
+
+/**
+ * §8.2 `drawOnly`: a flush or straight draw (§6.2) and no made hand of the hero's own: high card,
+ * or a hand whose category cards are all on the board (the board's pair, two pair or trips, or
+ * the board plays).
+ */
+export function isDrawOnly(
+  hole: readonly number[],
+  info: Pick<HandInfo, 'category' | 'core'>,
+  draws: readonly Features['draws'][number][],
+): boolean {
+  if (!draws.some((d) => REAL_DRAWS.has(d.kind))) return false;
+  return info.category === 'highCard' || !info.core.some((c) => hole.includes(c));
 }
 
 /**
@@ -214,7 +261,12 @@ export function features(
   const shown = eRandom ?? (profile.id === COACH_ID ? hudEquity(obs) : eRange);
   const p = perOpponentStrength(eRange, nOpp);
   const drawStreet = street === 'flop' || street === 'turn';
-  const outs = drawStreet ? findOuts(hole, board).length : 0;
+  const outCards = drawStreet ? findOuts(hole, board) : [];
+  const outs = outCards.length;
+  const drawOuts = outCards.filter((o) => !o.weak).length;
+  const draws = drawStreet ? findDraws(hole, board) : [];
+  const handInfo = describe(hole, board);
+  const drawOnly = drawStreet && isDrawOnly(hole, handInfo, draws);
   const lastFull = obs.history.filter(
     (a) => a.street === 'preflop' && (a.type === 'bet' || a.type === 'raise') && a.full,
   );
@@ -234,13 +286,15 @@ export function features(
     eRandom: shown,
     eRange,
     p,
-    bucket: bucketOf(p, outs, street),
+    bucket: bucketOf(p, drawOuts, street, drawOnly),
     texture: textureOf(board),
     facing: facingOf(obs),
     wasPreflopAggressor: lastFull[lastFull.length - 1]?.seat === hero,
-    handInfo: describe(hole, board),
-    draws: drawStreet ? findDraws(hole, board) : [],
+    handInfo,
+    draws,
     outs,
+    drawOuts,
+    drawOnly,
     rankPct: tables.rankPctOfClass(classOf(hole[0], hole[1])),
     rangeAdjust: showsRangeAdjust(shown, eRange, need),
     ranges,

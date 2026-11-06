@@ -7,7 +7,10 @@
  * - Showdown, the same amount to several winners: "Split pot: you and Ben each win 170."
  *   Different amounts (side pots, an odd chip): one line per winner.
  * - When the hero wins a showdown, one line per beaten hand that was shown (at most two):
- *   "Ben: Two Pair — loses to your Flush".
+ *   "Ben: Two Pair — loses to your Flush"; with the same category the full names ("Ben: Pair of
+ *   Kings — loses to your Pair of Aces"), and with the same name the card that decided it ("Priya:
+ *   Two Pair, Fours and Threes — your King kicker beats their Jack"; a flush: "your King beats
+ *   their Queen").
  *
  * Only hands the engine revealed reach `HandEndView.shown`, so nothing here can name a hidden card.
  *
@@ -15,6 +18,7 @@
  * had 72% when the chips went in. Good decision. Unlucky this time." / "You got lucky. You had 30%."
  */
 import type { HandEndView, LuckLineData } from '../app/store.ts';
+import { RANK_NAMES } from '../core/cards.ts';
 import type { HandCategory } from '../eval/evaluate.ts';
 import { en } from '../i18n/en.ts';
 import { formatChips } from './format.ts';
@@ -59,6 +63,18 @@ export function handEndLines(view: HandEndView): string[] {
   if (heroWon && heroHand !== undefined) {
     const beaten = shown.filter((s) => s.seat !== HERO && !winners.some((w) => w.seat === s.seat));
     for (const s of beaten.slice(0, MAX_LOSER_LINES)) {
+      // The same name too ("Two Pair, Fours and Threes — loses to your Two Pair, Fours and
+      // Threes") says nothing either: the card that decided it does (QA-5).
+      const d = s.decider;
+      if (d !== null) {
+        const [yours, theirs] = [RANK_NAMES[d.yours] as string, RANK_NAMES[d.theirs] as string];
+        lines.push(
+          d.kicker
+            ? T.losesKicker(s.name, s.handName, yours, theirs)
+            : T.losesCard(s.name, s.handName, yours, theirs),
+        );
+        continue;
+      }
       // The same category ("Pair — loses to your Pair") says nothing: name the full hands then.
       const same = s.category === heroHand.category;
       const theirs = same ? s.handName : categoryName(s.category);

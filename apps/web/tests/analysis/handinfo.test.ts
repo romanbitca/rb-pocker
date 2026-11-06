@@ -16,6 +16,8 @@ interface Group {
   /** Risky rules of every card in the group, unless `except` names the card. */
   risky: RiskRule[];
   except?: Record<string, RiskRule[]>;
+  /** Weak outs (§6.3, open question Q): only the board's pair or trips improve. */
+  weak?: true;
 }
 
 interface OutsVector {
@@ -26,7 +28,7 @@ interface OutsVector {
   total: number;
 }
 
-/** Appendix D.2, row by row ("all 5s" etc. written out). */
+/** Appendix D.2, row by row ("all 5s" etc. written out); the last four rows are paired boards. */
 const D2: OutsVector[] = [
   {
     hole: 'A♥ K♥',
@@ -128,12 +130,62 @@ const D2: OutsVector[] = [
     ],
     total: 14,
   },
+  // Paired boards (open question Q, decided 6 Nov 2026): the outs stay, the weak ones marked.
+  {
+    // The audit's fake draw (F13, F22): no draw at all, 8 weak outs.
+    hole: '9♣ 8♦',
+    board: 'K♥ K♠ 3♣',
+    draws: [],
+    groups: [
+      { makes: 'trips', cards: 'K♦ K♣', risky: [], weak: true },
+      { makes: 'twoPair', cards: '9♠ 9♥ 9♦ 8♠ 8♥ 8♣', risky: [], weak: true },
+    ],
+    total: 8,
+  },
+  {
+    // EXECUTION's question Q: the Nines make trips on the board, everyone shares them.
+    hole: 'Q♠ J♦',
+    board: '9♣ 9♥ 4♦ 2♠',
+    draws: [],
+    groups: [
+      { makes: 'trips', cards: '9♠ 9♦', risky: [], weak: true },
+      { makes: 'twoPair', cards: 'Q♥ Q♦ Q♣ J♠ J♥ J♣', risky: [], weak: true },
+    ],
+    total: 8,
+  },
+  {
+    // A real draw on a paired board (the audit's g1-t20-h1-d3): 12 draw outs, 7 weak.
+    hole: 'K♠ J♦',
+    board: '6♦ 9♦ 6♣ 10♦',
+    draws: ['flush', 'gutshot'],
+    groups: [
+      { makes: 'flush', cards: 'A♦ K♦ Q♦ 8♦ 7♦ 5♦ 4♦ 3♦ 2♦', risky: ['R2', 'R4'] },
+      { makes: 'straight', cards: 'Q♠ Q♥ Q♣', risky: ['R1', 'R2'] },
+      { makes: 'trips', cards: '6♠ 6♥', risky: ['R1', 'R3'], weak: true },
+      { makes: 'twoPair', cards: 'K♥ K♣ J♠ J♥ J♣', risky: ['R1', 'R3'], weak: true },
+    ],
+    total: 19,
+  },
+  {
+    // Board trips: a full house with a hole card is real, four of a kind on the board is weak.
+    hole: 'A♣ Q♣',
+    board: 'K♥ K♦ K♠ 3♣',
+    draws: [],
+    groups: [
+      { makes: 'quads', cards: 'K♣', risky: [], weak: true },
+      { makes: 'fullHouse', cards: 'A♠ A♥ A♦ Q♠ Q♥ Q♦', risky: [] },
+    ],
+    total: 7,
+  },
 ];
 
-/** Card text → "makes / risky rules", comparable with toEqual. */
+/** Card text → "makes / risky rules" (" weak" for a weak out), comparable with toEqual. */
 function describeOuts(outs: readonly OutCard[]): Record<string, string> {
   return Object.fromEntries(
-    outs.map((o) => [formatCard(o.card), `${o.makes} [${o.risky.join(',')}]`]),
+    outs.map((o) => [
+      formatCard(o.card),
+      `${o.makes} [${o.risky.join(',')}]${o.weak ? ' weak' : ''}`,
+    ]),
   );
 }
 
@@ -143,7 +195,7 @@ function expectedOuts(groups: readonly Group[]): Record<string, string> {
     for (const c of cards(g.cards)) {
       const text = formatCard(c);
       const plain = Object.entries(g.except ?? {}).find(([k]) => card(k) === c);
-      out[text] = `${g.makes} [${(plain?.[1] ?? g.risky).join(',')}]`;
+      out[text] = `${g.makes} [${(plain?.[1] ?? g.risky).join(',')}]${g.weak ? ' weak' : ''}`;
     }
   }
   return out;
@@ -231,10 +283,35 @@ describe('pitfall 11: board-pairing cards are not outs up to two pair (§6.3 rul
     // A♠J♦ on 8♣8♥3♦: a 3 makes 8-8-3-3 on the board; an Ace or Jack pairs the hero's card.
     const text = describeOuts(findOuts(cards('A♠ J♦'), cards('8♣ 8♥ 3♦')));
     expect(text['3c']).toBeUndefined();
-    expect(text.Ac).toBe('twoPair []');
-    expect(text.Jc).toBe('twoPair []');
-    // An 8 makes trips of the board's Eights: category 3 > two pair, rule 3 no longer applies.
-    expect(text['8s']).toBe('trips []');
+    // Two pair with the board's Eights: an out, but weak (open question Q, 6 Nov 2026).
+    expect(text.Ac).toBe('twoPair [] weak');
+    expect(text.Jc).toBe('twoPair [] weak');
+    // An 8 makes trips of the board's Eights: category 3 > two pair, rule 3 no longer applies;
+    // everyone shares them, so it is weak too.
+    expect(text['8s']).toBe('trips [] weak');
+  });
+
+  it('weak outs (§6.3, open question Q): only on a paired board, never a full house', () => {
+    // No board pair: no out is weak (D.2's first nine rows, and these).
+    for (const [h, b] of [
+      ['K♠ Q♦', 'K♣ 7♥ 2♦'],
+      ['A♥ K♥', 'Q♥ 7♥ 2♣'],
+      ['9♠ 8♠', '7♦ 6♣ 2♥ K♠'],
+    ] as const) {
+      expect(findOuts(cards(h), cards(b)).filter((o) => o.weak)).toEqual([]);
+    }
+    // A pocket pair under a paired board: its full houses use the hero's pair, so not weak.
+    const fives = findOuts(cards('5♠ 5♦'), cards('K♥ K♠ 3♣'));
+    expect(fives.map((o) => `${formatCard(o.card)} ${o.makes} ${o.weak}`)).toEqual([
+      'Kd fullHouse false',
+      'Kc fullHouse false',
+      '5h fullHouse false',
+      '5c fullHouse false',
+    ]);
+    // Two pair of the hero's King and the board's Sevens: its full houses are real.
+    const kings = describeOuts(findOuts(cards('K♠ Q♦'), cards('K♣ 7♥ 7♦')));
+    expect(kings.Kd).toBe('fullHouse []');
+    expect(Object.values(kings).filter((t) => t.endsWith('weak'))).toEqual([]);
   });
 
   it('on the turn, a card that completes a board straight is not an out (D.2 row 8)', () => {

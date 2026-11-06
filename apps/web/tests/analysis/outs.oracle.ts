@@ -65,6 +65,18 @@ export function oracleOuts(hole: readonly Card[], board: readonly Card[]): Map<C
   return outs;
 }
 
+/**
+ * §6.3 weak outs, literally (decided 6 Nov 2026, open question Q): the out's new hand is two pair
+ * with one pair that holds no hole card (the board's pair), or three or four of a kind with no
+ * hole card in it, read from `describe()`'s category cards.
+ */
+export function oracleWeak(hole: readonly Card[], board: readonly Card[], x: Card): boolean {
+  const after = describe(hole as [Card, Card], [...board, x]);
+  if (!['twoPair', 'trips', 'quads'].includes(after.category)) return false;
+  const ranks = new Set(after.core.map(rankOf));
+  return [...ranks].some((r) => !hole.some((c) => rankOf(c) === r));
+}
+
 /** §6.4, literally, for the out `x` that makes `makes`. */
 export function oracleRisky(
   hole: readonly Card[],

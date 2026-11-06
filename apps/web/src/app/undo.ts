@@ -132,6 +132,9 @@ export function decisionRecord(f: DecisionFacts, result: GradeResult | null): De
     lossMilliBB: result === null ? 0 : Math.round(result.lossMilliBB),
     eRandom: f.eRandom,
     need: f.need,
+    // The grade's own price numbers (§8.9), for the summary's labelled numbers (§12.9, QA-1).
+    eRange: result?.price?.E ?? null,
+    R: result?.price?.R ?? null,
     hintSeen: f.hintSeen,
     undone: false,
     leak: result?.leak ?? null,

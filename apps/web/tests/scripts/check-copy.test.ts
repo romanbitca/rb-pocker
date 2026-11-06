@@ -211,6 +211,7 @@ const SPOT: ExplainInput = {
   preflopName: 'King-Queen suited',
   draws: [],
   outs: 0,
+  outGroups: [],
   villain: 'bets',
 };
 

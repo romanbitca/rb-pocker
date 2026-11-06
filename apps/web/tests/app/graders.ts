@@ -57,6 +57,7 @@ export function gradeResult(
     leak: null,
     trace: [],
     feedback: feedback === null ? null : feedbackLine(feedback),
+    price: null,
   };
 }
 

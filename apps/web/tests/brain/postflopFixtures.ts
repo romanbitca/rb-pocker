@@ -6,7 +6,7 @@
  * the hero has more than the call.
  */
 import { countBeaters, findDraws, findOuts } from '../../src/analysis/handinfo.ts';
-import { bucketOf, perOpponentStrength, textureOf } from '../../src/brain/features.ts';
+import { bucketOf, isDrawOnly, perOpponentStrength, textureOf } from '../../src/brain/features.ts';
 import type { Facing, Features, PostflopSpot, Position } from '../../src/brain/types.ts';
 import { parseCards, type Card } from '../../src/core/cards.ts';
 import type { LegalActions, Street } from '../../src/engine/types.ts';
@@ -98,6 +98,9 @@ export function synth(spec: SynthSpec): Synth {
   const p = perOpponentStrength(spec.E, nOpp);
   const draws = street === 'river' ? [] : findDraws(hole, board);
   const outCards = street === 'river' ? [] : findOuts(hole, board);
+  const drawOuts = outCards.filter((o) => !o.weak).length;
+  const handInfo = describeHand(hole, board);
+  const drawOnly = street !== 'river' && isDrawOnly(hole, handInfo, draws);
   const legal = { ...synthLegal(toCall, heroStack, heroStreetBet, currentBet, bb), ...spec.legal };
   const beaters = countBeaters(hole, board);
   const f: Features = {
@@ -115,13 +118,15 @@ export function synth(spec: SynthSpec): Synth {
     eRandom: spec.E,
     eRange: spec.E,
     p,
-    bucket: bucketOf(p, outCards.length, street),
+    bucket: bucketOf(p, drawOuts, street, drawOnly),
     texture: textureOf(board),
     facing: spec.facing ?? (toCall > 0 ? 'bet' : 'none'),
     wasPreflopAggressor: spec.aggressor ?? false,
-    handInfo: describeHand(hole, board),
+    handInfo,
     draws,
     outs: outCards.length,
+    drawOuts,
+    drawOnly,
     rankPct: 50,
     rangeAdjust: false,
     ranges: [],

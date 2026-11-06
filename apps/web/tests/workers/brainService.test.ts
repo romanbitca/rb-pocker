@@ -84,6 +84,7 @@ function fakeGrade(
     leak: null,
     trace: [],
     feedback: null,
+    price: null,
   };
 }
 

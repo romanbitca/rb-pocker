@@ -117,6 +117,7 @@ function metaWith(...decisions: { decisionId: number; grade: Grade | null }[]): 
               leak: null,
               trace: [],
               feedback: null,
+              price: null,
             },
       ),
     );
@@ -379,6 +380,9 @@ describe('records, price and the HUD number (A.7, §0.3, §8.2)', () => {
       lossMilliBB: 0,
       eRandom: null,
       need: 0.25,
+      // No grade: no grade numbers either (the summary then shows the HUD's, §12.9).
+      eRange: null,
+      R: null,
       hintSeen: false,
       undone: false,
       leak: null,
@@ -395,12 +399,16 @@ describe('records, price and the HUD number (A.7, §0.3, §8.2)', () => {
       leak: 'overfold',
       trace: [],
       feedback: null,
+      price: { E: 0.42, R: 0.85, need: 0.25 },
     });
     expect(graded).toMatchObject({
       grade: 'blunder',
       rec: { type: 'call' },
       lossMilliBB: 20000,
       leak: 'overfold',
+      // The grade's own numbers, for the summary's labelled line (§12.9, QA-1).
+      eRange: 0.42,
+      R: 0.85,
     });
   });
 
@@ -506,6 +514,7 @@ describe('the feedback card content (§12.6, F.4, F.5)', () => {
       lossMilliBB: 500,
       leak: null,
       trace: [],
+      price: null,
     };
     const fallback = feedbackView({ ...base, feedback: null }, p.state, true);
     expect(fallback.coachMove).toEqual({ kind: 'call', amount: 50, bb: 100 });

@@ -14,9 +14,9 @@
  * re-renders only when its view changes; a seat whose view did not change keeps the same object
  * (its `React.memo` pod skips the render, pitfall 37).
  */
-import type { Card } from '../core/cards.ts';
+import type { Card, Rank } from '../core/cards.ts';
 import { describe, type HandInfo } from '../eval/describe.ts';
-import type { HandCategory } from '../eval/evaluate.ts';
+import { scoreNibbles, type HandCategory } from '../eval/evaluate.ts';
 import { sidePots } from '../engine/settle.ts';
 import type {
   BotLevel,
@@ -136,6 +136,13 @@ export interface HandEndView {
     handName: string;
     category: HandCategory;
     best5: readonly Card[];
+    /**
+     * A hand the hero's shown hand beat with the same name (the same category and named ranks):
+     * the ranks of the first cards that differ, as the evaluator orders them (§5.2; the drill's
+     * `why`, §13.5), the hero's first; `kicker` false for a flush (card by card). Null otherwise
+     * (QA-5: "Two Pair, Fours and Threes — loses to your Two Pair, Fours and Threes").
+     */
+    decider: { yours: Rank; theirs: Rank; kicker: boolean } | null;
   }[];
   /** The hero's net result this hand (payout − chips put in). */
   readonly heroNet: number;
@@ -330,6 +337,24 @@ export function boardViewOf(hand: HandState): CardViewData[] {
   return hand.board.map((card) => highlightOf(info, card, true));
 }
 
+/**
+ * When `mine` beats `theirs` and both have the same name (category and named ranks, Appendix
+ * F.2): the first ranks that differ in the evaluator's order (§5.2: the kickers after the pair,
+ * the pairs or the trips; a flush card by card), as the drill's `why` reads them (§13.5). Null
+ * when the names differ (they say it already) or `mine` does not win.
+ */
+export function deciderOf(
+  mine: HandInfo,
+  theirs: HandInfo,
+): HandEndView['shown'][number]['decider'] {
+  if (mine.name !== theirs.name || mine.score <= theirs.score) return null;
+  const a = scoreNibbles(mine.score);
+  const b = scoreNibbles(theirs.score);
+  const i = a.findIndex((n, k) => n !== b[k]);
+  if (i < 0) return null;
+  return { yours: a[i] as Rank, theirs: b[i] as Rank, kicker: mine.category !== 'flush' };
+}
+
 export function handEndViewOf(hand: HandState, table: TableState): HandEndView | null {
   const result = hand.result;
   if (result === null) return null;
@@ -337,14 +362,20 @@ export function handEndViewOf(hand: HandState, table: TableState): HandEndView |
   const winners = result.payouts.flatMap((amount, seat) =>
     amount > 0 && isWinner(hand, seat) ? [{ seat, name: nameOf(seat), amount }] : [],
   );
-  const shown = result.shown.map((x) => {
-    const hole = hand.seats[x.seat]?.hole as [Card, Card];
+  const infos = result.shown.map((x) =>
+    describe(hand.seats[x.seat]?.hole as [Card, Card], hand.board),
+  );
+  const heroAt = result.shown.findIndex((x) => x.seat === HERO);
+  const heroShown = heroAt < 0 ? null : (infos[heroAt] as HandInfo);
+  const shown = result.shown.map((x, i) => {
+    const info = infos[i] as HandInfo;
     return {
       seat: x.seat,
       name: nameOf(x.seat),
-      handName: describe(hole, hand.board).name,
+      handName: info.name,
       category: x.category,
       best5: x.best5,
+      decider: heroShown === null || x.seat === HERO ? null : deciderOf(heroShown, info),
     };
   });
   return {

@@ -181,7 +181,7 @@ describe('the hint’s text (§8.10 hint structure, Appendix F.1)', () => {
       CTX,
     );
     expect(withDraws.trick).toEqual([
-      'Quick trick: outs × 2 ≈ % for the next card. Outs × 4 ≈ % by the river. Exact: 54%.',
+      'Quick trick: outs × 2 ≈ % for the next card. Outs × 4 ≈ % by the river. With your 15 outs, exact: 54%.',
       'The trick guesses too high for big draws.',
     ]);
   });
@@ -392,6 +392,18 @@ describe('coachView (§10.2, §12.6)', () => {
     });
   });
 
+  it('before the flop with nobody raised: no limp price in the numbers (audit #7, F.1)', () => {
+    // The small blind behind three limpers folds A4o: "Need 10%" would argue for a limp.
+    const d = decision({ action: { type: 'fold' }, eRandom: 0.21, need: 0.1, trace: [] });
+    const e = explanationOf(d, { street: 'preflop', facing: 'limpers', need: 0.1 });
+    expect(e.shown).toMatchObject({ price: false, bar: null });
+    const h = hintView(d, e, 'beginner', input(FACING));
+    expect(h.numbers).toMatchObject({ need: null, needValue: null, toCall: null, bar: null });
+    const v = coachView(coachData({ decision: d, explanation: e }), null, input(FACING));
+    expect(v.strip).toMatchObject({ kind: 'advice', headline: 'Fold' });
+    expect(v.strip.kind === 'advice' ? v.strip.line : '').not.toMatch(/need/i);
+  });
+
   it('RANGE_ADJUST: the strip shows the labelled pair; the numbers both, labelled', () => {
     const v = coachView(coachData({ decision: rangeAdjusted() }), null, input(FACING));
     expect(v.strip).toMatchObject({
@@ -406,6 +418,7 @@ describe('coachView (§10.2, §12.6)', () => {
       need: 0.25,
       players: 1,
       callers: null,
+      price: true,
       bar: { win: 0.2, need: 0.25, good: false, basis: 'plain' },
     });
     expect(v.hint?.numbers.win).toBe('Win chance 62% (any cards)');

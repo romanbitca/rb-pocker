@@ -6,6 +6,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { equity } from '../../src/analysis/equity.ts';
+import { findDraws } from '../../src/analysis/handinfo.ts';
 import { preflopEquity } from '../../src/analysis/preflop.ts';
 import { strengthOf } from '../../src/brain/decide.ts';
 import {
@@ -14,11 +15,14 @@ import {
   facingOf,
   features,
   hudEquity,
+  isDrawOnly,
+  mainDraw,
   perOpponentStrength,
   showsRangeAdjust,
   textureOf,
   textureScore,
 } from '../../src/brain/features.ts';
+import { describe as describeHand } from '../../src/eval/describe.ts';
 import { rankPctOfClass } from '../../src/brain/rangesData.ts';
 import { classOf } from '../../src/core/cards.ts';
 import type { Seed128 } from '../../src/core/rng.ts';
@@ -162,6 +166,65 @@ describe('features (§8.2)', () => {
     expect(bucketOf(0.3, 7, 'flop')).toBe('air');
     expect(bucketOf(0.3, 9, 'river')).toBe('air');
     expect(bucketOf(0.9, 0, 'preflop')).toBeNull();
+  });
+
+  it('a draw with no made hand of its own is a Draw below Monster, whatever its p (audit #8)', () => {
+    expect(bucketOf(0.72, 15, 'flop', true)).toBe('draw'); // was Strong: "Ace-high is best"
+    expect(bucketOf(0.5, 4, 'turn', true)).toBe('draw'); // was Medium
+    expect(bucketOf(0.3, 4, 'flop', true)).toBe('draw');
+    expect(bucketOf(0.9, 15, 'flop', true)).toBe('monster');
+    expect(bucketOf(0.72, 0, 'river', true)).toBe('strong'); // no draw on the river
+  });
+
+  it('isDrawOnly: a flush or straight draw and nothing made of the hero’s own (§8.2)', () => {
+    const only = (h: string, b: string): boolean => {
+      const hole = cards(h) as [number, number];
+      const board = cards(b);
+      return isDrawOnly(hole, describeHand(hole, board), findDraws(hole, board));
+    };
+    expect(only('A♠ 10♠', '2♣ 9♠ 4♠')).toBe(true); // Ace-high, nut flush draw
+    expect(only('K♠ J♦', '6♦ 9♦ 6♣ 10♦')).toBe(true); // the board's Sixes, a flush draw
+    expect(only('A♠ 5♠', '5♥ 9♠ K♠')).toBe(false); // a pair of Fives of the hero's own
+    expect(only('A♠ K♦', 'Q♥ 7♣ 2♦')).toBe(false); // two overcards are not a real draw
+    expect(only('9♣ 8♦', 'K♥ K♠ 3♣')).toBe(false); // no draw at all (audit #4)
+  });
+
+  it('mainDraw: the strongest real draw names the hand, not the most outs (audit #9)', () => {
+    expect(
+      mainDraw([
+        { kind: 'gutshot', outs: 4 },
+        { kind: 'overcards', outs: 6 },
+        { kind: 'backdoorFlush', outs: 0 },
+      ]),
+    ).toBe('gutshot');
+    expect(
+      mainDraw([
+        { kind: 'flush', outs: 9 },
+        { kind: 'oesd', outs: 8 },
+      ]),
+    ).toBe('flush');
+    expect(mainDraw([{ kind: 'overcards', outs: 6 }])).toBe('overcards');
+    expect(mainDraw([{ kind: 'backdoorFlush', outs: 0 }])).toBeNull();
+    expect(mainDraw([])).toBeNull();
+  });
+
+  it('weak outs never make a Draw: 9♣8♦ on K♥K♠3♣ (8 outs, 0 draw outs) is Air (audit #4)', () => {
+    const h = playSpot({
+      stacks: [10000, 10000],
+      button: 0,
+      holes: { 0: '9c 8d', 1: '2c 2h' },
+      board: 'Kh Ks 3c',
+      inputs: [raise(0, 300), raise(1, 900), call(0), check(1)],
+    });
+    const obs = observeSpot(h, 0);
+    const f = features(obs, BOT, SEED);
+    expect({ outs: f.outs, drawOuts: f.drawOuts, drawOnly: f.drawOnly }).toEqual({
+      outs: 8,
+      drawOuts: 0,
+      drawOnly: false,
+    });
+    expect(f.p).toBeLessThan(0.45);
+    expect(f.bucket).toBe('air');
   });
 
   it('RANGE_ADJUST (§8.10): a 5-point gap, or need strictly between the rounded numbers', () => {

@@ -12,6 +12,7 @@ import {
   explainInput,
   feedbackLine,
   isAllIn,
+  outGroupsOf,
   rangeNumber,
   shownPct,
   TEMPLATE_KEYS,
@@ -20,6 +21,7 @@ import {
   type ExplainInput,
   type Explanation,
   type Line,
+  type OutGroup,
   type VillainAction,
 } from '../../src/brain/explain.ts';
 import { coachSeed, features, showsRangeAdjust } from '../../src/brain/features.ts';
@@ -83,6 +85,7 @@ function input(over: Partial<ExplainInput> = {}): ExplainInput {
     preflopName: 'King-Queen suited',
     draws: [],
     outs: 0,
+    outGroups: [],
     villain: 'bets',
     ...over,
   };
@@ -340,12 +343,12 @@ describe('every reason code renders (Appendix F.1)', () => {
     const flop = explain(input({ ...draw, trace: [r('CALL_PROFITABLE')] }));
     expect(keys(flop.trick)).toEqual(['RULE_2_4', 'RULE_2_4_BIG']);
     expect(lineText(flop.trick[0] as Line)).toBe(
-      'Quick trick: outs × 2 ≈ % for the next card. Outs × 4 ≈ % by the river. Exact: 54%.',
+      'Quick trick: outs × 2 ≈ % for the next card. Outs × 4 ≈ % by the river. With your 15 outs, exact: 54%.',
     );
     expect(lineText(flop.trick[1] as Line)).toBe('The trick guesses too high for big draws.');
     const turn = explain(input({ ...draw, street: 'turn', trace: [r('CALL_PROFITABLE')] }));
     expect(keys(turn.trick)).toEqual(['RULE_2_4']);
-    expect(lineText(turn.trick[0] as Line)).toContain('Exact: 33%.');
+    expect(lineText(turn.trick[0] as Line)).toContain('With your 15 outs, exact: 33%.');
     // No draw (only backdoor draws, or no outs): no trick; never on the river.
     const backdoor = { draws: [{ kind: 'backdoorFlush' as const, outs: 0 }], outs: 3 };
     expect(explain(input({ ...backdoor, trace: [r('CALL_PROFITABLE')] })).trick).toEqual([]);
@@ -540,6 +543,7 @@ describe('RANGE_ADJUST (§8.10): both equities, labelled, when they differ by 5 
       need: 0.25,
       players: 1,
       callers: null,
+      price: true,
       bar: { win: 0.35, need: 0.25, good: true, basis: 'plain' },
     });
   });
@@ -682,11 +686,14 @@ describe('whom each number counts (§8.10): the raiser alone or every player', (
   it('a raise in front and players behind: both numbers say whom they count', () => {
     const spot = multiway();
     const e = explain(spot);
-    expect(keys(e.reasons)).toEqual(['RANGE_ADJUST.raiser', 'FOLD_VS_RAISE']);
+    // 44% is above the 38% price: never "wins only about 44%" (audit #6); later bets decide.
+    expect(keys(e.reasons)).toEqual(['RANGE_ADJUST.raiser', 'FOLD_VS_RAISE.realise']);
     expect(lineText(e.reasons[0] as Line)).toBe(
       "Against all 5 players with any cards, you win 26%. Against the raiser's likely hands alone, you win about 44%.",
     );
-    expect(lineText(e.reasons[1] as Line)).toContain('wins only about 44% against it');
+    expect(lineText(e.reasons[1] as Line)).toBe(
+      'You need 38% to call. King-Queen suited wins about 44% against their likely hands if you see every card. Later bets can make you fold before that.',
+    );
     expect(e.shown).toEqual({
       eRandom: 0.26,
       eRange: 0.44,
@@ -694,6 +701,7 @@ describe('whom each number counts (§8.10): the raiser alone or every player', (
       need: 0.38,
       players: 5,
       callers: 0,
+      price: true,
       // 44% beats the price, but K7o out of position keeps only 0.72 of it: ✗ beside the fold.
       bar: { win: 0.44 * 0.72, need: 0.38, good: false, basis: 'realised' },
     });
@@ -709,7 +717,7 @@ describe('whom each number counts (§8.10): the raiser alone or every player', (
   it('with callers already in, the range number names the raiser and the callers', () => {
     const one = multiway({ nOpp: 4, trace: [r('FOLD_VS_RAISE', { E: 0.4, callers: 1 })] });
     const e = explain(one);
-    expect(keys(e.reasons)).toEqual(['RANGE_ADJUST.callers', 'FOLD_VS_RAISE']);
+    expect(keys(e.reasons)).toEqual(['RANGE_ADJUST.callers', 'FOLD_VS_RAISE.realise']);
     expect(lineText(e.reasons[0] as Line)).toBe(
       'Against all 4 players with any cards, you win 26%. Against the likely hands of the raiser and 1 caller, you win about 40%.',
     );
@@ -786,6 +794,8 @@ describe('whom each number counts (§8.10): the raiser alone or every player', (
     const { decision, explanation: e } = coachHint(obs, null);
     expect(decision.action).toEqual({ type: 'fold' });
     expect(decision.trace[0]).toMatchObject({ code: 'FOLD_VS_RAISE', data: { callers: 0 } });
+    // About 37% against the raiser (the ranking of 1.3.85), need 38%: below the price, so the
+    // plain words ("wins only about 37%"). The realised fold is P15 in coachAudit.test.ts.
     expect(keys(e.reasons)).toEqual(['RANGE_ADJUST.raiser', 'FOLD_VS_RAISE']);
     expect(lineText(e.reasons[0] as Line)).toMatch(
       /^Against all 5 players with any cards, you win \d+%\. Against the raiser's likely hands alone, you win about \d+%\.$/,
@@ -1643,6 +1653,210 @@ describe('feedback rows (Appendix F.5): the template plumbing', () => {
   ];
   it.each(cases)('%o', (row, sentence) => {
     expect(lineText(feedbackLine(row))).toBe(sentence);
+  });
+});
+
+/**
+ * The coach-advice audit of 6 Nov 2026 (`tests/brain/coachAudit.test.ts` has its spots): the
+ * explanation rules behind items #6, #7, #9 and #10, on made-up inputs.
+ */
+describe('the coach-advice audit (6 Nov 2026): words that fit the numbers and the street', () => {
+  const groups = (...g: [OutGroup['makes'], number, boolean][]): OutGroup[] =>
+    g.map(([makes, outs, weak]) => ({ makes, outs, weak }));
+
+  it('#9 SEMI_BLUFF names the strongest real draw and each group of outs by what it makes', () => {
+    const combo = free({
+      eRandom: 0.4,
+      eRange: 0.4,
+      action: BET_TO(60),
+      // Two overcards have more outs than the gutshot, but the gutshot is the draw.
+      draws: [
+        { kind: 'gutshot', outs: 4 },
+        { kind: 'overcards', outs: 6 },
+      ],
+      outs: 10,
+      outGroups: groups(['straight', 4, false], ['pair', 6, true]),
+      trace: [r('SEMI_BLUFF')],
+    });
+    expect(lineText(explain(combo).reasons[0] as Line)).toBe(
+      'Gutshot straight draw. Your outs: 4 for a straight · 6 for a pair (weak). You hit about 21% next card and 38% by the river. Betting can win now or later.',
+    );
+    const turn = explain({ ...combo, street: 'turn', outs: 9 });
+    expect(lineText(turn.reasons[0] as Line)).toBe(
+      'Gutshot straight draw. Your outs: 4 for a straight · 6 for a pair (weak). You hit about 20% on the river. Betting can win now or later.',
+    );
+    // One kind of out: the F.1 sentence with the draw's own count.
+    const flush = free({
+      action: BET_TO(60),
+      draws: [{ kind: 'flush', outs: 9 }],
+      outs: 9,
+      outGroups: groups(['flush', 9, false]),
+      trace: [r('SEMI_BLUFF', { draw: 'flush' })],
+    });
+    expect(lineText(explain(flush).reasons[0] as Line)).toMatch(/^Flush draw: 9 outs\. /);
+    for (const spot of [combo, flush]) expect(checkHint(explain(spot), spot)).toEqual([]);
+  });
+
+  it('#9 outGroupsOf: strongest first, weak outs apart, a Pair group always weak', () => {
+    const out = (card: number, makes: OutGroup['makes'], weak = false) => ({
+      card,
+      makes,
+      risky: [],
+      weak,
+    });
+    expect(
+      outGroupsOf([
+        out(51, 'flush'),
+        out(50, 'flush'),
+        out(40, 'trips', true),
+        out(30, 'twoPair', true),
+        out(29, 'twoPair', true),
+        out(20, 'straight'),
+        out(10, 'pair'),
+      ]),
+    ).toEqual(
+      groups(
+        ['flush', 2, false],
+        ['straight', 1, false],
+        ['trips', 1, true],
+        ['twoPair', 2, true],
+        ['pair', 1, true],
+      ),
+    );
+  });
+
+  it('#9 RULE_2_4 says how many outs its exact chance counts (singular for one)', () => {
+    const one = explain(input({ draws: [{ kind: 'overcards', outs: 1 }], outs: 1 }));
+    expect(lineText(one.trick[0] as Line)).toMatch(/With your 1 out, exact: 4%\.$/);
+    const ten = explain(input({ draws: [{ kind: 'gutshot', outs: 4 }], outs: 10 }));
+    expect(lineText(ten.trick[0] as Line)).toMatch(/With your 10 outs, exact: 38%\.$/);
+  });
+
+  it('#8 a Draw that checks names its draw; any other check keeps "You have little now"', () => {
+    const draw = explain(
+      free({ action: { type: 'check' }, trace: [r('CHECK_WEAK', { draw: 'oesd' })] }),
+    );
+    expect(lineText(draw.reasons[0] as Line)).toBe(
+      'Your open-ended straight draw has not hit yet. Check and see the next card for free.',
+    );
+    for (const data of [{}, { draw: 'overcards' }, { draw: '' }]) {
+      const plain = explain(free({ action: { type: 'check' }, trace: [r('CHECK_WEAK', data)] }));
+      expect(plain.reasons.map((l) => l.key)).toEqual(['CHECK_WEAK']);
+    }
+  });
+
+  it('#6 FOLD_VS_RAISE: "wins only about X%" only below the price; else the true reason', () => {
+    const facingOpen = (E: number, extra: Reason['data'] = {}): ExplainInput =>
+      preflop({
+        facing: 'open',
+        k: 0,
+        eRandom: E,
+        eRange: E,
+        need: 0.38,
+        action: { type: 'fold' },
+        rankPct: 54,
+        preflopName: 'Pocket Twos',
+        trace: [r('FOLD_VS_RAISE', { E, R: 0.95, callers: 0, ...extra })],
+      });
+    const below = facingOpen(0.3, { evCall: -50 });
+    expect(lineText(explain(below).reasons[0] as Line)).toBe(
+      'They raised, so they likely have a good hand. Pocket Twos wins only about 30% against it.',
+    );
+    // At or above the price, EV(call) ≤ 0: the realisation R decided (later bets).
+    const realise = facingOpen(0.4, { evCall: -5 });
+    expect(lineText(explain(realise).reasons[0] as Line)).toBe(
+      'You need 38% to call. Pocket Twos wins about 40% against their likely hands if you see every card. Later bets can make you fold before that.',
+    );
+    // At or above the price, EV(call) > 0: §8.3's call range folded it.
+    const range = facingOpen(0.47, { evCall: 710 });
+    expect(lineText(explain(range).reasons[0] as Line)).toBe(
+      'Pocket Twos is in the top 54% of starting hands. Against this raise, that is too weak to call.',
+    );
+    // The same whole number as the price is not "only" either.
+    const equal = facingOpen(0.381, { evCall: -1 });
+    expect(explain(equal).reasons[0]?.key).toBe('FOLD_VS_RAISE.realise');
+    for (const spot of [below, realise, range, equal]) {
+      expect(checkHint(explain(spot), spot)).toEqual([]);
+    }
+  });
+
+  it('#6 property: no FOLD_VS_RAISE line says "wins only" at or above the price (1,000 runs)', () => {
+    fc.assert(
+      fc.property(
+        fc.double({ min: 0, max: 1, noNaN: true }),
+        fc.double({ min: 0.05, max: 0.6, noNaN: true }),
+        fc.double({ min: -500, max: 500, noNaN: true }),
+        (E, need, evCall) => {
+          const spot = preflop({
+            facing: 'open',
+            k: 0,
+            eRandom: E,
+            eRange: E,
+            need,
+            action: { type: 'fold' },
+            trace: [r('FOLD_VS_RAISE', { E, R: 0.8, evCall, callers: 0 })],
+          });
+          const e = explain(spot);
+          const said = e.reasons.map((l) => lineText(l)).join(' ');
+          const m = /wins only about (\d+)%/.exec(said);
+          if (m !== null) expect(Number(m[1])).toBeLessThan(shownPct(need));
+          expect(checkHint(e, spot)).toEqual([]);
+        },
+      ),
+      { numRuns: 1000, seed: FC_SEED },
+    );
+  });
+
+  it('#7 before the flop with nobody raised: no price in the numbers, no bar, no "Why not fold?"', () => {
+    for (const facing of ['none', 'limpers'] as const) {
+      // 21% to win against a 10% "price": the price of a limp, which is never advice (C10).
+      const fold = preflop({
+        facing,
+        eRandom: 0.21,
+        eRange: 0.21,
+        need: 0.1,
+        pot: 450,
+        winPot: 450,
+        toCall: 50,
+        legal: { ...FACING, toCall: 50, callAmount: 50 },
+        action: { type: 'fold' },
+        trace: [r('FOLD_RANGE', { openPct: 21 })],
+      });
+      const e = explain(fold);
+      expect(lineText(e.numbers)).toBe('Win 21% · Pot 450');
+      expect(e.shown).toMatchObject({ price: false, bar: null });
+      expect(keys(e.whyNot)).toEqual(['WHY_NOT_RAISE']);
+      expect(checkHint(e, fold)).toEqual([]);
+      const open = explain({ ...fold, action: RAISE_TO(250), trace: [r('OPEN_RANGE')] });
+      expect(lineText(open.numbers)).toBe('Win 21% · Pot 450');
+      expect(keys(open.whyNot)).toEqual([]);
+    }
+    // Facing an open, the price is the advice's: it stays.
+    const call = preflop({ facing: 'open', action: { type: 'call' }, trace: [r('CALL_PREFLOP')] });
+    expect(lineText(explain(call).numbers)).toBe('Win 40% · Need 40% · Pot 30 · To call 20');
+    expect(explain(call).shown.price).toBe(true);
+  });
+
+  it('#10 on the river: no free card in "Why not check?", no draws in a raise', () => {
+    const river = { street: 'river' as const, draws: [], outs: 0 };
+    const valueBet = free({ ...river, eRandom: 0.8, eRange: 0.8, action: BET_TO(60) });
+    const e = explain({ ...valueBet, trace: [r('VALUE_BET')] });
+    expect(e.whyNot.map((l) => lineText(l))).toEqual([
+      'Why not check? Worse hands would call a bet.',
+    ]);
+    const flop = explain({ ...valueBet, street: 'flop', trace: [r('VALUE_BET')] });
+    expect(flop.whyNot.map((l) => lineText(l))).toEqual([
+      'Why not check? Worse hands would get a free card.',
+    ]);
+    const raise = input({ ...river, eRandom: 0.8, eRange: 0.8, action: RAISE_TO(160) });
+    const protect = explain({ ...raise, trace: [r('RAISE_PROTECT')] });
+    expect(lineText(protect.reasons[0] as Line)).toBe(
+      'Your hand is strong. Raise now: worse hands can still call.',
+    );
+    const turn = explain({ ...raise, street: 'turn', trace: [r('RAISE_PROTECT')] });
+    expect(lineText(turn.reasons[0] as Line)).toBe(
+      'Strong, but this board has many draws. Raise now so draws pay to continue.',
+    );
   });
 });
 

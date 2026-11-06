@@ -101,6 +101,13 @@ export interface Features {
   draws: HandAnalysis['draws'];
   /** §6.3 outs (flop and turn), 0 otherwise. */
   outs: number;
+  /** The §6.3 outs that are not weak (§6.3, open question Q): what the Draw bucket counts. */
+  drawOuts: number;
+  /**
+   * A flush or straight draw and no made hand of the hero's own (high card, or the board's own
+   * pair, two pair or trips): a Draw below Monster whatever its `p` (§8.2). False on the river.
+   */
+  drawOnly: boolean;
   /** Starting-hand percentile (§8.3). */
   rankPct: number;
   /** §8.10: the coach must show both equities (RANGE_ADJUST). */
@@ -188,6 +195,13 @@ export interface GradeResult {
    * (no card), and when no row fits: the card then says the fallback row with the coach's move.
    */
   feedback: Line | null;
+  /**
+   * The numbers the grade read for the price (§8.9's price signal): `E` = `eRange` (against the
+   * likely hands of every live opponent), the call's realisation `R` and the price `need`; null
+   * with nothing to call. The hand summary shows them (§12.9), so its numbers say what the grade
+   * said, never the HUD's any-cards number alone beside a grade it did not decide (QA-1).
+   */
+  price: { E: number; R: number; need: number } | null;
 }
 
 // --- 5.5 guardrails / EV ---

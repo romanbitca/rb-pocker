@@ -193,7 +193,9 @@ export function numbersView(
 ): NumbersView {
   const money = (chips: number) => formatAmount(chips, ctx.bb, ctx.amounts);
   const c = coachWords;
-  const facing = price !== null && price.toCall > 0;
+  // The price only when the advice weighs it (`shown.price`): never a limp's price next to an
+  // open or a fold before the flop (F.1 numbers line).
+  const facing = shown.price && price !== null && price.toCall > 0;
   const any = pctText(decision.eRandom);
   // With a range number of the raiser alone in the words, the HUD's says whom it counts too.
   const win = shown.callers === null ? c.winAny(any) : c.winAll(shown.players, any);
