@@ -27,7 +27,7 @@ import {
 import { en } from '../../i18n/en.ts';
 import type { ByRiverView, HeroHandView } from '../views.ts';
 import styles from './RankingsDrawer.module.css';
-import { RankingsList } from './RankingsList.tsx';
+import { RankingsList, type RowMarks } from './RankingsList.tsx';
 import { ICONS, SpriteIcon } from './SvgSprite.tsx';
 
 /** What closed the drawer (the controller pops its history entry for all of these). */
@@ -42,6 +42,8 @@ export interface RankingsDrawerProps {
   byRiver?: ByRiverView | null | undefined;
   /** The "Which hand wins?" button (Advanced and Exam, §10.2). */
   whichWins?: boolean | undefined;
+  /** Rows marked with a badge (the hand drill's "This round", §13.5). */
+  marked?: RowMarks | undefined;
 }
 
 /** The sheet stays mounted this long after closing, for the 200 ms slide-out (§12.8). */
@@ -81,7 +83,15 @@ interface Drag {
   active: boolean;
 }
 
-function Sheet({ open, onOpenChange, hero, showTips, byRiver, whichWins }: RankingsDrawerProps) {
+function Sheet({
+  open,
+  onOpenChange,
+  hero,
+  showTips,
+  byRiver,
+  whichWins,
+  marked,
+}: RankingsDrawerProps) {
   const titleId = useId();
   const sheetRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
@@ -239,6 +249,7 @@ function Sheet({ open, onOpenChange, hero, showTips, byRiver, whichWins }: Ranki
             whichWins={whichWins}
             currentRowRef={currentRowRef}
             byRiver={byRiver}
+            marked={marked}
           />
         </div>
       </div>

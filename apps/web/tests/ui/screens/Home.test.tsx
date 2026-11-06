@@ -79,6 +79,25 @@ describe('Home', () => {
     expect(onPlay).not.toHaveBeenCalled();
   });
 
+  it('"Hand drill" (§13.5) is a secondary button under New table, when given', () => {
+    const onOpenDrill = vi.fn();
+    renderHome({ session: SESSION, onOpenDrill });
+    expect(screen.getAllByRole('button').map((b) => b.textContent)).toEqual([
+      'Play',
+      'New table…',
+      'Hand drill',
+      'Settings',
+    ]);
+    const drill = screen.getByRole('button', { name: 'Hand drill' });
+    expect(drill.className).toBe(cssClass(styles, 'secondary'));
+    fireEvent.click(drill);
+    expect(onOpenDrill).toHaveBeenCalledTimes(1);
+    // Read-only (§14.7): the app shows only Home, so the drill is not offered.
+    cleanup();
+    renderHome({ onOpenDrill, onPlayHere: vi.fn() });
+    expect(screen.queryByRole('button', { name: 'Hand drill' })).toBeNull();
+  });
+
   it('hides Learn, Stats and Install app until they exist, instead of disabling them', () => {
     const { container } = renderHome({ session: SESSION });
     expect(screen.getAllByRole('button').map((b) => b.textContent)).toEqual([

@@ -1,13 +1,15 @@
 /**
  * The screens after the first tap (PLAN §12.1, §15.3), wired to the store: the Table, Setup,
- * Settings, and the overlays that open over them (the Table's Menu, the two §3.1 dialogs, and the
- * Data dialogs of §14.8: Import's preview and "Delete my stats", chunk 8.4).
+ * Settings, the hand drill's frame (§13.5: its page and logic are lazy chunks of their own), and
+ * the overlays that open over them (the Table's Menu, the two §3.1 dialogs, and the Data dialogs
+ * of §14.8: Import's preview and "Delete my stats", chunk 8.4).
  *
  * This file starts a lazy chunk. The first screen (Welcome or Home) does not need any of it, so
  * the initial bundle does not carry it. App loads it with `import()` (`ui/screensModule.ts`) right
  * after the first paint, long before anyone can tap Play, so one tap still deals a hand at once
  * (§12.1); the service worker precaches it like every chunk, so it also loads offline.
  */
+import { useCallback } from 'react';
 import {
   missingFeatures,
   secureFeatures,
@@ -25,10 +27,16 @@ import {
   useDispatch,
 } from '../app/store.ts';
 import type { CoachLevel, TableConfig } from '../engine/types.ts';
+import { en } from '../i18n/en.ts';
+import { LoadBoundary } from './components/LoadBoundary.tsx';
+import { RankingsDrawer } from './components/RankingsDrawer.tsx';
+import { useDrillChunks } from './drillModule.ts';
 import { ImportDialog, ResetDialog } from './screens/DataDialogs.tsx';
 import { NewTableDialog, OutOfChipsDialog } from './screens/Dialogs.tsx';
 import { wakeLockSupport, type DisplayAndSoundSettings } from './screens/DisplayAndSound.tsx';
 import { Menu } from './screens/Menu.tsx';
+import { ScreenBar } from './screens/ScreenBar.tsx';
+import screen from './screens/Screen.module.css';
 import { Settings } from './screens/Settings.tsx';
 import { Setup } from './screens/Setup.tsx';
 import { AVAILABLE_LEVELS, ownLevelCount, type MoreChoices } from './screens/setupForm.ts';
@@ -123,6 +131,46 @@ export function SettingsScreen() {
   );
 }
 
+/**
+ * The hand drill (§13.5): Back and the title at once (a screen change moves the focus to the
+ * title), then the page when its two chunks are there; "Loading…" only after half a second, as for
+ * the screens after the first tap. If they cannot load: a line, Try again (a reload) and Back. A
+ * page that throws while rendering leaves (Back), so the drill never takes the app down.
+ */
+export function DrillScreen() {
+  const dispatch = useDispatch();
+  const { chunks, failed } = useDrillChunks();
+  const back = useCallback(() => dispatch({ type: 'back' }), [dispatch]);
+  let body;
+  if (chunks !== null) {
+    const { DrillPage } = chunks.page;
+    body = (
+      <LoadBoundary onError={back}>
+        <DrillPage logic={chunks.logic} Drawer={RankingsDrawer} />
+      </LoadBoundary>
+    );
+  } else if (failed) {
+    body = (
+      <>
+        <p className={screen.hint} role="alert">
+          {en.screens.loadFailed}
+        </p>
+        <button type="button" className={screen.primary} onClick={() => window.location.reload()}>
+          {en.screens.tryAgain}
+        </button>
+      </>
+    );
+  } else {
+    body = <p className={`${screen.hint} ${screen.later}`}>{en.screens.loading}</p>;
+  }
+  return (
+    <main className={screen.page}>
+      <ScreenBar title={en.drill.title} onBack={back} />
+      {body}
+    </main>
+  );
+}
+
 // ---------------------------------------------------------------------------------------------
 // Overlays (the rankings drawer and the sizing tray belong to the Table)
 
@@ -150,6 +198,7 @@ export function MenuOverlay() {
         if (wide) dispatch({ type: 'settings', patch: { handsPanel: 'open' } });
         else dispatch({ type: 'open', overlay: 'rankings' });
       }}
+      onOpenDrill={() => dispatch({ type: 'go', screen: 'drill' })}
       onOpenHands={hands > 0 ? () => dispatch({ type: 'review', handSeq: null }) : undefined}
       onOpenSettings={() => dispatch({ type: 'go', screen: 'settings' })}
       onOpenStats={() => dispatch({ type: 'go', screen: 'stats' })}

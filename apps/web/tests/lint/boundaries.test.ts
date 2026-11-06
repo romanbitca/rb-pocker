@@ -228,6 +228,21 @@ describe('module boundaries (PLAN §2.1)', () => {
     ],
     ['src → the web package root', 'apps/web/src/ui/App.tsx', valueImport('@rb/web')],
     ['src → the server', 'apps/web/src/app/controller.ts', valueImport('@rb/server/src/setup.ts')],
+    // The hand drill (§13.5): pure question logic; the UI takes only its types.
+    ['drill → persist', 'apps/web/src/drill/session.ts', valueImport('../persist/drill.ts')],
+    ['drill → app', 'apps/web/src/drill/session.ts', valueImport('../app/store.ts')],
+    ['drill → i18n', 'apps/web/src/drill/explain.ts', valueImport('../i18n/drill.ts')],
+    ['drill → data', 'apps/web/src/drill/deal.ts', valueImport('../data/rankings.ts')],
+    [
+      'ui → drill values',
+      'apps/web/src/ui/screens/Drill.tsx',
+      valueImport('../../drill/questions.ts'),
+    ],
+    [
+      'ui → app/drill values',
+      'apps/web/src/ui/screens/Drill.tsx',
+      valueImport('../../app/drill.ts'),
+    ],
   ])('%s fails', (_, file, code) => expectError(file, code, BOUNDARIES));
 
   it.each([
@@ -286,6 +301,24 @@ describe('module boundaries (PLAN §2.1)', () => {
         "import type { en } from '../i18n/en.ts';\n" +
         'export const deps = [step, observe, hint, loadProfile, play];\n' +
         'export type Parts = [BrainRequest, typeof en];\n',
+    ],
+    [
+      'drill: core and eval (§13.5)',
+      'apps/web/src/drill/deal.ts',
+      "import { makeCard } from '../core/cards.ts';\nimport { score7 } from '../eval/evaluate.ts';\n" +
+        'export const deps = [makeCard, score7];\n',
+    ],
+    [
+      'app: the drill, and persist (app/drill.ts, §13.5)',
+      'apps/web/src/app/drill.ts',
+      "import { createDrillSession } from '../drill/session.ts';\nimport { loadDrillData } from '../persist/drill.ts';\n" +
+        'export const deps = [createDrillSession, loadDrillData];\n',
+    ],
+    [
+      'ui: types from the drill and app/drill',
+      'apps/web/src/ui/screens/Drill.tsx',
+      "import type { Question } from '../../drill/questions.ts';\nimport type { DrillView } from '../../app/drill.ts';\n" +
+        'export type Parts = [Question, DrillView];\n',
     ],
     [
       'app: a module worker (a URL, not an import)',

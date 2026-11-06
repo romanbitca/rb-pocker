@@ -93,6 +93,7 @@ function App({ firstLaunch, onPlay }: { firstLaunch: boolean; onPlay: () => void
         lesson: () => <h1>Lesson</h1>,
         handRankings: () => <h1>Poker hands</h1>,
         glossary: () => <h1>Glossary</h1>,
+        drill: () => <h1>Hand drill</h1>,
       }}
       overlays={{
         menu: () => (
@@ -169,6 +170,7 @@ describe('ScreenSwitcher', () => {
           lesson: renderer('lesson'),
           handRankings: renderer('handRankings'),
           glossary: renderer('glossary'),
+          drill: renderer('drill'),
         }}
         overlays={{
           menu: renderer('menu'),
@@ -236,6 +238,7 @@ describe('ScreenSwitcher', () => {
           lesson: () => <h1>N</h1>,
           handRankings: () => <h1>K</h1>,
           glossary: () => <h1>Y</h1>,
+          drill: () => <h1>D</h1>,
         }}
         overlays={{ menu: () => null, outOfChips: () => null, newTable: () => null }}
       />

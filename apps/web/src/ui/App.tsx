@@ -100,6 +100,7 @@ function HomeScreen() {
       session={session}
       onPlay={() => dispatch({ type: 'play' })}
       onNewTable={() => dispatch({ type: 'go', screen: 'setup' })}
+      onOpenDrill={readOnly ? undefined : () => dispatch({ type: 'go', screen: 'drill' })}
       onOpenSettings={() => dispatch({ type: 'go', screen: 'settings' })}
       onOpenLearn={() => dispatch({ type: 'go', screen: 'learn' })}
       onOpenStats={() => dispatch({ type: 'go', screen: 'stats' })}
@@ -113,7 +114,7 @@ function HomeScreen() {
 
 // The screens after the first tap are in the lazy chunk (`screensEntry.tsx`, see the module note).
 
-type LaterScreenName = 'TableScreen' | 'SetupScreen' | 'SettingsScreen';
+type LaterScreenName = 'TableScreen' | 'SetupScreen' | 'SettingsScreen' | 'DrillScreen';
 
 /**
  * A screen from the lazy chunk. It is almost always loaded already and renders at once. Only a
@@ -344,6 +345,8 @@ const SCREENS = {
   lesson: () => <LearnScreen page="lesson" />,
   handRankings: () => <LearnScreen page="handRankings" />,
   glossary: () => <LearnScreen page="glossary" />,
+  // The hand drill (§13.5): its wrapper is in the screens chunk, its page and logic lazy chunks.
+  drill: () => <LaterScreen name="DrillScreen" />,
 } as const;
 
 /**

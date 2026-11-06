@@ -43,6 +43,12 @@ export const en = {
   back: 'Back',
 
   /**
+   * The hand drill (PLAN §13.5): its name on Home, in the Menu and over its page. Its other words
+   * load with it (`i18n/drill.ts`).
+   */
+  drill: { title: 'Hand drill' },
+
+  /**
    * The screens after the first tap (the Table, Setup, Settings) are a lazy chunk, loaded right
    * after the first paint (PLAN §15.3). Only a tap before it arrives shows `loading` (after half a
    * second); `loadFailed` when it cannot load (no connection, not cached yet).

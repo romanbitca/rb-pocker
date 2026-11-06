@@ -1,0 +1,162 @@
+/* The hand drill (PLAN §13.5): only what needs CSS. Its layout is inline (`drillStyles.ts`, in the
+   lazy chunk), because this file is part of the one stylesheet loaded at first paint (§15.3).
+   Every animation is off under reduced motion (the last two rules, §12.8). */
+
+.drill {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  width: 100%;
+  max-width: 560px;
+  margin: 0 auto;
+}
+
+/* Dealt from the deck: in from above, turning face up. The exit before the next question. */
+.slot {
+  display: inline-block;
+  animation: deal 0.48s cubic-bezier(0.22, 0.9, 0.3, 1) backwards;
+}
+.out > * {
+  animation: out 0.17s ease-in forwards;
+}
+.prompt {
+  margin: 0;
+  color: var(--accent);
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-align: center;
+  text-transform: uppercase;
+}
+.prompt:focus {
+  outline: none;
+}
+.prompt,
+.ok,
+.rise {
+  animation: rise 0.3s ease-out;
+}
+.no {
+  animation: shake 0.4s ease-out;
+}
+.zoom {
+  animation: zoom 0.32s cubic-bezier(0.3, 1.4, 0.5, 1) backwards;
+}
+.pop {
+  animation: pop 0.42s cubic-bezier(0.3, 1.5, 0.5, 1);
+}
+
+/* An 18 px icon's SVG fills its box. */
+.icon svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/* The keys, only where a pointer can hover (not on touch screens). */
+.keys {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  text-align: center;
+}
+@media (hover: none) {
+  .keys {
+    display: none;
+  }
+}
+
+/* All hands: the Table's drawer fills its positioned parent, here the screen. */
+.drawer {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  pointer-events: none;
+}
+.drawer > * {
+  pointer-events: auto;
+}
+
+/* Chips thrown up from the streak counter at milestones. */
+.burst {
+  position: fixed;
+  z-index: 120;
+  width: 22px;
+  height: 22px;
+  margin: -11px 0 0 -11px;
+  border-radius: 50%;
+  background: radial-gradient(circle, var(--card-face) 0 42%, var(--bc) 43%);
+  pointer-events: none;
+  animation: burst 0.95s cubic-bezier(0.2, 0.7, 0.4, 1) forwards;
+}
+
+@keyframes deal {
+  from {
+    opacity: 0;
+    transform: translateY(-50%) rotateY(90deg) scale(0.86);
+  }
+}
+@keyframes out {
+  to {
+    opacity: 0;
+    transform: translateY(12px) scale(0.97);
+  }
+}
+@keyframes rise {
+  from {
+    opacity: 0.3;
+    transform: translateY(6px);
+  }
+}
+@keyframes shake {
+  20% {
+    transform: translateX(-7px);
+  }
+  40% {
+    transform: translateX(6px);
+  }
+  60% {
+    transform: translateX(-4px);
+  }
+  80% {
+    transform: translateX(2px);
+  }
+}
+@keyframes zoom {
+  from {
+    opacity: 0;
+    transform: scale(0.8);
+  }
+}
+@keyframes pop {
+  0%,
+  40% {
+    color: var(--accent);
+  }
+  40% {
+    transform: scale(1.3);
+  }
+}
+@keyframes burst {
+  0% {
+    transform: scale(0.3);
+  }
+  55% {
+    transform: translate(var(--bx), var(--by)) rotate(var(--br));
+    opacity: 1;
+  }
+  100% {
+    transform: translate(var(--bx), calc(var(--by) + 70px)) rotate(var(--br)) scale(0.9);
+    opacity: 0;
+  }
+}
+
+/* Reduced motion (§12.8): the setting, else the system's choice. Nothing moves. */
+@media (prefers-reduced-motion: reduce) {
+  :root:not([data-motion='full']) .drill * {
+    animation: none !important;
+  }
+}
+:root[data-motion='reduced'] .drill * {
+  animation: none !important;
+}

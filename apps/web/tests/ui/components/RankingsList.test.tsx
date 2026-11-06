@@ -117,6 +117,20 @@ suite('RankingsList live highlight (Stage 3 acceptance 4)', () => {
     expect(dimmed).toHaveLength(3);
   });
 
+  it('marks the rows a caller names (the hand drill’s "This round", §13.5) with a badge', () => {
+    const marked = { categories: ['flush', 'straight'] as const, label: 'This round' };
+    const { container } = render(<RankingsList hero={null} cardSize="sm" marked={marked} />);
+    const rows = [...container.querySelectorAll<HTMLElement>('li[data-marked]')];
+    expect(rows.map((r) => r.dataset.category)).toEqual(['flush', 'straight']);
+    for (const row of rows) {
+      expect(within(row).getByText('This round')).toBeTruthy();
+      expect(row.querySelector('button')?.getAttribute('aria-label')).toMatch(/This round\.$/);
+    }
+    // No hero row: nothing is aria-current, and the other rows are as before.
+    expect(current(container)).toEqual([]);
+    expect(container.querySelectorAll('li[data-category]')).toHaveLength(10);
+  });
+
   it('can hide the tips (Intermediate, §10.2)', () => {
     const { container } = render(<RankingsList hero={null} cardSize="sm" showTips={false} />);
     expect(container.textContent).not.toContain(RANKINGS[0].tip);

@@ -24,6 +24,8 @@ export interface MenuProps {
   /** A reload up to the starting stack (§3.1). */
   onTopUp: () => void;
   onOpenRankings?: (() => void) | undefined;
+  /** The hand drill (§13.5), pushed over the Table: Back returns to the hand. */
+  onOpenDrill?: (() => void) | undefined;
   /** "Recent hands" (Review, §12.10); given only once a hand is finished. */
   onOpenHands?: (() => void) | undefined;
   onOpenSettings: () => void;
@@ -53,6 +55,7 @@ export function Menu(props: MenuProps) {
     add('topUp', en.menu.topUp(formatChips(props.topUpTo)), props.onTopUp);
   }
   add('rankings', en.menu.rankings, props.onOpenRankings);
+  add('drill', en.drill.title, props.onOpenDrill);
   add('hands', en.menu.hands, props.onOpenHands);
   if (props.sound) {
     const { on, onToggle } = props.sound;

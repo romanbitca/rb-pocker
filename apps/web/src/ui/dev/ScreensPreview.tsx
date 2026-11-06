@@ -290,6 +290,8 @@ function Flow({ navigation }: { navigation: PreviewNavigation }) {
         lesson: () => <h1>Lesson</h1>,
         handRankings: () => <h1>Poker hands</h1>,
         glossary: () => <h1>Glossary</h1>,
+        // So is the hand drill (ui/screens/Drill.tsx, §13.5).
+        drill: () => <h1>Hand drill</h1>,
       }}
       overlays={{
         menu: () => (
