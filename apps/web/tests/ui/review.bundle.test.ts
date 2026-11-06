@@ -2,7 +2,8 @@
  * PLAN §15.3: what first paint does not need is lazy-loaded with a dynamic `import()` and still
  * precached, and the budgets hold. This builds apps/web once with its real config and checks the
  * built files:
- * - the Review screen (found by `REVIEW_MARKER`) is in a chunk of its own;
+ * - the Review screen (found by `REVIEW_MARKER`) is in a chunk of its own, and so is the Stats
+ *   screen with its words, numbers and charts (chunk 8.2, `STATS_MARKER`);
  * - the screens after the first tap (`ui/screensEntry.tsx`: the Table, Setup, Settings, the Menu
  *   and the §3.1 dialogs) are not initial either, while Welcome and Home are (found through the
  *   bundle's own module list, so no marker is needed);
@@ -17,6 +18,7 @@ import { build, type Plugin } from 'vite';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { BUDGETS, measureBudgets, type Row } from '../../scripts/size-budget.ts';
 import { REVIEW_MARKER } from '../../src/ui/screens/reviewMarker.ts';
+import { STATS_MARKER } from '../../src/ui/screens/statsMarker.ts';
 
 const ROOT = decodeURIComponent(new URL('../../', import.meta.url).pathname);
 const OUT = `${ROOT}node_modules/.cache/review-bundle-check`;
@@ -114,6 +116,24 @@ describe('the Review screen in the production build', () => {
     expect(initial.gzipBytes).toBeLessThanOrEqual(BUDGETS.initialJs.max);
     expect(initial.status).not.toBe('fail');
     expect(precache.status).not.toBe('fail');
+  });
+});
+
+describe('the Stats screen in the production build (chunk 8.2)', () => {
+  it('is a lazy chunk with its words, numbers and charts: not initial, by import(), precached', () => {
+    const initial = rowOf('Initial JS');
+    const stats = chunk('src/ui/screens/Stats.tsx');
+    expect(stats).toMatch(/^assets\/Stats-[\w-]+\.js$/);
+    // Its words and its numbers travel with it, nowhere else.
+    expect(chunk('src/i18n/stats.ts')).toBe(stats);
+    expect(chunk('src/ui/stats.ts')).toBe(stats);
+    expect(initial.files).not.toContain(stats);
+    for (const word of [STATS_MARKER, 'Play 5 hands to see your first stats.', 'data-chart']) {
+      for (const file of initial.files) expect(text(file), word).not.toContain(word);
+      expect(text(stats), word).toContain(word);
+    }
+    expectOnlyDynamicImports(stats);
+    expect(rowOf('Total precache').files).toContain(stats);
   });
 });
 

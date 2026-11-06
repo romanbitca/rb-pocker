@@ -191,5 +191,6 @@ export function handRecord(): HandRecord {
     coachLevel: 'beginner',
     bestCategory: 'pair',
     allIn: null,
+    heroPlay: { vpip: true, pfr: false, sawFlop: true, showdown: false, won: 0 },
   };
 }

@@ -5,6 +5,7 @@
  */
 import { act } from '@testing-library/react';
 import { vi } from 'vitest';
+import type { SafeStorage } from '../../src/persist/storage.ts';
 import { createTableController, type TableController } from '../../src/app/controller.ts';
 import type { Grader } from '../../src/app/grading.ts';
 import { installBackHandler } from '../../src/app/lifecycle.ts';
@@ -46,6 +47,8 @@ export function startTableHarness(
     grader?: Grader;
     /** Chunk 6.4: open the end-of-hand summary when the coach level shows one. */
     summaries?: boolean;
+    /** Chunk 8.2: a storage (the profile, its stats and the stored hands). */
+    storage?: SafeStorage;
   } = {},
 ): TableHarness {
   vi.useFakeTimers();
@@ -63,6 +66,7 @@ export function startTableHarness(
     ...(options.hints !== undefined && { hints: options.hints }),
     ...(options.grader !== undefined && { grader: options.grader }),
     ...(options.summaries !== undefined && { summaries: options.summaries }),
+    ...(options.storage !== undefined && { storage: options.storage }),
   });
   controller.boot();
   const unhook = installBackHandler(window, appStore);

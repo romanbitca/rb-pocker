@@ -589,6 +589,16 @@ export const en = {
     statsReset: 'Your stats were deleted.',
     /** Import or Reset changed nothing: another tab has the game, or this browser keeps nothing. */
     dataNotChanged: 'Nothing was changed. Your stats could not be saved.',
+    /**
+     * Leave table (§14.4): "This session: 45 hands · +640 chips · Decision score 82 · 4 mistakes."
+     * The parts arrive joined by `separator`; the score is left out without graded decisions.
+     */
+    session: (parts: string) => `This session: ${parts}.`,
+    sessionHands: (n: number, x: string) => (n === 1 ? '1 hand' : `${x} hands`),
+    sessionChips: (x: string) => `${x} chips`,
+    sessionScore: (score: number) => `Decision score ${score}`,
+    sessionMistakes: (n: number) => (n === 1 ? '1 mistake' : `${n} mistakes`),
+    separator: ' · ',
   },
 
   /** Another tab has the game (PLAN §12.11, §14.7): the game screens show this instead. */
@@ -664,6 +674,14 @@ export const en = {
       `You had ${pct} when the chips went in. Good decision. Unlucky this time.`,
     /** The hero won with 35% or less. */
     lucky: (pct: string) => `You got lucky. You had ${pct}.`,
+  },
+
+  /**
+   * The Stats screen's title, shown by the app over the `screens` lines while its lazy chunk loads
+   * or when it cannot (PLAN §14.4, §15.3). Every other Stats word is in `i18n/stats.ts` (lazy).
+   */
+  stats: {
+    title: 'Stats',
   },
 
   /**

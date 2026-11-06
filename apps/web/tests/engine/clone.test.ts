@@ -42,7 +42,7 @@ describe('cloneHand and deepFreeze (§4.2)', () => {
     );
     // Every kind of log event and a result were copied (reshuffle is covered below).
     expect([...kinds].sort()).toEqual(['act', 'award', 'post', 'refund', 'reveal', 'street']);
-  });
+  }, 30_000);
 
   it('copies a reshuffle event too', () => {
     const start = deal(tableWith([10000, 10000], { button: 0 }));

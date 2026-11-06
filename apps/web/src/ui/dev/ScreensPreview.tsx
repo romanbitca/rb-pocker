@@ -284,6 +284,7 @@ function Flow({ navigation }: { navigation: PreviewNavigation }) {
         ),
         // Review is a lazy screen of the real app (ui/screens/Review.tsx); not previewed here.
         review: () => <h1>Review</h1>,
+        stats: () => <h1>Stats</h1>,
       }}
       overlays={{
         menu: () => (

@@ -8,13 +8,14 @@
  * is the hero's category when the hero was still in the hand as the river card came (it may fold
  * after it); `allIn` is the hero's share of the main pot against the face-up hands, as expected
  * (`equity.allIn`, the board at the reveal) and as it happened, with that pot in chips; `commit`
- * is null until the provable shuffle (Stage 9).
+ * is null until the provable shuffle (Stage 9). Chunk 8.2: `heroPlay`, what the hero did (VPIP,
+ * PFR, flop, showdown, payout), read from the log here because `persist` may not replay a hand.
  */
 import { describe } from '../eval/describe.ts';
 import { updateSeatStats } from '../brain/opponentStats.ts';
 import type { CoachLevel, EngineInput, HandState, LogEvent, TableState } from '../engine/types.ts';
 import type { HandCategory } from '../eval/evaluate.ts';
-import type { HandMeta, HandRecord, Profile } from '../persist/schema.ts';
+import type { HandMeta, HandRecord, HeroPlay, Profile } from '../persist/schema.ts';
 import { applyHand } from '../persist/stats.ts';
 import type { KnownEquity } from './store.ts';
 
@@ -58,6 +59,21 @@ export function allInOf(h: HandState, known: KnownEquity | null): HandRecord['al
   return { expected: known.perPlayer[at] ?? 0, actual: won / pot, pot };
 }
 
+/**
+ * What the hero did (A.7 `HeroPlay`, chunk 8.2), by the seat statistics' own definitions (§9.5):
+ * one hand's `updateSeatStats` for the hero, read as flags, and the hero's payout.
+ */
+export function heroPlayOf(h: HandState): HeroPlay {
+  const one = updateSeatStats(null, h.log, HERO);
+  return {
+    vpip: one.vpip[0] > 0,
+    pfr: one.pfr[0] > 0,
+    sawFlop: one.wtsd[1] > 0,
+    showdown: one.wtsd[0] > 0,
+    won: h.result?.payouts[HERO] ?? 0,
+  };
+}
+
 /** The A.7 record of a complete hand; null when it is not complete or the hero was not dealt in. */
 export function handRecordOf(end: HandEnd): HandRecord | null {
   const { hand: h, table, meta } = end;
@@ -83,6 +99,7 @@ export function handRecordOf(end: HandEnd): HandRecord | null {
     coachLevel: end.coachLevel,
     bestCategory: bestCategoryOf(h),
     allIn: allInOf(h, end.allIn),
+    heroPlay: heroPlayOf(h),
   };
 }
 

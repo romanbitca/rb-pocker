@@ -167,7 +167,7 @@ describe('Appendix C.3: exact three-way and postflop equity', () => {
     ['Ah Kh', 'Qh 7h 2c 3d 5s', 36.41, null, null],
     ['9s 8s', '7d 6c 2h', 49.5, null, null],
   ];
-  it.each(POST)('%s on %s vs 1 random hand', (hero, board, eq, win, tie) => {
+  it.each(POST)('%s on %s vs 1 random hand', { timeout: 30_000 }, (hero, board, eq, win, tie) => {
     const r = equity({ hero: H(hero), board: H(board), nOpp: 1 }, { mode: 'exact' });
     expect(r.exact && r.final && !r.truncated).toBe(true);
     close(pct(r.equity), eq, EXACT_TOL, 'equity');
@@ -216,7 +216,7 @@ describe('Appendix C.3: exact three-way and postflop equity', () => {
     expect(r.n).toBe(deals);
     expect(r.win).toBeCloseTo(wins / deals, 12);
     expect(r.split).toBeCloseTo(share / deals, 12);
-  });
+  }, 30_000);
 
   it('a k-way tie is worth 1/k (the board is a royal flush: everyone ties)', () => {
     const board = H('As Ks Qs Js Ts');

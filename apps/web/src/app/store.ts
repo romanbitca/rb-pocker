@@ -1,6 +1,7 @@
 /**
  * The app's one Zustand store (PLAN §2.5): slices `game`, `equity`, `coach`, `ui`, `settings`,
- * `review` and `data` (the tab lock, `persist()` and Import's preview: chunk 8.3, §14.7, §14.8).
+ * `review` and `data` (the tab lock, `persist()` and Import's preview: chunk 8.3, §14.7, §14.8),
+ * and the profile's stats and Stats → History rows (`stats`, `history`, chunk 8.2).
  *
  * - It holds the reducer's output and UI state only; it never runs game logic. The TableController
  *   (`app/controller.ts`) drives every hand and writes the `game` slice; its equity jobs
@@ -35,8 +36,9 @@ import type {
   TableState,
 } from '../engine/types.ts';
 import { defaultSettings } from '../persist/schema.ts';
-import type { DecisionRecord, Settings } from '../persist/schema.ts';
+import type { DecisionRecord, SessionSummary, Settings, Stats } from '../persist/schema.ts';
 import type { ImportCheckProblem } from './dataTools.ts';
+import type { HistoryItem } from './history.ts';
 import { heroDecisionKey, levelInForce } from './coachViews.ts';
 import { choiceCount, quizQuestions } from './quiz.ts';
 import { UNDO_POLICY, type FeedbackView } from './undo.ts';
@@ -185,7 +187,9 @@ export type Toast =
   | {
       id: number;
       kind: 'exportCopied' | 'exportFailed' | 'imported' | 'statsReset' | 'dataNotChanged';
-    };
+    }
+  /** Leave table (§14.4): "This session: 45 hands · +640 chips · Decision score 82 · 4 mistakes." */
+  | { id: number; kind: 'session'; session: SessionSummary };
 
 /** An explicit gate close by `owner` (e.g. a first-table tip); the gate stays closed while any hold exists. */
 export interface GateHold {
@@ -550,7 +554,11 @@ export type GameCommand =
    * §14.8 Reset stats, after its confirmation ("Delete my stats"): stats, hands and hero model
    * emptied, settings kept; the old profile is kept in `pc.v1.preimport`.
    */
-  | { type: 'resetStats' };
+  | { type: 'resetStats' }
+  /** Stats → History (§14.4, chunk 8.2): read the stored hands into `history`. */
+  | { type: 'history' }
+  /** A History row: Review on that stored hand (§12.10), read from `pc.v1.hands`. */
+  | { type: 'historyReview'; handSeq: number };
 
 /**
  * Commands the store applies to the `coach` slice itself: the player opened the hint of the
@@ -632,6 +640,17 @@ export interface AppState {
   review: ReviewSlice;
   /** The tab lock, persistence and Import's preview (§14.7, §14.8; written by the controller). */
   data: DataSlice;
+  /**
+   * The profile's stats (§14.4, chunk 8.2), written by the controller: at boot, after every
+   * commit, at a session's end and at a reload. Null until boot has read the profile (and without
+   * storage).
+   */
+  stats: Stats | null;
+  /**
+   * Stats → History (§14.4): the stored hands (`pc.v1.hands`) as rows, newest first, read when the
+   * `history` command asks; null until then and again after each new hand.
+   */
+  history: readonly HistoryItem[] | null;
   /** The one way to change anything (the UI dispatches through the controller, §2.1). Stable. */
   dispatch: (cmd: Command) => void;
 }
@@ -689,6 +708,8 @@ export function createAppStore(): AppStore {
     settings: defaultGameSettings(),
     review: initialReview(),
     data: initialData(),
+    stats: null,
+    history: null,
     dispatch: (cmd) => {
       if (cmd.type === 'review') {
         set((s) => showReview(s, cmd));
@@ -926,6 +947,13 @@ export const selectReviewList = (s: AppState): readonly ReviewListItem[] => {
   }
   return listed;
 };
+
+// ---------------------------------------------------------------------------------------------
+// Stats (§14.4, chunk 8.2)
+
+export type { HistoryItem, SessionSummary, Stats };
+export const selectStats = (s: AppState): Stats | null => s.stats;
+export const selectHistory = (s: AppState): readonly HistoryItem[] | null => s.history;
 
 /** How many finished hands Review has. */
 export const selectReviewCount = (s: AppState): number => s.review.hands.length;

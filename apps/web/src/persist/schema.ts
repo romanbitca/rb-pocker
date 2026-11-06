@@ -107,6 +107,26 @@ export interface HandRecord {
   /** The hero's final category if they saw the river or the showdown. */
   bestCategory: HandCategory | null;
   allIn: { expected: number; actual: number; pot: number } | null;
+  /** What the hero did, read from the hand's log (chunk 8.2: the §14.4 Results stats). */
+  heroPlay: HeroPlay;
+}
+
+/**
+ * The hero's part in a hand (chunk 8.2), with the seat statistics' definitions (§9.5,
+ * `updateSeatStats`): what `applyHand` needs for the Results bucket and cannot read from the
+ * record without the engine (§2.1: `persist` may not run it).
+ */
+export interface HeroPlay {
+  /** Called, bet or raised before the flop (a blind post alone does not count). */
+  vpip: boolean;
+  /** Bet or raised before the flop. */
+  pfr: boolean;
+  /** Not folded when the flop came. */
+  sawFlop: boolean;
+  /** Among the hands turned face up at the showdown or an all-in run-out. */
+  showdown: boolean;
+  /** Chips won from the pots (the payout; 0 when none). */
+  won: number;
 }
 
 /**
@@ -747,6 +767,13 @@ const handRecord: Check<HandRecord> = refine(
     allIn: nullable(
       object<NonNullable<HandRecord['allIn']>>({ expected: num(), actual: num(), pot: count }),
     ),
+    heroPlay: object<HeroPlay>({
+      vpip: bool,
+      pfr: bool,
+      sawFlop: bool,
+      showdown: bool,
+      won: count,
+    }),
   }),
   (r, path) => {
     const n = r.table.config.seatCount;

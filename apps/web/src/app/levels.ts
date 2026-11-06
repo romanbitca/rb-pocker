@@ -11,6 +11,7 @@
  */
 import type { Grade } from '../brain/types.ts';
 import type { CoachLevel } from '../engine/types.ts';
+import { SCORE_POINTS } from '../persist/stats.ts';
 
 /** The grades from best to worst (§8.9). */
 export const GRADE_ORDER: readonly Grade[] = ['best', 'good', 'inaccuracy', 'mistake', 'blunder'];
@@ -144,14 +145,8 @@ export function summaryShows(level: CoachLevel, grades: readonly (Grade | null)[
   return rule === 'every' || grades.some((g) => atLeast(g, rule));
 }
 
-/** §14.4 decision score points: Best 100 / Good 90 / Inaccuracy 60 / Mistake 25 / Blunder 0. */
-export const SCORE_POINTS: Readonly<Record<Grade, number>> = {
-  best: 100,
-  good: 90,
-  inaccuracy: 60,
-  mistake: 25,
-  blunder: 0,
-};
+/** §14.4 decision score points (the stats reducers own them, chunk 8.2). */
+export { SCORE_POINTS };
 
 /** The decision score of these grades (null ones left out), rounded; null with none graded. */
 export function decisionScore(grades: readonly (Grade | null)[]): number | null {

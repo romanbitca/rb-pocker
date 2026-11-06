@@ -5,16 +5,29 @@
  * - `StorageBanner`: "Stats can't be saved in this browser mode…", once per launch when the
  *   browser storage fails (§14.6); [OK] hides it. The game stays playable in memory.
  */
-import type { Toast } from '../../app/store.ts';
+import type { SessionSummary, Toast } from '../../app/store.ts';
 import { en } from '../../i18n/en.ts';
+import { formatChips } from '../format.ts';
 import { joinNames } from '../handEnd.ts';
 import styles from './Notices.module.css';
 
-/** A toast's text (§12.11): each kind is a key of `en.toast`. */
+/** A toast's text (§12.11): each kind is a key of `en.toast` (Leave table's line, chunk 8.2, is built). */
 export function toastText(toast: Toast): string {
-  return toast.kind === 'botsJoined'
-    ? en.toast.botsJoined(joinNames(toast.names), toast.names.length === 1)
-    : en.toast[toast.kind];
+  if (toast.kind === 'botsJoined') {
+    return en.toast.botsJoined(joinNames(toast.names), toast.names.length === 1);
+  }
+  return toast.kind === 'session' ? sessionText(toast.session) : en.toast[toast.kind];
+}
+
+/** Leave table (§14.4): "This session: 45 hands · +640 chips · Decision score 82 · 4 mistakes." */
+function sessionText(s: SessionSummary): string {
+  const t = en.toast;
+  const net = s.netChips;
+  const chips = net > 0 ? `+${formatChips(net)}` : net < 0 ? `−${formatChips(-net)}` : '0';
+  const parts = [t.sessionHands(s.hands, formatChips(s.hands)), t.sessionChips(chips)];
+  if (s.decisionScore !== null) parts.push(t.sessionScore(Math.round(s.decisionScore)));
+  if (s.decisions > 0) parts.push(t.sessionMistakes(s.mistakes + s.blunders));
+  return t.session(parts.join(t.separator));
 }
 
 export interface ToastsProps {

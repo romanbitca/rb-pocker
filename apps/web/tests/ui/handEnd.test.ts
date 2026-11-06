@@ -160,6 +160,34 @@ describe('toastText (§12.11)', () => {
     }
     expect(PLAN).toContain(`banner "${en.otherTab.text}" | [${en.otherTab.playHere}]`);
   });
+
+  it('Leave table: the session`s line (§14.4, chunk 8.2)', () => {
+    const session = {
+      start: '2026-10-20T09:00:00.000Z',
+      end: '2026-10-20T10:00:00.000Z',
+      hands: 45,
+      netChips: 640,
+      decisionScore: 82.4,
+      mistakes: 3,
+      blunders: 1,
+      decisions: 50,
+      botLevel: 'easy',
+      coachLevel: 'beginner',
+      players: 6,
+      bb: 20,
+    } as const;
+    const line = toastText({ id: 1, kind: 'session', session });
+    expect(line).toBe('This session: 45 hands · +640 chips · Decision score 82 · 4 mistakes.');
+    expect(PLAN).toContain(line);
+    // No graded decision: no score and no mistakes; a loss has a real minus sign.
+    expect(
+      toastText({
+        id: 1,
+        kind: 'session',
+        session: { ...session, hands: 1, netChips: -40, decisionScore: null, decisions: 0 },
+      }),
+    ).toBe('This session: 1 hand · −40 chips.');
+  });
 });
 
 describe('the luck line after an all-in (§7.6)', () => {

@@ -175,6 +175,8 @@ function stateAt(
     settings: { ...defaultSettings(), coachLevel: 'beginner' },
     review: createAppStore().getState().review,
     data: createAppStore().getState().data,
+    stats: null,
+    history: null,
     dispatch: () => {},
   } as AppState;
 }

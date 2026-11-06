@@ -74,6 +74,7 @@ function HomeScreen() {
       onPlay={() => dispatch({ type: 'play' })}
       onNewTable={() => dispatch({ type: 'go', screen: 'setup' })}
       onOpenSettings={() => dispatch({ type: 'go', screen: 'settings' })}
+      onOpenStats={() => dispatch({ type: 'go', screen: 'stats' })}
       onPlayHere={readOnly ? () => dispatch({ type: 'playHere' }) : undefined}
     />
   );
@@ -213,6 +214,61 @@ function ReviewScreen() {
   );
 }
 
+// Stats (§14.4, chunk 8.2) is lazy like Review: the screen, its charts and its words are a chunk
+// of their own, loaded when Stats is first opened (§15.3), and precached.
+const StatsLazy = lazy(async () => {
+  try {
+    const { StatsRoute } = await import('./screens/Stats.tsx');
+    return { default: StatsRoute };
+  } catch {
+    return { default: StatsFailed };
+  }
+});
+
+/**
+ * While the Stats chunk loads (its heading, so the focus has somewhere to go, and "Loading…" after
+ * half a second, as for the screens after the first tap), or when it cannot load (a line and Back).
+ */
+function StatsWaiting({ failed }: { failed: boolean }) {
+  const dispatch = useDispatch();
+  return (
+    <main className={screenStyles.page}>
+      <h1 className={screenStyles.title}>{en.stats.title}</h1>
+      {failed ? (
+        <>
+          <p className={screenStyles.hint} role="alert">
+            {en.screens.loadFailed}
+          </p>
+          <button
+            type="button"
+            className={screenStyles.secondary}
+            onClick={() => dispatch({ type: 'back' })}
+          >
+            {en.back}
+          </button>
+        </>
+      ) : (
+        <p className={`${screenStyles.hint} ${screenStyles.later}`}>{en.screens.loading}</p>
+      )}
+    </main>
+  );
+}
+
+const StatsFailed = () => <StatsWaiting failed />;
+
+/** The Stats screen over its lazy chunk; a render error leaves it (Back), as for Review. */
+function StatsScreen() {
+  const dispatch = useDispatch();
+  const leave = useCallback(() => dispatch({ type: 'back' }), [dispatch]);
+  return (
+    <LoadBoundary onError={leave}>
+      <Suspense fallback={<StatsWaiting failed={false} />}>
+        <StatsLazy />
+      </Suspense>
+    </LoadBoundary>
+  );
+}
+
 const SCREENS = {
   welcome: () => <WelcomeScreen />,
   home: () => <HomeScreen />,
@@ -220,6 +276,7 @@ const SCREENS = {
   table: () => <LaterScreen name="TableScreen" />,
   settings: () => <LaterScreen name="SettingsScreen" />,
   review: () => <ReviewScreen />,
+  stats: () => <StatsScreen />,
 } as const;
 
 /**

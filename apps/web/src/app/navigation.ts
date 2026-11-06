@@ -13,10 +13,10 @@
  */
 
 /**
- * The full-page screens built so far. Later stages add 'stats', 'learn', 'about'. 'review' (§12.10)
- * is a lazy screen: it is pushed over the Table, so Back returns to the hand.
+ * The full-page screens built so far. Later stages add 'learn', 'about'. 'review' (§12.10) and
+ * 'stats' (§14.4, chunk 8.2) are lazy screens: pushed over the Table, Back returns to the hand.
  */
-export type Screen = 'welcome' | 'home' | 'setup' | 'table' | 'settings' | 'review';
+export type Screen = 'welcome' | 'home' | 'setup' | 'table' | 'settings' | 'review' | 'stats';
 
 /**
  * Layers over a screen. Each one but the sizing tray keeps a controller gate closed while it is
