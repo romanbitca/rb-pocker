@@ -114,7 +114,7 @@ jobs:
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
       - name: Speed checks at 6× (report only)
-        run: npm run e2e:perf -- --grep "Stage [46]"
+        run: npm run e2e:perf -- --grep "Stage [46]" --retries=1
         env:
           PERF_REPORT_ONLY: '1'
       - name: Upload the Playwright report
