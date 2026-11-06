@@ -44,6 +44,8 @@ export const WinBadge = memo(function WinBadge({ view, placement }: WinBadgeProp
   }, []);
   useDismiss(open, rootRef, close);
 
+  // "100%", ">99%", "~62%" and "~100%" take a smaller size to fit the 76 px box (the CSS).
+  const chars = view.state === 'value' ? view.text.length : 0;
   const face = (
     <>
       <span
@@ -51,6 +53,8 @@ export const WinBadge = memo(function WinBadge({ view, placement }: WinBadgeProp
           styles.value,
           view.state === 'skeleton' && styles.skeleton,
           view.state === 'folded' && styles.word,
+          chars === 4 && styles.long,
+          chars > 4 && styles.longer,
         )}
         aria-hidden="true"
       >

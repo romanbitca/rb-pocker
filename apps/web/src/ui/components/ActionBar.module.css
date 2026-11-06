@@ -17,11 +17,16 @@
   -webkit-tap-highlight-color: transparent;
 }
 
-/* Landscape: Fold / Call / Raise stacked under the right thumb (§12.5). */
+/* Landscape (§12.5, 1.3.91): Fold and Call side by side, Raise under them across the column, under
+   the right thumb: two rows (120 px) where three stacked buttons took 184 px of a column 320–430 px
+   tall, and the coach's words had no room left. */
 .column {
-  grid-template-columns: minmax(0, 1fr);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   padding: 0;
   background: none;
+}
+.column [data-slot='right'] {
+  grid-column: 1 / -1;
 }
 
 .button {
@@ -52,6 +57,7 @@
   grid-column: span 2;
 }
 
+/* Landscape: with no Raise, Fold and Call keep their row. */
 .column .wide {
   grid-column: auto;
 }

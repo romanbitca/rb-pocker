@@ -1,6 +1,7 @@
 import type { Locator, Page } from '@playwright/test';
 import { expect, test } from './fixtures.ts';
 import {
+  closeSummary,
   collectErrors,
   newTable,
   nextFlowPoint,
@@ -19,6 +20,8 @@ import {
   gameMode,
   pauseClock,
   playTo,
+  REVEAL_STEP_MS,
+  runUntil,
   scriptedTable,
   tapAct,
   TAP_GUARD_MS,
@@ -35,6 +38,15 @@ import {
 //    decision taken back once says why its Undo is grey.
 // 5. Setup's bot-level selects are 44 px tall in WebKit too (25 px).
 // 6. The drill's game button never cuts a game's name ("Name the …" at Large text, 360 px).
+// And the second QA pass of 1.3.91 (branch `fix/landscape-row-toasts-badge`; PLAN §7.6, §12.5,
+// §12.7, §12.11):
+// - Item 2 on every landscape phone, 320–430 px tall, at both text sizes: the coach row scrolled by
+//   10–28 px at 740×360, 667×375 and 844×390 at Large (Row A now takes two rows, and the column's
+//   head is compact below 390 px).
+// - Item 3: a toast takes the top bar's whole width ("Blinds 1…" peeked out beside a short one),
+//   and a newer toast closes the older ones (a tap on it uncovered the next older one).
+// - The win badge holds "100%", ">99%", "~62%" and "~100%" (four characters were 79 px in its
+//   76 px box).
 
 interface Box {
   top: number;
@@ -217,19 +229,83 @@ function readCoachRow(): {
   };
 }
 
-test.describe('landscape: the coach row (item 2)', () => {
+/**
+ * Phones on their side (1.3.91): 844×390 (§17.5's landscape phone, an iPhone 12–14), a 360 px
+ * Android phone (740×360), an iPhone 8 (667×375), an iPhone SE of 2016 (568×320) and an iPhone Pro
+ * Max (932×430). The browsers' bars make the real heights smaller still, so 320–430 px is the range.
+ */
+const LANDSCAPE_PHONES = [
+  { width: 844, height: 390 },
+  { width: 740, height: 360 },
+  { width: 667, height: 375 },
+  { width: 568, height: 320 },
+  { width: 932, height: 430 },
+] as const;
+
+/** Below this height the column's head is compact (`SHORT_COLUMN_QUERY` in Table.tsx, §12.5). */
+const SHORT_COLUMN = 389;
+
+/**
+ * Resizes the page to a landscape phone and waits until the column has followed: its height, and
+ * the head's compact label below 390 px (a media query React follows).
+ */
+async function landscapeAt(page: Page, size: { width: number; height: number }): Promise<void> {
+  await page.setViewportSize(size);
+  await expect
+    .poll(() =>
+      page.evaluate(() => ({
+        layout: document.querySelector('main')?.getAttribute('data-layout'),
+        column: Math.round(document.querySelector('aside')?.getBoundingClientRect().height ?? 0),
+      })),
+    )
+    .toEqual({ layout: 'landscape', column: size.height });
+  const label = page.locator('aside [data-hero-label]');
+  if (size.height <= SHORT_COLUMN) await expect(label).toHaveAttribute('data-compact', 'column');
+  else await expect(label).not.toHaveAttribute('data-compact');
+}
+
+/**
+ * Row A in the column (§12.5, §12.7, 1.3.91): Fold and Call side by side, Raise under them across
+ * the column, every button 56 px tall, 8 px apart, inside the column.
+ */
+async function rowAInTwoRows(page: Page, where: string): Promise<void> {
+  const m = await page.evaluate(() => {
+    const box = (el: Element | null) => (el === null ? null : el.getBoundingClientRect().toJSON());
+    return {
+      aside: box(document.querySelector('aside')) as DOMRect,
+      fold: box(document.querySelector('aside [data-slot="fold"]')) as DOMRect,
+      middle: box(document.querySelector('aside [data-slot="middle"]')) as DOMRect,
+      right: box(document.querySelector('aside [data-slot="right"]')),
+    };
+  });
+  expect(m.fold.height, `${where}: Fold is 56 px tall`).toBeGreaterThanOrEqual(56);
+  expect(Math.abs(m.fold.top - m.middle.top), `${where}: Fold and Call share a row`).toBeLessThan(
+    1,
+  );
+  expect(m.middle.left - m.fold.right, `${where}: 8 px between them`).toBeGreaterThanOrEqual(7.5);
+  if (m.right !== null) {
+    expect(m.right.height).toBeGreaterThanOrEqual(56);
+    expect(m.right.top - m.fold.bottom, `${where}: Raise under them`).toBeGreaterThanOrEqual(7.5);
+    expect(m.right.left).toBeLessThanOrEqual(m.fold.left + 0.5);
+    expect(m.right.right).toBeGreaterThanOrEqual(m.middle.right - 0.5);
+    expect(m.right.bottom).toBeLessThanOrEqual(m.aside.bottom);
+  }
+}
+
+test.describe('landscape: the coach row (item 2; 1.3.91: every phone on its side)', () => {
   // eslint-disable-next-line no-empty-pattern -- Playwright reads the fixtures from this pattern
   test.beforeEach(({}, testInfo) => {
-    test.skip(sizeOf(testInfo) !== '844x390', 'the landscape phone of §17.5');
+    test.skip(sizeOf(testInfo) !== '844x390', 'the landscape phone of §17.5, resized');
   });
 
-  test('Intermediate, Hard bots, 6 players: after "Hint" the head, both numbers and "Why?" show without scrolling', async ({
+  test('Intermediate, Hard bots, 6 players: after "Hint" the head, both numbers and "Why?" show without scrolling, 320–430 px tall, at both text sizes', async ({
     page,
   }) => {
-    test.setTimeout(180_000);
+    test.setTimeout(300_000);
     const errors = collectErrors(page);
     // The QA's table: hand 1's flop is the labelled pair "Any cards: 29%. Their likely hands:
-    // about 10%." beside a price chip and a draw chip, the fullest column there is.
+    // about 10%." beside a price chip and a draw chip, the fullest column there is; its turn and
+    // river are "Pair of Fours" and "Three of a Kind, Fours" with their board sub-labels.
     await openApp(page, '1a7d0002');
     await page.evaluate(() => {
       window.__pc?.dispatch({
@@ -263,21 +339,32 @@ test.describe('landscape: the coach row (item 2)', () => {
         await hint.click();
       }
       await expect(advice).toBeVisible();
-      const row = await page.evaluate(readCoachRow);
-      if (row === null) throw new Error('no coach row in the column');
-      const where = `"${row.text.replace(/\n+/g, ' / ')}"`;
-      expect(row.scrolled, `${where}: the column has not been scrolled`).toBe(0);
-      expect(row.scrollable, `${where}: nothing to scroll to`).toBeLessThanOrEqual(1);
-      for (const { name, box } of row.parts) {
-        expect(box.top, `${where}: ${name} starts in sight`).toBeGreaterThanOrEqual(
-          row.scroller.top - 0.5,
-        );
-        expect(box.bottom, `${where}: ${name} ends in sight`).toBeLessThanOrEqual(
-          row.scroller.bottom + 0.5,
-        );
+      // The same decision on each phone, at each text size (the game waits for the hero).
+      for (const size of LANDSCAPE_PHONES) {
+        await landscapeAt(page, size);
+        for (const text of ['normal', 'large'] as const) {
+          await textSize(page, text);
+          const row = await page.evaluate(readCoachRow);
+          if (row === null) throw new Error('no coach row in the column');
+          const where = `${size.width}×${size.height}, ${text}: "${row.text.replace(/\n+/g, ' / ')}"`;
+          expect(row.scrolled, `${where}: the column has not been scrolled`).toBe(0);
+          expect(row.scrollable, `${where}: nothing to scroll to`).toBeLessThanOrEqual(1);
+          for (const { name, box } of row.parts) {
+            expect(box.top, `${where}: ${name} starts in sight`).toBeGreaterThanOrEqual(
+              row.scroller.top - 0.5,
+            );
+            expect(box.bottom, `${where}: ${name} ends in sight`).toBeLessThanOrEqual(
+              row.scroller.bottom + 0.5,
+            );
+          }
+          if (checked === 0) await rowAInTwoRows(page, `${size.width}×${size.height}, ${text}`);
+        }
+        await textSize(page, 'normal');
       }
+      await landscapeAt(page, LANDSCAPE_PHONES[0]);
       checked++;
-      if (/likely hands|alone/.test(row.text)) pairs++;
+      const text = await page.locator('aside [data-coach-strip="advice"]').innerText();
+      if (/likely hands|alone/.test(text)) pairs++;
       // Call or check (again if the bar's 250 ms guard dropped the tap), and on.
       await tapAct(page, 'middle');
     }
@@ -298,7 +385,7 @@ test.describe('toasts on the Table; a grey Undo says why (items 3 and 4)', () =>
     );
   });
 
-  test('"Move taken back…" sits over the top bar: no seat, board, hand, coach or Row A under it', async ({
+  test('"Move taken back…" sits over the top bar: no seat, board, hand, coach or Row A under it; a newer toast closes it', async ({
     page,
   }) => {
     test.setTimeout(90_000);
@@ -315,6 +402,8 @@ test.describe('toasts on the Table; a grey Undo says why (items 3 and 4)', () =>
     // The clock is paused: the toast stays while it is measured.
     const toast = button(page, 'Move taken back. The unseen cards were shuffled again.');
     await expect(toast).toBeVisible();
+    const undoneAt = await page.evaluate(() => Date.now());
+    await overTheTitle(page, 'Move taken back');
     const m = await page.evaluate(() => {
       const box = (el: Element) => {
         const r = el.getBoundingClientRect();
@@ -371,6 +460,173 @@ test.describe('toasts on the Table; a grey Undo says why (items 3 and 4)', () =>
     await expect(again).not.toContainText('Undo lets you try again');
     await expect(undo).toHaveAttribute('aria-describedby', (await small.getAttribute('id')) ?? '');
     expect((await pcState(page)).game.feedback?.canUndo).toBe(false);
+
+    // 1.3.91: Keep my move. The hand ends with the profile's first Flush (folded on the river, it
+    // still counts, §12.9), whose collection moment comes while "Move taken back…" has time left
+    // (the clock is paused). The newer toast closes the older one (kept hidden, it ran on unseen
+    // and a tap on the newer one uncovered it), takes the bar's whole width, and a tap leaves no
+    // toast at all.
+    await again.getByRole('button', { name: 'Keep my move' }).click();
+    await runUntil(
+      page,
+      () => window.__pc?.state().ui.toasts.some((t) => t.kind === 'collection') === true,
+      'the collection moment',
+    );
+    const cameAt = await page.evaluate(() => Date.now());
+    expect(cameAt - undoneAt, '"Move taken back…" had time left').toBeLessThan(3_500);
+    await expect
+      .poll(() => pcState(page).then((s) => s.ui.toasts.map((t) => t.kind)))
+      .toEqual(['collection']);
+    // Beginner's hand summary opens over the Table (and over the toasts); its sheet is a lazy chunk
+    // whose Suspense reveal is a timer on the paused clock (see `feedbackCard`): let it show, then
+    // close it.
+    if ((await pcState(page)).ui.overlays.includes('summary')) {
+      const next = page.locator('[data-summary-next]');
+      await expect
+        .poll(
+          async () => {
+            if ((await next.count()) === 0) await page.clock.runFor(REVEAL_STEP_MS);
+            return next.count();
+          },
+          { timeout: 15_000, intervals: [20, 50, 100] },
+        )
+        .toBe(1);
+      await closeSummary(page);
+    }
+    const moment = button(page, 'New in your collection: Flush!');
+    await expect(moment).toBeVisible();
+    await overTheTitle(page, 'New in your collection');
+    // The bar's buttons still work while it shows: the Hands button opens the drawer, the Flush
+    // ringed (CI of #87: a toast across the whole bar took this tap).
+    await page.locator('main header').getByRole('button', { name: 'Show all poker hands' }).click();
+    await expect(page.locator('li[data-category="flush"][data-collected]')).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect
+      .poll(() => pcState(page).then((s) => s.ui.overlays.includes('rankings')))
+      .toBe(false);
+    await moment.click();
+    await expect(page.locator('[role="status"][aria-live="polite"] > button')).toHaveCount(0);
+    expect((await pcState(page)).ui.toasts).toEqual([]);
+    expect(errors).toEqual([]);
+  });
+});
+
+/**
+ * 1.3.91: the toast that starts with `text` is the only one; it covers the top bar's title from
+ * end to end, so nothing of "Blinds 10/20 · Hand 1" shows cut beside it ("Blinds 1…" did beside
+ * "Nora sits down."), and none of the bar's buttons: each is still what a tap at its centre
+ * reaches (on #87's first try a toast across the whole bar took the Hands button's taps).
+ */
+async function overTheTitle(page: Page, text: string): Promise<void> {
+  const m = await page.evaluate((text) => {
+    const box = (el: Element | null) => (el === null ? null : el.getBoundingClientRect().toJSON());
+    const toasts = [...document.querySelectorAll('[role="status"][aria-live="polite"] > button')];
+    const bar = document.querySelector('main header');
+    return {
+      count: toasts.length,
+      toast: box(toasts.find((b) => b.textContent?.startsWith(text)) ?? null) as DOMRect | null,
+      bar: box(bar) as DOMRect,
+      title: box(document.querySelector('main header [data-bar-title]')) as DOMRect,
+      // The menu, the sound button (or Undo) and the Hands button.
+      buttons: [...(bar?.querySelectorAll(':scope > button') ?? [])].map((b) => {
+        const r = b.getBoundingClientRect();
+        const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+        return {
+          name: b.getAttribute('aria-label') ?? '',
+          left: r.left,
+          right: r.right,
+          reached: hit !== null && b.contains(hit),
+        };
+      }),
+    };
+  }, text);
+  if (m.toast === null) throw new Error(`no toast "${text}…"`);
+  const t = m.toast;
+  expect(m.count, 'one toast at a time on the Table').toBe(1);
+  expect(t.left, `"${text}…" covers the title's left end`).toBeLessThanOrEqual(m.title.left + 0.5);
+  expect(t.right, `"${text}…" covers the title's right end`).toBeGreaterThanOrEqual(
+    m.title.right - 0.5,
+  );
+  expect(m.buttons.length).toBeGreaterThanOrEqual(3);
+  for (const b of m.buttons) {
+    expect(b.reached, `a tap on ${b.name} reaches it beside "${text}…"`).toBe(true);
+    const apart = t.right <= b.left + 0.5 || b.right <= t.left + 0.5;
+    expect(apart, `"${text}…" ${JSON.stringify(t)} clears ${b.name}`).toBe(true);
+  }
+  expect(t.top).toBeGreaterThanOrEqual(m.bar.top - 0.5);
+  expect(t.bottom).toBeLessThanOrEqual(m.bar.bottom + 0.5);
+}
+
+/** The win badge's number, its width, and whether it is inside the badge's border. */
+function readBadge(): { text: string; width: number; room: number; inside: boolean } | null {
+  const badge = document.querySelector('[data-win-badge]');
+  const value = badge?.firstElementChild ?? null;
+  if (badge == null || value === null) return null;
+  const b = badge.getBoundingClientRect();
+  const v = value.getBoundingClientRect();
+  const border = parseFloat(getComputedStyle(badge).borderLeftWidth);
+  return {
+    text: value.textContent ?? '',
+    width: Math.round(v.width * 10) / 10,
+    room: b.width - 2 * border,
+    inside: v.left >= b.left + border - 0.5 && v.right <= b.right - border + 0.5,
+  };
+}
+
+test.describe('the win badge holds every number (1.3.91)', () => {
+  // eslint-disable-next-line no-empty-pattern -- Playwright reads the fixtures from this pattern
+  test.beforeEach(({}, testInfo) => {
+    test.skip(sizeOf(testInfo) !== '360x740', 'the QA phone, both browsers, then on its side');
+  });
+
+  test('"100%", ">99%", "~62%" and "~100%" fit the 76 px box in the hero strip and the landscape column, at both text sizes', async ({
+    page,
+  }) => {
+    test.setTimeout(120_000);
+    const errors = collectErrors(page);
+    // The scripted table's river: the nut flush, "100%" (79 px at 28 px in WebKit, QA).
+    await scriptedTable(page, 'beginner');
+    await playTo(page, 'river');
+    await pauseClock(page);
+    const shown = () =>
+      page.evaluate(
+        () => document.querySelector('[data-win-badge]')?.firstElementChild?.textContent ?? null,
+      );
+    await expect.poll(shown, { timeout: 15_000 }).toBe('100%');
+    // The other long numbers, written into the equity slice as the equity jobs would: a final one
+    // shows as it is, a provisional one within a point of the one on show keeps it, with "~" (§7.6).
+    const NUMBERS: [number, boolean, string][] = [
+      [1, true, '100%'],
+      [1, false, '~100%'],
+      [0.997, true, '>99%'],
+      [0.997, false, '~>99%'],
+      [0.62, true, '62%'],
+      [0.62, false, '~62%'],
+    ];
+    for (const where of ['the hero strip, 360×740', 'the landscape column, 740×360'] as const) {
+      if (where.endsWith('740×360')) await landscapeAt(page, { width: 740, height: 360 });
+      for (const text of ['normal', 'large'] as const) {
+        await textSize(page, text);
+        for (const [equity, final, number] of NUMBERS) {
+          await page.evaluate(
+            ({ equity, final }) => {
+              const pc = window.__pc;
+              const slice = pc?.state().equity;
+              if (pc === undefined || slice?.result == null) throw new Error('no estimate');
+              pc.setEquity({ ...slice, result: { ...slice.result, equity, final } });
+            },
+            { equity, final },
+          );
+          await expect.poll(shown).toBe(number);
+          const badge = await page.evaluate(readBadge);
+          if (badge === null) throw new Error('no badge');
+          expect(
+            badge.inside,
+            `${where}, ${text}: "${number}" is ${badge.width} px in ${badge.room} px`,
+          ).toBe(true);
+        }
+      }
+    }
     expect(errors).toEqual([]);
   });
 });

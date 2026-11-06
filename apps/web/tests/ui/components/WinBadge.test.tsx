@@ -16,6 +16,7 @@ import {
   PriceChip,
   WinBadge,
 } from '../../../src/ui/components/WinBadge.tsx';
+import styles from '../../../src/ui/components/WinBadge.module.css';
 import { badgeView, bigMoveView, useBadgeView, type BadgeView } from '../../../src/ui/equity.ts';
 import { card } from '../../helpers/cards.ts';
 
@@ -111,6 +112,29 @@ describe('WinBadge', () => {
     fireEvent.click(button);
     fireEvent.pointerDown(screen.getByText('outside'));
     expect(screen.queryByText(/Wins/)).toBeNull();
+  });
+
+  it('a number of four characters takes the smaller size, of five the smallest (1.3.91)', () => {
+    // "100%" was 79 px at 28 px in the 76 px box (74 px inside its border): tests/e2e/phoneLayout
+    // measures the fit in both browsers; here, which numbers take which size.
+    const cases: [WinBadgeData, string, string | undefined][] = [
+      [data({ status: 'done', result: result(0.62, true) }), '62%', undefined],
+      [data({ status: 'done', result: result(1, true) }), '100%', styles.long],
+      [data({ status: 'done', result: result(0.997, true) }), '>99%', styles.long],
+      [data({ result: result(0.62, false) }), '~62%', styles.long],
+      [data({ result: result(1, false) }), '~100%', styles.longer],
+      [data(), '--%', undefined],
+    ];
+    for (const [d, text, size] of cases) {
+      render(<WinBadge view={viewOf(d)} placement="up" />);
+      const value = badgeEl().firstElementChild as HTMLElement;
+      expect(value.textContent).toBe(text);
+      const sizes = [styles.long, styles.longer].filter((c) => value.classList.contains(c ?? '-'));
+      expect(sizes, text).toEqual(size === undefined ? [] : [size]);
+      cleanup();
+    }
+    render(<WinBadge view={viewOf(data({ status: 'folded' }))} placement="up" />);
+    expect((badgeEl().firstElementChild as HTMLElement).className).not.toContain(styles.long);
   });
 
   it('Folded: the word, no caption, no button', () => {

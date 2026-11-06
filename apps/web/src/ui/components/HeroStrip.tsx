@@ -86,8 +86,12 @@ export interface HeroLabelProps {
   nuts?: boolean | undefined;
   /** Opens the hand rankings (the drawer, or the wide column). */
   onOpenRankings: () => void;
-  /** Compact mode's 96 px strip (§12.3): a smaller name and a one-line sub-label. */
-  compact?: boolean | undefined;
+  /**
+   * Compact mode's 96 px strip (§12.3): a smaller name and a one-line sub-label. 'column': the same
+   * sizes in the landscape column below 390 px of height, where the name keeps three lines and,
+   * below 340 px, the sub-label is for screen readers only (§12.5 notes of 1.3.91).
+   */
+  compact?: boolean | 'column' | undefined;
   className?: string | undefined;
 }
 
@@ -119,7 +123,7 @@ export const HeroLabel = memo(function HeroLabel({
         // A long name ("Two Pair, Queens and Twos") takes a smaller size, so the label stays in
         // the hero strip on a phone and never runs into the coach strip under it.
         data-long={hero.label.length > LONG_LABEL ? '' : undefined}
-        data-compact={compact ? '' : undefined}
+        data-compact={compact === 'column' ? 'column' : compact ? '' : undefined}
         onClick={(e) => {
           e.currentTarget.focus();
           onOpenRankings();

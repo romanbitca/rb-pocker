@@ -43,7 +43,10 @@ export interface ActionBarProps {
   readonly onAct: (action: PlayerAction) => void;
   readonly onOpenTray: () => void;
   readonly onCloseTray: () => void;
-  /** `row` (default): three buttons side by side. `column`: stacked, the landscape right column. */
+  /**
+   * `row` (default): three buttons side by side. `column`: the landscape right column, Fold and
+   * Call side by side and Raise under them across the column (§12.5).
+   */
   readonly layout?: 'row' | 'column';
   /** The `SizingTray`'s id, for `aria-controls`. */
   readonly trayId?: string | undefined;

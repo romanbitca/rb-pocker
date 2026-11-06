@@ -66,7 +66,7 @@ export const SHELL = {
   /** Portrait and landscape: the Hands edge tab's gutter at the right edge of the table (§12.3). */
   edgeGutter: 28,
   edgeTab: { w: 28, h: 88 },
-  /** Landscape: the right column (label, badge, coach, stacked action buttons). */
+  /** Landscape: the right column (label, badge, coach, the action buttons in two rows). */
   landscapeColumn: 280,
   /** Landscape: the hero's cards, inset at the bottom centre of the felt. */
   landscapeHero: { w: 128, h: 98 },

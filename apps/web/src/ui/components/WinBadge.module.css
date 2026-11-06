@@ -94,6 +94,17 @@
   line-height: 1.2;
 }
 
+/* The number fits the 74 px inside the border (1.3.91). In the system font of iPhones and Macs each
+   tabular digit, "%", "~", "<" and ">" is 0.74 em wide, so four characters at 28 px ("100%",
+   ">99%", "~62%") were 79 px: 24 px for four (67 px) and 20 px for five ("~100%", 69 px), in
+   compact mode too. */
+.value.long {
+  font-size: 24px;
+}
+.value.longer {
+  font-size: 20px;
+}
+
 /* ---- Popover and the big-move line: over the felt (up) or down the landscape column ---- */
 
 .popover,

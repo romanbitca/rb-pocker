@@ -529,7 +529,9 @@
    sight). The chip takes two lines in the 180 px where one is too short. The last row takes what
    the badge column has over, so the label, the chips and the draw chip stay together at the top.
    The section is the draw chip's popover's anchor: it opens under the whole head, its right edge
-   on the column's (§12.3 popovers). */
+   on the column's (§12.3 popovers). Row A takes two rows (ActionBar.module.css), and below 390 px
+   of height the head takes compact mode's sizes (`SHORT_COLUMN_QUERY` in Table.tsx), so the coach
+   row keeps its room on every phone on its side, 320–430 px tall (1.3.91). */
 .sideHero {
   position: relative;
   display: grid;
