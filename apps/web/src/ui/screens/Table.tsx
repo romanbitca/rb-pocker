@@ -36,6 +36,12 @@
  * grows; compact: over the bottom of the table, like the tray; landscape: the column; wide: the
  * panel); the rankings show tips, "By river" and "Which hand wins?" by level. At the hand end the
  * summary sheet (a lazy chunk) opens when the level shows one.
+ *
+ * Keys and first-table tips (§12.5, §12.11, §12.12; chunk 9.3, `ui/shortcuts.ts`, `ui/tips.ts`):
+ * F, C, B/R press Row A as a tap does, 1–5 and ↑/↓ size the tray, Enter confirms it, U undoes, H
+ * does what a tap on the coach does, K shows or hides the hand rankings and ? lists the keys (a
+ * lazy dialog). The tips point at what they explain (`data-tip-anchor`), one at a time, once each,
+ * never before the hero's cards are dealt and never over the tray and Row A (`data-action-area`).
  */
 import {
   lazy,
@@ -72,6 +78,7 @@ import {
   selectQuizAsking,
   selectSeatViews,
   selectTableInfo,
+  selectTip,
   selectUndoButton,
   selectWinBadge,
   useAppStore,
@@ -79,6 +86,7 @@ import {
   useOverlay,
   type ActionBarInputData,
   type AppState,
+  type TipId,
 } from '../../app/store.ts';
 import type { Grade } from '../../brain/types.ts';
 import type { PlayerAction } from '../../engine/types.ts';
@@ -118,6 +126,8 @@ import {
   type TableLayout,
 } from '../layout/seats.ts';
 import { useHandsTabDot } from '../rankings.ts';
+import { useRowKeys, useShortcut, type PressRef } from '../shortcuts.ts';
+import { dueTip, TIP_DELAY_MS } from '../tips.ts';
 import styles from './Table.module.css';
 
 const cx = (...names: (string | false | null | undefined)[]): string =>
@@ -364,7 +374,7 @@ const TabSlot = memo(function TabSlot() {
   const dot = useHandsTabDot(hero, open);
   const onOpen = useCallback(() => setOpen(true), [setOpen]);
   return (
-    <div className={styles.tabSlot}>
+    <div className={styles.tabSlot} data-tip-anchor="handsTab" data-tip-side="left">
       <HandsTab onOpen={onOpen} expanded={open} dot={dot} />
     </div>
   );
@@ -489,7 +499,7 @@ const HeroStrip = memo(function HeroStrip({
   const hero = useAppStore(selectHeroView);
   const nuts = useAppStore(selectNuts);
   return (
-    <section className={styles.hero} aria-label={en.table.yourHand}>
+    <section className={styles.hero} aria-label={en.table.yourHand} data-tip-anchor="heroStrip">
       {hero !== null && (
         <>
           <div className={styles.heroLeft}>
@@ -517,7 +527,7 @@ const HeroStrip = memo(function HeroStrip({
           />
           {/* Compact mode: the coach strip becomes a "Coach" pill here (§12.3). */}
           {layout === 'compact' && (
-            <div className={styles.heroPill}>
+            <div className={styles.heroPill} data-tip-anchor="coachStrip">
               <CoachSlot variant="pill" />
             </div>
           )}
@@ -539,7 +549,12 @@ const SideHero = memo(function SideHero({ onOpenRankings }: { onOpenRankings: ()
   const quizAsking = useAppStore(selectQuizAsking);
   if (hero === null || trayOpen || quizAsking) return null;
   return (
-    <section className={styles.sideHero} aria-label={en.table.yourHand}>
+    <section
+      className={styles.sideHero}
+      aria-label={en.table.yourHand}
+      data-tip-anchor="heroStrip"
+      data-tip-side="left"
+    >
       <HeroLabel hero={hero} nuts={nuts} onOpenRankings={onOpenRankings} />
       <OddsColumn placement="down" canWin={true} className={styles.sideOdds} />
       <HeroChips hero={hero} />
@@ -713,7 +728,7 @@ const SideCoach = memo(function SideCoach() {
   const trayOpen = useAppStore(selectOverlayOpen('tray'));
   if (trayOpen) return null;
   return (
-    <div className={styles.sideCoach}>
+    <div className={styles.sideCoach} data-tip-anchor="coachStrip" data-tip-side="left">
       <UndoSlot className={styles.stripUndo} />
       <CoachSlot variant="strip" wrap collapse className={styles.coachSide} />
     </div>
@@ -737,7 +752,7 @@ const CoachPanel = memo(function CoachPanel({ coachSize }: { coachSize: CoachSiz
   // The Advanced quiz takes the panel (§10.3).
   if (quiz) {
     return (
-      <div className={styles.coachBox}>
+      <div className={styles.coachBox} data-tip-anchor="coachStrip">
         {undo}
         <section className={styles.coachPanel} aria-label={en.coachUi.title} data-coach-panel="">
           <QuizSlot variant="panel" />
@@ -752,7 +767,7 @@ const CoachPanel = memo(function CoachPanel({ coachSize }: { coachSize: CoachSiz
     (view.strip.kind === 'empty' && view.hint === null && chip === null)
   ) {
     return (
-      <div className={styles.coachBox}>
+      <div className={styles.coachBox} data-tip-anchor="coachStrip">
         {undo}
         <div className={styles.coachPanel} />
       </div>
@@ -762,7 +777,7 @@ const CoachPanel = memo(function CoachPanel({ coachSize }: { coachSize: CoachSiz
   // With the sections under it, the head row says the action only (the reason follows below).
   const strip = details && view.strip.kind === 'advice' ? { ...view.strip, line: '' } : view.strip;
   return (
-    <div className={styles.coachBox}>
+    <div className={styles.coachBox} data-tip-anchor="coachStrip">
       {undo}
       <section className={styles.coachPanel} aria-label={en.coachUi.title} data-coach-panel="">
         <mod.CoachStrip
@@ -900,9 +915,20 @@ const ActionArea = memo(function ActionArea({
   }, [coachSize, coachStart, trayOpen, setAmount, openTray]);
 
   const act = useCallback((action: PlayerAction) => dispatch({ type: 'act', action }), [dispatch]);
+  // The keyboard (§12.5): F, C, B/R through Row A's own tap handler; 1–5, ↑/↓, Enter: the tray.
+  const press: PressRef = useRef(null);
+  useRowKeys({
+    view,
+    trayOpen,
+    amount: sizing.amount,
+    press,
+    openTray,
+    setAmount,
+    trayId,
+  });
   const placement = layout === 'landscape' ? 'panel' : layout === 'compact' ? 'overlay' : 'inline';
   return (
-    <div className={styles.actions}>
+    <div className={styles.actions} data-action-area="">
       {/* Compact mode has no strip: the quiz sits over the bottom of the table, as the tray. */}
       {layout === 'compact' && <CompactQuiz />}
       {trayOpen && view.tray !== null && (
@@ -933,6 +959,7 @@ const ActionArea = memo(function ActionArea({
         onCloseTray={closeTray}
         recommended={advice.ring}
         layout={layout === 'landscape' ? 'column' : 'row'}
+        pressRef={press}
       />
     </div>
   );
@@ -1000,8 +1027,12 @@ const RankingsPanel = memo(function RankingsPanel({
 // ---------------------------------------------------------------------------------------------
 // Undo and the feedback card (§11, §12.3, §12.6)
 
-/** True while an overlay other than the sizing tray covers the table (U then does nothing). */
-const selectCovered = (s: AppState): boolean => s.ui.overlays.some((o) => o !== 'tray');
+/**
+ * True while a layer covers the table (U then does nothing): any overlay but the sizing tray and a
+ * first-table tip (a key closes the tip and still does what it does, §12.11).
+ */
+const selectCovered = (s: AppState): boolean =>
+  s.ui.overlays.some((o) => o !== 'tray' && o !== 'tip');
 
 /** The toolbar Undo for the coach level (§10.2), and its U key (§12.5). */
 const UndoSlot = memo(function UndoSlot({ className }: { className?: string | undefined }) {
@@ -1085,6 +1116,128 @@ const SummaryLayer = memo(function SummaryLayer() {
 });
 
 // ---------------------------------------------------------------------------------------------
+// First-table tips (§12.11) and the table's keys (§12.5)
+
+/** The tip due now (`ui/tips.ts`): an id or null, so the layer renders only when it changes. */
+const selectDueTip = (s: AppState): TipId | null =>
+  dueTip({
+    seen: s.data.tips,
+    screen: s.ui.screen,
+    overlays: s.ui.overlays,
+    mode: s.game.mode,
+    hand: s.game.hand,
+    undo: selectUndoButton(s),
+  });
+
+/**
+ * The tip's bubble, words and placement: a lazy chunk (§15.3), asked for while a tip is due (its
+ * moment lasts `TIP_DELAY_MS`, time enough to load it), so a player who has seen the four tips
+ * never downloads it. Precached for offline play like every chunk.
+ */
+type TipModule = typeof import('../components/TipBubble.tsx');
+let tipModule: TipModule | null = null;
+const loadTip = (): Promise<TipModule> =>
+  import('../components/TipBubble.tsx').then((m) => (tipModule = m));
+
+/**
+ * Opens the tip that is due once its moment has lasted `TIP_DELAY_MS` (a display timer, §0.3: the
+ * tip's own `tip` gate is what holds the game while it shows), and draws the open one. A tap or a
+ * key closes it; the controller then marks it seen (`profile.flags.tips`). A bubble whose chunk
+ * cannot load opens nothing (and an open tip closes), so the game never waits on it.
+ */
+const TipLayer = memo(function TipLayer() {
+  const due = useAppStore(selectDueTip);
+  const shown = useAppStore(selectTip);
+  const dispatch = useDispatch();
+  const [mod, setMod] = useState<TipModule | null>(tipModule);
+  const onDismiss = useCallback(() => dispatch({ type: 'close', overlay: 'tip' }), [dispatch]);
+  const wanted = due !== null || shown !== null;
+  useEffect(() => {
+    if (mod !== null || !wanted) return;
+    let live = true;
+    loadTip().then(
+      (m) => {
+        if (live) setMod(m);
+      },
+      () => {
+        if (live) onDismiss();
+      },
+    );
+    return () => {
+      live = false;
+    };
+  }, [mod, wanted, onDismiss]);
+  useEffect(() => {
+    if (due === null || shown !== null || mod === null) return;
+    const timer = setTimeout(() => dispatch({ type: 'tip', tip: due }), TIP_DELAY_MS);
+    return () => clearTimeout(timer);
+  }, [due, shown, mod, dispatch]);
+  if (shown === null || mod === null) return null;
+  return <mod.TipBubble key={shown} tip={shown} onDismiss={onDismiss} />;
+});
+
+/**
+ * H (§12.5 "H hint"): what a tap on the coach does now. "Hint" when it is ready (compact mode's
+ * pill opens the sheet with it), else the sheet once the advice shows (wide screens show it
+ * inline, so H does nothing there), "Tap to try again" after a failure, and the Advanced quiz's
+ * "Hint" once it is answered. Nothing while the coach thinks or narrates, or the quiz asks.
+ */
+const CoachKey = memo(function CoachKey({ layout }: { layout: TableLayout }) {
+  const view = useCoachView();
+  const quiz = useAppStore(selectQuiz);
+  const quizShows = useQuizShows();
+  const { onOpen, onHint, onRetry } = useCoachActions();
+  let run: (() => void) | null = null;
+  if (quizShows) {
+    run = quiz?.done === true ? onHint : null;
+  } else if (view !== null) {
+    const strip = view.strip;
+    if (strip.kind === 'hint' && strip.ready) {
+      run =
+        layout === 'compact'
+          ? () => {
+              onHint();
+              onOpen();
+            }
+          : onHint;
+    } else if (strip.kind === 'advice' && layout !== 'wide') {
+      run = onOpen;
+    } else if (strip.kind === 'failed') {
+      run = onRetry;
+    }
+  }
+  useShortcut('hint', run);
+  return null;
+});
+
+/** K and ? (§12.5): show or hide the hand rankings (the top bar's Hands button); list the keys. */
+const TableKeys = memo(function TableKeys({ onToggleHands }: { onToggleHands: () => void }) {
+  const [, setHelp] = useOverlay('shortcuts');
+  const openHelp = useCallback(() => setHelp(true), [setHelp]);
+  useShortcut('hands', onToggleHands);
+  useShortcut('help', openHelp);
+  return null;
+});
+
+/** "Keyboard shortcuts" (§12.5 "?"): a lazy chunk; one that cannot load closes the overlay. */
+const ShortcutsDialog = lazy(() =>
+  import('../components/ShortcutsDialog.tsx').then((m) => ({ default: m.ShortcutsDialog })),
+);
+
+const ShortcutsLayer = memo(function ShortcutsLayer() {
+  const [open, setOpen] = useOverlay('shortcuts');
+  const onClose = useCallback(() => setOpen(false), [setOpen]);
+  if (!open) return null;
+  return (
+    <LoadBoundary onError={onClose}>
+      <Suspense fallback={null}>
+        <ShortcutsDialog onClose={onClose} />
+      </Suspense>
+    </LoadBoundary>
+  );
+});
+
+// ---------------------------------------------------------------------------------------------
 // The screen
 
 export function Table() {
@@ -1156,7 +1309,7 @@ export function Table() {
         <>
           <HeroStrip layout={layout} onOpenRankings={openRankings} />
           {layout === 'portrait' && (
-            <div className={styles.coach}>
+            <div className={styles.coach} data-tip-anchor="coachStrip">
               <UndoSlot className={styles.stripUndo} />
               <CoachSlot variant="strip" />
             </div>
@@ -1172,6 +1325,10 @@ export function Table() {
       )}
       <FeedbackLayer />
       <SummaryLayer />
+      <TipLayer />
+      <ShortcutsLayer />
+      <CoachKey layout={layout} />
+      <TableKeys onToggleHands={toggleHands} />
     </main>
   );
 }

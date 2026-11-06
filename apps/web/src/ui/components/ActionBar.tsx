@@ -18,11 +18,16 @@
  *
  * Disabled buttons use `aria-disabled`, not `disabled`: they stay focusable (focus never drops
  * to the page when the turn passes), and a tap on a disabled Fold or Raise can say why.
+ *
+ * The keyboard (§12.5, chunk 9.3): F, C and B/R press the three buttons through `pressRef` exactly
+ * as a tap does (the same guard, the same notes, the tray's open and confirm); each button names
+ * its keys in `aria-keyshortcuts`.
  */
 import { memo, useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import type { PlayerAction } from '../../engine/types.ts';
 import { en } from '../../i18n/en.ts';
 import { trayAction, trayActionLabel, type ActionBarView, type BarButton } from '../actionBar.ts';
+import type { PressRef } from '../shortcuts.ts';
 import styles from './ActionBar.module.css';
 
 /** Taps within this long after an action are ignored (PLAN §12.7), so a double tap acts once. */
@@ -47,10 +52,15 @@ export interface ActionBarProps {
    * 3 px accent ring and a "Coach" badge (§10.2, §12.7). Never on a disabled button.
    */
   readonly recommended?: Slot | null | undefined;
+  /** The keyboard's way in (`ui/shortcuts.ts`): set to this bar's tap handler while mounted. */
+  readonly pressRef?: PressRef | undefined;
   readonly className?: string | undefined;
 }
 
-type Slot = 'fold' | 'middle' | 'right';
+export type Slot = 'fold' | 'middle' | 'right';
+
+/** The shortcuts of each slot (§12.5), as `aria-keyshortcuts` names them. */
+const KEYS: Readonly<Record<Slot, string>> = { fold: 'F', middle: 'C', right: 'B R' };
 
 /** Identifies one decision, so a tooltip never survives into the next one. */
 const decisionKey = (v: ActionBarView): string =>
@@ -102,6 +112,7 @@ function SlotButton(props: SlotButtonProps) {
       )}
       data-slot={slot}
       data-coach={coach ? '' : undefined}
+      aria-keyshortcuts={KEYS[slot]}
       // Only the tray's own button keeps a tap on it from closing the tray.
       data-sizing-keep={props.expanded === undefined ? undefined : 'true'}
       aria-label={label}
@@ -139,6 +150,7 @@ export const ActionBar = memo(function ActionBar({
   layout = 'row',
   trayId,
   recommended = null,
+  pressRef,
   className,
 }: ActionBarProps) {
   const lastAction = useRef(Number.NEGATIVE_INFINITY);
@@ -185,6 +197,14 @@ export const ActionBar = memo(function ActionBar({
     }
     if (button.action !== null) act(button.action);
   };
+  // The keyboard presses with this render's handler (the view, the tray, the amount of now).
+  useEffect(() => {
+    if (pressRef === undefined) return;
+    pressRef.current = onPress;
+    return () => {
+      pressRef.current = null;
+    };
+  });
 
   const note = tipSlot === 'fold' ? view.fold.note : tipSlot === 'right' ? right?.note : null;
   const disclosure = right !== null && right.opensTray && !view.waiting;

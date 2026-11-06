@@ -80,6 +80,8 @@ export interface HarnessOptions {
   grader?: Grader;
   /** Chunk 6.4: open the end-of-hand summary when the coach level shows one. */
   summaries?: boolean;
+  /** Chunk 9.3: the first-table tips (§12.11): `data.tips`, seen when the `tip` overlay closes. */
+  tips?: boolean;
   /** Chunk 8.3: the tab lock (§14.7), Export's page, `navigator.storage`, a Home Screen launch. */
   tabLock?: TabLock;
   shareEnv?: ShareEnv;
@@ -108,6 +110,7 @@ export function makeHarness(options: HarnessOptions = {}): Harness {
     ...(options.hints !== undefined && { hints: options.hints }),
     ...(options.grader !== undefined && { grader: options.grader }),
     ...(options.summaries !== undefined && { summaries: options.summaries }),
+    ...(options.tips !== undefined && { tips: options.tips }),
     ...(options.tabLock !== undefined && { tabLock: options.tabLock }),
     ...(options.shareEnv !== undefined && { shareEnv: options.shareEnv }),
     ...(options.storageManager !== undefined && { storageManager: options.storageManager }),

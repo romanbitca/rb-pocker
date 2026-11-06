@@ -31,6 +31,7 @@ import { en } from '../i18n/en.ts';
 import { LoadBoundary } from './components/LoadBoundary.tsx';
 import { RankingsDrawer } from './components/RankingsDrawer.tsx';
 import { useDrillChunks } from './drillModule.ts';
+import { useMediaQuery } from './hooks.ts';
 import { ImportDialog, ResetDialog } from './screens/DataDialogs.tsx';
 import { NewTableDialog, OutOfChipsDialog } from './screens/Dialogs.tsx';
 import { wakeLockSupport, type DisplayAndSoundSettings } from './screens/DisplayAndSound.tsx';
@@ -184,6 +185,8 @@ export function MenuOverlay() {
   // Compact mode (§12.3): Undo has the mute button's place, so the Menu turns sound off and on.
   const compact = useTableLayout() === 'compact';
   const soundOn = useAppStore((s) => s.settings.sound);
+  // A mouse or a trackpad: most likely a keyboard too (§12.5's shortcuts are for the desktop).
+  const pointer = useMediaQuery('(any-pointer: fine)');
   const close = () => dispatch({ type: 'close', overlay: 'menu' });
   return (
     <Menu
@@ -200,6 +203,14 @@ export function MenuOverlay() {
       }}
       onOpenDrill={() => dispatch({ type: 'go', screen: 'drill' })}
       onOpenHands={hands > 0 ? () => dispatch({ type: 'review', handSeq: null }) : undefined}
+      onShowKeys={
+        pointer
+          ? () => {
+              close();
+              dispatch({ type: 'open', overlay: 'shortcuts' });
+            }
+          : undefined
+      }
       onOpenSettings={() => dispatch({ type: 'go', screen: 'settings' })}
       onOpenStats={() => dispatch({ type: 'go', screen: 'stats' })}
       onOpenLearn={() => dispatch({ type: 'go', screen: 'learn' })}

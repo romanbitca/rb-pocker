@@ -1,0 +1,50 @@
+/* A first-table tip (PLAN §12.11): a light bubble over the table, its arrow drawn by CSS. Above the
+   hero strip, the coach and the Hands tab, below the feedback card and every modal layer. It only
+   fades in (§12.8: no transform animation, with reduced motion or without). */
+
+.tip {
+  position: fixed;
+  z-index: 35;
+  box-sizing: border-box;
+  width: max-content;
+  max-width: min(280px, calc(100vw - 16px));
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: var(--radius-2);
+  background: var(--control-selected-bg);
+  color: var(--control-selected-text);
+  box-shadow: 0 6px 20px rgb(0 0 0 / 45%);
+  font-size: 0.9375rem;
+  font-weight: 600;
+  line-height: 1.35;
+  animation: appear var(--duration-sheet) ease-out;
+}
+
+/* The arrow: a square turned 45° (a static shape, not an animation), half outside the edge that
+   faces what the tip explains. */
+.tip[data-side]::after {
+  content: '';
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  background: inherit;
+  transform: rotate(45deg);
+}
+.tip[data-side='above']::after {
+  bottom: -6px;
+  left: calc(var(--arrow) - 6px);
+}
+.tip[data-side='below']::after {
+  top: -6px;
+  left: calc(var(--arrow) - 6px);
+}
+.tip[data-side='left']::after {
+  top: calc(var(--arrow) - 6px);
+  right: -6px;
+}
+
+@keyframes appear {
+  from {
+    opacity: 0;
+  }
+}

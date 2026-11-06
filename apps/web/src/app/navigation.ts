@@ -54,6 +54,7 @@ export type Screen =
  *   Back closing it cancels the import.
  * - 'drillGames', 'drillStats': the hand drill's two sheets (§13.5); its All hands drawer is
  *   'rankings'.
+ * - 'shortcuts': the list of keyboard shortcuts (§12.5 "?", chunk 9.3), a modal dialog.
  */
 export type Overlay =
   | 'menu'
@@ -70,7 +71,8 @@ export type Overlay =
   | 'dataImport'
   | 'dataReset'
   | 'drillGames'
-  | 'drillStats';
+  | 'drillStats'
+  | 'shortcuts';
 
 export interface Nav {
   /** The back stack, oldest first; the last one is on screen. Never empty; [0] is a root. */
@@ -114,6 +116,7 @@ const BACK_CLOSES: Readonly<Record<Overlay, boolean>> = {
   dataReset: true,
   drillGames: true,
   drillStats: true,
+  shortcuts: true,
 };
 
 /** The first screen: Welcome on the first launch (no saved profile), Home after that (§12.1). */

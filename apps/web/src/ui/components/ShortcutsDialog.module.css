@@ -1,0 +1,43 @@
+/* The "Keyboard shortcuts" list (PLAN §12.5): two columns, the keys and what they do. */
+
+.list {
+  display: grid;
+  gap: var(--space-1);
+  margin: 0;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: 6.5rem minmax(0, 1fr);
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.row dt,
+.what {
+  margin: 0;
+}
+
+.key {
+  display: inline-block;
+  min-width: 1.75rem;
+  padding: 2px 6px;
+  border: 1px solid var(--control-border);
+  border-radius: var(--radius-1);
+  background: var(--control-bg);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.9375rem;
+  font-weight: 700;
+  text-align: center;
+}
+
+.what {
+  line-height: 1.35;
+}
+
+.note {
+  margin: var(--space-2) 0;
+  color: var(--muted);
+  font-size: 0.9375rem;
+}

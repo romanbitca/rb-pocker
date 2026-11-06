@@ -8,6 +8,10 @@
  * Closing: ✕, Esc, or a tap outside the tray (Row A's right button excepted: it confirms) call
  * `onClose`. The controller's Android Back handling closes the tray through the same path. The
  * tray is not a gate (Appendix A.8) and not modal: no scrim, no focus trap.
+ *
+ * The keyboard (§12.5, chunk 9.3): the Table's shortcuts (`ui/shortcuts.ts`) choose the first five
+ * chips with 1–5 and step the amount with ↑/↓ through `onAmount`, like the chips and ± do; the
+ * focused slider keeps its own keys.
  */
 import {
   memo,
@@ -198,7 +202,7 @@ export const SizingTray = memo(function SizingTray({
       className={cx(styles.tray, styles[placement], className)}
     >
       <div className={styles.presets}>
-        {tray.presets.map((p) => (
+        {tray.presets.map((p, i) => (
           <button
             key={p.id}
             type="button"
@@ -206,6 +210,8 @@ export const SizingTray = memo(function SizingTray({
             disabled={!p.enabled}
             aria-pressed={p.enabled && p.amount === current}
             aria-label={en.sizing.presetName(p.spoken, p.amountText)}
+            // The keys 1–5 choose the first five chips (§12.5, ui/shortcuts.ts).
+            aria-keyshortcuts={i < 5 ? String(i + 1) : undefined}
             data-coach={coachPreset && p.amount === coach ? '' : undefined}
             onClick={() => onAmount(p.amount)}
           >
