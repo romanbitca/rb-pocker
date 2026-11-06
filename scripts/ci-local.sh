@@ -264,8 +264,10 @@ job_slow() {
     sh -c 'npm run gen && git diff --exit-code -- apps/web/src/data/generated' || return 1
   step slow "self-play gates (10 runs)" selfplay_all || return 1
   port_free "$CI_PORT" || return 1
+  # One retry (PLAN R17): on this shared Mac the long-task check can fail on load from other work;
+  # a real slowdown fails twice. A test that passes on the retry is reported as flaky.
   step slow "speed checks of Stages 4 and 6, enforced" \
-    env PORT="$CI_PORT" npm run e2e:perf -- --grep "Stage [46]" || return 1
+    env PORT="$CI_PORT" npm run e2e:perf -- --grep "Stage [46]" --retries=1 || return 1
   port_free "$CI_PORT" || return 1
   step slow "Lighthouse mobile: Performance, Accessibility, installable" \
     env PORT="$CI_PORT" npm run lighthouse
