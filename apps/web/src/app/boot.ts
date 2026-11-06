@@ -9,10 +9,10 @@ import {
   realTimers,
   type TableController,
 } from './controller.ts';
-import { createSafeStorage } from '../persist/storage.ts';
+import { launchStorage } from '../persist/storage.ts';
 import { brainGrader } from './grading.ts';
 import { installEnv, installLifecycle, isStandalone, storageManagerOf } from './lifecycle.ts';
-import { appStore } from './store.ts';
+import { appStore, setDrillLoader } from './store.ts';
 import { browserTabLockEnv, createTabLock } from './tabLock.ts';
 import { startBrainWorker, startEquityWorker } from './workerClient.ts';
 import type { SafeStorage } from '../persist/storage.ts';
@@ -48,8 +48,8 @@ export function startApp(options: StartOptions): TableController {
     grader: brainGrader(brain),
     heroName: options.heroName,
     seeds: hooks !== undefined && seed !== null ? hooks.fixedSeeds(seed) : randomSeeds(),
-    // One storage wrapper per launch over the real localStorage (§14.6).
-    storage: options.storage ?? createSafeStorage(),
+    // One storage wrapper per launch over the real localStorage (§14.6), shared with the drill.
+    storage: options.storage ?? launchStorage(),
     // Warmed at start, never awaited (§12.14); without module workers it reports "unavailable".
     equity: startEquityWorker(realTimers),
     // The coach's hint at every hero decision, from brain.worker (§8.2, chunk 5.7).
@@ -65,6 +65,8 @@ export function startApp(options: StartOptions): TableController {
     install: installEnv(win),
   });
   installLifecycle(win, appStore);
+  // The hand drill's logic, loaded when its page opens (§13.5).
+  setDrillLoader(() => import('./drill.ts'));
   if (hooks !== undefined) {
     hooks.installTestHooks(win, appStore, controller, seed, script, rig?.faults ?? null);
   }

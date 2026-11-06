@@ -92,6 +92,18 @@ export * from './coachViews.ts';
 export { UNDO_POLICY, type FeedbackView, type MoveView, type UndoPolicy } from './undo.ts';
 // "Which hand wins?" (§13.2): two random hands that do not tie (the quiz is a lazy chunk).
 export { dealPair, type WhichPair } from './whichWins.ts';
+
+/**
+ * The hand drill's logic (§13.5): a lazy chunk, loaded when its page opens (§15.3). Boot gives
+ * the loader (`setDrillLoader`), so the `import()` sits in the entry chunk with the app's other
+ * lazy loads (an `import()` here moved Vite's preload helper into this chunk: +0.1 KB, pitfall 47).
+ */
+export type DrillModule = typeof import('./drill.ts');
+let drillLoader: () => Promise<DrillModule> = () => Promise.reject(new Error('not booted'));
+export function setDrillLoader(load: () => Promise<DrillModule>): void {
+  drillLoader = load;
+}
+export const loadDrill = (): Promise<DrillModule> => drillLoader();
 // The bot level of each seat from the next hand on (§9.3, chunk 7.2). `seatLevelOf` and
 // `labelVisible` come with `tableViews.ts` above.
 export { levelsOf, nextLevels, sameSeatLevels, type TableLevels } from './botLevels.ts';
@@ -160,6 +172,8 @@ export const OVERLAY_GATE: Readonly<Record<Overlay, Gate | null>> = {
   tip: 'tip',
   dataImport: 'dialog',
   dataReset: 'dialog',
+  drillGames: 'sheet',
+  drillStats: 'sheet',
 };
 
 /** Layout (§12.3): one CSS media query each; first match wins. */
@@ -929,7 +943,7 @@ export function useOverlay(overlay: Overlay): [open: boolean, setOpen: (open: bo
   const dispatchCmd = useDispatch();
   const setOpen = useCallback(
     // Two literals: TypeScript checks a `type: 'open' | 'close'` object against at most 25
-    // combinations of the union's discriminants, and 2 × 13 overlays is more.
+    // combinations of the union's discriminants, and 2 × 15 overlays is more.
     (next: boolean) => dispatchCmd(next ? { type: 'open', overlay } : { type: 'close', overlay }),
     [dispatchCmd, overlay],
   );

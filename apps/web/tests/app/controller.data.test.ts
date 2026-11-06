@@ -509,9 +509,11 @@ describe('Reset stats (§14.8)', () => {
     const h = start(backend);
     await drive(h, { hands: 3, hero: passive });
     const before = profileOf(backend);
+    backend.data.set(K.drill, '{"schema":1}'); // the hand drill's stats (§13.5)
     h.dispatch({ type: 'resetStats' });
     await settled();
     expect(toasts(h)).toEqual(['statsReset']);
+    expect(backend.data.has(K.drill)).toBe(false); // Reset clears the drill too
     const reset = profileOf(backend);
     expect(counted(reset)).toBe(0);
     expect(reset.heroModel.hands).toBe(0);
@@ -536,10 +538,13 @@ describe('Export → Reset → Import (§14.9) through the commands', () => {
     await drive(h, { hands: 3, hero: passive });
     const original = profileOf(backend);
     const hands = ringOf(backend);
+    const drill = '{"schema":1,"best":7}';
+    backend.data.set(K.drill, drill); // the hand drill's stats (§13.5): not in the file
     h.dispatch({ type: 'go', screen: 'settings' });
     await settled();
     h.dispatch({ type: 'exportStats' });
     const text = await (sent.shared[0] as File).text();
+    expect(text).not.toContain(drill);
     h.dispatch({ type: 'resetStats' });
     await settled();
     expect(counted(profileOf(backend))).toBe(0);
@@ -548,6 +553,7 @@ describe('Export → Reset → Import (§14.9) through the commands', () => {
     const back = profileOf(backend);
     expect({ ...back, rev: original.rev, updatedAt: original.updatedAt }).toEqual(original);
     expect(ringOf(backend)).toEqual(hands);
+    expect(backend.data.has(K.drill)).toBe(false); // Reset removed it; Import leaves it out
     expect(toasts(h)).toEqual(['statsReset', 'imported']);
     h.controller.dispose();
   }, 30_000);

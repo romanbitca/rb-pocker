@@ -45,6 +45,7 @@ const VOLUME_TESTS = [
   'tests/scripts/selfplay.test.ts', // ~1,000 self-play hands (the CI-sized smoke of §9.7)
   'tests/brain/grade.property.test.ts', // 2,000 coach decision points, ~10 grades each (C8)
   'tests/brain/grade.benchmark.test.ts', // timing (Stage 6 acceptance 6)
+  'tests/drill/differential.test.ts', // 400,000 hands against the standalone drill's oracle (§13.5)
 ];
 
 const slowRequested =

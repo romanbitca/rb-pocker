@@ -240,3 +240,41 @@ describe('sounds, vibration and the wake lock in the production build (chunk 9.1
     }
   });
 });
+
+describe('the hand drill in the production build (PLAN §13.5)', () => {
+  const PAGE = 'src/ui/screens/Drill.tsx';
+  const LOGIC = 'src/app/drill.ts';
+  /** Modules only the drill uses: never in the initial JS. */
+  const DRILL_ONLY = [
+    PAGE,
+    'src/ui/screens/DrillSheets.tsx',
+    'src/ui/screens/drillStyles.ts',
+    'src/ui/drillText.ts',
+    'src/i18n/drill.ts',
+    LOGIC,
+    'src/drill/questions.ts',
+    'src/drill/deal.ts',
+    'src/drill/session.ts',
+    'src/persist/drill.ts',
+  ];
+
+  it('is two lazy chunks, precached: the page from the screens chunk, the logic from boot', () => {
+    const initial = rowOf('Initial JS');
+    const precache = rowOf('Total precache');
+    for (const source of DRILL_ONLY) {
+      expect(initial.files, source).not.toContain(chunk(source));
+      expect(precache.files, source).toContain(chunk(source));
+    }
+    expect(chunk(PAGE)).not.toBe(chunk(LOGIC));
+    // The frame (Back and the title) is in the screens chunk, which loads the page with import().
+    const screens = chunk('src/ui/screensEntry.tsx');
+    expect(chunk('src/ui/drillModule.ts')).toBe(screens);
+    const page = chunk(PAGE).slice('assets/'.length);
+    expect(text(screens)).toMatch(
+      new RegExp(`import\\(\\s*["'\`]\\./${page.replace('.', '\\.')}["'\`]`),
+    );
+    for (const file of initial.files) expect(text(file)).not.toContain(page);
+    // Boot's loader reaches the logic only through import().
+    expectOnlyDynamicImports(chunk(LOGIC));
+  });
+});

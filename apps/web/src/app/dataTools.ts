@@ -25,7 +25,7 @@
  */
 import type { TableState } from '../engine/types.ts';
 import type { Profile } from '../persist/schema.ts';
-import type { SafeStorage } from '../persist/storage.ts';
+import { STORAGE_KEYS, type SafeStorage } from '../persist/storage.ts';
 import {
   debugData,
   exportData,
@@ -312,14 +312,20 @@ export function dataCommands(host: DataHost): DataCommands {
     finish(result, 'imported', result.status === 'done' ? host.cancelHand() : null);
   };
 
-  /** Reset stats (§14.8), after its confirmation ("Delete my stats", chunk 8.4). */
+  /**
+   * Reset stats (§14.8), after its confirmation ("Delete my stats", chunk 8.4). Once the profile is
+   * reset, the hand drill's stats go too (`pc.v1.drill`, §13.5); the drill reads its key again
+   * when its page opens.
+   */
   const resetStats = (): void => {
     if (host.canChange()) host.prepare();
     if (!host.canChange()) {
       host.toast('dataNotChanged');
       return;
     }
-    finish(resetProfile(host.kit, host.storage, host.profile(), host.now()), 'statsReset', null);
+    const result = resetProfile(host.kit, host.storage, host.profile(), host.now());
+    if (result.status === 'done') host.storage.remove(STORAGE_KEYS.drill);
+    finish(result, 'statsReset', null);
   };
 
   return {

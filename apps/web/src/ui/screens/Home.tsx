@@ -8,7 +8,8 @@
  *
  * Read-only (§14.7, chunk 8.3: another tab has the game): the §12.11 banner and its "Play here"
  * take the place of Play and New table, and Settings is hidden (nothing could be saved); Learn and
- * Stats stay.
+ * Stats stay. The hand drill (§13.5) is a secondary button under New table, given only while this
+ * tab writes (a read-only tab has no drill: Home and Learn leave it out).
  *
  * The one-time card about installing (§12.11, §12.13, chunk 8.4) sits under the tiles.
  */
@@ -37,6 +38,8 @@ export interface HomeProps {
   onPlay: () => void;
   /** "New table…" → Setup. */
   onNewTable: () => void;
+  /** "Hand drill" (§13.5); hidden while absent (read-only tabs). */
+  onOpenDrill?: (() => void) | undefined;
   onOpenSettings: () => void;
   /** Hidden while absent (later stages). */
   onOpenLearn?: (() => void) | undefined;
@@ -65,6 +68,7 @@ export function Home({
   session,
   onPlay,
   onNewTable,
+  onOpenDrill,
   onOpenSettings,
   onOpenLearn,
   onOpenStats,
@@ -123,6 +127,11 @@ export function Home({
             <button type="button" className={styles.secondary} onClick={() => onNewTable()}>
               {en.home.newTable}
             </button>
+            {onOpenDrill && (
+              <button type="button" className={styles.secondary} onClick={() => onOpenDrill()}>
+                {en.drill.title}
+              </button>
+            )}
           </>
         )}
 

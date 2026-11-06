@@ -25,6 +25,8 @@ export const STORAGE_KEYS = {
   session: 'pc.v1.session',
   diag: 'pc.v1.diag',
   preimport: 'pc.v1.preimport',
+  /** The hand drill's stats and choices (§13.5), outside the profile. */
+  drill: 'pc.v1.drill',
 } as const;
 
 /** Unreadable data is copied to `pc.corrupt.<timestamp>`, never deleted automatically (§14.6). */
@@ -183,6 +185,17 @@ export function createSafeStorage(
       };
     },
   };
+}
+
+let launch: SafeStorage | null = null;
+
+/**
+ * The launch's one wrapper over the real `localStorage` (§14.6: one per launch). Boot hands it to
+ * the controller, and the hand drill (§13.5) uses the same one, so a key whose write failed reads
+ * back the same everywhere and the storage banner (`onFailure`) covers the drill's key too.
+ */
+export function launchStorage(): SafeStorage {
+  return (launch ??= createSafeStorage());
 }
 
 /**

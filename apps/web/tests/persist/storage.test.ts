@@ -5,6 +5,7 @@ import {
   classifyStorageError,
   createSafeStorage,
   keepCorruptCopy,
+  launchStorage,
   type StorageFailure,
 } from '../../src/persist/storage.ts';
 import { FakeStorage, quotaError, securityError } from './fakeStorage.ts';
@@ -20,8 +21,13 @@ describe('persist/storage keys', () => {
       session: 'pc.v1.session',
       diag: 'pc.v1.diag',
       preimport: 'pc.v1.preimport',
+      drill: 'pc.v1.drill',
     });
     expect(CORRUPT_KEY_PREFIX).toBe('pc.corrupt.');
+  });
+
+  it('has one wrapper per launch, which boot and the hand drill share (§14.6, §13.5)', () => {
+    expect(launchStorage()).toBe(launchStorage());
   });
 });
 

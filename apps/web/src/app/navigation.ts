@@ -21,6 +21,9 @@
  * rankings with "Which hand wins?") and 'glossary'. Each is pushed like any screen, so Back (and
  * Android Back) returns to the page under it: from a lesson to the list, from the rankings to the
  * lesson that opened them.
+ *
+ * 'drill', the hand drill (§13.5), is lazy too: from Home, Learn, or the Table's Menu (Back returns
+ * to the hand).
  */
 export type Screen =
   | 'welcome'
@@ -33,7 +36,8 @@ export type Screen =
   | 'learn'
   | 'lesson'
   | 'handRankings'
-  | 'glossary';
+  | 'glossary'
+  | 'drill';
 
 /**
  * Layers over a screen. Each one but the sizing tray keeps a controller gate closed while it is
@@ -48,6 +52,8 @@ export type Screen =
  * - 'dataImport', 'dataReset': Import's preview with Replace, and "Delete my stats" (§14.8, chunk
  *   8.4). The controller opens and closes 'dataImport' with Import's check (`data.importCheck`);
  *   Back closing it cancels the import.
+ * - 'drillGames', 'drillStats': the hand drill's two sheets (§13.5); its All hands drawer is
+ *   'rankings'.
  */
 export type Overlay =
   | 'menu'
@@ -62,7 +68,9 @@ export type Overlay =
   | 'quiz'
   | 'tip'
   | 'dataImport'
-  | 'dataReset';
+  | 'dataReset'
+  | 'drillGames'
+  | 'drillStats';
 
 export interface Nav {
   /** The back stack, oldest first; the last one is on screen. Never empty; [0] is a root. */
@@ -104,6 +112,8 @@ const BACK_CLOSES: Readonly<Record<Overlay, boolean>> = {
   tip: true,
   dataImport: true,
   dataReset: true,
+  drillGames: true,
+  drillStats: true,
 };
 
 /** The first screen: Welcome on the first launch (no saved profile), Home after that (§12.1). */

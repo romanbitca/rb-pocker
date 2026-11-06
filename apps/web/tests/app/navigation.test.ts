@@ -28,8 +28,9 @@ const SCREENS: Screen[] = [
   'lesson',
   'handRankings',
   'glossary',
+  'drill',
 ];
-const OVERLAYS: Overlay[] = ['menu', 'outOfChips', 'newTable'];
+const OVERLAYS: Overlay[] = ['menu', 'outOfChips', 'newTable', 'drillGames', 'drillStats'];
 
 /** Runs actions from `nav` and returns every state on the way (the start included). */
 function run(nav: Nav, ...actions: NavAction[]): Nav[] {
@@ -221,6 +222,37 @@ function invariantProblems(nav: Nav): string[] {
   if (historyDepth(nav) !== nav.screens.length - 1 + nav.overlays.length) problems.push('depth');
   return problems;
 }
+
+describe('navigate: the hand drill (§13.5)', () => {
+  it('opens from Home, or over the Table from the Menu: Back returns to the hand', () => {
+    expect(last(run(initialNav(false), go('drill'))).screens).toEqual(['home', 'drill']);
+    const fromMenu = last(run(initialNav(false), go('table'), open('menu'), go('drill')));
+    expect(fromMenu).toEqual({ screens: ['home', 'table', 'drill'], overlays: [] });
+    expect(navigate(fromMenu, back)).toEqual({ screens: ['home', 'table'], overlays: [] });
+  });
+
+  it('Back closes a sheet or All hands first, then leaves the page', () => {
+    const states = run(
+      initialNav(false),
+      go('drill'),
+      open('drillStats'),
+      back,
+      open('rankings'),
+      back,
+      back,
+    );
+    expect(states.map((n) => [currentScreen(n), topOverlay(n)])).toEqual([
+      ['home', null],
+      ['drill', null],
+      ['drill', 'drillStats'],
+      ['drill', null],
+      ['drill', 'rankings'],
+      ['drill', null],
+      ['home', null],
+    ]);
+    expect(backCloses('drillGames') && backCloses('drillStats')).toBe(true);
+  });
+});
 
 describe('navigate: properties over random action sequences', () => {
   it('keeps the invariants, and Back always leads to the first screen', () => {

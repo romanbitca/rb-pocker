@@ -3,8 +3,8 @@
  * ui/App.tsx; a dynamic `import()` keeps it out of the initial bundle, §15.3, and the service
  * worker precaches it, so it works offline).
  *
- * - **Learn** ('learn'): the seven lessons in order, then "Poker hands" and "Glossary" (and the hand
- *   drill once chunk 9.2b gives `onOpenDrill`). Home's tile and the Menu open it.
+ * - **Learn** ('learn'): the seven lessons in order, then "Poker hands", "Glossary" and "Practise
+ *   the 10 hands" (the hand drill, §13.5; not in a read-only tab). Home's tile and the Menu open it.
  * - **A lesson** ('lesson', the store's `ui.lesson`): "Lesson 3 of 7", its card picture and text
  *   (`LessonView`), lesson 4's "See all poker hands", then "Next: …" (the last one: "All lessons").
  *   Next changes the lesson in place, so Back always returns to the page under the lesson.
@@ -19,7 +19,7 @@
  * a new screen, and the page does it again once it is drawn (after the chunk loaded) and for Next.
  */
 import { useCallback, useEffect, useId, useRef, type RefObject } from 'react';
-import { selectLesson, useAppStore, useDispatch } from '../../app/store.ts';
+import { selectLesson, selectReadOnly, useAppStore, useDispatch } from '../../app/store.ts';
 import { LESSONS } from '../../data/lessons.ts';
 import { enCoach } from '../../i18n/enCoach.ts';
 import { learnWords as W } from '../../i18n/learn.ts';
@@ -225,6 +225,8 @@ export function GlossaryPage({ onBack }: { onBack: () => void }) {
 export function LearnRoute({ page }: { page: LearnPage }) {
   const dispatch = useDispatch();
   const lesson = useAppStore(selectLesson);
+  // A read-only tab (§14.7) has no hand drill, as on Home (§13.5).
+  const readOnly = useAppStore(selectReadOnly);
   const back = useCallback(() => dispatch({ type: 'back' }), [dispatch]);
   const openLesson = useCallback(
     (n: number) => dispatch({ type: 'lesson', lesson: n }),
@@ -242,7 +244,7 @@ export function LearnRoute({ page }: { page: LearnPage }) {
           onOpenLesson={openLesson}
           onOpenRankings={openRankings}
           onOpenGlossary={() => dispatch({ type: 'go', screen: 'glossary' })}
-          // Chunk 9.2b (the hand drill page) passes its way in here.
+          onOpenDrill={readOnly ? undefined : () => dispatch({ type: 'go', screen: 'drill' })}
         />
       );
     case 'lesson':

@@ -10,6 +10,7 @@ import { learnWords as W } from '../../../src/i18n/learn.ts';
 import { suggestionWords } from '../../../src/i18n/suggestions.ts';
 import { quizWords } from '../../../src/i18n/quiz.ts';
 import { summaryWords } from '../../../src/i18n/summary.ts';
+import { drillWords } from '../../../src/i18n/drill.ts';
 import { whichWinsWords } from '../../../src/i18n/whichWins.ts';
 
 const PLAN = Object.values(
@@ -275,6 +276,78 @@ describe('screen copy comes from docs/PLAN.md', () => {
     }),
   )('9.2 %s', (_key, words) => {
     for (const w of Array.isArray(words) ? words : [words]) expect(PLAN).toContain(`"${w}"`);
+  });
+
+  // The hand drill (§13.5): every word of `i18n/drill.ts` is in the F.10 line, quoted, with the
+  // plan's placeholder names.
+  it('the hand drill speaks the words of F.10', () => {
+    const W = drillWords;
+    const A = W.answer;
+    const Y = W.why;
+    const words: string[] = [
+      'Hand drill',
+      W.streak,
+      W.score,
+      W.best,
+      W.scoreValue(0, 0).replace(/^0/, '{right}').replace(/0$/, '{answered}'),
+      W.choose,
+      W.allHands,
+      W.stats,
+      W.hand,
+      W.pickOne,
+      W.position,
+      W.ladder,
+      W.positionName(0).replace('0', '{n}'),
+      W.keyboard,
+      W.next,
+      W.table,
+      W.yourHand,
+      W.you,
+      W.opponent,
+      W.handA,
+      W.handB,
+      W.stronger,
+      W.weaker,
+      W.trap,
+      W.thisRound,
+      ...Object.values(W.games).flatMap((g) => [g.name, g.desc]),
+      ...Object.values(W.difficulties).flatMap((d) => [d.name, d.desc]),
+      W.gamesTitle,
+      W.difficulty,
+      W.game,
+      W.playing,
+      W.close,
+      ...Object.values(W.prompts),
+      ...Object.values(W.hints),
+      ...Object.values(W.options),
+      A.right('{name}', 0).replace('0', '{pos}'),
+      A.itIs('{name}', 0).replace('0', '{pos}'),
+      A.nameWrong('{name}'),
+      A.uses(0),
+      A.uses(1),
+      A.uses(2),
+      A.pickedPosition(0, '{name}').replace('0', '{pos}'),
+      A.both('{target}', 0, '{name}', 1).replace('0', '{tpos}').replace('1', '{pos}'),
+      A.correct('{result}'),
+      A.splitPot,
+      A.youWin,
+      A.opponentWins,
+      A.legend,
+      Y.rows('{w}', 0, '{l}', 1).replace('0', '{wpos}').replace('1', '{lpos}'),
+      Y.split('{name}', true),
+      Y.straight(false, '{A}', '{B}', true),
+      Y.fullHouse('{As}', '{Bs}'),
+      Y.twoPairSecond('{Mains}', '{As}', '{Bs}'),
+      Y.pairKicker('{Mains}', true, '{A}', '{B}'),
+      Y.nthCard(true, 3, '{A}', '{B}'),
+      ...Object.values(W.traps).map((t) => (typeof t === 'function' ? t('{Ranks}') : t)),
+      W.statsTitle,
+      W.notSeen,
+      W.reset,
+      W.resetConfirm,
+      W.statsRowNone('{name}'),
+    ];
+    for (const w of words) expect(PLAN).toContain(`"${w}"`);
   });
 
   it('the Welcome bullets are the four §12.1 bullets, capitalised', () => {

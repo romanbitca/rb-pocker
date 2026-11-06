@@ -159,3 +159,20 @@ describe('Menu: Recent hands (Review, PLAN §12.10)', () => {
     expect(onOpenHands).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('Menu: Hand drill (PLAN §13.5)', () => {
+  it('sits after Hand rankings and calls its callback', () => {
+    const onOpenDrill = vi.fn();
+    render(<Menu {...menuProps({ onOpenRankings: () => {}, onOpenDrill })} />);
+    expect(labels()).toEqual([
+      'Resume',
+      'Hand rankings',
+      'Hand drill',
+      'Settings',
+      'Leave table',
+      'New table',
+    ]);
+    fireEvent.click(screen.getByRole('button', { name: 'Hand drill' }));
+    expect(onOpenDrill).toHaveBeenCalledTimes(1);
+  });
+});

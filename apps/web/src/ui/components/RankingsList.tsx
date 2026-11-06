@@ -12,6 +12,9 @@
  *
  * At Advanced and Exam (`whichWins`, §10.2, §13.2) a "Which hand wins?" button sits above the
  * rows; it opens the quiz in place, from a lazy chunk loaded on the first tap.
+ *
+ * The hand drill (§13.5) marks the rows of its answered question (`marked`: the "You" row's look,
+ * with its own badge, "This round"); the strongest marked row is the one the drawer scrolls to.
  */
 import { lazy, memo, Suspense, useId, useState, type Ref } from 'react';
 import { RANKINGS } from '../../data/rankings.ts';
@@ -27,6 +30,7 @@ import {
   youLine,
   type RowStatus,
 } from '../rankings.ts';
+import type { HandCategory } from '../../eval/evaluate.ts';
 import type { ByRiverView, HeroHandView } from '../views.ts';
 import { Card } from './Card.tsx';
 import { LoadBoundary } from './LoadBoundary.tsx';
@@ -48,6 +52,14 @@ export interface RankingsListProps {
   byRiver?: ByRiverView | null | undefined;
   /** The "Which hand wins?" button (Advanced and Exam, §10.2). */
   whichWins?: boolean | undefined;
+  /** Rows to mark with a badge (the hand drill's "This round", §13.5); absent = none. */
+  marked?: RowMarks | undefined;
+}
+
+/** Rows marked by a caller other than the Table, and the badge they show. */
+export interface RowMarks {
+  readonly categories: readonly HandCategory[];
+  readonly label: string;
 }
 
 const join = (...names: (string | false | null | undefined)[]): string =>
@@ -83,6 +95,7 @@ export const RankingsList = memo(function RankingsList({
   currentRowRef,
   byRiver = null,
   whichWins = false,
+  marked,
 }: RankingsListProps) {
   const [openRow, setOpenRow] = useState<number | null>(null);
   const [info, setInfo] = useState(false);
@@ -141,29 +154,43 @@ export const RankingsList = memo(function RankingsList({
       <ol className={styles.rows}>
         {RANKINGS.map((row, i) => {
           const status = rowStatus(i, hero);
+          const marks = marked?.categories.includes(row.key) === true ? marked : null;
+          // The strongest marked row takes the drawer's scroll (`currentRowRef`) when there is no hero.
+          const firstMark =
+            marks !== null && RANKINGS.findIndex((r) => marks.categories.includes(r.key)) === i;
           const mine = status === 'you' || status === 'folded';
           const expanded = openRow === i;
           const river = byRiver === null ? null : byRiverCell(byRiver.exactly, row.key);
           return (
             <li
               key={row.key}
-              className={join(styles.row, status !== null && STATUS_CLASS[status])}
+              className={join(
+                styles.row,
+                status !== null && STATUS_CLASS[status],
+                status === null && marks !== null && styles.you,
+              )}
               data-category={row.key}
+              data-marked={marks !== null ? '' : undefined}
               aria-current={mine ? 'true' : undefined}
-              ref={mine ? currentRowRef : undefined}
+              ref={mine || (hero === null && firstMark) ? currentRowRef : undefined}
             >
               {status === 'you' && pulses > 0 && <span key={pulses} className={styles.pulse} />}
               <button
                 type="button"
                 className={styles.rowButton}
                 aria-expanded={expanded}
-                aria-label={rowLabel(i, status, river)}
+                aria-label={
+                  marks === null
+                    ? rowLabel(i, status, river)
+                    : `${rowLabel(i, status, river)} ${marks.label}.`
+                }
                 onClick={() => setOpenRow(expanded ? null : i)}
               >
                 <span className={styles.rank}>{i + 1}</span>
                 <span className={styles.title}>
                   <span className={styles.name}>{row.name}</span>
                   <Caption status={status} />
+                  {marks !== null && <span className={styles.badge}>{marks.label}</span>}
                 </span>
                 <span className={styles.rarity}>{formatRarity(row.rarity)}</span>
                 <span className={styles.cards}>
