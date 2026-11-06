@@ -133,10 +133,13 @@ function launch(backend: FakeStorage, options: Partial<HarnessOptions> = {}): Ha
   return makeHarness({ storage: createSafeStorage(() => backend), ...options });
 }
 
-/** Instant speed, 3 players, Play. */
+/**
+ * Instant speed, 3 players, the next hand by itself (off by default since 1.3.94; these tests
+ * play on past a hand end without tapping), Play.
+ */
 function start(backend: FakeStorage, options: Partial<HarnessOptions> = {}): Harness {
   const h = launch(backend, options);
-  h.dispatch({ type: 'settings', patch: { players: 3, speed: 'instant' } });
+  h.dispatch({ type: 'settings', patch: { players: 3, speed: 'instant', autoNext: true } });
   h.dispatch({ type: 'play' });
   return h;
 }

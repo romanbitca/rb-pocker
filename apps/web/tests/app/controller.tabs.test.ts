@@ -41,9 +41,12 @@ function openTab(origin: FakeOrigin): Tab {
   return { ...h, page };
 }
 
-/** Instant speed, 3 players; then Play. */
+/**
+ * Instant speed, 3 players, the next hand by itself (off by default since 1.3.94; these tests
+ * play on past a hand end without tapping); then Play.
+ */
 function play(tab: Tab): void {
-  tab.dispatch({ type: 'settings', patch: { players: 3, speed: 'instant' } });
+  tab.dispatch({ type: 'settings', patch: { players: 3, speed: 'instant', autoNext: true } });
   tab.dispatch({ type: 'play' });
 }
 

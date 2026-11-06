@@ -1,3 +1,4 @@
+import { defaultProfile, type Settings } from '../../src/persist/schema.ts';
 import { expect, test } from './fixtures.ts';
 import { collectErrors, nextFlowPoint, pageMetrics, sizeOf, slot, tapNextHand } from './game.ts';
 
@@ -103,12 +104,11 @@ test('a full hand at Normal speed plays to its end', async ({ page }, testInfo) 
   await page.goto('/');
   await page.getByRole('button', { name: 'Play', exact: true }).click();
   await expect(page.locator('[data-hero-cards] [role="img"]')).toHaveCount(2);
-  expect(await page.evaluate(() => window.__pc?.state().settings.speed)).toBe('normal');
-  // The hand end waits for the tap while the page is checked below: since 1.3.92 nothing holds it
-  // at Beginner (the summary opens only on the banner's button), and its 3 s run in real time.
-  await page.evaluate(() => {
-    window.__pc?.dispatch({ type: 'settings', patch: { autoNext: false } });
-  });
+  const settings = await page.evaluate(() => window.__pc?.state().settings);
+  expect(settings?.speed).toBe('normal');
+  // 1.3.94 (§12.8; the owner: "it must not start automatically, i need to click next game"):
+  // "Deal the next hand by itself" is off on a first launch, so the hand end waits for the tap.
+  expect(settings?.autoNext).toBe(false);
 
   for (let point = await nextFlowPoint(page, true); point !== 'end';) {
     if (point === 'hero') await slot(page, 'middle').click();
@@ -118,6 +118,16 @@ test('a full hand at Normal speed plays to its end', async ({ page }, testInfo) 
   await expect(banner).toBeVisible();
   await expect(banner).toContainText(/win|folded|split/);
   await expect(banner).toContainText('Next hand');
+  // No next hand by itself: 10 s on (the old wait was 3 s), the same hand's banner is there.
+  const ended = await page.evaluate(() => window.__pc?.state().game.hand?.handSeq);
+  await page.clock.runFor(10_000);
+  await expect(banner).toBeVisible();
+  expect(
+    await page.evaluate(() => {
+      const game = window.__pc?.state().game;
+      return { mode: game?.mode, handSeq: game?.hand?.handSeq };
+    }),
+  ).toEqual({ mode: 'handEnd', handSeq: ended });
 
   // A calm page: no scrolling, a small DOM (§15.3), no emoji suits.
   const metrics = await pageMetrics(page);
@@ -133,5 +143,51 @@ test('a full hand at Normal speed plays to its end', async ({ page }, testInfo) 
   await expect(page.locator('[data-summary]')).toHaveCount(0);
   await tapNextHand(page);
   await expect(banner).toHaveCount(0);
+  expect(errors).toEqual([]);
+});
+
+// 1.3.94 (Appendix H.2 rule 6): a profile saved before it holds "Deal the next hand by itself" on,
+// the old default. Its first launch turns it off once and saves that; a player who turns it on
+// again keeps it.
+test('a profile from before 1.3.94: the next hand waits for the tap; on again, it stays on', async ({
+  page,
+}, testInfo) => {
+  test.skip(sizeOf(testInfo) !== '390x844', 'one phone size per browser');
+  const errors = collectErrors(page);
+  const old = defaultProfile(new Date('2026-11-01T10:00:00.000Z'));
+  const settings: Settings = { ...old.settings, autoNext: true };
+  delete settings.defaultsRev;
+  await page.addInitScript(
+    (text) => {
+      if (localStorage.getItem('pc.v1.profile') === null)
+        localStorage.setItem('pc.v1.profile', text);
+    },
+    JSON.stringify({ ...old, rev: 12, settings }),
+  );
+  const stored = () =>
+    page.evaluate(
+      () =>
+        (JSON.parse(localStorage.getItem('pc.v1.profile') ?? '{}') as { settings?: Settings })
+          .settings,
+    );
+  await page.goto('/');
+  await page.waitForFunction(() => window.__pc?.state().ui.screen === 'home');
+  expect(await page.evaluate(() => window.__pc?.state().settings.autoNext)).toBe(false);
+  // Written back once the tab holds the writer lock (§14.7).
+  await expect.poll(stored).toMatchObject({ autoNext: false, defaultsRev: 1 });
+
+  const toggle = page.getByRole('switch', { name: 'Deal the next hand by itself' });
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await expect(toggle).not.toBeChecked();
+  await toggle.click();
+  await expect(toggle).toBeChecked();
+  await expect.poll(async () => (await stored())?.autoNext).toBe(true); // saved 250 ms later
+
+  await page.reload();
+  await page.waitForFunction(() => window.__pc?.state().ui.screen === 'home');
+  expect(await page.evaluate(() => window.__pc?.state().settings.autoNext)).toBe(true);
+  expect(await stored()).toMatchObject({ autoNext: true, defaultsRev: 1 });
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await expect(toggle).toBeChecked();
   expect(errors).toEqual([]);
 });

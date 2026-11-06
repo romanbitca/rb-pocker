@@ -4,7 +4,8 @@
  * rest changes at hand end, through the commit protocol (`persist/commit.ts`, §14.3).
  *
  * Load path (§14.6 rules 1–2): read → `JSON.parse` (never throws) → migrations step by step up to
- * `PROFILE_VERSION` → the type guard of that version → write back when migrated. A damaged value,
+ * `PROFILE_VERSION` → the settings' defaults revision (`upgradeDefaults`, H.2 rule 6) → the type
+ * guard of that version → write back when migrated or brought up to the defaults. A damaged value,
  * or one from an unknown (newer) version, never crashes the game: its raw text is copied to
  * `pc.corrupt.<timestamp>`, then the backup `pc.v1.profile.bak` (the profile before the last
  * write: at most one hand lost) takes its place, else the game starts from the defaults.
@@ -13,7 +14,13 @@
  * since: nothing is written), the stored string goes to `pc.v1.profile.bak`, then the new profile
  * with `rev + 1` is written in one `setItem`.
  */
-import { PROFILE_MIGRATIONS, PROFILE_VERSION, migrate, type Migrations } from './migrations.ts';
+import {
+  PROFILE_MIGRATIONS,
+  PROFILE_VERSION,
+  migrate,
+  upgradeDefaults,
+  type Migrations,
+} from './migrations.ts';
 import {
   defaultProfile,
   parseJson,
@@ -31,7 +38,10 @@ import {
 } from './storage.ts';
 
 export type ProfileLoad =
-  /** The stored profile; `migratedFrom` is the old schema when it was migrated (and written back). */
+  /**
+   * The stored profile; `migratedFrom` is the old schema when it was migrated (and written back,
+   * as is a profile brought up to the defaults revision, H.2 rule 6).
+   */
   | { status: 'ok'; profile: Profile; migratedFrom: number | null }
   /** Nothing stored yet: the first launch (Welcome). Nothing is written until the first save. */
   | { status: 'new'; profile: Profile }
@@ -69,17 +79,24 @@ export interface ProfileLoadOptions {
   readOnly?: boolean;
 }
 
-type Read = { ok: true; profile: Profile; from: number } | { ok: false; problem: string };
+/** `changed`: the migrations or the defaults revision changed it (so boot writes it back). */
+type Read =
+  { ok: true; profile: Profile; from: number; changed: boolean } | { ok: false; problem: string };
 
-/** One stored string → a current-version profile (JSON, migrations, the guard), or why not. */
+/**
+ * One stored string → a current-version profile (JSON, migrations, the defaults revision, the
+ * guard), or why not.
+ */
 function readProfile(raw: string, migrations: Migrations, key: string): Read {
   const parsed = parseJson(raw);
   if (!parsed.ok) return { ok: false, problem: `${key}: ${parsed.problem}` };
   const migrated = migrate(parsed.value, PROFILE_VERSION, migrations);
   if (!migrated.ok) return { ok: false, problem: `${key}: ${migrated.problem}` };
-  const invalid = profileProblem(migrated.value);
+  const value = upgradeDefaults(migrated.value);
+  const invalid = profileProblem(value);
   if (invalid !== null) return { ok: false, problem: invalid };
-  return { ok: true, profile: migrated.value as Profile, from: migrated.from };
+  const changed = migrated.from !== PROFILE_VERSION || value !== migrated.value;
+  return { ok: true, profile: value as Profile, from: migrated.from, changed };
 }
 
 /** Reads the profile once at boot (§12.14: synchronous, before Welcome or Home renders). */
@@ -93,8 +110,8 @@ export function loadProfile(store: SafeStorage, options: ProfileLoadOptions = {}
 
   const main = readProfile(read.value, migrations, 'profile');
   if (main.ok) {
+    if (main.changed && write) store.set(STORAGE_KEYS.profile, JSON.stringify(main.profile));
     const wasOlder = main.from !== PROFILE_VERSION;
-    if (wasOlder && write) store.set(STORAGE_KEYS.profile, JSON.stringify(main.profile));
     return { status: 'ok', profile: main.profile, migratedFrom: wasOlder ? main.from : null };
   }
 

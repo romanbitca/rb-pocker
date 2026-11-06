@@ -59,7 +59,9 @@ export function startTableHarness(
 ): TableHarness {
   vi.useFakeTimers();
   window.history.replaceState(null, '');
-  const settings = { ...defaultGameSettings(), ...options.settings };
+  // As `makeHarness` (tests/app/harness.ts): "Deal the next hand by itself" on unless a test says
+  // otherwise (the default before 1.3.94); with `storage`, boot takes the stored settings.
+  const settings = { ...defaultGameSettings(), autoNext: true, ...options.settings };
   if (options.settings?.players !== undefined && options.settings.seatLevels === undefined) {
     settings.seatLevels = new Array<null>(settings.players).fill(null);
   }
@@ -116,7 +118,8 @@ export async function elapse(ms: number): Promise<void> {
  * Plays until `done()` holds: the hero acts with `hero` on its turns, timers run otherwise.
  * `onStep` runs after every step (DOM checks); `beforeHero` on each hero turn, before the hero
  * acts (e.g. to let a coach hint land, or open the coach sheet), and `done()` is asked again
- * after it. Throws after `maxSteps`.
+ * after it. With "Deal the next hand by itself" off (1.3.94) a hand end that nothing holds (no
+ * gate) gets the banner's tap, as a player gives it. Throws after `maxSteps`.
  */
 export async function playUntil(
   done: () => boolean,
@@ -142,6 +145,8 @@ export async function playUntil(
       act(() => s.dispatch({ type: 'act', action }));
     } else if (s.game.mode === 'idle' && s.ui.overlays.includes('outOfChips')) {
       act(() => s.dispatch({ type: 'reload' }));
+    } else if (s.game.mode === 'handEnd' && !s.settings.autoNext && s.ui.gates.length === 0) {
+      act(() => s.dispatch({ type: 'nextHand' }));
     } else {
       await nextTimer();
     }

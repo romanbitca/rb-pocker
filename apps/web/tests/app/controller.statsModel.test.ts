@@ -57,10 +57,17 @@ function launch(backend: FakeStorage, options: LaunchOptions = {}): Harness {
   });
 }
 
-/** The first launch: a 3-seat table at Instant speed (Settings, then Play). */
+/**
+ * The first launch: a 3-seat table at Instant speed, the next hand by itself unless `patch` says
+ * otherwise (off by default since 1.3.94; these tests play on past a hand end without tapping)
+ * (Settings, then Play).
+ */
 function start(backend: FakeStorage, patch: Partial<Settings> = {}, options: LaunchOptions = {}) {
   const h = launch(backend, options);
-  h.dispatch({ type: 'settings', patch: { players: 3, speed: 'instant', ...patch } });
+  h.dispatch({
+    type: 'settings',
+    patch: { players: 3, speed: 'instant', autoNext: true, ...patch },
+  });
   h.dispatch({ type: 'play' });
   return h;
 }

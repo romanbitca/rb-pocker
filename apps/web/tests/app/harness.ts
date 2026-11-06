@@ -103,7 +103,11 @@ export interface HarnessOptions {
 
 export function makeHarness(options: HarnessOptions = {}): Harness {
   const store = createAppStore();
-  const settings = { ...defaultGameSettings(), ...options.settings };
+  // The app's defaults, but "Deal the next hand by itself" on (the default before 1.3.94), so the
+  // hands follow each other on the timers as these tests always played them; a test of the hand
+  // end passes `autoNext`. With `storage`, boot takes the stored settings instead (a new profile:
+  // off, 1.3.94), and `drive` taps "Next hand ›" as a player does.
+  const settings = { ...defaultGameSettings(), autoNext: true, ...options.settings };
   if (options.settings?.players !== undefined && options.settings.seatLevels === undefined) {
     settings.seatLevels = new Array(settings.players).fill(null);
   }
@@ -296,6 +300,8 @@ export interface DriveOptions {
  * Plays until `hands` more hands are complete. Returns them in order: the hands that complete
  * during the call. A hand that was complete before it (still on show between hands) is not one of
  * them, whatever the store does meanwhile (a toast going away, the collection moment's included).
+ * With "Deal the next hand by itself" off (the app's default since 1.3.94) a hand end waits for
+ * the banner's tap: once nothing holds the game (no gate), it taps "Next hand ›" as a player does.
  */
 export async function drive(h: Harness, options: DriveOptions): Promise<HandState[]> {
   const done: HandState[] = [];
@@ -320,6 +326,10 @@ export async function drive(h: Harness, options: DriveOptions): Promise<HandStat
       }
       if (s.ui.overlays.includes('outOfChips')) {
         h.dispatch({ type: 'reload' });
+        continue;
+      }
+      if (s.game.mode === 'handEnd' && !s.settings.autoNext && s.ui.gates.length === 0) {
+        h.dispatch({ type: 'nextHand' });
         continue;
       }
       await tick();

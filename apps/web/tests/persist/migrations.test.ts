@@ -1,15 +1,22 @@
 import { describe, expect, it } from 'vitest';
 import {
+  DEFAULTS_REV,
   PROFILE_MIGRATIONS,
   PROFILE_VERSION,
   SESSION_MIGRATIONS,
   SESSION_VERSION,
   migrate,
   schemaOf,
+  upgradeDefaults,
   type Migrations,
 } from '../../src/persist/migrations.ts';
 import { loadProfile } from '../../src/persist/profile.ts';
-import { defaultProfile, isProfile, type Profile } from '../../src/persist/schema.ts';
+import {
+  defaultProfile,
+  defaultSettings,
+  isProfile,
+  type Profile,
+} from '../../src/persist/schema.ts';
 import { createSafeStorage, STORAGE_KEYS } from '../../src/persist/storage.ts';
 import { FakeStorage } from './fakeStorage.ts';
 import { NOW, profileV0ToV1, v0Profile } from './fixtures.ts';
@@ -115,18 +122,75 @@ describe('persist/migrations mechanism (§14.9: a hand-written v0 fixture)', () 
 });
 
 describe('frozen fixtures of past schema versions (H.2 rule 1, chunk 8.1)', () => {
-  it('profile.v1.json (stats, hero model, flags) still loads as it is', () => {
+  it('profile.v1.json (stats, hero model, flags) still loads, at the current defaults', () => {
     const backend = new FakeStorage({ [STORAGE_KEYS.profile]: JSON.stringify(profileV1) });
     const load = loadProfile(
       createSafeStorage(() => backend),
       { now: NOW },
     );
-    expect(load).toEqual({ status: 'ok', profile: profileV1, migratedFrom: null });
-    expect(backend.writeLog).toEqual([]);
+    // Saved before 1.3.94 (no `defaultsRev`, "Deal the next hand by itself" on): everything as it
+    // was but that switch, now off, and the revision that did it (H.2 rule 6), written back.
+    const upgraded = {
+      ...profileV1,
+      settings: { ...profileV1.settings, autoNext: false, defaultsRev: DEFAULTS_REV },
+    };
+    expect(load).toEqual({ status: 'ok', profile: upgraded, migratedFrom: null });
+    expect(backend.writeLog).toEqual([STORAGE_KEYS.profile]);
+    expect(JSON.parse(backend.data.get(STORAGE_KEYS.profile) as string)).toEqual(upgraded);
     // From schema 2 on, this fixture loads through PROFILE_MIGRATIONS[1] instead.
     expect(migrate(profileV1, PROFILE_VERSION, PROFILE_MIGRATIONS)).toMatchObject({
       ok: true,
       from: 1,
     });
+  });
+});
+
+describe('persist/migrations defaults revision (H.2 rule 6, 1.3.94)', () => {
+  const old = (): Profile => {
+    const p = defaultProfile(NOW);
+    delete p.settings.defaultsRev; // as saved before 1.3.94
+    return { ...p, settings: { ...p.settings, autoNext: true } };
+  };
+
+  it('revision 0 (no defaultsRev): "Deal the next hand by itself" goes off, the revision is kept', () => {
+    const before = deepFreeze(old());
+    const after = upgradeDefaults(before) as Profile;
+    expect(after).not.toBe(before); // pure: a new object, the frozen input untouched
+    expect(after).toEqual({
+      ...before,
+      settings: { ...before.settings, autoNext: false, defaultsRev: DEFAULTS_REV },
+    });
+    expect(isProfile(after)).toBe(true);
+    // Whatever the old value: an old profile with it off already gets only the revision.
+    const off = upgradeDefaults({ ...before, settings: { ...before.settings, autoNext: false } });
+    expect((off as Profile).settings).toMatchObject({ autoNext: false, defaultsRev: 1 });
+    // A revision 0 written out counts as absent.
+    const zero = upgradeDefaults({ ...before, settings: { ...before.settings, defaultsRev: 0 } });
+    expect((zero as Profile).settings).toMatchObject({ autoNext: false, defaultsRev: 1 });
+  });
+
+  it('once: at this revision or a newer one, the same object comes back (a choice stays)', () => {
+    const on = deepFreeze({
+      ...defaultProfile(NOW),
+      settings: { ...defaultSettings(), autoNext: true }, // turned on again after the upgrade
+    });
+    expect(upgradeDefaults(on)).toBe(on);
+    expect(upgradeDefaults(upgradeDefaults(old()))).toEqual(upgradeDefaults(old()));
+    const newer = deepFreeze({ ...on, settings: { ...on.settings, defaultsRev: 2 } });
+    expect(upgradeDefaults(newer)).toBe(newer);
+  });
+
+  it('never throws: what is not a profile with settings comes back as it is, for the guard', () => {
+    const odd: unknown[] = [
+      null,
+      1,
+      'profile',
+      [],
+      {},
+      { schema: 1, settings: null },
+      { schema: 1, settings: [] },
+      { schema: 1, settings: { autoNext: true, defaultsRev: '1' } },
+    ];
+    for (const x of odd) expect(upgradeDefaults(x)).toBe(x);
   });
 });

@@ -7,7 +7,9 @@
  * schemaVersion, exportedAt, profile, hands }`: the profile as stored and its counted hand records.
  *
  * Import reads such a file the way boot reads the profile (§14.6 rule 1): JSON, then the
- * migrations up to `PROFILE_VERSION`, then the guard of that version. A file from a newer app is
+ * migrations up to `PROFILE_VERSION`, then the settings' defaults revision (`upgradeDefaults`,
+ * H.2 rule 6: a file from before 1.3.94 gets "Deal the next hand by itself" off, once), then the
+ * guard of that version. A file from a newer app is
  * refused, never guessed at. Hand records that fail their guard, or that the profile has not
  * counted, are left out (Review only needs the good ones); the profile itself must be whole.
  *
@@ -34,6 +36,7 @@ import {
   PROFILE_VERSION,
   migrate,
   schemaOf,
+  upgradeDefaults,
   type Migrations,
 } from './migrations.ts';
 import type { checkWriter, writeProfile } from './profile.ts';
@@ -225,9 +228,10 @@ export function readImport(
   if (!kit.isIsoDate(x.exportedAt)) return refuse('damaged', 'exportedAt: expected an ISO time');
   const migrated = migrate(x.profile, PROFILE_VERSION, migrations);
   if (!migrated.ok) return refuse('damaged', `profile: ${migrated.problem}`);
-  const invalid = kit.profileProblem(migrated.value);
+  const value = upgradeDefaults(migrated.value);
+  const invalid = kit.profileProblem(value);
   if (invalid !== null) return refuse('damaged', invalid);
-  const profile = migrated.value as Profile;
+  const profile = value as Profile;
   if (!Array.isArray(x.hands)) return refuse('damaged', 'hands: expected a list');
 
   const hands = countedRecords(kit, x.hands as unknown[], profile.lastCommittedHandSeq);

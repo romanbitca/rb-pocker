@@ -1,9 +1,10 @@
 /**
  * The hand-end banner (PLAN §12.9): who won what, at the table centre, until the next hand starts
- * (3 s, or at once on a tap; with "Deal the next hand by itself" off it waits for the tap). The
- * whole banner is one button, so it is easy to hit on a phone; "Next hand ›" says what it does.
- * A polite live region announces the result. Under it, "Review this hand" (§12.10) opens the
- * replay of the hand that just ended; leaving the table pauses the game, so the 3 s wait stops.
+ * (on a tap; after 3 s too only with "Deal the next hand by itself" on, off by default since
+ * 1.3.94). The whole banner is one button, so it is easy to hit on a phone; "Next hand ›" says
+ * what it does. A polite live region announces the result. Under it, "Review this hand" (§12.10)
+ * opens the replay of the hand that just ended; leaving the table pauses the game, so a 3 s wait
+ * stops.
  * When the hand has a summary (§10.2; 1.3.92), "Hand summary" (Exam's "Exam result") sits beside
  * it and opens the summary sheet, which never opens by itself; while it is open the next hand
  * waits. On a narrow card each link's words take two lines inside its 44 px, so the row never

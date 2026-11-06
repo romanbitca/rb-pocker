@@ -7,6 +7,9 @@
  * Version 1 is the first, so the tables are empty today. Stage 8 and later add entries here, each
  * with a frozen fixture of the old version under `tests/persist/fixtures/` (H.2 rule 1). A
  * migration never deletes a field it does not understand: it copies it into `legacy` (rule 2).
+ *
+ * A default that changes for players who already have it stored is not a schema change: the
+ * settings' defaults revision (`upgradeDefaults`, H.2 rule 6) runs after the migrations.
  */
 
 /** Turns a version-n object into version n + 1. Pure: it returns a new object. */
@@ -24,6 +27,36 @@ export const PROFILE_MIGRATIONS: Migrations = {};
  */
 export const SESSION_VERSION = 1;
 export const SESSION_MIGRATIONS: Migrations = {};
+
+/**
+ * The revision of the settings' defaults this app writes (A.7 `Settings.defaultsRev`, H.2 rule 6).
+ * A profile saved before 1.3.94 has no `defaultsRev`: revision 0.
+ */
+export const DEFAULTS_REV = 1;
+
+const isObject = (x: unknown): x is Record<string, unknown> =>
+  typeof x === 'object' && x !== null && !Array.isArray(x);
+
+/**
+ * Brings a migrated profile's settings up to `DEFAULTS_REV` (H.2 rule 6): on load (the profile and
+ * its backup) and on Import, after the migrations and before the guard. A revision changes the
+ * settings once and is recorded with them, so what the player picks afterwards stays theirs. Pure
+ * and never throws: a profile at this revision or a newer one, and anything that is not a profile
+ * with settings or whose `defaultsRev` is not a number (the guard says why), come back as they
+ * are (the same object).
+ *
+ * Revision 1 (1.3.94; the owner, 6 Nov 2026: "when game end and i see result, it must not start
+ * automatically, i need to click next game"): "Deal the next hand by itself" is off by default, so
+ * the next hand waits for the player's tap. A stored `autoNext: true` cannot be told apart from
+ * the old default, so it goes off once.
+ */
+export function upgradeDefaults(profile: unknown): unknown {
+  if (!isObject(profile) || !isObject(profile.settings)) return profile;
+  const settings = profile.settings;
+  const rev = Object.hasOwn(settings, 'defaultsRev') ? settings['defaultsRev'] : 0;
+  if (typeof rev !== 'number' || rev >= DEFAULTS_REV) return profile;
+  return { ...profile, settings: { ...settings, autoNext: false, defaultsRev: DEFAULTS_REV } };
+}
 
 export type MigrateResult =
   { ok: true; value: unknown; from: number } | { ok: false; problem: string };

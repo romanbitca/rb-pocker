@@ -7,6 +7,7 @@ import {
   type HandState,
 } from '../../src/engine/types.ts';
 import { HAND_CATEGORIES } from '../../src/eval/evaluate.ts';
+import { DEFAULTS_REV } from '../../src/persist/migrations.ts';
 import {
   defaultFlags,
   defaultProfile,
@@ -78,7 +79,8 @@ describe('persist/schema defaults (schema defaults for every Profile field)', ()
       bb: 20,
       seatLevels: [null, null, null, null, null, null],
       speed: 'normal',
-      autoNext: true,
+      // 1.3.94 (§12.8): the next hand waits for the player's tap.
+      autoNext: false,
       amounts: 'chips',
       showEquity: true,
       fourColour: true,
@@ -88,7 +90,10 @@ describe('persist/schema defaults (schema defaults for every Profile field)', ()
       sound: true,
       haptics: true,
       handsPanel: 'open',
+      // H.2 rule 6: a new profile starts at the current defaults revision (nothing to bring up).
+      defaultsRev: DEFAULTS_REV,
     });
+    expect(DEFAULTS_REV).toBe(1);
   });
 
   it('a new profile has nothing committed, empty stats and default flags', () => {
@@ -188,6 +193,9 @@ describe('persist/schema settings guard (§3.2, §12.2)', () => {
     ['text for a flag', (s) => (loose(s).autoNext = 'yes'), 'settings.autoNext'],
     ['missing field', (s) => delete loose(s).handsPanel, 'settings.handsPanel'],
     ['newer schema', (s) => (loose(s).schema = 2), 'settings.schema'],
+    ['defaults revision as text', (s) => (loose(s).defaultsRev = '1'), 'settings.defaultsRev'],
+    ['fractional defaults revision', (s) => (s.defaultsRev = 1.5), 'settings.defaultsRev'],
+    ['negative defaults revision', (s) => (s.defaultsRev = -1), 'settings.defaultsRev'],
   ];
   it.each(bad)('rejects: %s', (_, edit, path) => {
     const s = edited(valid, edit);
@@ -213,6 +221,16 @@ describe('persist/schema settings guard (§3.2, §12.2)', () => {
     ];
     for (const change of extremes) expect(settingsProblem({ ...valid, ...change })).toBeNull();
     expect(isSettings({ ...valid, legacy: { theme: 'blue' } })).toBe(true);
+  });
+
+  it('accepts settings saved before 1.3.94, without a defaults revision (H.2 rules 2 and 6)', () => {
+    const old = edited(valid, (s) => {
+      delete s.defaultsRev;
+      s.autoNext = true;
+    });
+    expect(settingsProblem(old)).toBeNull();
+    // A newer app's revision is a number this one does not know yet: still settings.
+    expect(settingsProblem({ ...valid, defaultsRev: 7 })).toBeNull();
   });
 });
 

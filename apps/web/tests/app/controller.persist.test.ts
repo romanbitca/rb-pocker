@@ -17,7 +17,7 @@ import type {
   PlayerAction,
   ReplayRecord,
 } from '../../src/engine/types.ts';
-import type { SessionState } from '../../src/persist/schema.ts';
+import { defaultProfile, type SessionState, type Settings } from '../../src/persist/schema.ts';
 import { createSafeStorage, STORAGE_KEYS, type SafeStorage } from '../../src/persist/storage.ts';
 import { FakeStorage, securityError } from '../persist/fakeStorage.ts';
 import { drive, flush, heroPolicy, makeHarness, SEED, tick, type Harness } from './harness.ts';
@@ -43,12 +43,17 @@ const stored = (backend: FakeStorage): SessionState | null => {
   return raw === undefined ? null : (JSON.parse(raw) as SessionState);
 };
 
-/** Plays (hero passive) until `until` holds, a step at a time. */
+/**
+ * Plays (hero passive) until `until` holds, a step at a time; a hand end gets the banner's tap
+ * (the next hand waits for it unless "Deal the next hand by itself" is on, 1.3.94).
+ */
 async function playUntil(h: Harness, until: () => boolean): Promise<void> {
   for (let i = 0; i < 2000 && !until(); i++) {
     const s = h.state();
     if (s.game.mode === 'heroTurn' && s.game.legal !== null) {
       h.dispatch({ type: 'act', action: passive(s.game.legal) });
+    } else if (s.game.mode === 'handEnd' && !s.settings.autoNext) {
+      h.dispatch({ type: 'nextHand' });
     } else {
       await tick();
     }
@@ -206,6 +211,8 @@ describe('session: saved after every step, resumed deep-equal (§14.5, Stage 3 a
       const s = a.state();
       if (s.game.mode === 'heroTurn' && s.game.legal !== null) {
         a.dispatch({ type: 'act', action: shove(s.game.legal) });
+      } else if (s.game.mode === 'handEnd') {
+        a.dispatch({ type: 'nextHand' }); // the banner's tap (1.3.94), then the dialog
       } else await tick();
     }
     expect(a.state().game.heroBust).toBe(true);
@@ -281,9 +288,9 @@ describe('settings (§14.2, §14.6 rule 4)', () => {
     expect(storedSettings(backend).amounts).toBe('chips');
     await vi.advanceTimersByTimeAsync(1);
     expect(storedSettings(backend)).toMatchObject({ speed: 'fast', amounts: 'bb' });
-    h.dispatch({ type: 'settings', patch: { autoNext: false } });
+    h.dispatch({ type: 'settings', patch: { autoNext: true } });
     h.dispatch({ type: 'visibility', hidden: true });
-    expect(storedSettings(backend).autoNext).toBe(false);
+    expect(storedSettings(backend).autoNext).toBe(true);
   });
 
   it('pagehide flushes them too; the next launch uses them', async () => {
@@ -323,6 +330,51 @@ describe('settings (§14.2, §14.6 rule 4)', () => {
       bb: 50,
       seatLevels: [null, null, null, null],
     });
+  });
+});
+
+describe('the next hand on a tap (§12.8, 1.3.94: "Deal the next hand by itself" off by default)', () => {
+  const storedSettings = (backend: FakeStorage) =>
+    (JSON.parse(backend.data.get(STORAGE_KEYS.profile) as string) as { settings: Settings })
+      .settings;
+
+  it('a first launch: the hand end waits for "Next hand ›", however long; the tap deals', async () => {
+    const backend = new FakeStorage();
+    const { h } = launch(backend);
+    expect(h.state().settings.autoNext).toBe(false);
+    h.dispatch({ type: 'play' });
+    const [done] = await drive(h, { hands: 1, hero: passive });
+    const handSeq = (done as HandState).handSeq;
+    await vi.advanceTimersByTimeAsync(10 * 60_000); // ten minutes reading the result
+    await flush();
+    expect(h.state().game.mode).toBe('handEnd');
+    expect(h.state().game.hand).toMatchObject({ handSeq, phase: 'complete' });
+    h.dispatch({ type: 'nextHand' });
+    expect(h.state().game.hand?.handSeq).toBe(handSeq + 1);
+  }, 30_000);
+
+  it('a profile saved before 1.3.94 (on): off from its first launch, saved; on again, it stays', async () => {
+    const old = defaultProfile(new Date('2026-11-01T10:00:00.000Z'));
+    const settings: Settings = { ...old.settings, autoNext: true };
+    delete settings.defaultsRev;
+    const backend = new FakeStorage({
+      [STORAGE_KEYS.profile]: JSON.stringify({ ...old, rev: 9, settings }),
+    });
+    const a = launch(backend).h;
+    expect(a.state().ui.screen).toBe('home');
+    expect(a.state().settings).toMatchObject({ autoNext: false, defaultsRev: 1 });
+    expect(storedSettings(backend)).toMatchObject({ autoNext: false, defaultsRev: 1 });
+    // The player turns it on again: kept, and every later launch keeps it.
+    a.dispatch({ type: 'settings', patch: { autoNext: true, defaultsRev: 0 } }); // the revision is the app's
+    a.dispatch({ type: 'pagehide' });
+    expect(storedSettings(backend)).toMatchObject({ autoNext: true, defaultsRev: 1 });
+    a.controller.dispose();
+    for (let i = 0; i < 2; i++) {
+      const b = launch(backend).h;
+      expect(b.state().settings).toMatchObject({ autoNext: true, defaultsRev: 1 });
+      b.controller.dispose();
+    }
+    expect(storedSettings(backend).autoNext).toBe(true);
   });
 });
 

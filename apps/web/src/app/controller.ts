@@ -218,7 +218,10 @@ export const TIMING = {
   streetPauseMs: 400,
   /** Showdown reveal: 500 ms per shown hand (§12.8), added once, right after the reveal. */
   revealPerHandMs: 500,
-  /** Next hand after 3 s or on tap (§12.8); never under 1 s, so the result can be read. */
+  /**
+   * Next hand on a tap, or after 3 s with "Deal the next hand by itself" on (§12.8; off by
+   * default since 1.3.94); that wait never under 1 s, so the result can be read.
+   */
   nextHandMs: 3000,
   nextHandMinMs: 1000,
   /** Bots at Instant speed take 80 ms, enough for the announcement (§9.8). */
@@ -599,13 +602,14 @@ function push<T>(ring: T[], item: T, max: number): void {
 /**
  * `current` with `patch` applied, or `current` itself when the result would not be valid
  * settings (`settingsProblem`, A.7): only known fields, and `seatLevels` resized to one entry per
- * seat with the hero's null (the stored settings need `seatLevels.length === players`).
+ * seat with the hero's null (the stored settings need `seatLevels.length === players`). `schema`
+ * and `defaultsRev` (H.2 rule 6) are the app's, never a patch's.
  */
 export function sanitize(current: Settings, patch: Partial<Settings>): Settings {
   const next: Settings = { ...current, seatLevels: [...current.seatLevels] };
   const target = next as unknown as Record<string, unknown>;
   for (const [key, value] of Object.entries(patch as Record<string, unknown>)) {
-    if (!Object.hasOwn(current, key) || key === 'schema') continue;
+    if (!Object.hasOwn(current, key) || key === 'schema' || key === 'defaultsRev') continue;
     target[key] = Array.isArray(value) ? [...(value as unknown[])] : value;
   }
   const levels = next.seatLevels;
