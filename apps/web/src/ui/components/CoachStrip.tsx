@@ -1,12 +1,14 @@
 /**
- * The coach strip (PLAN §12.3, §12.6, §10.2): the coach's one-line peek, in the main bundle (the
- * full sheet is a lazy chunk, `CoachSheet.tsx`). Presentational: it draws a `StripView`
- * (`ui/coach.ts`) and reports taps.
+ * The coach strip (PLAN §12.3, §12.6, §10.2): the coach's peek, in the coach's lazy chunk with
+ * the sheet (`ui/coachEntry.ts`, §15.3). Presentational: it draws a `StripView` (`ui/coach.ts`)
+ * and reports taps.
  *
  * Variants:
- * - `strip` (portrait, 48 px): an empty 44 px Undo slot on the left (Undo arrives in Stage 6;
- *   the slot is CSS padding, no element), then the level's content. Beginner's advice is one big
- *   button (tap the strip or "›" opens the sheet); Intermediate's has a "Why?" button.
+ * - `strip` (portrait, 56 px): a 44 px slot on the left (CSS padding; the toolbar Undo sits over
+ *   it), then the level's content. The advice is "Coach: Call 40" over its line, which wraps to
+ *   two lines at most (the labelled pair needs two on a 360–390 px phone; a longer sentence ends
+ *   in "…"); the strip's height never follows the words. Beginner's advice is one big button (tap
+ *   the strip or "›" opens the sheet); Intermediate's has a "Why?" button.
  * - `header` (the landscape column's coach row and the wide inline panel's head, §12.5): the same
  *   content without opening a sheet: the details sit right under it.
  * - `pill` (compact portrait, §12.3): a 44 px "Coach" pill in the hero strip; a tap opens the
@@ -24,6 +26,7 @@ import type { Grade } from '../../brain/types.ts';
 import { en } from '../../i18n/en.ts';
 import { coachWords } from '../../i18n/coachUi.ts';
 import type { StripView } from '../coach.ts';
+import { sentences } from '../coachText.ts';
 import styles from './CoachStrip.module.css';
 import { GradeChip } from './GradeChip.tsx';
 
@@ -48,13 +51,18 @@ export interface CoachStripProps {
 const cx = (...names: (string | false | null | undefined)[]): string =>
   names.filter(Boolean).join(' ');
 
+/**
+ * "Coach: Call 40" over the line. A line of two sentences (the two numbers, §12.6: "All 5 players:
+ * 26%. Raiser alone: about 44%.", "You win about 45%. You need 25%.") shows one a line: the CSS
+ * keeps the "\n" (`white-space: pre-line`), so a pair reads one number and its label a line.
+ */
 function Advice({ headline, line }: { headline: string; line: string }) {
   return (
     <>
       <span className={styles.head}>
         {coachWords.prefix} <strong>{headline}</strong>
       </span>
-      {line !== '' && <span className={styles.line}>{line}</span>}
+      {line !== '' && <span className={styles.line}>{sentences(line).join('\n')}</span>}
     </>
   );
 }

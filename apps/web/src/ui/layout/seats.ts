@@ -58,7 +58,8 @@ export const SHELL = {
   /** How far the hero's hole cards reach up into the table box. */
   heroOverlap: 24,
   heroOverlapCompact: 20,
-  coachStrip: 48,
+  /** Portrait: the head and two lines of the coach's line, and 6 px for the action bar's badge. */
+  coachStrip: 56,
   actionBar: 64,
   /** Portrait and landscape: the Hands edge tab's gutter at the right edge of the table (§12.3). */
   edgeGutter: 28,

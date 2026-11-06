@@ -26,7 +26,8 @@ export const coachWords = {
     `Any cards: ${any}%. Their likely hands: about ${likely}%.`,
   /**
    * The pair when the range number counts only the raiser (and the callers already in), fewer
-   * players than the HUD's (§8.10): each number says whom. Kept short: the strip has one line.
+   * players than the HUD's (§8.10): each number says whom. Kept short: the strip shows a sentence a
+   * line, and a 360 px phone has 210 px for one beside "Why?" (§12.6).
    */
   pairRaiser: (players: number, any: string, likely: string) =>
     `All ${players} players: ${any}%. Raiser alone: about ${likely}%.`,

@@ -1,13 +1,16 @@
-/* The coach strip (PLAN §12.3, §12.6): a calm 48 px peek between the hero strip and the action
-   bar. The 44 px Undo slot on the left is reserved (Undo arrives in Stage 6): padding, no element.
+/* The coach strip (PLAN §12.3, §12.6): a calm 56 px peek between the hero strip and the action
+   bar. The 44 px slot on its left is padding: the toolbar Undo sits over it (Table.module.css).
+   The bottom 6 px are padding too: the action bar's "Coach" badge reaches 5 px up into them. The
+   50 px above hold the advice's head and two lines of its line; the height never follows the
+   words, so the table above never moves.
    Literal px sizes on the controls: tap targets (§12.12), read by the component tests. */
 .strip {
   display: flex;
   align-items: center;
   gap: 8px;
   min-width: 0;
-  height: 48px;
-  padding: 2px max(8px, env(safe-area-inset-right)) 2px
+  height: 56px;
+  padding: 0 max(8px, env(safe-area-inset-right)) 6px
     calc(max(8px, env(safe-area-inset-left)) + 44px + 8px);
   color: var(--text);
 }
@@ -33,7 +36,10 @@
   white-space: nowrap;
 }
 
-/* "Coach: Call 40" over one line of reason. */
+/* "Coach: Call 40" over its line. In the strip the line takes two lines at most: the 18 px head
+   and two 16 px lines fill the 50 px. A line of two sentences (the two numbers, §12.6) shows one a
+   line (the "\n" CoachStrip puts between them); one sentence wraps, split evenly where the browser
+   can; past two lines it ends in "…" (the sheet has it whole). */
 .advice {
   display: flex;
   flex: 1;
@@ -41,9 +47,14 @@
   justify-content: center;
   min-width: 0;
   margin: 0;
-  gap: 1px;
 }
+/* The head and the line keep their heights (never squeezed by the 50 px). Each one's clip box
+   reaches a little below its lines (padding, then as much negative margin), so "(", "," and the
+   descenders are not cut. */
 .head {
+  flex: none;
+  margin: 0 0 -2px;
+  padding: 0 0 2px;
   overflow: hidden;
   color: var(--muted);
   font-size: 0.9375rem;
@@ -55,18 +66,41 @@
   color: var(--text);
   font-size: 1rem;
   font-weight: 700;
+  /* 18 px, as the head's own: the head's line stays 18 px tall. */
+  line-height: 1.125;
 }
 .line {
+  display: -webkit-box;
+  flex: none;
+  margin: 0 0 -1px;
+  padding: 0 0 1px;
   overflow: hidden;
   color: var(--text);
   font-size: 0.875rem;
-  line-height: 1.25;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  line-height: 1.143;
+  white-space: pre-line;
+  text-wrap: balance;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
 }
-/* In the panels and the landscape column the reason may wrap: there is room under the head. */
+/* In the panels and the landscape column the line takes the lines it needs: there is room. */
+.header .advice,
+.wrap .advice {
+  gap: 1px;
+}
+.header .head strong,
+.wrap .head strong {
+  line-height: inherit;
+}
 .header .line,
-.wrap .line,
+.wrap .line {
+  display: block;
+  line-height: 1.25;
+  text-wrap: wrap;
+  -webkit-line-clamp: none;
+  line-clamp: none;
+}
 .wrap .narration,
 .wrap .muted {
   white-space: normal;
@@ -74,10 +108,7 @@
 .wrap {
   height: auto;
   min-height: 48px;
-  padding-right: 0;
-}
-.wrap .wide {
-  white-space: normal;
+  padding: 2px 0 2px calc(max(8px, env(safe-area-inset-left)) + 44px + 8px);
 }
 
 /* Beginner: the whole strip opens the sheet; the "›" is drawn by CSS (§12.7: never a glyph). */
@@ -155,14 +186,14 @@
 .wide:active {
   background: var(--control-bg-pressed);
 }
-/* "Coach is not available. Tap to try again." */
+/* "Coach is not available. Tap to try again.": two 18 px lines in the 44 px button where one
+   does not fit (360 and 375 px phones). */
 .wide {
   flex: 1;
   min-width: 0;
   overflow: hidden;
   font-weight: 500;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  line-height: 1.2;
 }
 
 /* Compact mode's "Coach" pill (§12.3): a 28 px face drawn by `::before` inside a 44 px hit area;
