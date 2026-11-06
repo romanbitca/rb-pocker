@@ -22,7 +22,8 @@ you what to do, and why. Play money only. It is live at https://poker.romanbitca
   - Exam: test yourself.
 - It shows your win chance against all players and against their likely hands, plus the pot odds,
   your outs and your draws.
-- Every decision gets a grade, and every hand ends with a short summary.
+- Every decision gets a grade. After a hand, tap **Hand summary** (in Exam: **Exam result**) to see
+  them all; it never opens by itself.
 - **Learn** has 7 short lessons, a glossary, the hand rankings and "Which hand wins?".
 - The **Hand Drill** has 8 quiz games about poker hands, at three difficulties.
 
@@ -39,8 +40,9 @@ you what to do, and why. Play money only. It is live at https://poker.romanbitca
 
 ### Quality
 
-- 3,708 unit tests and 481 browser tests (Chromium and WebKit, phone to desktop sizes).
+- 3,744 unit tests and 484 browser tests (Chromium and WebKit, phone to desktop sizes).
 - 10 bot-against-bot self-play checks, and an accessibility check on every screen.
 - Lighthouse on a phone: Performance 94, Accessibility 100, Best practices 100, installable.
 - A review of 964 coach decisions found the coach's maths correct. Its advice and words were fixed
-  where they taught the wrong thing.
+  where they taught the wrong thing, and two rounds of play-testing (about 850 hands at phone sizes)
+  fixed the rest of what they found.
