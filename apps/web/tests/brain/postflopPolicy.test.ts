@@ -197,7 +197,8 @@ describe('facing a bet (§8.5 step 4)', () => {
     });
     const no = decide({ ...facing, hole: '8s 9d', board: 'Kh 8c 4d', E: 0.15 });
     expect(no.action).toEqual({ type: 'fold' });
-    expect(no.trace[0]).toEqual({ code: 'FOLD_PRICE', data: { E: 0.15, need: 0.2 } });
+    // R (1 in position): the price bar's realised E·R (§12.6).
+    expect(no.trace[0]).toEqual({ code: 'FOLD_PRICE', data: { E: 0.15, need: 0.2, R: 1 } });
   });
 
   it('out of position the realisation lowers EV(call)', () => {

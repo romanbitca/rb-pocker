@@ -17,7 +17,13 @@ const VIEW: FeedbackView = {
   decisionId: 3,
   grade: 'blunder',
   coachMove: { kind: 'call', amount: 40, bb: 20 },
-  reason: feedbackLine({ row: 'foldedPrice', E: 0.97, need: 0.2, rangeAdjust: false }),
+  reason: feedbackLine({
+    row: 'foldedPrice',
+    E: 0.97,
+    need: 0.2,
+    rangeAdjust: false,
+    players: null,
+  }),
   canUndo: true,
 };
 

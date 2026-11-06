@@ -45,6 +45,7 @@ import {
   explain,
   explainInput,
   feedbackLine,
+  rangeNumber,
   shownPct,
   type FeedbackInput,
   type Line,
@@ -275,6 +276,11 @@ export interface FeedbackFacts {
   need: number;
   /** §8.10's RANGE_ADJUST condition with the HUD's number: the price rows add "against their likely hands". */
   rangeAdjust: boolean;
+  /**
+   * The hint's range number counted only the raiser and the callers already in, not all `nOpp`
+   * players `E` counts (§8.3, §8.10): the price rows then name all of them.
+   */
+  raiserRange: boolean;
 }
 
 /** An all-in move: a bet or raise to the legal maximum, or a call that puts the hero all-in. */
@@ -296,7 +302,8 @@ function allInMove(action: PlayerAction, legal: LegalActions): boolean {
  * - The price rows compare the numbers they show: a fold when `E·R` beats the price in whole
  *   percentages (so `{E}` does too), a call when `{E}` itself is below it (so `E·R` is too); a
  *   fold before anyone raised has no price row (the coach never just calls there, C10).
- *   `{E}` is `eRange` and `{need}` the capped price, as the grade read them.
+ *   `{E}` is `eRange` and `{need}` the capped price, as the grade read them. `{E}` counts every
+ *   live opponent: when the hint's range number counted only the raiser (§8.10), the row says so.
  * - "Bet/raised with Air heads-up" ends "Checking was cheaper": only when checking was possible.
  * - The fallback, "The coach's move wins more chips here: {alt}", otherwise.
  */
@@ -322,11 +329,17 @@ export function feedbackRow(x: FeedbackFacts): FeedbackInput {
   ) {
     return { row: 'size', tooBig: taken.to > rec.to, to: rec.to, bb: x.bb };
   }
+  const price = {
+    E: x.E,
+    need: x.need,
+    rangeAdjust: x.rangeAdjust,
+    players: x.raiserRange ? x.nOpp : null,
+  };
   if (t === 'fold' && !open && shownPct(x.E * x.R) > shownPct(x.need)) {
-    return { row: 'foldedPrice', E: x.E, need: x.need, rangeAdjust: x.rangeAdjust };
+    return { row: 'foldedPrice', ...price };
   }
   if (t === 'call' && shownPct(x.E) < shownPct(x.need)) {
-    return { row: 'calledPrice', E: x.E, need: x.need, rangeAdjust: x.rangeAdjust };
+    return { row: 'calledPrice', ...price };
   }
   if (t === 'check' && (x.bucket === 'strong' || x.bucket === 'monster')) {
     return { row: 'checkedStrong' };
@@ -401,6 +414,14 @@ export function gradeDecision(
       R,
       need: f.need,
       rangeAdjust: showsRangeAdjust(eRandom ?? decision.eRandom, f.eRange, f.need),
+      raiserRange:
+        rangeNumber({
+          action: rec,
+          trace: decision.trace,
+          legal,
+          eRange: decision.eRange,
+          nOpp: f.nOpp,
+        }).callers !== null,
     });
     if (row.row !== 'fallback') feedback = feedbackLine(row);
   }

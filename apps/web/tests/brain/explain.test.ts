@@ -6,11 +6,13 @@
  */
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
+import { coachHint } from '../../src/brain/decide.ts';
 import {
   explain,
   explainInput,
   feedbackLine,
   isAllIn,
+  rangeNumber,
   shownPct,
   TEMPLATE_KEYS,
   templateSpec,
@@ -26,7 +28,7 @@ import type { LegalActions, Observation, PlayerAction } from '../../src/engine/t
 import { hintText, lineText, pctText } from '../../src/i18n/coach.ts';
 import { enCoach } from '../../src/i18n/enCoach.ts';
 import { checkHint } from '../../scripts/copy-rules.ts';
-import { bet, call, check, raise } from '../engine/play.ts';
+import { bet, call, check, fold, raise } from '../engine/play.ts';
 import { FC_SEED } from '../engine/helpers.ts';
 import { observeSpot, playSpot, testProfile } from './fixtures.ts';
 
@@ -531,7 +533,15 @@ describe('RANGE_ADJUST (§8.10): both equities, labelled, when they differ by 5 
     const e = explain(input({ eRandom: 0.62, eRange: 0.35, trace: [r('CALL_PROFITABLE')] }));
     expect(lineText(e.reasons[1] as Line)).toContain('You win about 35%.');
     expect(lineText(e.numbers)).toContain('Win 62%');
-    expect(e.shown).toEqual({ eRandom: 0.62, eRange: 0.35, win: 0.35, need: 0.25 });
+    expect(e.shown).toEqual({
+      eRandom: 0.62,
+      eRange: 0.35,
+      win: 0.35,
+      need: 0.25,
+      players: 1,
+      callers: null,
+      bar: { win: 0.35, need: 0.25, good: true, basis: 'plain' },
+    });
   });
 
   it('a higher range number says the hands are likely weaker; unknown villain: both, plainly', () => {
@@ -643,6 +653,348 @@ describe('RANGE_ADJUST (§8.10): both equities, labelled, when they differ by 5 
       { numRuns: 2000, seed: FC_SEED },
     );
   });
+});
+
+/**
+ * Whom each number counts (§8.10; the owner's report of 3 Nov 2026: K♠7♣ facing an early raise,
+ * "Any cards: 26%. Their likely hands: about 44%."). The HUD's `eRandom` counts every live
+ * opponent; §8.3's E counts only the raiser and the callers already in. When the two count
+ * different players, each says whom; when they count the same players, today's words stay.
+ */
+describe('whom each number counts (§8.10): the raiser alone or every player', () => {
+  /** Before the flop facing an open: 5 opponents, 4 of them still to act after the hero. */
+  const multiway = (over: Partial<ExplainInput> = {}): ExplainInput =>
+    preflop({
+      facing: 'open',
+      nOpp: 5,
+      k: 4,
+      eRandom: 0.26,
+      eRange: 0.17,
+      need: 0.38,
+      pot: 400,
+      winPot: 400,
+      toCall: 250,
+      action: { type: 'fold' },
+      trace: [r('FOLD_VS_RAISE', { E: 0.44, R: 0.72, callers: 0 })],
+      ...over,
+    });
+
+  it('a raise in front and players behind: both numbers say whom they count', () => {
+    const spot = multiway();
+    const e = explain(spot);
+    expect(keys(e.reasons)).toEqual(['RANGE_ADJUST.raiser', 'FOLD_VS_RAISE']);
+    expect(lineText(e.reasons[0] as Line)).toBe(
+      "Against all 5 players with any cards, you win 26%. Against the raiser's likely hands alone, you win about 44%.",
+    );
+    expect(lineText(e.reasons[1] as Line)).toContain('wins only about 44% against it');
+    expect(e.shown).toEqual({
+      eRandom: 0.26,
+      eRange: 0.44,
+      win: 0.44,
+      need: 0.38,
+      players: 5,
+      callers: 0,
+      // 44% beats the price, but K7o out of position keeps only 0.72 of it: ✗ beside the fold.
+      bar: { win: 0.44 * 0.72, need: 0.38, good: false, basis: 'realised' },
+    });
+    expect(e.trace[0]).toEqual({
+      code: 'RANGE_ADJUST',
+      data: { eRandom: 0.26, eRange: 0.44, players: 5, callers: 0 },
+    });
+    // The numbers line keeps the HUD's number (C9).
+    expect(lineText(e.numbers)).toContain('Win 26%');
+    expect(checkHint(e, spot)).toEqual([]);
+  });
+
+  it('with callers already in, the range number names the raiser and the callers', () => {
+    const one = multiway({ nOpp: 4, trace: [r('FOLD_VS_RAISE', { E: 0.4, callers: 1 })] });
+    const e = explain(one);
+    expect(keys(e.reasons)).toEqual(['RANGE_ADJUST.callers', 'FOLD_VS_RAISE']);
+    expect(lineText(e.reasons[0] as Line)).toBe(
+      'Against all 4 players with any cards, you win 26%. Against the likely hands of the raiser and 1 caller, you win about 40%.',
+    );
+    expect(e.shown).toMatchObject({ players: 4, callers: 1 });
+    expect(checkHint(e, one)).toEqual([]);
+    const two = multiway({
+      action: { type: 'call' },
+      trace: [r('CALL_PREFLOP', { E: 0.42, callers: 2 })],
+    });
+    expect(lineText(explain(two).reasons[0] as Line)).toBe(
+      'Against all 5 players with any cards, you win 26%. Against the likely hands of the raiser and 2 callers, you win about 42%.',
+    );
+    expect(checkHint(explain(two), two)).toEqual([]);
+  });
+
+  it('heads-up, or with nobody left to act, both count the same players: the words stay', () => {
+    // The big blind against the button's open: the raiser is the only opponent.
+    const headsUp = multiway({
+      nOpp: 1,
+      k: 0,
+      eRandom: 0.55,
+      eRange: 0.45,
+      need: 0.27,
+      action: { type: 'call' },
+      trace: [r('CALL_PREFLOP', { E: 0.43, callers: 0 })],
+    });
+    const e = explain(headsUp);
+    expect(keys(e.reasons)).toEqual(['RANGE_ADJUST.plain', 'CALL_PREFLOP']);
+    expect(lineText(e.reasons[0] as Line)).toBe(
+      'Against any cards you win 55%. Against their likely hands, you win about 43%.',
+    );
+    expect(e.shown).toMatchObject({ players: 1, callers: null });
+    expect(checkHint(e, headsUp)).toEqual([]);
+    // The raiser and its caller are every opponent left: the same players again.
+    const allIn = multiway({ nOpp: 2, k: 0, trace: [r('FOLD_VS_RAISE', { E: 0.4, callers: 1 })] });
+    expect(keys(explain(allIn).reasons)[0]).toBe('RANGE_ADJUST.plain');
+    expect(explain(allIn).shown.callers).toBeNull();
+    // After the flop the range number is the decision's eRange, over every opponent.
+    const flop = input({ nOpp: 3, eRandom: 0.4, eRange: 0.3, trace: [r('CALL_PROFITABLE')] });
+    expect(keys(explain(flop).reasons)[0]).toBe('RANGE_ADJUST');
+    expect(explain(flop).shown.callers).toBeNull();
+  });
+
+  it('a range code said without RANGE_ADJUST still marks whom its number counts', () => {
+    // 28% against the raiser and 26% for all five: too close for RANGE_ADJUST, but the sheet's
+    // HUD line says "all 5 players" next to the reason's "about 28% against it".
+    const e = explain(
+      multiway({ eRange: 0.25, trace: [r('FOLD_VS_RAISE', { E: 0.28, callers: 0 })] }),
+    );
+    expect(keys(e.reasons)).toEqual(['FOLD_VS_RAISE']);
+    expect(e.shown).toMatchObject({ eRange: null, players: 5, callers: 0 });
+    // A reason with no range number leaves the HUD's words alone.
+    const open = explain(
+      multiway({ facing: 'none', action: RAISE_TO(50), trace: [r('OPEN_RANGE', { openPct: 17 })] }),
+    );
+    expect(open.shown.callers).toBeNull();
+  });
+
+  it('rangeNumber: the number explain shows and whom it counts (the grade reads it)', () => {
+    expect(rangeNumber(multiway())).toEqual({ E: 0.44, callers: 0 });
+    expect(rangeNumber(multiway({ nOpp: 1 }))).toEqual({ E: 0.44, callers: null });
+    // A policy's range number for another action than the final one is not the hint's.
+    expect(rangeNumber(multiway({ action: { type: 'call' } }))).toEqual({ E: 0.17, callers: null });
+  });
+
+  it('the owner’s spot, through the real coach: K♠7♣ in the hijack, UTG opens, 4 to act', () => {
+    const h = playSpot({
+      stacks: new Array<number>(6).fill(10_000),
+      button: 0,
+      holes: { 4: 'Ks 7c' },
+      inputs: [raise(3, 250)],
+    });
+    const obs = observeSpot(h, 4);
+    const { decision, explanation: e } = coachHint(obs, null);
+    expect(decision.action).toEqual({ type: 'fold' });
+    expect(decision.trace[0]).toMatchObject({ code: 'FOLD_VS_RAISE', data: { callers: 0 } });
+    expect(keys(e.reasons)).toEqual(['RANGE_ADJUST.raiser', 'FOLD_VS_RAISE']);
+    expect(lineText(e.reasons[0] as Line)).toMatch(
+      /^Against all 5 players with any cards, you win \d+%\. Against the raiser's likely hands alone, you win about \d+%\.$/,
+    );
+    expect(e.shown).toMatchObject({ players: 5, callers: 0 });
+    const f = features(obs, testProfile('reweight+stats', 4000, 'coach'), coachSeed(obs));
+    expect(checkHint(e, explainInput(obs, f, decision))).toEqual([]);
+  }, 20_000);
+
+  it('the same seat facing the button’s open from the big blind (heads-up): the words stay', () => {
+    const h = playSpot({
+      stacks: new Array<number>(6).fill(10_000),
+      button: 0,
+      holes: { 2: 'Ks 7c' },
+      inputs: [fold(3), fold(4), raise(5, 250), fold(0), fold(1)],
+    });
+    const { explanation: e } = coachHint(observeSpot(h, 2), null);
+    expect(keys(e.reasons)[0]).toBe('RANGE_ADJUST.plain');
+    expect(lineText(e.reasons[0] as Line)).toMatch(
+      /^Against any cards you win \d+%\. Against their likely hands, you win about \d+%\.$/,
+    );
+    expect(e.shown).toMatchObject({ players: 1, callers: null });
+  }, 20_000);
+});
+
+/**
+ * The sheet's price bar (§12.6) follows the comparison the coach made, so its ✓/✗ never argues
+ * against the advice: before, a fold with a win chance above the price drew ✓ ("You win more
+ * often than you need.") and a set-mining call below it drew ✗.
+ */
+describe('the price bar never argues against the advice (§12.6)', () => {
+  /** Out of position on the flop facing a pot-size bet: need 33%, R = 0.85. */
+  const oop = (over: Partial<ExplainInput> = {}): ExplainInput =>
+    input({ position: 'OOP', eRandom: 0.37, eRange: 0.37, need: 0.33, ...over });
+  /** Before the flop facing an open with players behind, as the owner's spot. */
+  const open = (over: Partial<ExplainInput> = {}): ExplainInput =>
+    preflop({
+      facing: 'open',
+      nOpp: 5,
+      k: 4,
+      eRandom: 0.26,
+      eRange: 0.17,
+      need: 0.385,
+      pot: 400,
+      winPot: 400,
+      toCall: 250,
+      ...over,
+    });
+
+  it('a fold the win chance alone would pay: the realised E·R, never ✓', () => {
+    // 37% ≥ 33%, but out of position later bets leave 37% × 0.85 = 31%: the coach folds.
+    const spot = oop({
+      action: { type: 'fold' },
+      trace: [r('FOLD_PRICE', { E: 0.37, need: 0.33, R: 0.85 })],
+    });
+    const e = explain(spot);
+    expect(keys(e.reasons)).toEqual(['FOLD_PRICE.realise']);
+    expect(e.shown.bar).toEqual({
+      win: 0.37 * 0.85,
+      need: 0.33,
+      good: false,
+      basis: 'realised',
+    });
+    expect(checkHint(e, spot)).toEqual([]);
+    // Before the flop: A9o in the hijack, 51% against the raiser alone but 0.72 of it realised.
+    const pre = open({
+      action: { type: 'fold' },
+      trace: [r('FOLD_VS_RAISE', { E: 0.51, need: 0.385, R: 0.72, callers: 0 })],
+    });
+    expect(explain(pre).shown.bar).toEqual({
+      win: 0.51 * 0.72,
+      need: 0.385,
+      good: false,
+      basis: 'realised',
+    });
+    expect(checkHint(explain(pre), pre)).toEqual([]);
+  });
+
+  it('a call the win chance alone would not pay: the implied price, never ✗', () => {
+    // Set mining (E6's shape): 31% against all three players, need 38.5%, but a set wins more:
+    // 250 / (400 + 250 + 460) = 22.5%.
+    const set = preflop({
+      facing: 'open',
+      nOpp: 3,
+      k: 2,
+      eRandom: 0.31,
+      eRange: 0.29,
+      need: 0.385,
+      pot: 400,
+      winPot: 400,
+      toCall: 250,
+      action: { type: 'call' },
+      trace: [r('SET_MINING', { E: 0.33, need: 0.385, R: 0.95, implied: 460, callers: 0 })],
+    });
+    const e = explain(set);
+    expect(e.shown.bar).toMatchObject({ win: 0.31, good: true, basis: 'implied' });
+    expect(e.shown.bar?.need).toBeCloseTo(250 / 1110, 12);
+    expect(checkHint(e, set)).toEqual([]);
+    // A draw after the flop: IMPLIED's own price, the one its sentence says is enough.
+    const draw = input({
+      eRandom: 0.3,
+      eRange: 0.3,
+      need: 0.333,
+      trace: [r('IMPLIED', { E: 0.3, need: 0.333, needImplied: 0.28, draw: 'flush' })],
+    });
+    expect(explain(draw).shown.bar).toEqual({
+      win: 0.3,
+      need: 0.28,
+      good: true,
+      basis: 'implied',
+    });
+  });
+
+  it('the plain comparison stays when it agrees with the advice', () => {
+    const call = explain(input({ eRandom: 0.45, eRange: 0.45, trace: [r('CALL_PROFITABLE')] }));
+    expect(call.shown.bar).toEqual({ win: 0.45, need: 0.25, good: true, basis: 'plain' });
+    const fold = explain(
+      input({ eRandom: 0.2, eRange: 0.2, action: { type: 'fold' }, trace: [r('FOLD_PRICE')] }),
+    );
+    expect(fold.shown.bar).toEqual({ win: 0.2, need: 0.25, good: false, basis: 'plain' });
+    // The owner's spot: the raiser's 38.3% under a 38.5% price, ✗ beside the fold.
+    const owner = explain(
+      open({
+        action: { type: 'fold' },
+        trace: [r('FOLD_VS_RAISE', { E: 0.383, R: 0.72, callers: 0 })],
+      }),
+    );
+    expect(owner.shown.bar).toMatchObject({ win: 0.383, good: false, basis: 'plain' });
+    // Nothing to call: no bar.
+    expect(explain(free({ trace: [r('CHECK_WEAK')], action: { type: 'check' } })).shown.bar).toBe(
+      null,
+    );
+  });
+
+  it('no bar when the coach did not decide on the price', () => {
+    // The small blind folds Seven-Two heads-up: 35% beats the 25% price, but the range says fold.
+    const range = preflop({
+      eRandom: 0.35,
+      eRange: 0.35,
+      need: 0.25,
+      action: { type: 'fold' },
+      trace: [r('FOLD_RANGE')],
+    });
+    expect(explain(range).shown.bar).toBeNull();
+    // Pocket Twos on the button: 45% × 0.95 still beats 38.5%, but it is outside the call range.
+    const cap = open({
+      action: { type: 'fold' },
+      trace: [r('FOLD_VS_RAISE', { E: 0.45, R: 0.95, callers: 0 })],
+    });
+    expect(explain(cap).shown.bar).toBeNull();
+    // An open raise with 18% against a 40% price to call the blind: the open range decides.
+    const raise = preflop({
+      eRandom: 0.18,
+      eRange: 0.18,
+      action: RAISE_TO(50),
+      trace: [r('OPEN_RANGE', { openPct: 17 })],
+    });
+    expect(explain(raise).shown.bar).toBeNull();
+    // A committed call under the price, with no implied odds.
+    const committed = input({ eRandom: 0.2, eRange: 0.2, trace: [r('COMMITTED')] });
+    expect(explain(committed).shown.bar).toBeNull();
+  });
+
+  it('real spots through the coach: the realised fold, the set-mining call, no ✓ beside a fold', () => {
+    const six = new Array<number>(6).fill(10_000);
+    // A♠9♦ in the hijack after an early raise: ✓ beside "Fold" before.
+    const a9 = coachHint(
+      observeSpot(
+        playSpot({ stacks: six, button: 0, holes: { 4: 'As 9d' }, inputs: [raise(3, 250)] }),
+        4,
+      ),
+      null,
+    );
+    expect(a9.decision.action).toEqual({ type: 'fold' });
+    expect(a9.explanation.shown.win).toBeGreaterThan(a9.explanation.shown.need);
+    expect(a9.explanation.shown.bar).toMatchObject({ good: false, basis: 'realised' });
+    // E6: Six-Six on the button against a TAG's cutoff open: ✗ beside "Call" before.
+    const sixes = coachHint(
+      observeSpot(
+        playSpot({
+          stacks: six,
+          button: 0,
+          holes: { 0: '6c 6d' },
+          inputs: [fold(3), fold(4), raise(5, 250)],
+        }),
+        0,
+        { labels: [null, null, null, null, null, 'tag'] },
+      ),
+      null,
+    );
+    expect(sixes.decision.action).toEqual({ type: 'call' });
+    expect(sixes.explanation.shown.bar).toMatchObject({ good: true, basis: 'implied' });
+    // Ten-Nine on K♥9♥4♦ out of position facing a pot-size bet: FOLD_PRICE.realise.
+    const t9 = coachHint(
+      observeSpot(
+        playSpot({
+          stacks: [10_000, 10_000],
+          button: 0,
+          holes: { 1: 'Ts 9d' },
+          board: 'Kh 9h 4d',
+          inputs: [raise(0, 300), call(1), check(1), bet(0, 600)],
+        }),
+        1,
+      ),
+      null,
+    );
+    expect(keys(t9.explanation.reasons)).toContain('FOLD_PRICE.realise');
+    expect(t9.explanation.shown.bar).toMatchObject({ good: false, basis: 'realised' });
+  }, 30_000);
 });
 
 describe('"Why not …?" for every recommended action (§8.10 hint structure 4)', () => {
@@ -1222,19 +1574,33 @@ describe('Appendix E spots E9, E13, E16 (Stage 5 acceptance 7)', () => {
 describe('feedback rows (Appendix F.5): the template plumbing', () => {
   const cases: ReadonlyArray<[Parameters<typeof feedbackLine>[0], string]> = [
     [
-      { row: 'foldedPrice', E: 0.4, need: 0.25, rangeAdjust: false },
+      { row: 'foldedPrice', E: 0.4, need: 0.25, rangeAdjust: false, players: null },
       'You folded with a 40% win chance. You needed only 25% to call.',
     ],
     [
-      { row: 'foldedPrice', E: 0.4, need: 0.25, rangeAdjust: true },
+      { row: 'foldedPrice', E: 0.4, need: 0.25, rangeAdjust: true, players: null },
       'You folded with a 40% win chance against their likely hands. You needed only 25% to call.',
     ],
     [
-      { row: 'calledPrice', E: 0.2, need: 0.25, rangeAdjust: true },
+      { row: 'calledPrice', E: 0.2, need: 0.25, rangeAdjust: true, players: null },
       'You called with a 20% win chance against their likely hands. You needed 25%. Calling loses chips over time.',
     ],
     [
-      { row: 'calledPrice', E: 0.2, need: 0.25, rangeAdjust: false },
+      { row: 'calledPrice', E: 0.2, need: 0.25, rangeAdjust: false, players: null },
+      'You called with a 20% win chance. You needed 25%. Calling loses chips over time.',
+    ],
+    // The hint's range number counted only the raiser (§8.10): the row names every player.
+    [
+      { row: 'foldedPrice', E: 0.4, need: 0.25, rangeAdjust: true, players: 5 },
+      'You folded with a 40% win chance against the likely hands of all 5 players. You needed only 25% to call.',
+    ],
+    [
+      { row: 'calledPrice', E: 0.2, need: 0.25, rangeAdjust: true, players: 3 },
+      'You called with a 20% win chance against the likely hands of all 3 players. You needed 25%. Calling loses chips over time.',
+    ],
+    // Without RANGE_ADJUST's condition the number is the HUD's, unlabelled, whoever counted.
+    [
+      { row: 'calledPrice', E: 0.2, need: 0.25, rangeAdjust: false, players: 3 },
       'You called with a 20% win chance. You needed 25%. Calling loses chips over time.',
     ],
     [

@@ -24,6 +24,14 @@ export const coachWords = {
   /** The labelled pair when the hint shows both equities (§8.10 RANGE_ADJUST, pitfall 35). */
   pair: (any: string, likely: string) =>
     `Any cards: ${any}%. Their likely hands: about ${likely}%.`,
+  /**
+   * The pair when the range number counts only the raiser (and the callers already in), fewer
+   * players than the HUD's (§8.10): each number says whom. Kept short: the strip has one line.
+   */
+  pairRaiser: (players: number, any: string, likely: string) =>
+    `All ${players} players: ${any}%. Raiser alone: about ${likely}%.`,
+  pairCallers: (players: number, any: string, callers: number, likely: string) =>
+    `All ${players} players: ${any}%. Raiser + ${callers} ${callers === 1 ? 'caller' : 'callers'}: about ${likely}%.`,
   /** The headline (§8.10 hint structure 1): "Call 40", "Raise to 60 (3 BB)". */
   headline: {
     fold: 'Fold',
@@ -43,6 +51,11 @@ export const coachWords = {
   numbers: 'The numbers',
   winAny: (x: string) => `Win chance ${x}% (any cards)`,
   winLikely: (x: string) => `Against their likely hands: about ${x}%`,
+  /** The same two when the range number counts only the raiser and its callers (§8.10). */
+  winAll: (players: number, x: string) => `Against all ${players} players with any cards: ${x}%`,
+  winRaiser: (x: string) => `Against the raiser's likely hands alone: about ${x}%`,
+  winCallers: (callers: number, x: string) =>
+    `Against the likely hands of the raiser and ${callers} ${callers === 1 ? 'caller' : 'callers'}: about ${x}%`,
   need: (x: string) => `Need ${x}%`,
   pot: (x: string) => `Pot ${x}`,
   toCall: (x: string) => `To call ${x}`,
@@ -51,6 +64,14 @@ export const coachWords = {
   barBad: 'You win less often than you need.',
   /** The price bar's name: "Win chance 45% (any cards). Need 25%." (`win` is a labelled line). */
   barLabel: (win: string, need: string) => `${win}. Need ${need}%.`,
+  /**
+   * The bar's caption when its number is none of the lines above (§12.6): a fold filled to the
+   * realised E·R, or a call against the price with what a hit can win later (F.1 `needImplied`).
+   */
+  barRealised: (x: string) => `Counting later bets: about ${x}%`,
+  barImplied: (x: string) => `Counting what you can win later: need about ${x}%`,
+  /** The bar's name with an implied-price caption: "{win line}. {caption}." */
+  barLabelWith: (win: string, caption: string) => `${win}. ${caption}.`,
   yourHand: 'Your hand',
   nextRiver: (next: string, river: string) => `Next card: ${next}% · By river: ${river}%`,
   beaters: (n: string, total: string) => `Hands that beat you right now: ${n} of ${total} possible`,

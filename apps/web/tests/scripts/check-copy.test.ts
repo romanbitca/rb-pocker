@@ -288,6 +288,46 @@ describe('failing fixtures: lines and hints', () => {
     expect(checkHint(wrong, apart).join()).toMatch(/does not show both 62% and 35%/);
   });
 
+  it('two numbers for different players without whom on both, or whom where none is due', () => {
+    // §8.10: the HUD's 26% counts all 5 players, FOLD_VS_RAISE's 44% the raiser alone.
+    const raiser: ExplainInput = {
+      ...SPOT,
+      street: 'preflop',
+      facing: 'open',
+      nOpp: 5,
+      eRandom: 0.26,
+      eRange: 0.17,
+      need: 0.38,
+      action: { type: 'fold' },
+      trace: [{ code: 'FOLD_VS_RAISE', data: { E: 0.44, callers: 0 } }],
+      villain: 'raises',
+    };
+    const e = explain(raiser);
+    expect(e.reasons[0]?.key).toBe('RANGE_ADJUST.raiser');
+    expect(checkHint(e, raiser)).toEqual([]);
+    // Today's words for different players: "Any cards" and "their likely hands" say no whom.
+    const ra = e.reasons[0] as Line;
+    const old: Line = {
+      key: 'RANGE_ADJUST.plain',
+      params: { eRandom: pct(26), eRange: pct(44) },
+      glossary: [],
+    };
+    const unsaid = checkHint({ ...e, reasons: [old, ...e.reasons.slice(1)] }, raiser).join('\n');
+    expect(unsaid).toMatch(/the HUD's number counts all 5 players, unsaid/);
+    expect(unsaid).toMatch(/the range number counts only the raiser, unsaid/);
+    // With a caller in, "the raiser alone" is not enough: "the raiser and 1 caller".
+    const caller = { ...raiser, trace: [{ ...raiser.trace[0], data: { E: 0.44, callers: 1 } }] };
+    expect(checkHint(e, caller as ExplainInput).join()).toMatch(
+      /counts only the raiser and 1 caller, unsaid/,
+    );
+    // Heads-up both numbers count the one opponent: a whom-label would be false.
+    const headsUp = { ...raiser, nOpp: 1 };
+    const forced = { ...explain(headsUp), reasons: [ra, ...explain(headsUp).reasons.slice(1)] };
+    expect(checkHint(forced, headsUp).join()).toMatch(
+      /says whom it counts, but both numbers count every opponent/,
+    );
+  });
+
   it('a price sentence that contradicts its numbers, a false "close", a bare range number', () => {
     const swap = (params: Record<string, ReturnType<typeof pct>>, key?: Line['key']) =>
       tamper((e) => ({
@@ -310,6 +350,48 @@ describe('failing fixtures: lines and hints', () => {
       reasons: [{ key: 'FOLD_PRICE.realise', params: { E: pct(20), need: pct(25) }, glossary: [] }],
     }));
     expect(realise.join()).toMatch(/20% is below 25%/);
+  });
+
+  it('a price bar that argues against the advice, misreads its numbers, or has no price', () => {
+    const bar = (b: Explanation['shown']['bar']) => (e: Explanation) => ({
+      ...e,
+      shown: { ...e.shown, bar: b },
+    });
+    expect(good.shown.bar).toEqual({ win: 0.4, need: 0.25, good: true, basis: 'plain' });
+    // ✗ beside the call.
+    expect(tamper(bar({ win: 0.2, need: 0.25, good: false, basis: 'plain' })).join()).toMatch(
+      /the price bar shows ✗ next to call \(plain\)/,
+    );
+    // ✓ for 20% against 25%.
+    expect(tamper(bar({ win: 0.2, need: 0.25, good: true, basis: 'plain' })).join()).toMatch(
+      /verdict does not match its numbers/,
+    );
+    // ✓ beside a fold: 40% beats the price, so only the realised number may fill it.
+    const fold: ExplainInput = {
+      ...SPOT,
+      action: { type: 'fold' },
+      position: 'OOP',
+      trace: [{ code: 'FOLD_PRICE', data: { E: 0.4, need: 0.25, R: 0.5 } }],
+    };
+    const e = explain(fold);
+    expect(e.shown.bar).toEqual({ win: 0.2, need: 0.25, good: false, basis: 'realised' });
+    expect(checkHint(e, fold)).toEqual([]);
+    const plain = { ...e, shown: { ...e.shown, bar: good.shown.bar } };
+    expect(checkHint(plain, fold).join()).toMatch(/the price bar shows ✓ next to fold \(plain\)/);
+    // Nothing to call.
+    const free: ExplainInput = {
+      ...SPOT,
+      action: { type: 'check' },
+      toCall: 0,
+      need: 0,
+      legal: { ...SPOT.legal, toCall: 0, callAmount: 0, canCall: false, canCheck: true },
+      trace: [{ code: 'CHECK_WEAK', data: {} }],
+    };
+    const checked = explain(free);
+    expect(checked.shown.bar).toBeNull();
+    expect(
+      checkHint({ ...checked, shown: { ...checked.shown, bar: good.shown.bar } }, free).join(),
+    ).toMatch(/a price bar with nothing to call/);
   });
 
   it('a headline that is not the action, and a false "Why not fold?"', () => {

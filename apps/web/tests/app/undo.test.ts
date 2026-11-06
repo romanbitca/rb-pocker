@@ -511,7 +511,13 @@ describe('the feedback card content (§12.6, F.4, F.5)', () => {
     expect(fallback.coachMove).toEqual({ kind: 'call', amount: 50, bb: 100 });
     expect(fallback.reason).toBeNull(); // the card says the fallback row (ui/feedback.ts)
     expect(fallback.canUndo).toBe(true);
-    const line = feedbackLine({ row: 'foldedPrice', E: 0.45, need: 0.25, rangeAdjust: false });
+    const line = feedbackLine({
+      row: 'foldedPrice',
+      E: 0.45,
+      need: 0.25,
+      rangeAdjust: false,
+      players: null,
+    });
     const priced = feedbackView({ ...base, feedback: line }, p.state, false);
     expect(priced).toMatchObject({ grade: 'mistake', canUndo: false });
     expect(priced.reason).toBe(line);

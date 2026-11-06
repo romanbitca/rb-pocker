@@ -4,8 +4,9 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { coachWords } from '../../../src/i18n/coachUi.ts';
-import type { StripView } from '../../../src/ui/coach.ts';
+import { coachView, type StripView } from '../../../src/ui/coach.ts';
 import { CoachStrip, type StripVariant } from '../../../src/ui/components/CoachStrip.tsx';
+import { coachData, FACING, input, raiserOnly } from '../coachFixtures.ts';
 import { smallTapTargets } from '../dom.ts';
 
 afterEach(cleanup);
@@ -40,6 +41,32 @@ describe('CoachStrip (§12.6)', () => {
     // §15.3: the section, the button, the head (with its <strong>) and the line.
     expect(container.querySelectorAll('*')).toHaveLength(5);
     expect(smallTapTargets(container)).toEqual([]);
+  });
+
+  it('two numbers for different players (§8.10): the line says whom each counts', () => {
+    // The owner's spot through the real view: the HUD's 26% for all 5, 44% for the raiser.
+    const view = coachView(coachData(raiserOnly()), null, input(FACING)).strip;
+    const { container } = strip(view);
+    expect(container.textContent).toBe(
+      'Coach: Call 40All 5 players: 26%. Raiser alone: about 44%.',
+    );
+    expect(
+      screen.getByRole('button', {
+        name: 'Coach: Call 40. All 5 players: 26%. Raiser alone: about 44%. Show why',
+      }),
+    ).toBeTruthy();
+    cleanup();
+    // Intermediate after "Hint", with a caller already in: the same line beside "Why?".
+    const one = coachView(
+      coachData({ ...raiserOnly(1), level: 'intermediate', opened: true }),
+      null,
+      input(FACING),
+    ).strip;
+    const why = strip(one);
+    expect(why.container.querySelector('[data-coach-advice]')?.textContent).toBe(
+      'Coach: Call 40All 5 players: 26%. Raiser + 1 caller: about 44%.',
+    );
+    expect(screen.getByRole('button', { name: coachWords.why })).toBeTruthy();
   });
 
   it('Intermediate after "Hint": the advice as text and a "Why?" button', () => {

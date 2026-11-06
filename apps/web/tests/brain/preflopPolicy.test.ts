@@ -9,6 +9,7 @@ import { describe, expect, it } from 'vitest';
 import { coachSeed, features } from '../../src/brain/features.ts';
 import {
   COACH_PREFLOP_STYLE,
+  preflopCallers,
   preflopPolicy,
   preflopRaises,
   preflopStyle,
@@ -277,6 +278,21 @@ describe('facing one raise (§8.3)', () => {
     expect(d.trace[0]?.data.evCall as number).toBeLessThan(0);
   });
 
+  it('data.callers: the callers already in that E counts besides the raiser (§8.3, §8.10)', () => {
+    // The owner's spot: UTG opens, the hijack has K♠7♣; four players act after it, none counts.
+    const alone = ask({ players: 6, hero: 4, hole: 'Ks 7c', inputs: [raise(3, 250)] }).d;
+    expect(code(alone)).toBe('FOLD_VS_RAISE');
+    expect(alone.trace[0]?.data).toMatchObject({ callers: 0 });
+    // The hijack called: E counts the raiser and that caller, not the blinds still to act.
+    const inputs = [raise(3, 250), call(4), fold(5)];
+    const one = ask({ players: 6, hero: 0, hole: 'Ks 7c', inputs });
+    expect(one.d.trace[0]?.data).toMatchObject({ callers: 1 });
+    expect(preflopCallers(one.obs, features(one.obs, COACH_LIKE, SEED))).toBe(1);
+    // Unopened there is no raise and no caller.
+    const open = ask({ players: 6, hero: 3, hole: 'As Ah' });
+    expect(preflopCallers(open.obs, features(open.obs, COACH_LIKE, SEED))).toBe(0);
+  });
+
   it('shoves instead of a 3-bet that would be ≥ 35% of the chips (20 bb: 7.5 bb is 37.5%)', () => {
     const d = ask({ players: 6, bb: 20, hero: 0, hole: 'Qc Qd', inputs: coOpen, labels: tag }).d;
     expect(d.kind).toBe('allin');
@@ -354,8 +370,9 @@ describe('facing an all-in, deep (§8.3 with the §8.4 rule)', () => {
     const d = ask({ players: 6, hero: 2, hole: '7c 2d', inputs: shove }).d;
     expect(d.action).toEqual({ type: 'fold' });
     expect(code(d)).toBe('FOLD_ALLIN');
-    const data = d.trace[0]?.data as { E: number; need: number };
+    const data = d.trace[0]?.data as { E: number; need: number; callers: number };
     expect(data.E).toBeLessThan(data.need);
+    expect(data.callers).toBe(0); // against the shover alone
   });
 });
 

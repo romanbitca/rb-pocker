@@ -28,7 +28,11 @@ import {
 import { deliberate } from '../src/brain/decide.ts';
 import { candidateEVs, confidence } from '../src/brain/ev.ts';
 import { coachSeed, features } from '../src/brain/features.ts';
-import { preflopPolicy, realisation as preflopRealisation } from '../src/brain/preflopPolicy.ts';
+import {
+  preflopCallers,
+  preflopPolicy,
+  realisation as preflopRealisation,
+} from '../src/brain/preflopPolicy.ts';
 import { guardrails, guardSpot } from '../src/brain/guardrails.ts';
 import { liveOpponents } from '../src/brain/ranges.ts';
 import { COACH } from '../src/brain/profiles.ts';
@@ -246,11 +250,12 @@ const sameAction = (a: PlayerAction, b: PlayerAction): boolean =>
  * spot allows, each under the condition its policy uses (§8.3–8.5: a call on
  * price only when `E·R` beats the price, a value bet only with a strong hand, …), with an action
  * it explains and the data the chunk 5.3–5.4 policies put in `Reason.data` (sizes as `to`/`bb`
- * before the flop and `size`/`sizeBB` after it, `E` = the policy's range equity, chances as
- * fractions); plus a few proposals past a §8.8 limit (a fold with `p ≥ 0.95`, a fold when checking
- * is free, …). Then, as `decide()` will: the real guardrails (`guardrails.ts`) correct the action
- * and add their reasons, and the real EV model (`ev.ts`, `EV_TRIALS`) gives the Close/Clear
- * confidence and the alternative (the best other candidate).
+ * before the flop and `size`/`sizeBB` after it, `E` = the policy's range equity with its
+ * `callers` before the flop, chances as fractions); plus a few proposals past a §8.8 limit (a
+ * fold with `p ≥ 0.95`, a fold when checking is free, …). Then, as `decide()` will: the real
+ * guardrails (`guardrails.ts`) correct the action and add their reasons, and the real EV model
+ * (`ev.ts`, `EV_TRIALS`) gives the Close/Clear confidence and the alternative (the best other
+ * candidate).
  */
 export function candidateDecisions(s: Situation, rng: Rng): CheckDecision[] {
   const { obs, f } = s;
@@ -279,6 +284,9 @@ export function candidateDecisions(s: Situation, rng: Rng): CheckDecision[] {
     add(coach.action, coach.trace);
     const headsUp = obs.dealtIn.filter(Boolean).length === 2;
     const open = openPct(f.k, headsUp);
+    // Facing a raise, the range codes' E counts the raiser and the callers already in (§8.3), so
+    // the words say whom when players are still to act (§8.10).
+    const callers = preflopCallers(obs, f);
     if (f.facing === 'none' || f.facing === 'limpers') {
       const raise = aggressive(obs, 2.5 * bb + bb * (f.facing === 'limpers' ? 1 : 0));
       const base = { hand, rankPct: f.rankPct, behind: f.k, openPct: open };
@@ -291,14 +299,14 @@ export function candidateDecisions(s: Situation, rng: Rng): CheckDecision[] {
     } else if (f.facing === 'allin') {
       // §8.4: call if E ≥ need against the shover's range (R = 1).
       const E = noisy();
-      const data = { hand, E, need: f.need, V: 12 };
+      const data = { hand, E, need: f.need, V: 12, callers };
       add(E >= f.need ? call : fold, [r(E >= f.need ? 'CALL_ALLIN' : 'FOLD_ALLIN', data)]);
     } else {
       // §8.3: re-raise for value with E ≥ 0.58; call when EV(call) > 0 (a pocket pair adds the
       // set-mining implied odds); fold on range.
       const E = noisy();
       const R = f.position === 'IP' ? 0.95 : 0.8;
-      const numbers = { hand, E, need: f.need, V: 15, R, evCall: 1 };
+      const numbers = { hand, E, need: f.need, V: 15, R, evCall: 1, callers };
       const reraise = aggressive(obs, 3 * currentBet);
       if (E >= 0.58) {
         add(reraise, [
@@ -357,7 +365,7 @@ export function candidateDecisions(s: Situation, rng: Rng): CheckDecision[] {
     } else if (E * R > need) {
       add(call, [r('CALL_PROFITABLE', { E, need, toCall: f.toCall, pot: f.winPot })]);
     } else {
-      add(fold, [r('FOLD_PRICE', { E, need })]);
+      add(fold, [r('FOLD_PRICE', { E, need, R })]);
       if (madeDraw && largest !== null) {
         // Just enough implied odds to make the call pay (§8.5 step 3).
         const implied = f.toCall - E * R * (f.winPot + f.toCall) + 0.05 * f.toCall;
@@ -367,7 +375,7 @@ export function candidateDecisions(s: Situation, rng: Rng): CheckDecision[] {
     }
     if (f.handInfo.playsTheBoard) add(fold, [r('BOARD_PLAYS')]);
     // Past the §8.8 rule 2 and 3 limits: the guardrails turn these around.
-    if (p >= 0.95) add(fold, [r('FOLD_PRICE', { E, need })]);
+    if (p >= 0.95) add(fold, [r('FOLD_PRICE', { E, need, R })]);
     if (f.street === 'river' && E < 0.03) {
       add(call, [r('CALL_PROFITABLE', { E, need, toCall: f.toCall, pot: f.winPot })]);
     }
@@ -390,7 +398,7 @@ export function candidateDecisions(s: Situation, rng: Rng): CheckDecision[] {
     }
     if (f.handInfo.playsTheBoard) add(check, [r('BOARD_PLAYS')]);
     // A fold when checking is free: §8.8 rule 1 makes it a check.
-    add(FOLD, [r('FOLD_PRICE', { E, need })]);
+    add(FOLD, [r('FOLD_PRICE', { E, need, R })]);
   }
   return finish(s, proposals);
 }

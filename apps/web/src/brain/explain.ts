@@ -29,6 +29,17 @@
  *   only when the range number is the decision's `eRange`, lower than `eRandom`, and the
  *   villain's last action is known; `.weaker` when it is higher; `.plain` (both numbers,
  *   labelled) otherwise.
+ * - **Whom each number counts** (§8.10). `eRandom` counts every live opponent. A range code's own
+ *   number before the flop counts only the raiser and its `data.callers` callers already in
+ *   (§8.3): the players still to act are left out. When that is fewer players, each number says
+ *   whom it counts (`.raiser`: "Against all 5 players with any cards, you win 26%. Against the
+ *   raiser's likely hands alone, you win about 44%."; `.callers` with callers), and `shown` says
+ *   so to the strip and the sheet (`players`, `callers`); with the same players the words above
+ *   stay. Otherwise a raiser's 44% next to five players' 26% reads as a contradiction.
+ * - **The price bar** (`shown.bar`, §12.6) follows the comparison the coach made, so its ✓/✗
+ *   never argues against the advice: the words' win chance against the price when that agrees;
+ *   else, as the main reason compared, the realised `win × R` (a fold the price alone would pay)
+ *   or the implied price (a call it would not pay); else no bar (`priceBar`).
  * - **Consistency.** A sentence that compares the win chance with the price is used only when the
  *   whole numbers it shows agree with it; otherwise its `.close` variant (or `.realise`: you win
  *   less often when later bets can make you fold; or `.implied` for a pocket pair) says so
@@ -164,6 +175,8 @@ export const TEMPLATES = {
   RANGE_ADJUST: { params: ['eRandom', 'actionDescription', 'eRange'] },
   'RANGE_ADJUST.weaker': { params: ['eRandom', 'eRange'] },
   'RANGE_ADJUST.plain': { params: ['eRandom', 'eRange'] },
+  'RANGE_ADJUST.raiser': { params: ['n', 'eRandom', 'eRange'] },
+  'RANGE_ADJUST.callers': { params: ['n', 'eRandom', 'callers', 'eRange'] },
   WHY_NOT_FOLD: { params: [] },
   WHY_NOT_CHECK: { params: [] },
   WHY_NOT_CALL: { params: E_NEED },
@@ -213,8 +226,10 @@ export const TEMPLATES = {
 
   'feedback.foldedPrice': { params: E_NEED },
   'feedback.foldedPriceRange': { params: E_NEED },
+  'feedback.foldedPriceAll': { params: ['E', 'n', 'need'] },
   'feedback.calledPrice': { params: E_NEED },
   'feedback.calledPriceRange': { params: E_NEED },
+  'feedback.calledPriceAll': { params: ['E', 'n', 'need'] },
   'feedback.checkedStrong': { params: [] },
   'feedback.airMultiway': { params: ['n'] },
   'feedback.airHeadsUp': { params: [] },
@@ -402,9 +417,34 @@ export interface Explanation {
   /**
    * The numbers the text shows, as fractions: the HUD's `eRandom`; the range number when
    * RANGE_ADJUST labels it (else null); `win`, the chance the reasons compare with the price
-   * (the price bar's fill, §12.6); and `need`.
+   * (the price bar's fill, §12.6); and `need`. And whom they count (§8.10): `eRandom` all
+   * `players` live opponents; a range number the text shows, the raiser and `callers` callers
+   * already in when that is fewer players (null: every live opponent, as `eRandom`).
    */
-  shown: { eRandom: number; eRange: number | null; win: number; need: number };
+  shown: {
+    eRandom: number;
+    eRange: number | null;
+    win: number;
+    need: number;
+    players: number;
+    callers: number | null;
+    /** The sheet's price bar (§12.6), facing a bet; null when the coach did not decide on it. */
+    bar: PriceBar | null;
+  };
+}
+
+/**
+ * The price bar (§12.6): the comparison the coach made, as fractions, so its ✓/✗ never argues
+ * against the advice. `plain`: the win chance the words compare (`shown.win`) against the price.
+ * `realised`: a fold that number would pay, filled to `win × R`, what later bets leave of it.
+ * `implied`: a call it would not pay, against the price with what a hit can win later.
+ */
+export interface PriceBar {
+  win: number;
+  need: number;
+  /** `win ≥ need`: ✓; never next to a fold, and ✗ never next to a call or a raise. */
+  good: boolean;
+  basis: 'plain' | 'realised' | 'implied';
 }
 
 /** Action groups: what the "Why not …?" lines and the main reason are matched by. */
@@ -516,6 +556,55 @@ const RANGE_CODES: ReadonlySet<ReasonCode> = new Set<ReasonCode>([
   'CALL_ALLIN',
   'FOLD_ALLIN',
 ]);
+
+/**
+ * The reasons that explain the final action (see the header): those that fit it, a guardrail
+ * that fired first, at most two; the first is the main reason.
+ */
+function explaining(input: Pick<ExplainInput, 'action' | 'trace' | 'legal'>): Reason[] {
+  const group = groupOf(input.action);
+  const allIn = isAllIn(input.action, input.legal);
+  const fitting = input.trace.filter((r) => usable(r) && fits(r, group, allIn));
+  return [
+    ...fitting.filter((r) => r.code === 'GUARDRAIL'),
+    ...fitting.filter((r) => r.code !== 'GUARDRAIL'),
+  ].slice(0, 2);
+}
+
+/** A hint's range number (Appendix F.1 "`{E}` and the range number") and whom it counts. */
+export interface RangeNumber {
+  /** The first range code's `data.E` among the reasons that explain the action, else `eRange`. */
+  E: number;
+  /**
+   * Whom it counts when that is fewer players than the live opponents `eRandom` counts: the
+   * callers already in besides the raiser (§8.3's E leaves out the players still to act). Null
+   * when it counts every live opponent (heads-up, or the decision's own `eRange`).
+   */
+  callers: number | null;
+}
+
+function rangeOf(
+  reasons: readonly Reason[],
+  input: Pick<ExplainInput, 'eRange' | 'nOpp'>,
+): RangeNumber {
+  const reason = reasons.find((r) => RANGE_CODES.has(r.code) && num(r.data.E) !== null);
+  if (reason === undefined) return { E: input.eRange, callers: null };
+  const callers = num(reason.data.callers);
+  return {
+    E: num(reason.data.E) as number,
+    callers: callers !== null && callers + 1 < input.nOpp ? callers : null,
+  };
+}
+
+/**
+ * The range number `explain` shows for this decision and whom it counts. The grade reads it too:
+ * an F.5 price row names every player when the hint's range number counted only the raiser.
+ */
+export function rangeNumber(
+  input: Pick<ExplainInput, 'action' | 'trace' | 'legal' | 'eRange' | 'nOpp'>,
+): RangeNumber {
+  return rangeOf(explaining(input), input);
+}
 
 /** How a price sentence compares the shown win chance with the shown price. */
 type Direction = 'more' | 'atLeast' | 'less';
@@ -790,9 +879,16 @@ function reasonLine(r: Reason, c: Context): Line {
   }
 }
 
-/** RANGE_ADJUST and its wording (see the header). */
-function rangeAdjustLine(input: ExplainInput, rangeE: number): Line {
+/** RANGE_ADJUST and its wording (see the header); `callers` as `RangeNumber`'s. */
+function rangeAdjustLine(input: ExplainInput, rangeE: number, callers: number | null): Line {
   const params = { eRandom: pct(input.eRandom), eRange: pct(rangeE) };
+  if (callers !== null) {
+    // The two numbers count different players: each says whom (§8.10).
+    const n = count(input.nOpp);
+    return callers === 0
+      ? line('RANGE_ADJUST.raiser', { ...params, n })
+      : line('RANGE_ADJUST.callers', { ...params, n, callers: count(callers) });
+  }
   if (rangeE === input.eRange) {
     if (shownPct(rangeE) < shownPct(input.eRandom) && input.villain !== null) {
       return line('RANGE_ADJUST', {
@@ -803,6 +899,46 @@ function rangeAdjustLine(input: ExplainInput, rangeE: number): Line {
     if (shownPct(rangeE) > shownPct(input.eRandom)) return line('RANGE_ADJUST.weaker', params);
   }
   return line('RANGE_ADJUST.plain', params);
+}
+
+/** The price with what a hit can win later (F.1 `{needImplied}`); null without implied odds. */
+function impliedPrice(r: Reason, input: ExplainInput): number | null {
+  const needImplied = num(r.data.needImplied);
+  if (needImplied !== null) return needImplied;
+  const implied = num(r.data.implied);
+  if (implied === null || implied <= 0) return null;
+  return input.toCall / (input.winPot + input.toCall + implied);
+}
+
+/**
+ * The price bar (§12.6), facing a bet. `win` (the words' win chance) against the price when that
+ * agrees with the action (at or above it for a call or a raise, below it for a fold). Else as the
+ * main reason compared (§8.3, §8.5: `E·R·(winPot + toCall) − toCall + implied`): a fold that the
+ * price alone would pay, filled to the reason's own `{E}` × R when later bets make it lose
+ * (`data.R`: FOLD_PRICE, FOLD_VS_RAISE); a call that it would not pay, against the implied price
+ * when a hit pays for it (IMPLIED's `needImplied`, a pocket pair's `data.implied`). Neither: the
+ * coach decided on something else (its ranges, push or fold, commitment, a guardrail): no bar.
+ */
+function priceBar(c: Context, main: Reason | null, win: number): PriceBar | null {
+  const { input } = c;
+  if (input.toCall <= 0) return null;
+  const fold = input.action.type === 'fold';
+  const { need } = input;
+  const good = win >= need;
+  if (good !== fold) return { win, need, good, basis: 'plain' };
+  if (main === null) return null;
+  if (fold) {
+    const R = num(main.data.R);
+    const realised = R === null ? null : eOf(main, c) * R;
+    return realised !== null && realised < need
+      ? { win: realised, need, good: false, basis: 'realised' }
+      : null;
+  }
+  if (input.action.type !== 'call') return null;
+  const implied = impliedPrice(main, input);
+  return implied !== null && win >= implied
+    ? { win, need: implied, good: true, basis: 'implied' }
+    : null;
 }
 
 /** The groups a hero may choose now (fold only when it is not free). */
@@ -825,19 +961,14 @@ const NOT_FOR_VALUE: ReadonlySet<ReasonCode> = new Set<ReasonCode>(['SEMI_BLUFF'
  */
 export function explain(input: ExplainInput): Explanation {
   const group = groupOf(input.action);
-  const allIn = isAllIn(input.action, input.legal);
 
   // 1. The reasons that explain the final action; a guardrail that fired first.
-  const fitting = input.trace.filter((r) => usable(r) && fits(r, group, allIn));
-  const ordered = [
-    ...fitting.filter((r) => r.code === 'GUARDRAIL'),
-    ...fitting.filter((r) => r.code !== 'GUARDRAIL'),
-  ].slice(0, 2);
+  const ordered = explaining(input);
   const main = ordered[0] ?? null;
 
-  // 2. The hint's range number, RANGE_ADJUST and the `{E}` of the other codes.
-  const rangeReason = ordered.find((r) => RANGE_CODES.has(r.code) && num(r.data.E) !== null);
-  const rangeE = rangeReason === undefined ? input.eRange : (num(rangeReason.data.E) as number);
+  // 2. The hint's range number (and whom it counts), RANGE_ADJUST and the `{E}` of the others.
+  const range = rangeOf(ordered, input);
+  const rangeE = range.E;
   let adjust =
     showsRangeAdjust(input.eRandom, rangeE, input.need) ||
     showsRangeAdjust(input.eRandom, input.eRange, input.need);
@@ -859,7 +990,7 @@ export function explain(input: ExplainInput): Explanation {
   const trace: Reason[] = [];
   const reasons: Line[] = [];
   if (adjust) {
-    const ra = rangeAdjustLine(input, rangeE);
+    const ra = rangeAdjustLine(input, rangeE, range.callers);
     reasons.push(ra);
     trace.push({
       code: 'RANGE_ADJUST',
@@ -867,6 +998,7 @@ export function explain(input: ExplainInput): Explanation {
         eRandom: input.eRandom,
         eRange: rangeE,
         ...(ra.key === 'RANGE_ADJUST' && input.villain !== null ? { action: input.villain } : {}),
+        ...(range.callers === null ? {} : { players: input.nOpp, callers: range.callers }),
       },
     });
   }
@@ -949,6 +1081,11 @@ export function explain(input: ExplainInput): Explanation {
       eRange: adjust ? rangeE : null,
       win,
       need: input.need,
+      players: input.nOpp,
+      // Whom the range number counts, when the words show it: in RANGE_ADJUST, or in a range
+      // code's sentence ("wins only about 44% against it", `eOf`), next to `eRandom`.
+      callers: adjust || said.some((r) => RANGE_CODES.has(r.code)) ? range.callers : null,
+      bar: priceBar(c, main, win),
     },
   };
 }
@@ -963,7 +1100,18 @@ function sameAction(a: PlayerAction, b: PlayerAction): boolean {
 
 /** One F.5 row with its numbers (fractions for chances, chips for sizes). */
 export type FeedbackInput =
-  | { row: 'foldedPrice' | 'calledPrice'; E: number; need: number; rangeAdjust: boolean }
+  | {
+      row: 'foldedPrice' | 'calledPrice';
+      E: number;
+      need: number;
+      rangeAdjust: boolean;
+      /**
+       * The live opponents `E` counts, said with `rangeAdjust` when the hint's range number
+       * counted only the raiser and its callers (§8.10): "against the likely hands of all 5
+       * players". Null: "against their likely hands".
+       */
+      players: number | null;
+    }
   | { row: 'checkedStrong' | 'airHeadsUp' }
   | { row: 'airMultiway'; players: number }
   | { row: 'size'; tooBig: boolean; to: number; bb: number }
@@ -974,14 +1122,18 @@ export type FeedbackInput =
 
 /**
  * The line of one F.5 feedback row. With RANGE_ADJUST's condition (§8.10) a price row says
- * "against their likely hands" (`*Range`), so it never contradicts the HUD badge.
+ * "against their likely hands" (`*Range`), so it never contradicts the HUD badge; and "against
+ * the likely hands of all {n} players" (`*All`) when the hint's range number counted only the
+ * raiser and its callers, so it never contradicts the hint either.
  */
 export function feedbackLine(f: FeedbackInput): Line {
   switch (f.row) {
     case 'foldedPrice':
     case 'calledPrice': {
-      const key = `feedback.${f.row}${f.rangeAdjust ? 'Range' : ''}` as const;
-      return line(key, { E: pct(f.E), need: pct(f.need) });
+      const numbers = { E: pct(f.E), need: pct(f.need) };
+      if (!f.rangeAdjust) return line(`feedback.${f.row}`, numbers);
+      if (f.players === null) return line(`feedback.${f.row}Range`, numbers);
+      return line(`feedback.${f.row}All`, { ...numbers, n: count(f.players) });
     }
     case 'checkedStrong':
     case 'airHeadsUp':
