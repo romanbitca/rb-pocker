@@ -61,6 +61,20 @@
 .wide.collapsed {
   grid-template-columns: minmax(0, 1fr) 44px;
 }
+/* R14 (chunk 9.7): the sizing tray opens as a 104 px row above Row A (§12.7). Here it takes those
+   104 px from the coach panel's row (down to the 61 px head row; the panel scrolls), not from the
+   table, which keeps its size while a bet is sized: 320 px at 1024×768, where it was 216 px and
+   the top pods reached the pot and the board. `wideCoachPanel(height, true)` computes the same. */
+.wide:has(.trayInline) {
+  grid-template-rows: auto minmax(0, 1fr) auto max(61px, min(30vh, 100vh - 540px) - 104px) auto;
+  grid-template-rows:
+    auto minmax(0, 1fr) auto
+    max(
+      61px,
+      min(30dvh, 100dvh - 540px - env(safe-area-inset-top) - env(safe-area-inset-bottom)) - 104px
+    )
+    auto;
+}
 
 .srOnly {
   position: absolute;

@@ -12,7 +12,7 @@
 #            three jobs
 #   --only   run some of the jobs (never posts)
 #   --slow   run the `slow` workflow's steps instead: the long tests, the tables made again, the
-#            self-play gates and the enforced speed checks (status `local-slow`)
+#            self-play gates, the enforced speed checks and Lighthouse (status `local-slow`)
 #   --keep   keep the worktree after a passing run (a failing run always keeps it, with the
 #            Playwright report)
 #
@@ -256,7 +256,8 @@ selfplay_all() {
   return $fail
 }
 
-# The steps of .github/workflows/slow.yml, except Lighthouse (Stage 9) and the deploy check.
+# The steps of .github/workflows/slow.yml, except the deploy check. Lighthouse goes last: it
+# builds the production app over the E2E build that the speed checks use.
 job_slow() {
   step slow "long tests (exhaustive, statistical, large property runs)" npm run test:slow || return 1
   step slow "tables made again are byte-identical" \
@@ -264,7 +265,10 @@ job_slow() {
   step slow "self-play gates (10 runs)" selfplay_all || return 1
   port_free "$CI_PORT" || return 1
   step slow "speed checks of Stages 4 and 6, enforced" \
-    env PORT="$CI_PORT" npm run e2e:perf -- --grep "Stage [46]"
+    env PORT="$CI_PORT" npm run e2e:perf -- --grep "Stage [46]" || return 1
+  port_free "$CI_PORT" || return 1
+  step slow "Lighthouse mobile: Performance, Accessibility, installable" \
+    env PORT="$CI_PORT" npm run lighthouse
 }
 
 echo "ci-local: $CONTEXT for $SHORT ($REF) in $WT"
@@ -316,5 +320,5 @@ echo "✗ $CONTEXT $SHORT: $DESC"
 post failure "$DESC"
 POSTED=1
 echo "logs: $LOGS"
-echo "worktree kept: $WT (playwright report: $WT/apps/web/playwright-report)"
+echo "worktree kept: $WT (playwright report: $WT/apps/web/playwright-report; Lighthouse report: $WT/apps/web/lighthouse-report)"
 exit 1

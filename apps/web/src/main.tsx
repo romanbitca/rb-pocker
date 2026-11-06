@@ -3,7 +3,7 @@ import './ui/styles/global.css';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { startApp } from './app/boot.ts';
-import { en } from './i18n/en.ts';
+import { enStart as en } from './i18n/start.ts';
 import { App } from './ui/App.tsx';
 
 /**

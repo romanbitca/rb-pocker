@@ -6,7 +6,7 @@
  *   browser storage fails (§14.6); [OK] hides it. The game stays playable in memory.
  */
 import type { SessionSummary, Toast } from '../../app/store.ts';
-import { en } from '../../i18n/en.ts';
+import { enStart as en } from '../../i18n/start.ts';
 import { formatChips } from '../format.ts';
 import { joinNames } from '../names.ts';
 import styles from './Notices.module.css';

@@ -10,7 +10,7 @@
  * The first launch of a home-screen app on iOS has storage of its own (§12.13): the card "Played
  * in Safari before?…" [Import] [Skip] sits under the buttons (chunk 8.4).
  */
-import { en } from '../../i18n/en.ts';
+import { enStart as en } from '../../i18n/start.ts';
 import { NudgeCard, type NudgeCardProps } from '../components/NudgeCard.tsx';
 import { CheckIcon } from './icons.tsx';
 import styles from './Screen.module.css';

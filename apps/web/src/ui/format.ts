@@ -2,7 +2,7 @@
  * Number formats for chips (PLAN Appendix F: "Chips shown with thousands separators").
  * English grouping on purpose, whatever the device locale: every string is English (§0.3).
  */
-import { en } from '../i18n/en.ts';
+import { enStart as en } from '../i18n/start.ts';
 
 /** 2340 → "2,340". */
 export function formatChips(n: number): string {

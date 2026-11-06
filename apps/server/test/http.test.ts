@@ -201,6 +201,47 @@ describe('HTTP server (PLAN §2.6, §17.2)', () => {
       expect(res.headers['set-cookie']).toBeUndefined();
     });
   });
+
+  describe('compression (§17.2, chunk 9.7)', () => {
+    const LARGE = '/assets/large-abc123.js';
+    const LARGE_JS = readFileSync(
+      new URL('./fixtures/web-dist/assets/large-abc123.js', import.meta.url),
+      'utf8',
+    );
+
+    it.each(['gzip', 'br'])(
+      'sends a text file of 1 KB or more as %s to a browser that accepts it',
+      async (encoding) => {
+        const res = await get(LARGE).set('Accept-Encoding', encoding);
+
+        expect(res.status).toBe(200);
+        expect(res.headers['content-encoding']).toBe(encoding);
+        expect(res.headers.vary).toMatch(/accept-encoding/i);
+        // supertest decodes the body: the file arrives unchanged, with its usual headers.
+        expect(res.text).toBe(LARGE_JS);
+        expect(res.headers['cache-control']).toBe(IMMUTABLE);
+        expect(securityHeadersOf(res)).toEqual(SECURITY_HEADERS);
+      },
+    );
+
+    it('sends the file as it is when the client accepts no encoding', async () => {
+      const res = await get(LARGE).set('Accept-Encoding', 'identity');
+
+      expect(res.status).toBe(200);
+      expect(res.headers['content-encoding']).toBeUndefined();
+      expect(res.text).toBe(LARGE_JS);
+    });
+
+    it.each(['/sw.js', '/', '/icons/icon-192.png', '/api/health'])(
+      '%s (under 1 KB, or an image) goes out as it is',
+      async (path) => {
+        const res = await get(path).set('Accept-Encoding', 'gzip, br');
+
+        expect(res.status).toBe(200);
+        expect(res.headers['content-encoding']).toBeUndefined();
+      },
+    );
+  });
 });
 
 describe('HSTS: only when NODE_ENV=production (§17.2, pitfall 41)', () => {

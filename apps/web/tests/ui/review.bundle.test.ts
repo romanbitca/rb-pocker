@@ -12,6 +12,8 @@
  *   and the entry reaches it only through `import()`;
  * - the service worker precaches them (so they open offline);
  * - all CSS is one stylesheet that `index.html` loads (`build.cssCodeSplit: false`);
+ * - the first paint's words (`i18n/start.ts`) are initial, `i18n/en.ts` with the rest is not
+ *   (chunk 9.7);
  * - the initial JS and the CSS are within the CI budgets (`scripts/size-budget.ts`);
  * - About (chunk 9.2c) is a chunk of its own, asked for by the screens chunk only, and the built
  *   game holds code from no npm package that About's licence list (`data/licences.ts`) leaves out.
@@ -21,6 +23,8 @@ import { build, type Plugin } from 'vite';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { BUDGETS, measureBudgets, type Row } from '../../scripts/size-budget.ts';
 import { SHIPPED_PACKAGES } from '../../src/data/licences.ts';
+import { en } from '../../src/i18n/en.ts';
+import { enStart } from '../../src/i18n/start.ts';
 import { LEARN_MARKER } from '../../src/ui/screens/learnMarker.ts';
 import { REVIEW_MARKER } from '../../src/ui/screens/reviewMarker.ts';
 import { STATS_MARKER } from '../../src/ui/screens/statsMarker.ts';
@@ -219,6 +223,34 @@ describe('the screens after the first tap in the production build', () => {
     expect(text('index.html')).toContain(`href="./${sheet}"`);
     expect(rowOf('Total precache').files).toContain(sheet);
     expect(css.status).not.toBe('fail');
+  });
+});
+
+describe('the words in the production build (chunk 9.7)', () => {
+  it('the first paint carries only `i18n/start.ts`; `en.ts` loads with the later screens', () => {
+    const initial = rowOf('Initial JS');
+    expect(initial.files).toContain(chunk('src/i18n/start.ts'));
+    const words = chunk('src/i18n/en.ts');
+    expect(initial.files).not.toContain(words);
+    expect(chunk('src/ui/screensEntry.tsx')).not.toBe(chunk('src/i18n/start.ts'));
+    expect(rowOf('Total precache').files).toContain(words);
+    // The Table's, Setup's and the rankings' words are not in the initial JS; Welcome's and the
+    // toasts' are.
+    for (const word of [
+      en.setup.title,
+      en.actions.group,
+      en.rankings.title,
+      en.sizing.label.raise,
+    ]) {
+      for (const file of initial.files) expect(text(file), word).not.toContain(word);
+      expect(text(words), word).toContain(word);
+    }
+    for (const word of [enStart.welcome.guide, enStart.toast.offlineReady, enStart.home.install]) {
+      expect(
+        initial.files.some((file) => text(file).includes(word)),
+        word,
+      ).toBe(true);
+    }
   });
 });
 

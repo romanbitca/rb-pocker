@@ -950,7 +950,7 @@ const ActionArea = memo(function ActionArea({
               ? styles.trayOverlay
               : placement === 'panel'
                 ? styles.trayPanel
-                : undefined
+                : styles.trayInline
           }
         />
       )}

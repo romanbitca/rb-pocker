@@ -125,6 +125,32 @@ jobs:
           path: apps/web/playwright-report/
           retention-days: 7
 
+  # PLAN §15.3, Stage 9 acceptance 1 (chunk 9.7): Lighthouse mobile on the production build served
+  # by the real server (`npm run lighthouse`, apps/web/scripts/lighthouse.ts): Performance ≥ 90 on
+  # a first and a later visit, Accessibility ≥ 95 there and on the Table one tap after Play, and
+  # installable. The report is uploaded whatever the result.
+  lighthouse:
+    runs-on: ubuntu-24.04 # the same image as the e2e job (see e2e.yml)
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Lighthouse mobile (builds, then serves on port 3000)
+        run: npm run lighthouse
+      - name: Upload the Lighthouse report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: lighthouse-report
+          path: apps/web/lighthouse-report/
+          retention-days: 14
+
   # The Coolify deploy (§17.6), once the repository variable DEPLOY_URL is set
   # (Settings → Secrets and variables → Actions → Variables).
   check-deploy:
