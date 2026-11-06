@@ -56,6 +56,9 @@ export function startApp(options: StartOptions): TableController {
     hints: true,
     // The end-of-hand summary when the coach level shows one (§10.2, §12.9, chunk 6.4).
     summaries: true,
+    // The first-table tips (§12.11, chunk 9.3). The E2E specs turn them off unless a spec is
+    // about them (`tests/e2e/fixtures.ts`): a tip waits for a tap, and their flows do not tap it.
+    tips: hooks?.tipsWanted(win) ?? true,
     // One writer at a time (§14.7): Web Locks, else the rev check and the storage event.
     tabLock: createTabLock(browserTabLockEnv(win)),
     // Keeping the data (§14.8): persist() where it exists (secure pages), at once when installed.

@@ -6,10 +6,12 @@
  *
  * The word, not an arrow: one DOM node (the Table's §15.3 budget) and plain for a beginner.
  * `useUndoKey` is the desktop shortcut U (§12.5): never while a text field has focus, never with
- * a modifier, never on a key repeat.
+ * a modifier, never on a key repeat (`ui/shortcuts.ts`, the rules of every Table key). The button
+ * carries the first-table tip about Undo (§12.11, `data-tip-anchor`).
  */
 import { memo, useEffect } from 'react';
 import { en } from '../../i18n/en.ts';
+import { isTyping, shortcutOf } from '../shortcuts.ts';
 import styles from './UndoButton.module.css';
 
 export interface UndoButtonProps {
@@ -27,6 +29,7 @@ export const UndoButton = memo(function UndoButton({ state, onUndo, className }:
       aria-disabled={enabled ? undefined : true}
       aria-keyshortcuts="U"
       data-undo={state}
+      data-tip-anchor="undo"
       onClick={() => {
         if (enabled) onUndo();
       }}
@@ -36,27 +39,13 @@ export const UndoButton = memo(function UndoButton({ state, onUndo, className }:
   );
 });
 
-/** A key press that types into a field (U there is a letter, not Undo). */
-function typing(target: EventTarget | null): boolean {
-  if (!(target instanceof HTMLElement)) return false;
-  return (
-    target.isContentEditable ||
-    target instanceof HTMLInputElement ||
-    target instanceof HTMLTextAreaElement ||
-    target instanceof HTMLSelectElement
-  );
-}
-
-/** True for a plain press of U (either case), outside text fields, not repeated. */
+/**
+ * True for a plain press of U (either case, or the U key of another alphabet), outside text
+ * fields, not repeated. The feedback card asks it inside its own dialog; the toolbar's U also
+ * waits while a layer covers the table (`useUndoKey`'s `active`).
+ */
 export function isUndoKey(e: KeyboardEvent): boolean {
-  return (
-    (e.key === 'u' || e.key === 'U') &&
-    !e.repeat &&
-    !e.altKey &&
-    !e.ctrlKey &&
-    !e.metaKey &&
-    !typing(e.target)
-  );
+  return shortcutOf(e) === 'undo' && !isTyping(e.target);
 }
 
 /** U calls `onUndo` while `active` (the toolbar Undo can be used and nothing covers the table). */

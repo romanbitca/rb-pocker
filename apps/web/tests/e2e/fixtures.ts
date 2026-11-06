@@ -23,7 +23,29 @@ export function forbiddenReason(url: string, appOrigin: string): string | null {
   return null;
 }
 
-export const test = base.extend<{ forbiddenRequests: string[] }>({
+/**
+ * PLAN §12.11 (chunk 9.3): the first-table tips wait for a tap, and the specs' flows do not tap
+ * them, so they are off in every spec (an init script sets `window.__pcNoTips` before the app
+ * loads, `app/testHooks.ts`) unless a spec turns them on: `test.use({ firstTableTips: true })`.
+ * The E2E build reads it; a production build has no hooks and always shows the tips.
+ */
+export const test = base.extend<{
+  forbiddenRequests: string[];
+  firstTableTips: boolean;
+  tipsSwitch: void;
+}>({
+  firstTableTips: [false, { option: true }],
+  tipsSwitch: [
+    async ({ context, firstTableTips }, use) => {
+      if (!firstTableTips) {
+        await context.addInitScript(() => {
+          Object.defineProperty(window, '__pcNoTips', { value: true });
+        });
+      }
+      await use();
+    },
+    { auto: true },
+  ],
   forbiddenRequests: [
     async ({ context, baseURL }, use) => {
       if (baseURL === undefined) throw new Error('playwright.config.ts must set use.baseURL');

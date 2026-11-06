@@ -174,6 +174,7 @@ export const OVERLAY_GATE: Readonly<Record<Overlay, Gate | null>> = {
   dataReset: 'dialog',
   drillGames: 'sheet',
   drillStats: 'sheet',
+  shortcuts: 'sheet',
 };
 
 /** Layout (§12.3): one CSS media query each; first match wins. */
@@ -209,6 +210,13 @@ export type Toast =
   | { id: number; kind: 'session'; session: SessionSummary }
   /** Settings → Diagnostics → "Export debug report" could only copy the report (§4.5, chunk 8.4). */
   | { id: number; kind: 'debugCopied' };
+
+/**
+ * The first-table tips (§12.11, chunk 9.3), each shown at most once (`profile.flags.tips`): on the
+ * hero strip and the coach at the first hero turn, on Undo after the first action, on the Hands
+ * tab (the wide rankings column) after the first flop.
+ */
+export type TipId = 'heroStrip' | 'coachStrip' | 'undo' | 'handsTab';
 
 /** An explicit gate close by `owner` (e.g. a first-table tip); the gate stays closed while any hold exists. */
 export interface GateHold {
@@ -420,6 +428,12 @@ export interface UiSlice {
   botCardSeat: number | null;
   /** The lesson the 'lesson' screen shows, 1..`LESSON_COUNT` (§12.1, chunk 9.2; `lesson` command). */
   lesson: number;
+  /**
+   * The first-table tip on show (§12.11, chunk 9.3): set by the `tip` command, which also opens the
+   * `tip` overlay, and null whenever that overlay is not open. Its closing (a tap, a key, Back)
+   * is what marks it seen (the controller).
+   */
+  tip: TipId | null;
 }
 
 /** Learn's lessons (Appendix F.8): `data/lessons.ts` has this many (a test keeps them equal). */
@@ -466,6 +480,11 @@ export interface DataSlice {
   nudge: Nudge | null;
   /** The level suggestion card (§10.4) of the hand summary and Stats → Progress, or null. */
   suggestion: Suggestion | null;
+  /**
+   * The first-table tips already seen (`profile.flags.tips`, §12.11, chunk 9.3), by `TipId`; null:
+   * no tips at all (`ControllerOptions.tips` off: tests of other features).
+   */
+  tips: Readonly<Record<string, boolean>> | null;
 }
 
 export function initialData(): DataSlice {
@@ -476,6 +495,7 @@ export function initialData(): DataSlice {
     install: false,
     nudge: null,
     suggestion: null,
+    tips: null,
   };
 }
 
@@ -534,7 +554,13 @@ export type UiCommand =
    * like any screen (`go`); when it is on show already (the lesson's "Next"), only the lesson
    * changes, so Back still returns to the page under it. Ignored for any other number.
    */
-  | { type: 'lesson'; lesson: number };
+  | { type: 'lesson'; lesson: number }
+  /**
+   * A first-table tip (§12.11, chunk 9.3): opens the `tip` overlay (its gate: nothing moves while
+   * the player reads) with `tip` on show, only over nothing (no other overlay is open). Any tap or
+   * key closes it (`close`).
+   */
+  | { type: 'tip'; tip: TipId };
 
 /** Commands the TableController handles. */
 export type GameCommand =
@@ -657,6 +683,7 @@ const UI_COMMANDS: ReadonlySet<string> = new Set([
   'dismissStorageBanner',
   'botCard',
   'lesson',
+  'tip',
 ]);
 
 export const isUiCommand = (cmd: Command): cmd is UiCommand => UI_COMMANDS.has(cmd.type);
@@ -768,6 +795,7 @@ export function initialUi(firstLaunch = true): UiSlice {
     storageBanner: false,
     botCardSeat: null,
     lesson: 1,
+    tip: null,
   });
 }
 
@@ -857,6 +885,12 @@ export function reduceUi(ui: UiSlice, cmd: UiCommand): UiSlice {
         botCardSeat: cmd.seat,
       });
     }
+    case 'tip': {
+      // A tip never opens over another layer (§12.11), nor over the screens around the Table.
+      if (ui.screen !== 'table' || ui.overlays.length > 0) return ui;
+      const nav = navigate(ui.nav, { type: 'open', overlay: 'tip' });
+      return withGates({ ...ui, nav, overlays: nav.overlays, tip: cmd.tip });
+    }
     case 'gate': {
       const owner = cmd.owner ?? cmd.gate;
       const held = ui.holds.some((h) => h.gate === cmd.gate && h.owner === owner);
@@ -885,6 +919,7 @@ function withNav(ui: UiSlice, nav: Nav): UiSlice {
     overlays: nav.overlays,
     // Whatever closes the card (✕, Esc, Back, a new screen) also forgets its seat.
     botCardSeat: nav.overlays.includes('botCard') ? ui.botCardSeat : null,
+    tip: nav.overlays.includes('tip') ? ui.tip : null,
   });
 }
 
@@ -997,6 +1032,12 @@ export const selectOverlayOpen =
   (overlay: Overlay) =>
   (s: AppState): boolean =>
     s.ui.overlays.includes(overlay);
+
+/** The first-table tip on show (§12.11), or null. */
+export const selectTip = (s: AppState): TipId | null => s.ui.tip;
+/** The first-table tips seen so far (§12.11), or null when there are no tips (tests). */
+export const selectTipsSeen = (s: AppState): Readonly<Record<string, boolean>> | null =>
+  s.data.tips;
 
 /** §14.7: another tab has the game; this one shows the §12.11 banner instead of the game. */
 export const selectReadOnly = (s: AppState): boolean => s.data.tab === 'readOnly';

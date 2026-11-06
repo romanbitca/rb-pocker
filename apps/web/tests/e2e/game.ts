@@ -39,7 +39,14 @@ interface PcState {
     /** Refused inputs, bot fallbacks and voided hands since the launch (§12.14). */
     diag: { engineErrors: number; botFallbacks: number; voidedHands: number };
   };
-  ui: { screen: string; overlays: readonly string[]; gates: readonly string[]; layout: string };
+  ui: {
+    screen: string;
+    overlays: readonly string[];
+    gates: readonly string[];
+    layout: string;
+    /** Chunk 9.3 (§12.11): the first-table tip on show. */
+    tip: string | null;
+  };
   settings: { players: number; speed: string; autoNext: boolean } & Record<string, unknown>;
   /**
    * The coach's answer for the hero decision `key` (`CoachSlice`, app/store.ts): `opened` = the
@@ -65,6 +72,8 @@ interface PcState {
     install: boolean;
     nudge: string | null;
     suggestion: { rule: string; from: string; to: string } | null;
+    /** Chunk 9.3 (§12.11): the first-table tips seen; null when they are off. */
+    tips: Readonly<Record<string, boolean>> | null;
   };
   /** Chunk 8.2: the profile's stats (§14.4), null before boot read them. */
   stats: { results: { clean: { hands: number }; practice: { hands: number } } } | null;
@@ -246,11 +255,13 @@ export type FlowPoint = 'hero' | 'end' | 'bust';
  *   threshold (Beginner: Inaccuracy or worse, §10.2) the game waits for [Undo: try again] or
  *   [Keep my move]. The helpers keep the move, as a player who reads the card and goes on; specs
  *   about the card itself use `tests/e2e/undo.spec.ts`'s own steps;
- * - the Advanced quiz (§10.3, chunk 6.4): Row A waits for its answers; the helpers tap "Skip".
+ * - the Advanced quiz (§10.3, chunk 6.4): Row A waits for its answers; the helpers tap "Skip";
+ * - a first-table tip (§12.11, chunk 9.3; only in specs that turn tips on, `fixtures.ts`): the
+ *   game waits for a tap; the helpers tap the tip.
  * At a hand end the summary sheet (§12.9, chunk 6.4) may be open, over the banner: the hand-end
  * point then waits for its "Next hand ›" (the tap `tapNextHand` and `playHands` make).
  */
-type Waypoint = FlowPoint | 'feedback' | 'quiz';
+type Waypoint = FlowPoint | 'feedback' | 'quiz' | 'tip';
 
 /**
  * In the page: the point the game is at, or null while bots act or cards move. The card counts
@@ -261,6 +272,7 @@ type Waypoint = FlowPoint | 'feedback' | 'quiz';
 function readFlowPoint(): Waypoint | null {
   const s = window.__pc?.state();
   if (s === undefined) return null;
+  if (s.ui.overlays.includes('tip') && document.querySelector('[data-tip]') !== null) return 'tip';
   if (s.ui.overlays.includes('outOfChips')) return 'bust';
   if (s.game.mode === 'heroTurn') {
     return document.querySelector('[data-quiz-skip]') !== null ? 'quiz' : 'hero';
@@ -280,6 +292,12 @@ function readFlowPoint(): Waypoint | null {
 export async function keepMove(page: Page): Promise<void> {
   await page.locator('[data-feedback-keep]').click();
   await page.waitForFunction(() => window.__pc?.state().game.mode !== 'feedback');
+}
+
+/** A first-table tip (§12.11): a tap on it closes it, and the game goes on. */
+export async function closeTip(page: Page): Promise<void> {
+  await page.locator('[data-tip]').click();
+  await page.waitForFunction(() => window.__pc?.state().ui.overlays.includes('tip') !== true);
 }
 
 /** The Advanced quiz's "Skip" (§10.3): Row A works again. */
@@ -346,6 +364,11 @@ export async function nextFlowPoint(page: Page, fast = false): Promise<FlowPoint
     if (point === 'quiz') {
       if (++cards > 40) throw new Error('nextFlowPoint: a quiz that does not go');
       await skipQuiz(page);
+      continue;
+    }
+    if (point === 'tip') {
+      if (++cards > 40) throw new Error('nextFlowPoint: a tip that does not go');
+      await closeTip(page);
       continue;
     }
     if (point !== null) return point;
@@ -440,7 +463,7 @@ interface FlowView {
   slots: { slot: string; tray: boolean; at: Spot }[];
   /**
    * The hand-end banner (the summary's "Next hand ›" while it is open), the out-of-chips
-   * dialog's Reload button, the card's Keep my move, or the quiz's Skip.
+   * dialog's Reload button, the card's Keep my move, the quiz's Skip, or a first-table tip.
    */
   tap: Spot | null;
 }
@@ -483,10 +506,12 @@ function readFlowView(): FlowView {
   const s = window.__pc?.state();
   const keep = document.querySelector('[data-feedback-keep]');
   const skip = document.querySelector('[data-quiz-skip]');
+  const tipBubble = document.querySelector('[data-tip]');
   const summary = s?.ui.overlays.includes('summary') === true;
   const banner = document.querySelector(summary ? '[data-summary-next]' : '[data-hand-end]');
   let point: Waypoint | null = null;
-  if (s?.ui.overlays.includes('outOfChips') === true) point = 'bust';
+  if (s?.ui.overlays.includes('tip') === true && tipBubble !== null) point = 'tip';
+  else if (s?.ui.overlays.includes('outOfChips') === true) point = 'bust';
   else if (s?.game.mode === 'heroTurn') point = skip !== null ? 'quiz' : 'hero';
   else if (s?.game.mode === 'handEnd' && banner !== null) point = 'end';
   else if (s?.game.mode === 'feedback' && keep !== null) point = 'feedback';
@@ -510,7 +535,9 @@ function readFlowView(): FlowView {
           ? keep
           : point === 'quiz'
             ? skip
-            : null;
+            : point === 'tip'
+              ? tipBubble
+              : null;
   return {
     point,
     hand: point === 'end' ? (s?.game.hand ?? null) : null,
@@ -549,7 +576,7 @@ async function heroTap(page: Page, view: FlowView, random: () => number): Promis
  * Plays `hands` full hands through the UI: the hero taps Row A (as heroAct chooses), the
  * hand-end banner is tapped to deal the next hand (the summary's "Next hand ›" while it is open,
  * Stage 6), "Reload" when the hero is out of chips, Keep my move on a feedback card and Skip on
- * the Advanced quiz (Stage 6).
+ * the Advanced quiz (Stage 6), and a tap on a first-table tip (Stage 9, when a spec turns them on).
  * For speed each step reads the state and the buttons' places in one round trip and taps there
  * with real mouse clicks (Playwright's locator checks cost several round trips per tap, which
  * made 50 hands take minutes in WebKit on the CI runner). A tap that misses shows up as no
@@ -576,7 +603,7 @@ export async function playHands(page: Page, options: PlayOptions): Promise<HandR
     } else if (view.point === 'bust') {
       if (view.tap === null) throw new Error('out of chips, but no Reload button');
       await page.mouse.click(view.tap.x, view.tap.y);
-    } else if (view.point === 'feedback' || view.point === 'quiz') {
+    } else if (view.point === 'feedback' || view.point === 'quiz' || view.point === 'tip') {
       if (view.tap === null) throw new Error(`a ${view.point} without its button`);
       await page.mouse.click(view.tap.x, view.tap.y);
     } else {

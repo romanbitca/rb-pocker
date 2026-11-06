@@ -25,6 +25,7 @@ import {
   type PointerEvent,
 } from 'react';
 import { en } from '../../i18n/en.ts';
+import { shortcutOf } from '../shortcuts.ts';
 import type { ByRiverView, HeroHandView } from '../views.ts';
 import styles from './RankingsDrawer.module.css';
 import { RankingsList, type RowMarks } from './RankingsList.tsx';
@@ -118,6 +119,10 @@ function Sheet({
       if (e.key === 'Escape') {
         e.preventDefault();
         close('escape');
+      } else if (shortcutOf(e) === 'hands') {
+        // K opened it (§12.5 "K toggle hands panel"): K closes it too, like ✕.
+        e.preventDefault();
+        close('close');
       }
     };
     const onFocusIn = (e: FocusEvent) => {

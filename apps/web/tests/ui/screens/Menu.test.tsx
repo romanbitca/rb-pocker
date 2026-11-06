@@ -65,6 +65,21 @@ describe('Menu', () => {
     ]);
   });
 
+  it('"Keyboard shortcuts" (§12.5, chunk 9.3) after Learn, only when given (a mouse or trackpad)', () => {
+    const onShowKeys = vi.fn();
+    render(<Menu {...menuProps({ onOpenLearn: () => {}, onShowKeys })} />);
+    expect(labels()).toEqual([
+      'Resume',
+      'Settings',
+      'Learn',
+      'Keyboard shortcuts',
+      'Leave table',
+      'New table',
+    ]);
+    fireEvent.click(screen.getByRole('button', { name: 'Keyboard shortcuts' }));
+    expect(onShowKeys).toHaveBeenCalledTimes(1);
+  });
+
   it('each item calls its callback', () => {
     const props = menuProps({ topUpTo: 5000, onOpenRankings: vi.fn() });
     render(<Menu {...props} />);

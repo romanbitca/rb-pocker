@@ -5,7 +5,6 @@
  */
 import { act } from '@testing-library/react';
 import { vi } from 'vitest';
-import type { SafeStorage } from '../../src/persist/storage.ts';
 import { createTableController, type TableController } from '../../src/app/controller.ts';
 import type { Grader } from '../../src/app/grading.ts';
 import { installBackHandler } from '../../src/app/lifecycle.ts';
@@ -13,6 +12,7 @@ import {
   appStore,
   defaultGameSettings,
   initialCoach,
+  initialData,
   initialGame,
   initialUi,
   type AppState,
@@ -20,6 +20,7 @@ import {
 } from '../../src/app/store.ts';
 import { fixedSeeds } from '../../src/app/testHooks.ts';
 import type { BrainClient } from '../../src/app/workerClient.ts';
+import type { SafeStorage } from '../../src/persist/storage.ts';
 import type { Seed128 } from '../../src/core/rng.ts';
 import type { LegalActions, PlayerAction } from '../../src/engine/types.ts';
 import { testBrain } from '../workers/fakeBrainWorker.ts';
@@ -47,7 +48,12 @@ export function startTableHarness(
     grader?: Grader;
     /** Chunk 6.4: open the end-of-hand summary when the coach level shows one. */
     summaries?: boolean;
-    /** Chunk 8.2: a storage (the profile, its stats and the stored hands). */
+    /** Chunk 9.3: the first-table tips (§12.11). */
+    tips?: boolean;
+    /**
+     * Chunk 8.2: a storage (the profile, its stats and the stored hands); chunk 9.3: the tips'
+     * flags are written to the profile there.
+     */
     storage?: SafeStorage;
   } = {},
 ): TableHarness {
@@ -57,7 +63,13 @@ export function startTableHarness(
   if (options.settings?.players !== undefined && options.settings.seatLevels === undefined) {
     settings.seatLevels = new Array<null>(settings.players).fill(null);
   }
-  appStore.setState({ game: initialGame(), ui: initialUi(false), coach: initialCoach(), settings });
+  appStore.setState({
+    game: initialGame(),
+    ui: initialUi(false),
+    coach: initialCoach(),
+    data: initialData(),
+    settings,
+  });
   const controller = createTableController({
     store: appStore,
     brain: options.brain ?? testBrain(),
@@ -66,6 +78,7 @@ export function startTableHarness(
     ...(options.hints !== undefined && { hints: options.hints }),
     ...(options.grader !== undefined && { grader: options.grader }),
     ...(options.summaries !== undefined && { summaries: options.summaries }),
+    ...(options.tips !== undefined && { tips: options.tips }),
     ...(options.storage !== undefined && { storage: options.storage }),
   });
   controller.boot();

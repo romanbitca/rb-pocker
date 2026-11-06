@@ -42,6 +42,43 @@ test('no main-thread task over 50 ms during 25 hands with 6 players', async ({
   expect(errors).toEqual([]);
 });
 
+// The first-table tips (§12.11, chunk 9.3) on a first launch: the four of them come and go
+// (`playHands` taps each one; before each hero decision the clock runs half a second, as a reader
+// waits, so the hero turn's tips show too) with no main-thread task over 50 ms.
+test.describe('with the first-table tips', () => {
+  test.use({ firstTableTips: true });
+
+  test('no main-thread task over 50 ms while the four tips come and go', async ({
+    page,
+  }, testInfo) => {
+    test.setTimeout(120_000);
+    const errors = collectErrors(page);
+    const seed = seedFor(testInfo);
+    await page.clock.install();
+    await openApp(page, seed, '&script=passive');
+    await newTable(page, { players: 6 });
+    expect(await installLongTaskObserver(page), 'the Long Tasks API').toBe(true);
+
+    const allSeen = () =>
+      pcState(page).then((s) => {
+        const tips = s.data.tips ?? {};
+        return ['heroStrip', 'coachStrip', 'undo', 'handsTab'].every((t) => tips[t] === true);
+      });
+    const random = prng(seed);
+    for (let round = 0; round < 6 && !(await allSeen()); round++) {
+      await playHands(page, {
+        hands: 1,
+        random,
+        fast: true,
+        beforeHeroAct: () => page.clock.runFor(500),
+      });
+    }
+    expect(await allSeen(), 'every tip came').toBe(true);
+    expect(await longTasks(page)).toEqual([]);
+    expect(errors).toEqual([]);
+  });
+});
+
 // ---------------------------------------------------------------------------------------------
 // Stage 4 acceptance 3 (§15.3 "Win %: preflop / first postflop number / final ≤ 50 / 150 / 600 ms
 // at 6× throttle", checked by the worker timing logs; "no main-thread long task > 50 ms").

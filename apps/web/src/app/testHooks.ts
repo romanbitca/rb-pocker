@@ -4,7 +4,8 @@
  * - `?script=<name>` (Stage 6): scripted bots instead of brain.worker's (`app/botScripts.ts`);
  * - `window.__pc` exposes the store state, `dispatch` and the controller's logs;
  * - `window.__pc.faults` (Stage 6, chunk 6.5): a slow or failing grade, long-thinking bots, a
- *   worker that dies (`app/testFaults.ts`).
+ *   worker that dies (`app/testFaults.ts`);
+ * - `window.__pcNoTips` (chunk 9.3), set before the app loads: no first-table tips (§12.11).
  *
  * ⚠️ Never in a production build. main.tsx loads this module only behind the build constant
  * `__PC_TEST_HOOKS__` (vite.config.ts: true for `vite` dev, Vitest and `vite build --mode e2e`,
@@ -61,6 +62,17 @@ export function fixedSeeds(seed: Seed128): SeedSource {
     },
     handSeed: (handSeq) => deriveSeed(seed, 'hand', handSeq),
   };
+}
+
+/**
+ * The page global the E2E fixture sets (an init script, `tests/e2e/fixtures.ts`) to turn the
+ * first-table tips off (§12.11): most specs play hands without tapping tips away.
+ */
+export const NO_TIPS_GLOBAL = '__pcNoTips';
+
+/** The first-table tips are on unless the page carries `NO_TIPS_GLOBAL`. */
+export function tipsWanted(win: Window): boolean {
+  return !(NO_TIPS_GLOBAL in win);
 }
 
 /** The brain client of a test build and the faults layer in front of its worker. */

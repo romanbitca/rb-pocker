@@ -1,4 +1,4 @@
-// The screens use the PLAN's own words (Appendix F.10, G.1, §10.1, §12.1–§12.3, §12.11, §18):
+// The screens use the PLAN's own words (Appendix F.10, G.1, §10.1, §12.1–§12.5, §12.11, §18):
 // every string below must appear verbatim in docs/PLAN.md. The copy is plain on purpose, for a
 // reader whose first language is not English.
 import { describe, expect, it } from 'vitest';
@@ -9,8 +9,10 @@ import { deviceWords } from '../../../src/i18n/device.ts';
 import { learnWords as W } from '../../../src/i18n/learn.ts';
 import { suggestionWords } from '../../../src/i18n/suggestions.ts';
 import { quizWords } from '../../../src/i18n/quiz.ts';
+import { shortcutWords } from '../../../src/i18n/shortcuts.ts';
 import { summaryWords } from '../../../src/i18n/summary.ts';
 import { drillWords } from '../../../src/i18n/drill.ts';
+import { tipWords } from '../../../src/i18n/tips.ts';
 import { whichWinsWords } from '../../../src/i18n/whichWins.ts';
 
 const PLAN = Object.values(
@@ -348,6 +350,20 @@ describe('screen copy comes from docs/PLAN.md', () => {
       W.statsRowNone('{name}'),
     ];
     for (const w of words) expect(PLAN).toContain(`"${w}"`);
+  });
+
+  // Chunk 9.3 (§12.11, §12.5 notes): the first-table tips word for word, and the keys' list.
+  it.each(Object.entries(tipWords))('9.3 tip %s', (_key, words) => {
+    expect(PLAN).toContain(`"${words}"`);
+  });
+
+  it('9.3 the "Keyboard shortcuts" list, its note and its Close', () => {
+    const rows = shortcutWords.rows.map(([keys, what]) => `${keys} ${what}`).join(' · ');
+    expect(PLAN).toContain(
+      `opens "${shortcutWords.title}", a dialog (\`components/ShortcutsDialog.tsx\``,
+    );
+    expect(PLAN).toContain(`"${rows}", then "${shortcutWords.note}" and [${shortcutWords.close}]`);
+    expect(PLAN).toContain(`The Menu's "${shortcutWords.title}" opens it too`);
   });
 
   it('the Welcome bullets are the four §12.1 bullets, capitalised', () => {

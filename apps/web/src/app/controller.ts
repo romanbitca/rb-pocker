@@ -142,6 +142,7 @@ import {
   type Screen,
   type Speed,
   type TabMode,
+  type TipId,
   type Toast,
   type UiCommand,
   type UiSlice,
@@ -368,6 +369,13 @@ export interface ControllerOptions {
    * tests of other features leave it off, and their hands go on by themselves.
    */
   summaries?: boolean;
+  /**
+   * The first-table tips (§12.11, chunk 9.3): the Table shows each once, and its closing marks it
+   * seen in `profile.flags.tips` (in memory without storage). The app turns them on; tests of
+   * other features leave them off (a tip closes the `tip` gate until a tap: their hands would
+   * wait).
+   */
+  tips?: boolean;
   /**
    * The grade port (§11.3 r5, chunk 6.2, `app/grading.ts`): every hero decision is graded through
    * it (the app: `brainGrader(brain)`). Without it (tests) every decision is recorded at once with
@@ -657,6 +665,10 @@ export class TableController {
   private reopenHint: string | null = null;
   /** Open the end-of-hand summary (`ControllerOptions.summaries`). */
   private readonly summaries: boolean;
+  /** The first-table tips are on (`ControllerOptions.tips`). */
+  private readonly tips: boolean;
+  /** The tips seen, without storage (with it they are the profile's `flags.tips`). */
+  private memoryTips: Readonly<Record<string, boolean>> = {};
   private readonly events: ControllerEvent[] = [];
   private readonly errors: ControllerEvent[] = [];
   private readonly brainEvents: ControllerEvent[] = [];
@@ -677,6 +689,7 @@ export class TableController {
     this.hintJobs = options.hints === true ? new HintJobs(this.store, this.brain) : null;
     this.grader = options.grader ?? null;
     this.summaries = options.summaries === true;
+    this.tips = options.tips === true;
     this.tabLock = options.tabLock ?? null;
     this.tab = this.tabLock === null ? 'writer' : 'pending';
     this.shareEnv = options.shareEnv ?? (globalThis as ShareEnv);
@@ -690,6 +703,7 @@ export class TableController {
       if (s.ui.nav !== prev.ui.nav) this.onNav(s.ui, prev.ui);
       if (s.ui.gates !== prev.ui.gates) this.onGates();
       if (s.coach.opened !== prev.coach.opened) this.onHintOpened();
+      if (prev.ui.tip !== null && s.ui.tip !== prev.ui.tip) this.tipSeen(prev.ui.tip);
     });
     this.store.setGameHandler((cmd) => this.dispatch(cmd));
   }
@@ -2886,11 +2900,13 @@ export class TableController {
     // The coach's hint for the hero's decision; null cancels it (§8.2, chunk 5.7).
     this.hintJobs?.sync(this.hintAsk(hand, legal));
     // §14.7, §14.8: the tab mode, "Protected from automatic clean-up", Import's preview; §12.13,
-    // §10.4: the install offer, the one-time install card, the level suggestion.
+    // §10.4: the install offer, the one-time install card, the level suggestion; §12.11: the
+    // first-table tips seen.
     const persisted = this.profile?.persistGranted ?? null;
     const install = this.install?.ready() === true;
     const nudge = this.nudge();
     const suggestion = this.suggestion();
+    const tips = this.tips ? this.tipsSeen() : null;
     const data = this.store.getState().data;
     if (
       data.tab !== this.tab ||
@@ -2898,7 +2914,8 @@ export class TableController {
       data.importCheck !== this.importCheck ||
       data.install !== install ||
       data.nudge !== nudge ||
-      data.suggestion !== suggestion
+      data.suggestion !== suggestion ||
+      data.tips !== tips
     ) {
       this.store.setState({
         data: {
@@ -2908,9 +2925,46 @@ export class TableController {
           install,
           nudge,
           suggestion,
+          tips,
         },
       });
     }
+  }
+
+  /** The first-table tips seen (§12.11): the profile's flags, or the memory's without storage. */
+  private tipsSeen(): Readonly<Record<string, boolean>> {
+    return this.profile?.flags.tips ?? this.memoryTips;
+  }
+
+  /**
+   * A first-table tip closed (§12.11, chunk 9.3: a tap, a key, Back, or the Table left): it is seen
+   * and never shows again. `profile.flags.tips` is written at once, a few times in a player's life
+   * (a profile write of its own, with the §14.3 `rev` check; no hand waits for it); a read-only
+   * tab keeps it in memory.
+   */
+  private tipSeen(tip: TipId): void {
+    if (!this.tips || this.tipsSeen()[tip] === true) return;
+    this.trace('tip seen', tip);
+    const profile = this.profile;
+    if (profile === null) {
+      this.memoryTips = { ...this.memoryTips, [tip]: true };
+    } else {
+      const flags = { ...profile.flags, tips: { ...profile.flags.tips, [tip]: true } };
+      const next = { ...profile, flags };
+      if (this.storage === null || this.tab !== 'writer') {
+        this.profile = next;
+      } else {
+        const saved = saveProfile(this.storage, next, this.now());
+        const result = saved.result;
+        if (!result.ok && result.reason === 'conflict') {
+          this.anotherWriter(profile.rev, result.storedRev);
+          return;
+        }
+        if (!result.ok && result.reason === 'invalid') this.error('tip not saved', result.problem);
+        this.profile = saved.profile;
+      }
+    }
+    this.publish();
   }
 
   private ui(cmd: UiCommand): void {

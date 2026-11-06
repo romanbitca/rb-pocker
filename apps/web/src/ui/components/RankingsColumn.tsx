@@ -41,9 +41,15 @@ export const RankingsColumn = memo(function RankingsColumn({
     }
   }, [category, collapsed]);
 
+  // The first-table tip about the hand rankings points here (§12.11): the rail, or the header.
   if (collapsed) {
     return (
-      <aside className={styles.rail} aria-label={en.rankings.title}>
+      <aside
+        className={styles.rail}
+        aria-label={en.rankings.title}
+        data-tip-anchor="handsTab"
+        data-tip-side="left"
+      >
         <button
           type="button"
           className={styles.railButton}
@@ -58,7 +64,7 @@ export const RankingsColumn = memo(function RankingsColumn({
   }
   return (
     <aside className={styles.column} aria-labelledby={titleId}>
-      <header className={styles.header}>
+      <header className={styles.header} data-tip-anchor="handsTab" data-tip-side="left">
         <h2 id={titleId} className={styles.title}>
           {en.rankings.title}
         </h2>
