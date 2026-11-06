@@ -8,7 +8,7 @@ test tool that is never shipped.
 Keep this file current (PLAN §16.4): update it in the same PR that adds, removes or upgrades a
 dependency, or copies in any art. Versions below are the exact ones in `package-lock.json`.
 
-Last checked: 28 September 2026.
+Last checked: 28 September 2026; "In the game" on 6 November 2026 (chunk 9.2c, now held by a test).
 
 ## Art, icons, fonts and sounds
 
@@ -24,12 +24,16 @@ Last checked: 28 September 2026.
 
 ## In the game (shipped to the browser, `apps/web/dist`)
 
+The About screen lists these packages too (`apps/web/src/data/licences.ts`, chunk 9.2c);
+`apps/web/tests/data/licences.test.ts` keeps that list equal to this table, to the installed
+packages and to `apps/web/package.json`, and `apps/web/tests/ui/review.bundle.test.ts` fails when
+the built game holds code from a package that is in neither.
+
 | Package | Version | Licence | Copyright | Source |
 |---|---|---|---|---|
 | react | 19.3.0 | MIT | Meta Platforms, Inc. and affiliates | https://github.com/react/react |
 | react-dom | 19.3.0 | MIT | Meta Platforms, Inc. and affiliates | https://github.com/react/react |
 | scheduler (used by react-dom) | 0.28.0 | MIT | Meta Platforms, Inc. and affiliates | https://github.com/react/react |
-| workbox-window (service-worker registration) | 7.4.1 | MIT | Google LLC | https://github.com/GoogleChrome/workbox |
 | workbox-core, workbox-precaching, workbox-routing, workbox-strategies (inside the generated `sw.js` and `workbox-*.js`) | 7.4.1 | MIT | Google LLC | https://github.com/GoogleChrome/workbox |
 | zustand (a dependency now; in the bundle from the store, chunk 3.1) | 5.0.15 | MIT | Paul Henschel | https://github.com/pmndrs/zustand |
 

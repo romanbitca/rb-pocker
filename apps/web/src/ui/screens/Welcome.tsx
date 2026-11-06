@@ -22,7 +22,7 @@ export interface WelcomeProps {
   onSetup: () => void;
   /** "New to poker? 1-minute guide" → Learn lesson 1. Hidden while absent (Learn comes later). */
   onOpenGuide?: (() => void) | undefined;
-  /** The footer's Privacy link. Hidden while absent (the About screen comes later). */
+  /** The footer's Privacy link: About at its Privacy section (chunk 9.2c). Hidden while absent. */
   onOpenPrivacy?: (() => void) | undefined;
   /** The one-time card (§12.11), or absent. */
   nudge?: NudgeCardProps | undefined;

@@ -12,12 +12,15 @@
  *   and the entry reaches it only through `import()`;
  * - the service worker precaches them (so they open offline);
  * - all CSS is one stylesheet that `index.html` loads (`build.cssCodeSplit: false`);
- * - the initial JS and the CSS are within the CI budgets (`scripts/size-budget.ts`).
+ * - the initial JS and the CSS are within the CI budgets (`scripts/size-budget.ts`);
+ * - About (chunk 9.2c) is a chunk of its own, asked for by the screens chunk only, and the built
+ *   game holds code from no npm package that About's licence list (`data/licences.ts`) leaves out.
  */
 import { readFileSync } from 'node:fs';
 import { build, type Plugin } from 'vite';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { BUDGETS, measureBudgets, type Row } from '../../scripts/size-budget.ts';
+import { SHIPPED_PACKAGES } from '../../src/data/licences.ts';
 import { LEARN_MARKER } from '../../src/ui/screens/learnMarker.ts';
 import { REVIEW_MARKER } from '../../src/ui/screens/reviewMarker.ts';
 import { STATS_MARKER } from '../../src/ui/screens/statsMarker.ts';
@@ -28,7 +31,19 @@ const OUT = `${ROOT}node_modules/.cache/review-bundle-check`;
 /** Source file (relative to apps/web) → the chunk that holds it (relative to dist). */
 const chunkOf = new Map<string, string>();
 
-/** Records which chunk holds each source module. */
+/** The npm packages whose code is in the built game's chunks (About's licence list, chunk 9.2c). */
+const packagesInBundle = new Set<string>();
+
+/**
+ * The npm package a module comes from, or null for our own files and the bundler's helpers
+ * (Vite's preload helper, Rolldown's runtime). vite-plugin-pwa's register hook is a virtual module.
+ */
+function packageOf(id: string): string | null {
+  if (id.includes('virtual:pwa-register')) return 'vite-plugin-pwa';
+  return /\/node_modules\/((?:@[^/]+\/)?[^/]+)\//.exec(id)?.[1] ?? null;
+}
+
+/** Records which chunk holds each source module, and which packages the chunks hold. */
 function chunkMap(): Plugin {
   return {
     name: 'test:chunk-map',
@@ -36,7 +51,9 @@ function chunkMap(): Plugin {
       for (const out of Object.values(bundle)) {
         if (out.type !== 'chunk') continue;
         for (const id of Object.keys(out.modules)) {
-          if (id.startsWith(ROOT)) chunkOf.set(id.slice(ROOT.length), out.fileName);
+          const pkg = packageOf(id);
+          if (pkg !== null) packagesInBundle.add(pkg);
+          else if (id.startsWith(ROOT)) chunkOf.set(id.slice(ROOT.length), out.fileName);
         }
       }
     },
@@ -289,5 +306,43 @@ describe('the service worker code in the production build (§15.1, chunk 9.5)', 
     expect(text(port)).not.toMatch(/\bimport\b/);
     // The plugin's own registration code (`virtual:pwa-register`, workbox-window) is gone.
     expect(rowOf('Total precache').files.some((f) => f.includes('workbox-window'))).toBe(false);
+  });
+});
+
+describe('About in the production build (chunk 9.2c)', () => {
+  it('is a chunk of its own with its words and licences: not initial, by import(), precached', () => {
+    const initial = rowOf('Initial JS');
+    const about = chunk('src/ui/screens/About.tsx');
+    expect(about).toMatch(/^assets\/About-[\w-]+\.js$/);
+    // Its words and its licence list travel with it, nowhere else.
+    for (const source of ['src/i18n/about.ts', 'src/data/licences.ts']) {
+      expect(chunk(source), source).toBe(about);
+    }
+    expect(initial.files).not.toContain(about);
+    for (const word of ['How the coach works', '1-800-MY-RESET', 'workbox-precaching']) {
+      for (const file of initial.files) expect(text(file), word).not.toContain(word);
+      expect(text(about), word).toContain(word);
+    }
+    // Only the screens chunk asks for it (aboutModule.ts), and only through import().
+    const screens = chunk('src/ui/screensEntry.tsx');
+    expect(chunk('src/ui/aboutModule.ts')).toBe(screens);
+    const name = about.slice('assets/'.length).replace('.', '\\.');
+    expect(text(screens)).toMatch(new RegExp(`import\\(\\s*["'\`]\\./${name}["'\`]`));
+    expect(text(screens)).not.toMatch(new RegExp(`(?:from|import)\\s*["']\\./${name}["']`));
+    expect(rowOf('Total precache').files).toContain(about);
+  });
+
+  it('holds code from no npm package that its licence list leaves out', () => {
+    // The game's own chunks; the service worker's workbox files are built apart (workbox-build).
+    const listed = new Set(SHIPPED_PACKAGES.map((p) => p.name));
+    expect([...packagesInBundle].filter((p) => !listed.has(p)).sort()).toEqual([]);
+    // Since chunk 9.5 the app registers its service worker itself: vite-plugin-pwa's register
+    // code and workbox-window are not in the game any more.
+    for (const p of ['react', 'react-dom', 'scheduler', 'zustand']) {
+      expect(packagesInBundle, p).toContain(p);
+    }
+    for (const p of ['vite-plugin-pwa', 'workbox-window']) {
+      expect(packagesInBundle, p).not.toContain(p);
+    }
   });
 });

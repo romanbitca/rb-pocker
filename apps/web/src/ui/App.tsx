@@ -83,6 +83,7 @@ function WelcomeScreen() {
       onPlay={() => dispatch({ type: 'play' })}
       onSetup={() => dispatch({ type: 'go', screen: 'setup' })}
       onOpenGuide={() => dispatch({ type: 'lesson', lesson: 1 })}
+      onOpenPrivacy={() => dispatch({ type: 'go', screen: 'privacy' })}
       nudge={nudgeProps(nudge, dispatch)}
     />
   );
@@ -112,8 +113,15 @@ function HomeScreen() {
 }
 
 // The screens after the first tap are in the lazy chunk (`screensEntry.tsx`, see the module note).
+// About (both ways in) is there too, and loads its own page from there (chunk 9.2c).
 
-type LaterScreenName = 'TableScreen' | 'SetupScreen' | 'SettingsScreen' | 'DrillScreen';
+type LaterScreenName =
+  | 'TableScreen'
+  | 'SetupScreen'
+  | 'SettingsScreen'
+  | 'DrillScreen'
+  | 'AboutScreen'
+  | 'PrivacyScreen';
 
 /**
  * A screen from the lazy chunk. It is almost always loaded already and renders at once. Only a
@@ -346,6 +354,8 @@ const SCREENS = {
   glossary: () => <LearnScreen page="glossary" />,
   // The hand drill (§13.5): its wrapper is in the screens chunk, its page and logic lazy chunks.
   drill: () => <LaterScreen name="DrillScreen" />,
+  about: () => <LaterScreen name="AboutScreen" />,
+  privacy: () => <LaterScreen name="PrivacyScreen" />,
 } as const;
 
 /**

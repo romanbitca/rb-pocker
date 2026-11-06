@@ -49,6 +49,12 @@ export const en = {
   drill: { title: 'Hand drill' },
 
   /**
+   * The About screen's name: its title, Settings' last row and the Menu's item (PLAN §12.1). Its
+   * words load with its own lazy chunk (`i18n/about.ts`).
+   */
+  about: 'About',
+
+  /**
    * The screens after the first tap (the Table, Setup, Settings) are a lazy chunk, loaded right
    * after the first paint (PLAN §15.3). Only a tap before it arrives shows `loading` (after half a
    * second); `loadFailed` when it cannot load (no connection, not cached yet).
