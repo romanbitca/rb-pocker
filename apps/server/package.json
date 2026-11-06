@@ -1,6 +1,6 @@
 {
   "name": "@rb/server",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "private": true,
   "description": "RB Poker Coach: the small NestJS server that serves the built game.",
   "type": "module",
