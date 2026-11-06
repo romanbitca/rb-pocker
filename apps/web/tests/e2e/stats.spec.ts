@@ -1,12 +1,22 @@
 import type { Page } from '@playwright/test';
 import { volumeStorage } from '../helpers/statsVolume.ts';
 import { expect, test } from './fixtures.ts';
-import { newTable, openApp, pcState, playHands, prng, seedFor, sizeOf } from './game.ts';
+import {
+  collectErrors,
+  newTable,
+  openApp,
+  pcState,
+  playHands,
+  prng,
+  seedFor,
+  sizeOf,
+} from './game.ts';
 
 // PLAN §18 Stage 8 (chunk 8.2): acceptance 3, first half (play 5 hands, reload: Stats shows exactly
 // 5 hands) and 4b, the Stats part (3 hands, New table, 3 more: 6), through the real Stats screen;
-// History opens a stored hand in Review after a reload; and §14.9: with 10,000 hands stored the
-// Stats screen renders in under 300 ms at 6× CPU (Chromium: CDP throttling).
+// History opens a stored hand in Review after a reload; a leak's lesson link opens Learn's lesson
+// over Stats (§8.9); and §14.9: with 10,000 hands stored the Stats screen renders in under 300 ms
+// at 6× CPU (Chromium: CDP throttling).
 
 /** Hands the store's stats have counted (the profile's, §14.4). */
 const counted = (page: Page): Promise<number> =>
@@ -102,6 +112,65 @@ test.describe('stats', () => {
     await page.getByRole('button', { name: 'Stats', exact: true }).click();
     await page.getByRole('radio', { name: 'Results', exact: true }).click();
     await expect(page.locator('[data-stat="hands"] dd')).toHaveText('6');
+  });
+
+  test('a leak`s lesson link opens that lesson in Learn; Back returns to Stats (§8.9)', async ({
+    page,
+  }, testInfo) => {
+    test.setTimeout(90_000);
+    const errors = collectErrors(page);
+    const seed = seedFor(testInfo, 'stats-lessons');
+    await openApp(page, seed);
+    await newTable(page, { players: 3 }); // writes the profile
+    // Stored leaks (A.7 `stats.leaks`), biggest loss first: Pot odds, Outs, Position.
+    await page.evaluate(() => {
+      const profile = JSON.parse(localStorage.getItem('pc.v1.profile') as string) as {
+        stats: { results: { clean: { hands: number } }; leaks: Record<string, unknown> };
+      };
+      profile.stats.results.clean.hands = 12;
+      profile.stats.leaks = {
+        overfold: { count: 5, lossMilliBB: 9000 },
+        chase: { count: 3, lossMilliBB: 8000 },
+        'open-loose': { count: 4, lossMilliBB: 7000 },
+      };
+      localStorage.setItem('pc.v1.profile', JSON.stringify(profile));
+    });
+    await openApp(page, seed);
+
+    await page.getByRole('button', { name: 'Stats', exact: true }).click();
+    const leaks = page.locator('[data-leak]');
+    await expect(leaks).toHaveCount(3);
+    await expect(leaks.getByRole('button')).toHaveText([
+      'Lesson 6: Pot odds',
+      'Lesson 7: Outs',
+      'Lesson 5: Position',
+    ]);
+    // The links are laid out as tap targets (§12.12), on the page's width.
+    for (const box of await leaks
+      .getByRole('button')
+      .evaluateAll((els) => els.map((el) => el.getBoundingClientRect().toJSON() as DOMRect))) {
+      expect(box.width).toBeGreaterThanOrEqual(44);
+      expect(box.height).toBeGreaterThanOrEqual(44);
+    }
+
+    // "Lesson 7: Outs": Learn's lesson, from Learn's own chunk, over Stats.
+    await page.getByRole('button', { name: 'Lesson 7: Outs', exact: true }).click();
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Outs');
+    await expect(page.getByText('Lesson 7 of 7')).toBeVisible();
+    const s = await pcState(page);
+    expect(s.ui.nav.screens).toEqual(['home', 'stats', 'lesson']);
+    expect(s.ui.lesson).toBe(7);
+
+    // Back: Stats again, on Progress with the leaks; then the browser's back (Android Back) too.
+    await page.getByRole('button', { name: 'Back', exact: true }).click();
+    await expect(page.locator('[data-stats]')).toBeVisible();
+    await expect(page.getByRole('radio', { name: 'Progress', exact: true })).toBeChecked();
+    await page.getByRole('button', { name: 'Lesson 6: Pot odds', exact: true }).click();
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Pot odds');
+    await page.goBack();
+    await expect(page.locator('[data-leak]')).toHaveCount(3);
+    expect((await pcState(page)).ui.nav.screens).toEqual(['home', 'stats']);
+    expect(errors).toEqual([]);
   });
 });
 

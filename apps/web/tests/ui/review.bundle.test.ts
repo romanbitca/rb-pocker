@@ -155,6 +155,12 @@ describe('the Stats screen in the production build (chunk 8.2)', () => {
       for (const file of initial.files) expect(text(file), word).not.toContain(word);
       expect(text(stats), word).toContain(word);
     }
+    // A leak's lesson link (§8.9) names its lesson and opens it by number: the lessons themselves
+    // stay in Learn's chunk (its test below), none of their words come with Stats.
+    expect(text(stats)).toContain('Pot odds');
+    for (const words of ['A hand, step by step', 'Outs are cards that improve your hand.']) {
+      expect(text(stats), words).not.toContain(words);
+    }
     expectOnlyDynamicImports(stats);
     expect(rowOf('Total precache').files).toContain(stats);
   });

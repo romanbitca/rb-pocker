@@ -38,7 +38,11 @@ export const SW_SCOPE = './';
 /** The message that lets a waiting `generateSW` worker take over (`registerType: 'prompt'`). */
 export const SKIP_WAITING = { type: 'SKIP_WAITING' } as const;
 
-export type UpdateEvent = 'offlineReady' | 'updateReady' | 'activated';
+/**
+ * The port's events (the module comment); `stale` is not this module's: `app/boot.ts` adds it
+ * when a lazy chunk is gone from the server (`watchStaleChunks`, §15.1 "Redeploys").
+ */
+export type UpdateEvent = 'offlineReady' | 'updateReady' | 'activated' | 'stale';
 
 /** The service worker, as the controller uses it (`ControllerOptions.updates`). */
 export interface UpdatePort {
@@ -50,6 +54,13 @@ export interface UpdatePort {
   apply(): void;
   /** Reloads the page: the version that controls it now runs. */
   reload(): void;
+  /**
+   * Whether the page is online (`navigator.onLine`; absent: yes). Asked right before a reload whose
+   * only reason is a lazy chunk that could not load (`stale`, §15.1 "Redeploys"): offline, the
+   * chunk is only out of reach, and a page without a worker would reload into the browser's error
+   * page.
+   */
+  online?(): boolean;
 }
 
 /** A `ServiceWorker`, as used here (fakes in tests). */

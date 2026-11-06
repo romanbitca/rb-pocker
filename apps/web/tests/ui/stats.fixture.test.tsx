@@ -27,6 +27,7 @@ function show(tab: StatsTab) {
       tab={tab}
       onTab={() => {}}
       onOpenHand={onOpenHand}
+      onLesson={() => {}}
       onBack={() => {}}
     />,
   );
@@ -69,9 +70,10 @@ describe('the 20-hand fixture (Stage 8 acceptance 2)', () => {
     expect(stat('follow')).toBe('You did what the coach said 45% of the time.');
     expect(stat('streak')).toBe('Good decisions in a row: 0');
     expect(stat('streakBest')).toBe('Your best: 8');
+    // Each leak with its lesson link (§8.9): both of these are lesson 3, "Your options".
     expect([...document.querySelectorAll('[data-leak]')].map((li) => li.textContent)).toEqual([
-      'Not betting your strong hands7 times · about 256 chips lost',
-      'Calling the big blind instead of raising4 times · about 28 chips lost',
+      'Not betting your strong hands7 times · about 256 chips lostLesson 3: Your options',
+      'Calling the big blind instead of raising4 times · about 28 chips lostLesson 3: Your options',
     ]);
     expect(stat('undo')).toBe('Fixed with Undo: 2');
     expect(stat('quiz')).toBe('Quiz answers right: 3 of 6 (50%)');

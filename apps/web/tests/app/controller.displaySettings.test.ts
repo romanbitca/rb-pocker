@@ -81,3 +81,58 @@ describe('Settings complete: the rows of chunk 9.1b (§12.1)', () => {
     expect(winBadgeOf(working, false, 'beginner').status).toBe('off');
   });
 });
+
+describe('the default speed under reduced motion (§12.8 "default speed Fast", §12.1 notes)', () => {
+  /** A launch over `backend`, the system asking for reduced motion or not. */
+  const start = (backend: FakeStorage, reducedMotion: boolean): Harness =>
+    makeHarness({ storage: createSafeStorage(() => backend), reducedMotion });
+
+  it('a first launch starts at Fast when the system asks for less motion, else at Normal', () => {
+    const reduced = start(new FakeStorage(), true);
+    expect(reduced.state().ui.screen).toBe('welcome');
+    expect(reduced.state().settings.speed).toBe('fast');
+    expect(start(new FakeStorage(), false).state().settings.speed).toBe('normal');
+  });
+
+  it('Play writes it as the speed, which the next launches keep whatever the system says', () => {
+    const backend = new FakeStorage();
+    const a = start(backend, true);
+    a.dispatch({ type: 'play' });
+    expect(a.state().game.hand).not.toBeNull();
+    expect(storedSettings(backend).speed).toBe('fast');
+    a.controller.dispose();
+    expect(start(backend, false).state().settings.speed).toBe('fast');
+  });
+
+  it('a stored speed is the player`s: Normal stays Normal when the system asks later', () => {
+    const backend = new FakeStorage();
+    const a = start(backend, false);
+    a.dispatch({ type: 'play' });
+    a.controller.dispose();
+    const b = start(backend, true);
+    expect(b.state().settings.speed).toBe('normal');
+    // Picked under reduced motion: kept too.
+    b.dispatch({ type: 'settings', patch: { speed: 'instant' } });
+    b.dispatch({ type: 'settings', patch: { speed: 'normal' } });
+    b.dispatch({ type: 'pagehide' });
+    b.controller.dispose();
+    expect(start(backend, true).state().settings.speed).toBe('normal');
+  });
+
+  it('Welcome again (nothing written yet), or a damaged profile started again: the defaults', () => {
+    const backend = new FakeStorage();
+    start(backend, true).controller.dispose();
+    expect(backend.data.size).toBe(0); // still a first launch
+    expect(start(backend, false).state().settings.speed).toBe('normal');
+    // §14.6: unreadable and no backup: the defaults again, so Fast under reduced motion.
+    const damaged = new FakeStorage();
+    damaged.data.set(STORAGE_KEYS.profile, '{ not json');
+    expect(start(damaged, true).state().settings.speed).toBe('fast');
+  });
+
+  it('the Reduce motion setting changes no speed: only the system`s choice at a first launch', () => {
+    const h = start(new FakeStorage(), false);
+    h.dispatch({ type: 'settings', patch: { reduceMotion: 'on' } });
+    expect(h.state().settings.speed).toBe('normal');
+  });
+});

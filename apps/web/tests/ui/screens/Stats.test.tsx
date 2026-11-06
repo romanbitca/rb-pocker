@@ -2,16 +2,19 @@
 /**
  * The Stats screen (PLAN §14.4, chunk 8.2): four pages in a radio group, empty states that teach
  * below 5 hands, History's loading, empty and footer states, the chart's hidden data table, tap
- * targets (§12.12) and no suit symbols (pitfall 31). The numbers of every card for 20 scripted
- * hands are `tests/ui/stats.fixture.test.tsx`.
+ * targets (§12.12) and no suit symbols (pitfall 31), each leak's lesson link (§8.9). The numbers
+ * of every card for 20 scripted hands are `tests/ui/stats.fixture.test.tsx`.
  */
 import '../../../src/ui/styles/tokens.css';
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { HistoryItem } from '../../../src/app/history.ts';
-import { appStore, initialData } from '../../../src/app/store.ts';
+import { appStore, initialData, LESSON_COUNT } from '../../../src/app/store.ts';
+import { LESSONS } from '../../../src/data/lessons.ts';
+import { statsWords } from '../../../src/i18n/stats.ts';
 import { emptyStats, type Stats as StatsData } from '../../../src/persist/schema.ts';
 import { Stats, type StatsProps, type StatsTab } from '../../../src/ui/screens/Stats.tsx';
+import { LEAK_LESSON } from '../../../src/ui/stats.ts';
 import { SUIT_CODE_POINTS } from '../dom.ts';
 import { BB, NOW, playFixture } from '../fixtures/stats20.ts';
 import { smallTargets } from './targets.ts';
@@ -35,6 +38,7 @@ function show(props: Partial<StatsProps> = {}) {
     tab: 'progress',
     onTab: vi.fn(),
     onOpenHand: vi.fn(),
+    onLesson: vi.fn(),
     onBack: vi.fn(),
     ...props,
   };
@@ -147,6 +151,76 @@ describe('the Stats screen', () => {
       cleanup();
     }
   }, 15_000);
+});
+
+describe('a leak`s lesson link (§8.9 "Lesson links", Appendix F.10)', () => {
+  /** Ten hands with three leaks, biggest loss first: Pot odds, Outs, Position. */
+  function leaky(): StatsData {
+    const s = hands(10);
+    return {
+      ...s,
+      leaks: {
+        overfold: { count: 5, lossMilliBB: 9000 },
+        chase: { count: 3, lossMilliBB: 8000 },
+        'open-loose': { count: 4, lossMilliBB: 7000 },
+        limp: { count: 2, lossMilliBB: 50_000 }, // seen twice: no leak yet, no link
+      },
+    };
+  }
+
+  it('each leak shows "Lesson {n}: {title}" under it; a tap opens that lesson', () => {
+    const onLesson = vi.fn();
+    const { container } = show({ stats: leaky(), tab: 'progress', onLesson });
+    const rows = [...document.querySelectorAll<HTMLElement>('[data-leak]')];
+    expect(rows.map((li) => li.dataset['leak'])).toEqual(['overfold', 'chase', 'open-loose']);
+    const links = rows.map((li) => within(li).getByRole('button'));
+    expect(links.map((b) => b.textContent)).toEqual([
+      'Lesson 6: Pot odds',
+      'Lesson 7: Outs',
+      'Lesson 5: Position',
+    ]);
+    fireEvent.click(links[1] as HTMLElement);
+    expect(onLesson).toHaveBeenCalledWith(7);
+    fireEvent.click(screen.getByRole('button', { name: 'Lesson 5: Position' }));
+    expect(onLesson).toHaveBeenLastCalledWith(5);
+    // A link, at least 44×44 px (§12.12), flush with the leak's words.
+    expect(links[0]?.className).toMatch(/link/);
+    expect(smallTargets(container, () => false)).toEqual([]);
+  }, 15_000);
+
+  it('no leak, no link', () => {
+    show({ stats: hands(10), tab: 'progress' });
+    expect(
+      screen.getByText('No leaks yet. A leak shows after the same mistake 3 times.'),
+    ).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /^Lesson / })).toBeNull();
+  }, 15_000);
+
+  it('every leak tag has its §8.9 lesson, and the titles are the lessons` own (F.8)', () => {
+    expect(LEAK_LESSON).toEqual({
+      'open-loose': 5,
+      'open-tight': 5,
+      limp: 3,
+      'missed-value': 3,
+      'bluff-much': 3,
+      chase: 7,
+      'call-pre-wide': 6,
+      'fold-pre-much': 6,
+      pushfold: 6,
+      overfold: 6,
+      'river-call': 6,
+      'call-light': 6,
+      sizing: 6,
+    });
+    // Every leak with a name has a lesson, and every lesson linked to has its title here.
+    expect(Object.keys(LEAK_LESSON).sort()).toEqual(Object.keys(statsWords.leaks).sort());
+    const linked = [...new Set(Object.values(LEAK_LESSON))].sort();
+    expect(linked).toEqual([3, 5, 6, 7]);
+    for (const n of linked) {
+      expect(statsWords.lessons[n], `lesson ${n}`).toBe(LESSONS[n - 1]?.title);
+      expect(n).toBeLessThanOrEqual(LESSON_COUNT);
+    }
+  });
 });
 
 describe('Stats, chunk 8.4: History`s [Export] [Import] and the level suggestion card', () => {

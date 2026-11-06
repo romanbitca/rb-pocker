@@ -17,7 +17,8 @@
  *   asked for at boot (`loadDevice`), so the initial bundle does not carry them (§15.3).
  * - New versions (§15.1, chunk 9.5): `updateMayReload` says when a waiting version may reload the
  *   page (the controller decides; the service worker itself is `app/swUpdate.ts`, a lazy chunk),
- *   and `serviceWorkerOf` whether the page has service workers at all.
+ *   and `serviceWorkerOf` whether the page has service workers at all. `watchStaleChunks`: a lazy
+ *   chunk gone from the server after a redeploy (§15.1 "Redeploys") is a new version too.
  */
 import { historyDepth, type Nav, type Overlay, type Screen } from './navigation.ts';
 import type { AppStore, Layout, TabMode } from './store.ts';
@@ -256,6 +257,45 @@ export function serviceWorkerOf(win: Window): ServiceWorkerContainer | null {
   } catch {
     return null;
   }
+}
+
+/** sessionStorage: the chunk a reload was last asked for, and when (`watchStaleChunks`). */
+export const STALE_RELOAD_KEY = 'pc.staleReload';
+/** No second stale reload within this time of the note, whatever chunk fails (§15.1): no loop. */
+export const STALE_RELOAD_GUARD_MS = 600_000;
+
+/**
+ * §15.1 "Redeploys": a new container no longer has the old hashed chunks, so a page that runs the
+ * old version (no service worker: an insecure page or a first visit; or one whose worker another
+ * tab replaced) cannot load a lazy chunk it has not loaded yet. Vite's import wrapper then fires
+ * `vite:preloadError` (the import still fails, so the screen shows its "could not be loaded" line
+ * and Try again). `onStale` tells the controller, which reloads the page into the new version at
+ * the next safe moment, as for a new version (never mid-hand: `updateMayReload`, or before the next
+ * hand is dealt, with `resumeAfterUpdate`).
+ *
+ * Once: the failed chunk (the error's text, which names its URL except in WebKit) and the time go
+ * to sessionStorage first, and no chunk failing within 10 minutes of that note asks for a second
+ * reload, whichever it is: the reloaded page may still miss chunks (a bad deploy, a 404 kept by a
+ * cache), and at boot several chunks load, whose errors name different chunks (a note per chunk
+ * would let two of them reload the page in turns). No reload without that note (no
+ * sessionStorage), nor offline (`navigator.onLine` false: the chunk is only out of reach, and a
+ * reload would show the browser's error page); the controller asks again right before the reload
+ * (`UpdatePort.online`).
+ */
+export function watchStaleChunks(win: Window, onStale: () => void): void {
+  win.addEventListener('vite:preloadError', (event) => {
+    const chunk = String((event as Event & { payload?: unknown }).payload);
+    try {
+      if (win.navigator.onLine === false) return;
+      const store = win.sessionStorage;
+      const last = JSON.parse(store.getItem(STALE_RELOAD_KEY) ?? '{}') as { at?: unknown };
+      if (Date.now() - Number(last.at) < STALE_RELOAD_GUARD_MS) return;
+      store.setItem(STALE_RELOAD_KEY, JSON.stringify({ chunk, at: Date.now() }));
+    } catch {
+      return; // no sessionStorage: nothing would stop a loop
+    }
+    onStale();
+  });
 }
 
 /** What `updateMayReload` looks at. */
