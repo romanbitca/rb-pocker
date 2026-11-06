@@ -18,6 +18,7 @@ import type { HandEndView, LuckLineData } from '../app/store.ts';
 import type { HandCategory } from '../eval/evaluate.ts';
 import { en } from '../i18n/en.ts';
 import { formatChips } from './format.ts';
+import { joinNames } from './names.ts';
 
 /** The hero's seat (PLAN §0.3). */
 const HERO = 0;
@@ -25,12 +26,6 @@ const HERO = 0;
 const MAX_LOSER_LINES = 2;
 
 const T = en.handEnd;
-
-/** "you and Ben", "Ben and Anna", "you, Ben and Anna". */
-export function joinNames(names: readonly string[]): string {
-  if (names.length <= 1) return names[0] ?? '';
-  return `${names.slice(0, -1).join(T.comma)}${T.and}${names[names.length - 1] ?? ''}`;
-}
 
 const categoryName = (category: HandCategory): string => T.category[category];
 

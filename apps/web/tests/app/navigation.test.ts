@@ -18,7 +18,17 @@ import { testSeed } from '../helpers/seed.ts';
 
 const FC_SEED = (seedWords(testSeed('20260929000000000000000000003700'))[0] as number) | 0;
 
-const SCREENS: Screen[] = ['welcome', 'home', 'setup', 'table', 'settings'];
+const SCREENS: Screen[] = [
+  'welcome',
+  'home',
+  'setup',
+  'table',
+  'settings',
+  'learn',
+  'lesson',
+  'handRankings',
+  'glossary',
+];
 const OVERLAYS: Overlay[] = ['menu', 'outOfChips', 'newTable'];
 
 /** Runs actions from `nav` and returns every state on the way (the start included). */
@@ -64,6 +74,26 @@ describe('navigate', () => {
     expect(navigate(nav, go('table')).screens).toEqual(['home', 'table']);
     expect(navigate(nav, go('home')).screens).toEqual(['home']);
     expect(navigate(nav, back).screens).toEqual(['home', 'table']);
+  });
+
+  it('Learn (chunk 9.2): each page is pushed, so Back returns to the page under it', () => {
+    // Home → Learn → lesson 4 → its "See all poker hands"; Back, Back, Back.
+    const states = run(initialNav(false), go('learn'), go('lesson'), go('handRankings'));
+    expect(last(states).screens).toEqual(['home', 'learn', 'lesson', 'handRankings']);
+    const backs = run(last(states), back, back, back);
+    expect(backs.map(currentScreen)).toEqual(['handRankings', 'lesson', 'learn', 'home']);
+    // The Menu over the Table opens Learn over the Table: Back returns to the hand.
+    const fromTable = last(run(initialNav(false), go('table'), open('menu'), go('learn')));
+    expect(fromTable).toEqual({ screens: ['home', 'table', 'learn'], overlays: [] });
+    expect(navigate(fromTable, back).screens).toEqual(['home', 'table']);
+    // Welcome's "1-minute guide" opens a lesson over Welcome; Back returns there.
+    const guide = navigate(initialNav(true), go('lesson'));
+    expect(guide.screens).toEqual(['welcome', 'lesson']);
+    expect(navigate(guide, back).screens).toEqual(['welcome']);
+    // The last lesson's "All lessons" from the guide: the list goes on top.
+    expect(navigate(guide, go('learn')).screens).toEqual(['welcome', 'lesson', 'learn']);
+    // Learn's list from deeper in Learn goes back to it.
+    expect(navigate(last(states), go('learn')).screens).toEqual(['home', 'learn']);
   });
 
   it('a screen change closes every overlay (Menu → Settings)', () => {

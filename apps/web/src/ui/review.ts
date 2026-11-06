@@ -11,7 +11,8 @@ import { cardAriaLabel } from '../core/cards.ts';
 import { en } from '../i18n/en.ts';
 import { enReview } from '../i18n/review.ts';
 import { formatChips } from './format.ts';
-import { handEndLines, joinNames } from './handEnd.ts';
+import { handEndLines } from './handEnd.ts';
+import { joinNames } from './names.ts';
 
 const T = enReview.says;
 

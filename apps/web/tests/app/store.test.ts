@@ -8,6 +8,7 @@ import {
   createAppStore,
   GATES,
   initialUi,
+  LESSON_COUNT,
   OVERLAY_GATE,
   reduceUi,
   selectCanTopUp,
@@ -58,6 +59,35 @@ describe('navigation in the store (app/navigation.ts, §12.1)', () => {
       type: 'back',
     });
     expect(ui.nav).toEqual({ screens: ['home'], overlays: [] });
+  });
+
+  it('lesson (chunk 9.2): shows lesson n on the lesson screen; Next changes it in place', () => {
+    let ui = reduceUi(initialUi(false), { type: 'go', screen: 'learn' });
+    expect(ui.lesson).toBe(1);
+    ui = reduceUi(ui, { type: 'lesson', lesson: 3 });
+    expect(ui).toMatchObject({ screen: 'lesson', lesson: 3 });
+    expect(ui.nav.screens).toEqual(['home', 'learn', 'lesson']);
+    expect(ui.gates).toContain('offTable');
+    // Next: the same screen, the next lesson; Back still returns to the list.
+    const next = reduceUi(ui, { type: 'lesson', lesson: 4 });
+    expect(next.nav).toBe(ui.nav);
+    expect(next.lesson).toBe(4);
+    expect(reduceUi(next, { type: 'back' })).toMatchObject({ screen: 'learn', lesson: 4 });
+    // The same lesson again, or a number that is no lesson, changes nothing.
+    expect(reduceUi(next, { type: 'lesson', lesson: 4 })).toBe(next);
+    for (const lesson of [0, 8, LESSON_COUNT + 1, 2.5, Number.NaN, -1]) {
+      expect(reduceUi(next, { type: 'lesson', lesson })).toBe(next);
+    }
+    expect(LESSON_COUNT).toBe(7);
+  });
+
+  it('lesson from the Table (Menu → Learn → a lesson): the bot card is forgotten, the game waits', () => {
+    let ui = reduceUi(onTable(), { type: 'botCard', seat: 2 });
+    ui = reduceUi(ui, { type: 'lesson', lesson: 7 });
+    expect(ui).toMatchObject({ screen: 'lesson', lesson: 7, overlays: [], botCardSeat: null });
+    expect(ui.nav.screens).toEqual(['home', 'table', 'lesson']);
+    expect(ui.gates).toContain('offTable');
+    expect(reduceUi(ui, { type: 'back' }).screen).toBe('table');
   });
 
   it('a navigation action that changes nothing leaves ui as it was', () => {
@@ -113,6 +143,10 @@ describe('dispatch', () => {
     expect(handler).not.toHaveBeenCalled();
     store.getState().dispatch({ type: 'act', action: { type: 'check' } });
     expect(handler).toHaveBeenCalledWith({ type: 'act', action: { type: 'check' } });
+    // Learn's lesson command is the store's own (chunk 9.2).
+    store.getState().dispatch({ type: 'lesson', lesson: 2 });
+    expect(store.getState().ui).toMatchObject({ screen: 'lesson', lesson: 2 });
+    expect(handler).toHaveBeenCalledTimes(1);
   });
 
   it('a UI command that changes nothing leaves the state object as it was', () => {

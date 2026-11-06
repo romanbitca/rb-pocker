@@ -3,7 +3,8 @@
  * pitfalls 35 and 39; §18 Stage 5 acceptance 7). The rules are in `copy-rules.ts`; this script
  * runs them on:
  *
- * 1. every template of `enCoach.coach.templates` and the glossary (`checkTemplates`, `checkGlossary`);
+ * 1. every template of `enCoach.coach.templates`, the glossary and Learn's lessons (`checkTemplates`,
+ *    `checkGlossary`, `checkLessons`: F.8's 150 words a lesson, chunk 9.2);
  * 2. the hints of generated situations (1,000 by default): random tables and random legal play
  *    with the real engine (only here: the brain never runs the engine), every hero decision
  *    observed and its §8.2 features computed; then the coach's own advice there (`hint`'s
@@ -63,7 +64,8 @@ import type {
 } from '../src/engine/types.ts';
 import { hintLines, hintText } from '../src/i18n/coach.ts';
 import { en } from '../src/i18n/en.ts';
-import { checkGlossary, checkHint, checkTemplates } from './copy-rules.ts';
+import { LESSONS } from '../src/data/lessons.ts';
+import { checkGlossary, checkHint, checkLessons, checkTemplates } from './copy-rules.ts';
 
 /** Stage 5 acceptance 7: the run covers 1,000 generated situations. */
 export const DEFAULT_SITUATIONS = 1000;
@@ -454,7 +456,7 @@ function keysOf(line: Line, into: Set<TemplateKey>): void {
 }
 
 /**
- * Parts 1–3 over `count` situations. Problems are deduplicated, each with the first spot that
+ * Parts 1–4 over `count` situations. Problems are deduplicated, each with the first spot that
  * shows it. `print` keeps that many rendered hints, spread over the run, for a reader.
  */
 export function runCheckCopy(
@@ -462,7 +464,7 @@ export function runCheckCopy(
   seed: Seed128 = DEFAULT_SEED,
   print = 0,
 ): CopyReport {
-  const problems = [...checkTemplates(), ...checkGlossary()];
+  const problems = [...checkTemplates(), ...checkGlossary(), ...checkLessons()];
   const situations = generateSituations(count, seed);
   const rng = rngFromSeed(deriveSeed(seed, 'decisions'));
   const covered = new Set<TemplateKey>();
@@ -523,7 +525,7 @@ if (import.meta.main) {
   const reasonKeys = TEMPLATE_KEYS.filter((k) => !k.includes('.') || /^[A-Z]/.test(k));
   const unseen = reasonKeys.filter((k) => !report.covered.has(k) && !k.startsWith('feedback'));
   console.log(
-    `check-copy: ${TEMPLATE_KEYS.length} templates, ${GLOSSARY_KEYS.length} glossary keys; ${report.situations} situations, ${report.hints} hints in ${seconds} s`,
+    `check-copy: ${TEMPLATE_KEYS.length} templates, ${GLOSSARY_KEYS.length} glossary keys, ${LESSONS.length} lessons; ${report.situations} situations, ${report.hints} hints in ${seconds} s`,
   );
   console.log(
     `check-copy: hint templates seen ${reasonKeys.length - unseen.length}/${reasonKeys.length}${unseen.length > 0 ? ` (not seen: ${unseen.join(', ')})` : ''}`,

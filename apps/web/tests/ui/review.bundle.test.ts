@@ -2,8 +2,9 @@
  * PLAN §15.3: what first paint does not need is lazy-loaded with a dynamic `import()` and still
  * precached, and the budgets hold. This builds apps/web once with its real config and checks the
  * built files:
- * - the Review screen (found by `REVIEW_MARKER`) is in a chunk of its own, and so is the Stats
- *   screen with its words, numbers and charts (chunk 8.2, `STATS_MARKER`);
+ * - the Review screen (found by `REVIEW_MARKER`) is in a chunk of its own, and so are the Stats
+ *   screen with its words, numbers and charts (chunk 8.2, `STATS_MARKER`) and Learn's four screens
+ *   with their words and lessons (chunk 9.2, `LEARN_MARKER`);
  * - the screens after the first tap (`ui/screensEntry.tsx`: the Table, Setup, Settings, the Menu
  *   and the §3.1 dialogs) are not initial either, while Welcome and Home are (found through the
  *   bundle's own module list, so no marker is needed);
@@ -17,6 +18,7 @@ import { readFileSync } from 'node:fs';
 import { build, type Plugin } from 'vite';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { BUDGETS, measureBudgets, type Row } from '../../scripts/size-budget.ts';
+import { LEARN_MARKER } from '../../src/ui/screens/learnMarker.ts';
 import { REVIEW_MARKER } from '../../src/ui/screens/reviewMarker.ts';
 import { STATS_MARKER } from '../../src/ui/screens/statsMarker.ts';
 
@@ -134,6 +136,35 @@ describe('the Stats screen in the production build (chunk 8.2)', () => {
     }
     expectOnlyDynamicImports(stats);
     expect(rowOf('Total precache').files).toContain(stats);
+  });
+});
+
+describe('Learn in the production build (chunk 9.2)', () => {
+  it('is a lazy chunk with its words and lessons: not initial, by import(), precached', () => {
+    const initial = rowOf('Initial JS');
+    const learn = chunk('src/ui/screens/Learn.tsx');
+    expect(learn).toMatch(/^assets\/Learn-[\w-]+\.js$/);
+    // Its words, its lessons and its pieces travel with it, nowhere else.
+    for (const source of [
+      'src/i18n/learn.ts',
+      'src/data/lessons.ts',
+      'src/ui/learn.ts',
+      'src/ui/components/Lesson.tsx',
+      'src/ui/components/GlossaryList.tsx',
+    ]) {
+      expect(chunk(source), source).toBe(learn);
+    }
+    expect(initial.files).not.toContain(learn);
+    for (const word of [LEARN_MARKER, 'Practise the 10 hands', 'A hand, step by step']) {
+      for (const file of initial.files) expect(text(file), word).not.toContain(word);
+      expect(text(learn), word).toContain(word);
+    }
+    // The rankings and the glossary it shows are lazy too (shared with the Table and the coach).
+    for (const source of ['src/ui/components/RankingsList.tsx', 'src/i18n/enCoach.ts']) {
+      expect(initial.files, source).not.toContain(chunk(source));
+    }
+    expectOnlyDynamicImports(learn);
+    expect(rowOf('Total precache').files).toContain(learn);
   });
 });
 

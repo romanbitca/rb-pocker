@@ -13,6 +13,7 @@
 .whichWins {
   display: block;
   width: calc(100% - 16px);
+  min-width: 44px;
   min-height: 44px;
   margin: 4px 8px 8px;
   padding: 0 12px;

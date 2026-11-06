@@ -1,0 +1,274 @@
+/*
+ * Learn (PLAN §12.1, chunk 9.2): the list of lessons, a lesson with its card picture, the
+ * glossary. The page shell, the bar with Back and the buttons are Screen.module.css; the hand
+ * rankings are RankingsList's. Tap targets (§12.12): every control at least var(--tap-min).
+ */
+
+.section {
+  display: grid;
+  gap: var(--space-2);
+}
+
+/* ---- The list: one button per lesson, then the rankings and the glossary ---- */
+
+.entries {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.entry {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) 20px;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  min-width: var(--tap-min);
+  min-height: 52px;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid rgb(242 245 243 / 14%);
+  border-radius: var(--radius-3);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.entry:active {
+  background: var(--control-bg-pressed);
+}
+
+.entry:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* The way-on mark: Back's chevron, turned (decoration; the text says where it goes). */
+.entry svg {
+  width: 20px;
+  height: 20px;
+  color: var(--muted);
+  transform: scaleX(-1);
+}
+
+/* An entry without a number keeps the text in the first column. */
+.plain {
+  grid-template-columns: minmax(0, 1fr) 20px;
+}
+
+.num {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border: 2px solid var(--accent);
+  border-radius: 50%;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.entryText {
+  display: grid;
+  gap: 2px;
+}
+
+.entryTitle {
+  font-weight: 700;
+}
+
+.entryHint {
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+
+/* ---- A lesson ---- */
+
+.lessonOf {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.875rem;
+  font-weight: 700;
+}
+
+.text {
+  margin: 0;
+  font-size: 1.0625rem;
+  line-height: 1.5;
+}
+
+.steps,
+.points {
+  display: grid;
+  gap: var(--space-1);
+  margin: 0;
+  padding-left: 1.5em;
+  font-size: 1.0625rem;
+  line-height: 1.5;
+}
+
+.terms {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  font-size: 1.0625rem;
+  line-height: 1.4;
+}
+
+.terms div {
+  display: grid;
+  grid-template-columns: 4.5em minmax(0, 1fr);
+  gap: var(--space-2);
+}
+
+.terms dt {
+  font-weight: 700;
+}
+
+.terms dd {
+  margin: 0;
+}
+
+/* The picture: rows of cards, each with its caption; the line under it. */
+.picture {
+  display: grid;
+  gap: var(--space-3);
+  margin: 0;
+  padding: var(--space-3);
+  border-radius: var(--radius-3);
+  background: radial-gradient(ellipse at 50% 40%, var(--felt) 0%, var(--felt-dark) 100%);
+}
+
+.group {
+  display: grid;
+  gap: var(--space-1);
+  justify-items: start;
+  padding: var(--space-1) var(--space-2) var(--space-2);
+  border: 2px solid transparent;
+  border-radius: var(--radius-2);
+}
+
+/* The row the picture is about: outlined (its label or the caption says why, §12.12). */
+.mark {
+  border-color: var(--accent);
+}
+
+.groupLabel {
+  margin: 0;
+  font-size: 0.875rem;
+  font-weight: 700;
+}
+
+.cards {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.caption {
+  font-size: 0.9375rem;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+/* Lesson 6: the coach's price bar (§12.6), 0–100%: the fill is the win chance, the line the need. */
+.price {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.bar {
+  position: relative;
+  height: 12px;
+  margin: 6px 0 2px;
+  border-radius: 6px;
+  background: var(--control-track);
+}
+
+.bar::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 6px;
+  background: var(--grade-best);
+  transform: scaleX(var(--win, 0));
+  transform-origin: left;
+}
+
+.bar[data-good='false']::before {
+  background: var(--grade-mistake);
+}
+
+.bar::after {
+  content: '';
+  position: absolute;
+  top: -4px;
+  bottom: -4px;
+  left: calc(var(--need, 0) * 100% - 1.5px);
+  width: 3px;
+  border-radius: 2px;
+  background: var(--text);
+}
+
+.priceText {
+  margin: 0;
+  font-size: 0.875rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---- The glossary ---- */
+
+.search {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.searchLabel {
+  font-weight: 700;
+}
+
+/* 16 px text: iOS Safari zooms into smaller fields (§12.13). */
+.searchInput {
+  width: 100%;
+  min-width: var(--tap-min);
+  min-height: var(--tap-min);
+  padding: 0 var(--space-3);
+  border: 2px solid var(--control-border);
+  border-radius: var(--radius-2);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 16px;
+}
+
+.searchInput:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.glossary {
+  display: grid;
+  gap: var(--space-3);
+  margin: 0;
+}
+
+.glossary div {
+  display: grid;
+  gap: 2px;
+  padding-bottom: var(--space-3);
+  border-bottom: 1px solid rgb(242 245 243 / 10%);
+}
+
+.glossary dt {
+  font-weight: 700;
+}
+
+.glossary dd {
+  margin: 0;
+  line-height: 1.45;
+}

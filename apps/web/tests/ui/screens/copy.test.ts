@@ -6,6 +6,7 @@ import { en } from '../../../src/i18n/en.ts';
 import { coachWords } from '../../../src/i18n/coachUi.ts';
 import { dataWords as D } from '../../../src/i18n/data.ts';
 import { deviceWords } from '../../../src/i18n/device.ts';
+import { learnWords as W } from '../../../src/i18n/learn.ts';
 import { suggestionWords } from '../../../src/i18n/suggestions.ts';
 import { quizWords } from '../../../src/i18n/quiz.ts';
 import { summaryWords } from '../../../src/i18n/summary.ts';
@@ -250,6 +251,30 @@ describe('screen copy comes from docs/PLAN.md', () => {
     }),
   )('8.4 %s', (_key, words) => {
     for (const w of words) expect(PLAN).toContain(w);
+  });
+
+  // Chunk 9.2 (§12.1, Appendix F.10): Learn's own words, each quoted in PLAN.
+  it.each(
+    Object.entries({
+      list: [W.title, W.lessons, W.more, W.rankings, W.glossary, W.drill],
+      lessonName: W.lessonName(0, '{title}').replace('0', '{n}'),
+      hints: [W.rankingsHint, W.glossaryHint],
+      lesson: [
+        W.lessonOf(1, 2).replace('1', '{n}').replace('2', '{of}'),
+        W.next('{title}'),
+        W.allLessons,
+        W.seeRankings,
+      ],
+      price: [
+        W.price(1, 2).replace('1', '{win}').replace('2', '{need}'),
+        W.priceLabel(1, 2).replace('1', '{win}').replace('2', '{need}'),
+      ],
+      dimCard: W.dimCard('{card}'),
+      glossary: [W.search, W.matches(2).replace('2', '{n}'), W.matches(1), W.noMatch],
+      waiting: [en.screens.loading, en.screens.loadFailed, en.back],
+    }),
+  )('9.2 %s', (_key, words) => {
+    for (const w of Array.isArray(words) ? words : [words]) expect(PLAN).toContain(`"${w}"`);
   });
 
   it('the Welcome bullets are the four §12.1 bullets, capitalised', () => {

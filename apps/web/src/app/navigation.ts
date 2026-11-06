@@ -13,10 +13,27 @@
  */
 
 /**
- * The full-page screens built so far. Later stages add 'learn', 'about'. 'review' (§12.10) and
- * 'stats' (§14.4, chunk 8.2) are lazy screens: pushed over the Table, Back returns to the hand.
+ * The full-page screens built so far. A later stage adds 'about'. 'review' (§12.10) and 'stats'
+ * (§14.4, chunk 8.2) are lazy screens: pushed over the Table, Back returns to the hand.
+ *
+ * Learn (§12.1, chunk 9.2) is four lazy screens, one chunk: 'learn' (the list of lessons and the
+ * ways to the other three), 'lesson' (the store's `ui.lesson`), 'handRankings' (the full-page hand
+ * rankings with "Which hand wins?") and 'glossary'. Each is pushed like any screen, so Back (and
+ * Android Back) returns to the page under it: from a lesson to the list, from the rankings to the
+ * lesson that opened them.
  */
-export type Screen = 'welcome' | 'home' | 'setup' | 'table' | 'settings' | 'review' | 'stats';
+export type Screen =
+  | 'welcome'
+  | 'home'
+  | 'setup'
+  | 'table'
+  | 'settings'
+  | 'review'
+  | 'stats'
+  | 'learn'
+  | 'lesson'
+  | 'handRankings'
+  | 'glossary';
 
 /**
  * Layers over a screen. Each one but the sizing tray keeps a controller gate closed while it is

@@ -7,7 +7,8 @@ import type { HandEndView } from '../../src/app/store.ts';
 import { parseCards } from '../../src/core/cards.ts';
 import { en } from '../../src/i18n/en.ts';
 import { toastText } from '../../src/ui/components/Notices.tsx';
-import { handEndLines, joinNames, luckLine } from '../../src/ui/handEnd.ts';
+import { handEndLines, luckLine } from '../../src/ui/handEnd.ts';
+import { joinNames } from '../../src/ui/names.ts';
 
 const PLAN = Object.values(
   import.meta.glob<string>('../../../../docs/PLAN.md', {

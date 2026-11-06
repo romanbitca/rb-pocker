@@ -404,7 +404,12 @@ export interface UiSlice {
    * `botCard` overlay, and null whenever that overlay is not open.
    */
   botCardSeat: number | null;
+  /** The lesson the 'lesson' screen shows, 1..`LESSON_COUNT` (§12.1, chunk 9.2; `lesson` command). */
+  lesson: number;
 }
+
+/** Learn's lessons (Appendix F.8): `data/lessons.ts` has this many (a test keeps them equal). */
+export const LESSON_COUNT = 7;
 
 /**
  * One writer at a time (§14.7, chunk 8.3): this tab writes the storage (`writer`), waits for the
@@ -509,7 +514,13 @@ export type UiCommand =
    * A tap on a bot's seat (§9.3): opens the `botCard` overlay for `seat` (1..8). It closes the
    * `sheet` gate, so no bot acts while the card is open; close it with `close` (Esc, ✕, Back).
    */
-  | { type: 'botCard'; seat: number };
+  | { type: 'botCard'; seat: number }
+  /**
+   * Learn's lesson `lesson` (1..`LESSON_COUNT`, §12.1, chunk 9.2): the 'lesson' screen, pushed
+   * like any screen (`go`); when it is on show already (the lesson's "Next"), only the lesson
+   * changes, so Back still returns to the page under it. Ignored for any other number.
+   */
+  | { type: 'lesson'; lesson: number };
 
 /** Commands the TableController handles. */
 export type GameCommand =
@@ -631,6 +642,7 @@ const UI_COMMANDS: ReadonlySet<string> = new Set([
   'dismissToast',
   'dismissStorageBanner',
   'botCard',
+  'lesson',
 ]);
 
 export const isUiCommand = (cmd: Command): cmd is UiCommand => UI_COMMANDS.has(cmd.type);
@@ -741,6 +753,7 @@ export function initialUi(firstLaunch = true): UiSlice {
     toasts: [],
     storageBanner: false,
     botCardSeat: null,
+    lesson: 1,
   });
 }
 
@@ -809,15 +822,13 @@ export function reduceUi(ui: UiSlice, cmd: UiCommand): UiSlice {
     case 'open':
     case 'close': {
       const nav = navigate(ui.nav, cmd);
-      if (nav === ui.nav) return ui;
-      return withGates({
-        ...ui,
-        nav,
-        screen: currentScreen(nav),
-        overlays: nav.overlays,
-        // Whatever closes the card (✕, Esc, Back, a new screen) also forgets its seat.
-        botCardSeat: nav.overlays.includes('botCard') ? ui.botCardSeat : null,
-      });
+      return nav === ui.nav ? ui : withNav(ui, nav);
+    }
+    case 'lesson': {
+      const { lesson } = cmd;
+      if (!Number.isSafeInteger(lesson) || lesson < 1 || lesson > LESSON_COUNT) return ui;
+      const nav = navigate(ui.nav, { type: 'go', screen: 'lesson' });
+      return nav === ui.nav && lesson === ui.lesson ? ui : withNav({ ...ui, lesson }, nav);
     }
     case 'botCard': {
       // The hero (seat 0) is drawn by the hero strip and has no card.
@@ -849,6 +860,18 @@ export function reduceUi(ui: UiSlice, cmd: UiCommand): UiSlice {
     case 'dismissStorageBanner':
       return ui.storageBanner ? { ...ui, storageBanner: false } : ui;
   }
+}
+
+/** `ui` on `nav`: the screen and overlays follow it, gates are re-derived. */
+function withNav(ui: UiSlice, nav: Nav): UiSlice {
+  return withGates({
+    ...ui,
+    nav,
+    screen: currentScreen(nav),
+    overlays: nav.overlays,
+    // Whatever closes the card (✕, Esc, Back, a new screen) also forgets its seat.
+    botCardSeat: nav.overlays.includes('botCard') ? ui.botCardSeat : null,
+  });
 }
 
 /** The gates `ui` closes (GATES order). */
@@ -938,6 +961,8 @@ export const selectUndoButton = (s: AppState): 'hidden' | 'disabled' | 'enabled'
 /** The navigation state for `ScreenSwitcher` (ui/screens). */
 export const selectNav = (s: AppState): Nav => s.ui.nav;
 export const selectScreen = (s: AppState): Screen => s.ui.screen;
+/** The lesson of the 'lesson' screen (§12.1, chunk 9.2). */
+export const selectLesson = (s: AppState): number => s.ui.lesson;
 export const selectOverlays = (s: AppState): readonly Overlay[] => s.ui.overlays;
 export const selectTopOverlay = (s: AppState): Overlay | null =>
   s.ui.overlays[s.ui.overlays.length - 1] ?? null;
