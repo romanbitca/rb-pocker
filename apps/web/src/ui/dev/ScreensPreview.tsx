@@ -292,6 +292,9 @@ function Flow({ navigation }: { navigation: PreviewNavigation }) {
         glossary: () => <h1>Glossary</h1>,
         // So is the hand drill (ui/screens/Drill.tsx, §13.5).
         drill: () => <h1>Hand drill</h1>,
+        // So is About (ui/screens/About.tsx, both ways in).
+        about: () => <h1>About</h1>,
+        privacy: () => <h1>About</h1>,
       }}
       overlays={{
         menu: () => (

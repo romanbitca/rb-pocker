@@ -25,6 +25,10 @@
  * 4. **Lessons** (`checkLessons`, `data/lessons.ts`, F.8; chunk 9.2): at most 150 words a lesson
  *    (its picture's labels and line, the price bar's numbers and its text), every sentence at most
  *    15 words, whole-number percentages, no stray brace.
+ * 5. **About** (`checkAbout`, `i18n/about.ts`, Appendix G.6; chunk 9.2c): "How the coach works"
+ *    keeps the coach's rule (every sentence at most 15 words); no About string names a help line
+ *    that closed or changed hands (G.3, pitfall 40); each help line's `tel:` link dials the number
+ *    it shows; no stray brace.
  */
 import {
   CLOSE_POINTS,
@@ -56,6 +60,7 @@ import {
   type Segment,
 } from '../src/i18n/coach.ts';
 import { LESSONS, type Lesson, type LessonBlock } from '../src/data/lessons.ts';
+import { aboutWords, type AboutTerm, type HelpLine } from '../src/i18n/about.ts';
 import { enCoach } from '../src/i18n/enCoach.ts';
 import { learnWords } from '../src/i18n/learn.ts';
 
@@ -510,5 +515,70 @@ export function checkLessons(lessons: readonly Lesson[] = LESSONS): string[] {
       if (/[{}]/.test(line)) problems.push(`${name}: a stray brace in "${line}"`);
     }
   });
+  return problems;
+}
+
+// ── 5. About ───────────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Help lines About must never show again (G.3, pitfall 40): NCPG no longer uses 1-800-GAMBLER
+ * (1-800-426-2537) since 29 September 2025, and GambleAware (BeGambleAware) closed by 31 March 2026.
+ * Compared without case and spaces.
+ */
+export const CLOSED_HELP_LINES: readonly string[] = [
+  '1-800-GAMBLER',
+  '1-800-426-2537',
+  'GambleAware',
+];
+
+/** The digits a help line shows, as dialled from abroad: "0808 8020 133" → "+448088020133". */
+export function shownDigits(line: HelpLine): string {
+  // A US vanity number shows its digits in brackets: "1-800-MY-RESET (1-800-697-3738)".
+  const shown = /\(([\d -]+)\)/.exec(line.number)?.[1] ?? line.number;
+  const digits = shown.replace(/\D/g, '');
+  return digits.startsWith('0') ? `+44${digits.slice(1)}` : `+${digits}`;
+}
+
+/** Every string of `words` (the version line is rendered with sample values). */
+function aboutStrings(words: typeof aboutWords): string[] {
+  const sections: readonly { title: string; terms: readonly AboutTerm[] }[] = [
+    words.howItWorks,
+    words.coach,
+    words.privacy,
+  ];
+  const terms = sections.flatMap((s) => [s.title, ...s.terms.flatMap((t) => [t.name, t.text])]);
+  return [
+    ...terms,
+    words.playMoney.title,
+    words.playMoney.text,
+    words.help.title,
+    words.help.text,
+    ...words.help.lines.flatMap((l) => [l.name, l.number]),
+    words.licences.title,
+    words.licences.intro,
+    words.version('0.1.0', 'abc1234'),
+  ];
+}
+
+/** Every problem of the About screen's words (see the header, part 5). */
+export function checkAbout(words: typeof aboutWords = aboutWords): string[] {
+  const problems: string[] = [];
+  for (const term of words.coach.terms) {
+    for (const long of longSentences([{ text: term.text }])) {
+      problems.push(`About, "${term.name}": a sentence of ${long}`);
+    }
+  }
+  const squeeze = (s: string) => s.toLowerCase().replace(/\s+/g, '');
+  const strings = aboutStrings(words);
+  for (const closed of CLOSED_HELP_LINES) {
+    const hit = strings.find((s) => squeeze(s).includes(squeeze(closed)));
+    if (hit !== undefined) problems.push(`About names a closed help line, ${closed}: "${hit}"`);
+  }
+  for (const line of words.help.lines) {
+    if (`+${line.tel.replace(/\D/g, '')}` !== shownDigits(line)) {
+      problems.push(`About: "${line.number}" dials tel:${line.tel}`);
+    }
+  }
+  for (const s of strings) if (/[{}]/.test(s)) problems.push(`About: a stray brace in "${s}"`);
   return problems;
 }

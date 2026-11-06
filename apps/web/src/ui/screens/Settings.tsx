@@ -1,10 +1,10 @@
 /**
  * Settings (PLAN §12.1). The Game section: coach level, bot level, speed, auto next hand and
  * amounts; then Display and Sound (chunk 9.1, `DisplayAndSound.tsx`: keep screen on, sound,
- * vibration); later stages add rows (win chance) and sections (About). A change
- * applies at once through `onChangeSettings(patch)`; the controller saves it (Appendix A.7). The
- * controller starts a new bot level with the next hand and a new coach level with the next
- * decision (§10); the hints under the level cards say so.
+ * vibration); later stages add rows (win chance). The way to About comes last (chunk 9.2c). A
+ * change applies at once through `onChangeSettings(patch)`; the controller saves it (Appendix
+ * A.7). The controller starts a new bot level with the next hand and a new coach level with the
+ * next decision (§10); the hints under the level cards say so.
  *
  * The level rows are the Setup cards. Levels that are not available yet are disabled with
  * "Coming soon" (`available`, §18).
@@ -79,6 +79,8 @@ export interface SettingsProps {
   device?: DisplayAndSoundProps | undefined;
   data?: DataSection | undefined;
   diagnostics?: DiagnosticsSection | undefined;
+  /** "About" (§12.1: Settings → About & Privacy), the last row. Hidden while absent. */
+  onOpenAbout?: (() => void) | undefined;
 }
 
 const SPEEDS: readonly GameSettings['speed'][] = ['normal', 'fast', 'instant'];
@@ -93,6 +95,7 @@ export function Settings({
   device,
   data,
   diagnostics,
+  onOpenAbout,
 }: SettingsProps) {
   const id = useId();
   return (
@@ -164,6 +167,12 @@ export function Settings({
 
         {data && <DataRows id={`${id}-data`} data={data} />}
         {diagnostics && <DiagnosticsRows id={`${id}-diag`} diagnostics={diagnostics} />}
+
+        {onOpenAbout && (
+          <button type="button" className={styles.secondary} onClick={() => onOpenAbout()}>
+            {en.about}
+          </button>
+        )}
       </div>
     </main>
   );

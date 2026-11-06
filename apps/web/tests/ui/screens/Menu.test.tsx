@@ -48,6 +48,7 @@ describe('Menu', () => {
           onOpenRankings: () => {},
           onOpenStats: () => {},
           onOpenLearn: () => {},
+          onOpenAbout: () => {},
           onInstall: () => {},
         })}
       />,
@@ -59,6 +60,7 @@ describe('Menu', () => {
       'Settings',
       'Stats',
       'Learn',
+      'About',
       'Install app',
       'Leave table',
       'New table',
@@ -81,13 +83,14 @@ describe('Menu', () => {
   });
 
   it('each item calls its callback', () => {
-    const props = menuProps({ topUpTo: 5000, onOpenRankings: vi.fn() });
+    const props = menuProps({ topUpTo: 5000, onOpenRankings: vi.fn(), onOpenAbout: vi.fn() });
     render(<Menu {...props} />);
     const click = (name: string) => fireEvent.click(screen.getByRole('button', { name }));
     click('Resume');
     click('Top up to 5,000 chips');
     click('Hand rankings');
     click('Settings');
+    click('About');
     click('Leave table');
     click('New table');
     for (const fn of [
@@ -95,6 +98,7 @@ describe('Menu', () => {
       props.onTopUp,
       props.onOpenRankings,
       props.onOpenSettings,
+      props.onOpenAbout,
       props.onLeaveTable,
       props.onNewTable,
     ]) {

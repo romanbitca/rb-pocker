@@ -93,6 +93,23 @@ describe('Settings', () => {
     expect(controlCount(container)).toBe(15);
     expect(smallTargets(container, () => false)).toEqual([]);
   });
+
+  it('ends with the way to About (§12.1, chunk 9.2c), hidden while not given', () => {
+    const onOpenAbout = vi.fn();
+    const props = { settings: GAME, available: AVAILABLE_LEVELS, onChangeSettings: vi.fn() };
+    const { container } = render(
+      <Settings {...props} onBack={() => {}} onOpenAbout={onOpenAbout} />,
+    );
+    const buttons = screen.getAllByRole('button');
+    expect(buttons[buttons.length - 1]?.textContent).toBe('About');
+    fireEvent.click(screen.getByRole('button', { name: 'About' }));
+    expect(onOpenAbout).toHaveBeenCalledTimes(1);
+    expect(controlCount(container)).toBe(16);
+    expect(smallTargets(container, () => false)).toEqual([]);
+    cleanup();
+    renderSettings();
+    expect(screen.queryByRole('button', { name: 'About' })).toBeNull();
+  });
 });
 
 describe('Settings: coach level and bot level (PLAN §10, §12.1)', () => {

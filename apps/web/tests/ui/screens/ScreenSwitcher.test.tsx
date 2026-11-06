@@ -94,6 +94,8 @@ function App({ firstLaunch, onPlay }: { firstLaunch: boolean; onPlay: () => void
         handRankings: () => <h1>Poker hands</h1>,
         glossary: () => <h1>Glossary</h1>,
         drill: () => <h1>Hand drill</h1>,
+        about: () => <h1>About</h1>,
+        privacy: () => <h1>About</h1>,
       }}
       overlays={{
         menu: () => (
@@ -171,6 +173,8 @@ describe('ScreenSwitcher', () => {
           handRankings: renderer('handRankings'),
           glossary: renderer('glossary'),
           drill: renderer('drill'),
+          about: renderer('about'),
+          privacy: renderer('privacy'),
         }}
         overlays={{
           menu: renderer('menu'),
@@ -239,6 +243,8 @@ describe('ScreenSwitcher', () => {
           handRankings: () => <h1>K</h1>,
           glossary: () => <h1>Y</h1>,
           drill: () => <h1>D</h1>,
+          about: () => <h1>A</h1>,
+          privacy: () => <h1>P</h1>,
         }}
         overlays={{ menu: () => null, outOfChips: () => null, newTable: () => null }}
       />

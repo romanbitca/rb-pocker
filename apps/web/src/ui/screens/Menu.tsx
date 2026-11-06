@@ -4,9 +4,9 @@
  * through the navigation reducer.
  *
  * Items for screens that do not exist yet are hidden, not disabled (§18 Stage 3): Hand rankings,
- * Recent hands, Stats, Learn and Install app show only when their callback is given. So does
- * "Keyboard shortcuts" (§12.5, chunk 9.3): only where there is a mouse or a trackpad, and so most
- * likely a keyboard.
+ * Recent hands, Stats, Learn, About and Install app show only when their callback is given. So
+ * does "Keyboard shortcuts" (§12.5, chunk 9.3): only where there is a mouse or a trackpad, and so
+ * most likely a keyboard.
  */
 import { useId } from 'react';
 import { deviceWords } from '../../i18n/device.ts';
@@ -36,6 +36,8 @@ export interface MenuProps {
   onOpenLearn?: (() => void) | undefined;
   /** The list of keyboard shortcuts (§12.5 "?"). */
   onShowKeys?: (() => void) | undefined;
+  /** About (§12.1, chunk 9.2c). */
+  onOpenAbout?: (() => void) | undefined;
   onInstall?: (() => void) | undefined;
   /** To Home; the unfinished hand stays saved (§3.1). */
   onLeaveTable: () => void;
@@ -70,6 +72,7 @@ export function Menu(props: MenuProps) {
   add('stats', en.menu.stats, props.onOpenStats);
   add('learn', en.menu.learn, props.onOpenLearn);
   add('keys', shortcutWords.title, props.onShowKeys);
+  add('about', en.about, props.onOpenAbout);
   add('install', en.menu.install, props.onInstall);
   add('leave', en.menu.leaveTable, props.onLeaveTable);
   add('newTable', en.menu.newTable, props.onNewTable);

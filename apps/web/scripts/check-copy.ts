@@ -4,7 +4,8 @@
  * runs them on:
  *
  * 1. every template of `enCoach.coach.templates`, the glossary and Learn's lessons (`checkTemplates`,
- *    `checkGlossary`, `checkLessons`: F.8's 150 words a lesson, chunk 9.2);
+ *    `checkGlossary`, `checkLessons`: F.8's 150 words a lesson, chunk 9.2), and the About
+ *    screen's words (`checkAbout`, Appendix G.6, chunk 9.2c);
  * 2. the hints of generated situations (1,000 by default): random tables and random legal play
  *    with the real engine (only here: the brain never runs the engine), every hero decision
  *    observed and its §8.2 features computed; then the coach's own advice there (`hint`'s
@@ -65,7 +66,13 @@ import type {
 import { hintLines, hintText } from '../src/i18n/coach.ts';
 import { en } from '../src/i18n/en.ts';
 import { LESSONS } from '../src/data/lessons.ts';
-import { checkGlossary, checkHint, checkLessons, checkTemplates } from './copy-rules.ts';
+import {
+  checkAbout,
+  checkGlossary,
+  checkHint,
+  checkLessons,
+  checkTemplates,
+} from './copy-rules.ts';
 
 /** Stage 5 acceptance 7: the run covers 1,000 generated situations. */
 export const DEFAULT_SITUATIONS = 1000;
@@ -464,7 +471,7 @@ export function runCheckCopy(
   seed: Seed128 = DEFAULT_SEED,
   print = 0,
 ): CopyReport {
-  const problems = [...checkTemplates(), ...checkGlossary(), ...checkLessons()];
+  const problems = [...checkTemplates(), ...checkGlossary(), ...checkLessons(), ...checkAbout()];
   const situations = generateSituations(count, seed);
   const rng = rngFromSeed(deriveSeed(seed, 'decisions'));
   const covered = new Set<TemplateKey>();

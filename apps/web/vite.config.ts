@@ -1,3 +1,6 @@
+import { execFileSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import react from '@vitejs/plugin-react';
 import { defineConfig, type Plugin } from 'vite';
 import { VitePWA } from 'vite-plugin-pwa';
@@ -40,11 +43,52 @@ function testHooks(): Plugin {
   };
 }
 
+/**
+ * The build's short commit: `SOURCE_COMMIT` when the build environment sets it (Coolify, only with
+ * "Include Source Commit in Build", which stays off, §17.6), else `git rev-parse --short HEAD`, else
+ * null: the Docker image has no `.git` in its context and no `git`, so the deployed About shows the
+ * version alone (PLAN Appendix G.6).
+ */
+function buildCommit(): string | null {
+  const fromEnv = process.env.SOURCE_COMMIT?.trim() ?? '';
+  if (/^[0-9a-f]{7,40}$/i.test(fromEnv)) return fromEnv.slice(0, 7).toLowerCase();
+  try {
+    const out = execFileSync('git', ['rev-parse', '--short', 'HEAD'], {
+      cwd: fileURLToPath(new URL('.', import.meta.url)),
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    }).trim();
+    return /^[0-9a-f]{4,40}$/.test(out) ? out : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Defines `__PC_BUILD__` = `{ version, commit }` for the About screen (PLAN §12.1, Appendix G.6;
+ * chunk 9.2c): `version` from apps/web/package.json, `commit` from `buildCommit()`. Only About's lazy
+ * chunk reads it, and the game never asks the server (`/api/health` is for health checks only,
+ * §2.6, §15.2).
+ */
+function buildInfo(): Plugin {
+  return {
+    name: 'rb:build-info',
+    config() {
+      const pkg = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8')) as {
+        version: string;
+      };
+      const info = { version: pkg.version, commit: buildCommit() };
+      return { define: { __PC_BUILD__: JSON.stringify(info) } };
+    },
+  };
+}
+
 export default defineConfig({
   // Relative URLs: the build works from whatever path it is served from (PLAN §15.1).
   base: './',
   plugins: [
     testHooks(),
+    buildInfo(),
     react(),
     // Offline PWA (PLAN §15.1): precache everything, no runtime caching, no third-party URLs.
     VitePWA({

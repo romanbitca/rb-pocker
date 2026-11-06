@@ -58,7 +58,7 @@ export interface SetupProps {
    */
   onStartTable: (config: TableConfig, coachLevel: CoachLevel, more: MoreChoices) => void;
   onBack: () => void;
-  /** The footer's Privacy link. Hidden while absent (the About screen comes later). */
+  /** The footer's Privacy link: About at its Privacy section (chunk 9.2c). Hidden while absent. */
   onOpenPrivacy?: (() => void) | undefined;
 }
 

@@ -1,13 +1,14 @@
 /**
  * The screens after the first tap (PLAN §12.1, §15.3), wired to the store: the Table, Setup,
- * Settings, the hand drill's frame (§13.5: its page and logic are lazy chunks of their own), and
- * the overlays that open over them (the Table's Menu, the two §3.1 dialogs, and the Data dialogs
- * of §14.8: Import's preview and "Delete my stats", chunk 8.4).
+ * Settings, About, the hand drill's frame (§13.5: its page and logic are lazy chunks of their own),
+ * and the overlays that open over them (the Table's Menu, the two §3.1 dialogs, and the Data
+ * dialogs of §14.8: Import's preview and "Delete my stats", chunk 8.4).
  *
  * This file starts a lazy chunk. The first screen (Welcome or Home) does not need any of it, so
  * the initial bundle does not carry it. App loads it with `import()` (`ui/screensModule.ts`) right
  * after the first paint, long before anyone can tap Play, so one tap still deals a hand at once
- * (§12.1); the service worker precaches it like every chunk, so it also loads offline.
+ * (§12.1); the service worker precaches it like every chunk, so it also loads offline. About's own
+ * page is one more chunk, asked for when About first opens (`ui/aboutModule.ts`, chunk 9.2c).
  */
 import { useCallback } from 'react';
 import {
@@ -28,6 +29,7 @@ import {
 } from '../app/store.ts';
 import type { CoachLevel, TableConfig } from '../engine/types.ts';
 import { en } from '../i18n/en.ts';
+import { useAboutModule } from './aboutModule.ts';
 import { LoadBoundary } from './components/LoadBoundary.tsx';
 import { RankingsDrawer } from './components/RankingsDrawer.tsx';
 import { useDrillChunks } from './drillModule.ts';
@@ -81,6 +83,7 @@ export function SetupScreen() {
       available={AVAILABLE_LEVELS}
       onStartTable={start}
       onBack={() => dispatch({ type: 'back' })}
+      onOpenPrivacy={() => dispatch({ type: 'go', screen: 'privacy' })}
     />
   );
 }
@@ -128,6 +131,7 @@ export function SettingsScreen() {
         featuresOff: missingFeatures(secureFeatures()),
         onExportDebug: () => dispatch({ type: 'exportDebug' }),
       }}
+      onOpenAbout={() => dispatch({ type: 'go', screen: 'about' })}
     />
   );
 }
@@ -170,6 +174,46 @@ export function DrillScreen() {
       {body}
     </main>
   );
+}
+
+/**
+ * About (§12.1, chunk 9.2c) over its own lazy chunk (`aboutModule.ts`): at once when the chunk is
+ * there, else the page's title and a "Loading…" line that CSS shows after half a second (as for the
+ * screens of this chunk, ui/App.tsx). If it cannot load: the line, Try again (a reload, the sure way
+ * to load a module that failed) and Back.
+ */
+function AboutPage({ at }: { at: 'top' | 'privacy' }) {
+  const dispatch = useDispatch();
+  const { mod, failed } = useAboutModule();
+  const back = () => dispatch({ type: 'back' });
+  if (mod !== null) return <mod.About at={at} onBack={back} />;
+  return (
+    <main className={screen.page}>
+      <ScreenBar title={en.about} onBack={back} />
+      {failed ? (
+        <>
+          <p className={screen.hint} role="alert">
+            {en.screens.loadFailed}
+          </p>
+          <button type="button" className={screen.primary} onClick={() => window.location.reload()}>
+            {en.screens.tryAgain}
+          </button>
+        </>
+      ) : (
+        <p className={`${screen.hint} ${screen.later}`}>{en.screens.loading}</p>
+      )}
+    </main>
+  );
+}
+
+/** About at the top (Settings, the Menu). */
+export function AboutScreen() {
+  return <AboutPage at="top" />;
+}
+
+/** About at its Privacy section (the Privacy links of Welcome and Setup, Appendix G.2). */
+export function PrivacyScreen() {
+  return <AboutPage at="privacy" />;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -223,6 +267,7 @@ export function MenuOverlay() {
             }
           : undefined
       }
+      onOpenAbout={() => dispatch({ type: 'go', screen: 'about' })}
       onLeaveTable={() => dispatch({ type: 'leaveTable' })}
       onNewTable={() => dispatch({ type: 'go', screen: 'setup' })}
       sound={

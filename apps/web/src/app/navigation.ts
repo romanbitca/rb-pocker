@@ -13,8 +13,8 @@
  */
 
 /**
- * The full-page screens built so far. A later stage adds 'about'. 'review' (§12.10) and 'stats'
- * (§14.4, chunk 8.2) are lazy screens: pushed over the Table, Back returns to the hand.
+ * The full-page screens built so far. 'review' (§12.10) and 'stats' (§14.4, chunk 8.2) are lazy
+ * screens: pushed over the Table, Back returns to the hand.
  *
  * Learn (§12.1, chunk 9.2) is four lazy screens, one chunk: 'learn' (the list of lessons and the
  * ways to the other three), 'lesson' (the store's `ui.lesson`), 'handRankings' (the full-page hand
@@ -24,6 +24,11 @@
  *
  * 'drill', the hand drill (§13.5), is lazy too: from Home, Learn, or the Table's Menu (Back returns
  * to the hand).
+ *
+ * 'about' and 'privacy' (§12.1, Appendix G; chunk 9.2c) are one lazy page, About, with Privacy as
+ * one of its sections: 'about' opens it at the top (Settings, the Menu), 'privacy' at its Privacy
+ * section (the Privacy links of Welcome and Setup). Each is pushed like any screen, so Back returns
+ * to the page that opened it.
  */
 export type Screen =
   | 'welcome'
@@ -37,7 +42,9 @@ export type Screen =
   | 'lesson'
   | 'handRankings'
   | 'glossary'
-  | 'drill';
+  | 'drill'
+  | 'about'
+  | 'privacy';
 
 /**
  * Layers over a screen. Each one but the sizing tray keeps a controller gate closed while it is
