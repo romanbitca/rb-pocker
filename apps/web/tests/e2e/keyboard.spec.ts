@@ -1,14 +1,17 @@
 import type { Page } from '@playwright/test';
 import { expect, test } from './fixtures.ts';
-import { collectErrors, newTable, openApp, pcState, seedFor, sizeOf, slot } from './game.ts';
+import { collectErrors, openApp, pcState, seedFor, sizeOf, slot } from './game.ts';
 import { inputCount, nextPoint } from './scripted.ts';
 
 // PLAN §18 Stage 9, acceptance 2, its last sentence: "A full hand is playable by keyboard only"
-// (the §12.5 shortcuts, §12.12; chunk 9.3). At the desktop size, in both browsers. The bots check
-// and call (`?script=passive`, a test-build hook), so the hand always reaches its end; the coach is
-// at Intermediate, so H has a hint to show. The table is set up through `window.__pc`, as in every
-// spec; from the first decision on, the page gets keys only: a pointer watch proves no tap or click
-// reached it.
+// (the §12.5 shortcuts, §12.12; chunk 9.3), with the script of its first sentence done by keys
+// (chunk 9.6): start a table (Tab to Welcome's Play, Enter), play a hand, open the hint (H), undo
+// (U), open the hands drawer (K). At the desktop size (K hides and shows the hands column) and at
+// the tablet size (portrait: K opens the drawer, a dialog that has the keyboard, and K or Esc
+// closes it), in both browsers. The bots check and call (`?script=passive`, a test-build hook), so
+// the hand always reaches its end; the coach is at Intermediate, so H has a hint to show. The
+// settings Play uses are set through `window.__pc` (as Setup would leave them); from then on the
+// page gets keys only: a pointer watch proves no tap or click reached it.
 
 /** The hero's last action in the hand's log. */
 const lastHeroAct = (page: Page) =>
@@ -36,16 +39,24 @@ async function keyAct(page: Page, key: string): Promise<void> {
   }).toPass({ timeout: 10_000 });
 }
 
-test('a full hand by keyboard only, with every §12.5 shortcut', async ({ page }, testInfo) => {
-  test.skip(sizeOf(testInfo) !== '1280x800', 'the desktop size, in both browsers');
+test('a full hand by keyboard only, from Play, with every §12.5 shortcut', async ({
+  page,
+  browserName,
+}, testInfo) => {
+  test.skip(
+    !['768x1024', '1280x800'].includes(sizeOf(testInfo)),
+    'the tablet (the hands drawer) and the desktop size (the hands column), in both browsers',
+  );
   test.setTimeout(120_000);
   const errors = collectErrors(page);
   await openApp(page, seedFor(testInfo), '&script=passive');
+  // The settings Play uses (the last-used ones, §12.1), as Setup would leave them.
   await page.evaluate(() => {
-    window.__pc?.dispatch({ type: 'settings', patch: { coachLevel: 'intermediate' } });
+    window.__pc?.dispatch({
+      type: 'settings',
+      patch: { coachLevel: 'intermediate', players: 3, speed: 'fast', autoNext: true },
+    });
   });
-  await newTable(page, { players: 3, speed: 'fast', autoNext: true });
-  const handSeq = (await pcState(page)).game.hand?.handSeq ?? 0;
   // From here on the page gets keys only.
   await page.evaluate(() => {
     const seen = { pointers: 0 };
@@ -53,16 +64,50 @@ test('a full hand by keyboard only, with every §12.5 shortcut', async ({ page }
     document.addEventListener('pointerdown', () => seen.pointers++, true);
   });
 
+  // Start a table: Welcome (the first launch), Tab to Play, Enter: a dealt hand (§12.1). Safari's
+  // Tab skips buttons unless "Press Tab to highlight each item" is on; Option+Tab reaches them.
+  const tab = browserName === 'webkit' ? 'Alt+Tab' : 'Tab';
+  const play = page.getByRole('button', { name: 'Play', exact: true });
+  const playFocused = () => play.evaluate((el) => el === document.activeElement);
+  for (let tabs = 0; tabs < 10 && !(await playFocused()); tabs++) await page.keyboard.press(tab);
+  await expect(play).toBeFocused();
+  await page.keyboard.press('Enter');
+  await page.waitForFunction(() => {
+    const s = window.__pc?.state();
+    return s?.ui.screen === 'table' && s.game.hand !== null && s.game.hand.seats.length === 3;
+  });
+  await expect(page.locator('[data-hero-cards] [role="img"]')).toHaveCount(2);
+  const handSeq = (await pcState(page)).game.hand?.handSeq ?? 0;
+
   // The first decision (the coach's hint is in).
   expect(await nextPoint(page)).toBe('hero');
-  expect((await pcState(page)).ui.layout).toBe('wide');
+  const layout = (await pcState(page)).ui.layout;
+  expect(layout).toBe(sizeOf(testInfo) === '1280x800' ? 'wide' : 'portrait');
+  const wide = layout === 'wide';
 
-  // K hides the hand-rankings column and shows it again (§13.1).
-  const panel = () => pcState(page).then((s) => s.settings['handsPanel']);
-  await page.keyboard.press('k');
-  await expect.poll(panel).toBe('collapsed');
-  await page.keyboard.press('K');
-  await expect.poll(panel).toBe('open');
+  if (wide) {
+    // K hides the hand-rankings column and shows it again (§13.1).
+    const panel = () => pcState(page).then((s) => s.settings['handsPanel']);
+    await page.keyboard.press('k');
+    await expect.poll(panel).toBe('collapsed');
+    await page.keyboard.press('K');
+    await expect.poll(panel).toBe('open');
+  } else {
+    // K opens the hands drawer: a dialog that takes the focus (and the keys); K closes it again,
+    // and so does Esc (§12.5 notes).
+    const drawer = page.getByRole('dialog', { name: /Poker hands/ });
+    const focusInside = () =>
+      page.evaluate(() => document.activeElement?.closest('[role="dialog"]') !== null);
+    await page.keyboard.press('k');
+    await expect(drawer).toBeVisible();
+    await expect.poll(focusInside).toBe(true);
+    await page.keyboard.press('k');
+    await expect(drawer).toHaveCount(0);
+    await page.keyboard.press('K');
+    await expect(drawer).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(drawer).toHaveCount(0);
+  }
 
   // ? lists the keys in a dialog; Esc closes it.
   await page.keyboard.press('?');

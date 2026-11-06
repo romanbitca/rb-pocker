@@ -311,6 +311,7 @@ button.pod {
   height: 14px;
 }
 
+/* No pulse under reduced motion (§12.8: the setting, else the system's choice). */
 @media (prefers-reduced-motion: reduce) {
   :root:not([data-motion='full']) .dot {
     animation: none;
