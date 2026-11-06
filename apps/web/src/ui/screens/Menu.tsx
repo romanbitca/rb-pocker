@@ -7,6 +7,7 @@
  * Recent hands, Stats, Learn and Install app show only when their callback is given.
  */
 import { useId } from 'react';
+import { deviceWords } from '../../i18n/device.ts';
 import { en } from '../../i18n/en.ts';
 import { Modal } from '../components/Modal.tsx';
 import { formatChips } from './numbers.ts';
@@ -33,6 +34,11 @@ export interface MenuProps {
   onLeaveTable: () => void;
   /** Setup for a new table; the controller asks first when a hand is unfinished (§3.1). */
   onNewTable: () => void;
+  /**
+   * Compact mode only (§12.3, chunk 9.1): Undo has the mute button's place in the top bar, so the
+   * Menu turns sound off or on ("Turn sound off" / "Turn sound on"). `on`: sound is on now.
+   */
+  sound?: { on: boolean; onToggle: () => void } | undefined;
 }
 
 export function Menu(props: MenuProps) {
@@ -48,6 +54,10 @@ export function Menu(props: MenuProps) {
   }
   add('rankings', en.menu.rankings, props.onOpenRankings);
   add('hands', en.menu.hands, props.onOpenHands);
+  if (props.sound) {
+    const { on, onToggle } = props.sound;
+    add('sound', on ? deviceWords.menu.soundOff : deviceWords.menu.soundOn, onToggle);
+  }
   add('settings', en.menu.settings, props.onOpenSettings);
   add('stats', en.menu.stats, props.onOpenStats);
   add('learn', en.menu.learn, props.onOpenLearn);

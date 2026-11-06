@@ -27,10 +27,12 @@ import {
 import type { CoachLevel, TableConfig } from '../engine/types.ts';
 import { ImportDialog, ResetDialog } from './screens/DataDialogs.tsx';
 import { NewTableDialog, OutOfChipsDialog } from './screens/Dialogs.tsx';
+import { wakeLockSupport, type DisplayAndSoundSettings } from './screens/DisplayAndSound.tsx';
 import { Menu } from './screens/Menu.tsx';
 import { Settings } from './screens/Settings.tsx';
 import { Setup } from './screens/Setup.tsx';
 import { AVAILABLE_LEVELS, ownLevelCount, type MoreChoices } from './screens/setupForm.ts';
+import { useTableLayout } from './screens/Table.tsx';
 
 export { Table as TableScreen } from './screens/Table.tsx';
 
@@ -85,6 +87,12 @@ export function SettingsScreen() {
   }));
   // How many bots have a level of their own (§9.3): the Bot level row says so.
   const ownLevels = useAppStore((s) => ownLevelCount(s.settings.seatLevels));
+  // Display and Sound (chunk 9.1): keep screen on, sound, vibration.
+  const device: DisplayAndSoundSettings = useAppStoreShallow((s) => ({
+    keepAwake: s.settings.keepAwake,
+    sound: s.settings.sound,
+    haptics: s.settings.haptics,
+  }));
   const persisted = useAppStore(selectPersisted);
   const counters = useAppStore(selectDiagnostics);
   return (
@@ -94,6 +102,11 @@ export function SettingsScreen() {
       available={AVAILABLE_LEVELS}
       onChangeSettings={(patch) => dispatch({ type: 'settings', patch })}
       onBack={() => dispatch({ type: 'back' })}
+      device={{
+        settings: device,
+        wakeLock: wakeLockSupport(window),
+        onChange: (patch) => dispatch({ type: 'settings', patch }),
+      }}
       data={{
         persisted,
         // From the tap itself: the share sheet opens only inside it (§14.8).
@@ -120,6 +133,9 @@ export function MenuOverlay() {
   const wide = useAppStore((s) => selectLayout(s) === 'wide');
   const hands = useAppStore(selectReviewCount);
   const install = useAppStore(selectInstall);
+  // Compact mode (§12.3): Undo has the mute button's place, so the Menu turns sound off and on.
+  const compact = useTableLayout() === 'compact';
+  const soundOn = useAppStore((s) => s.settings.sound);
   const close = () => dispatch({ type: 'close', overlay: 'menu' });
   return (
     <Menu
@@ -148,6 +164,17 @@ export function MenuOverlay() {
       }
       onLeaveTable={() => dispatch({ type: 'leaveTable' })}
       onNewTable={() => dispatch({ type: 'go', screen: 'setup' })}
+      sound={
+        compact
+          ? {
+              on: soundOn,
+              onToggle: () => {
+                dispatch({ type: 'settings', patch: { sound: !soundOn } });
+                close();
+              },
+            }
+          : undefined
+      }
     />
   );
 }

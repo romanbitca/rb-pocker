@@ -1,6 +1,7 @@
 /**
  * Settings (PLAN §12.1). The Game section: coach level, bot level, speed, auto next hand and
- * amounts; later stages add rows (win chance) and sections (Display, Sound, About). A change
+ * amounts; then Display and Sound (chunk 9.1, `DisplayAndSound.tsx`: keep screen on, sound,
+ * vibration); later stages add rows (win chance) and sections (About). A change
  * applies at once through `onChangeSettings(patch)`; the controller saves it (Appendix A.7). The
  * controller starts a new bot level with the next hand and a new coach level with the next
  * decision (§10); the hints under the level cards say so.
@@ -21,6 +22,7 @@ import { dataWords as D } from '../../i18n/data.ts';
 import { en } from '../../i18n/en.ts';
 import { FileButton } from '../components/FileButton.tsx';
 import { Choice, SwitchRow } from './Controls.tsx';
+import { DisplayAndSound, type DisplayAndSoundProps } from './DisplayAndSound.tsx';
 import { LevelCards } from './LevelCards.tsx';
 import { formatChips } from './numbers.ts';
 import { ScreenBar } from './ScreenBar.tsx';
@@ -70,6 +72,11 @@ export interface SettingsProps {
   /** Only the changed field. */
   onChangeSettings: (patch: Partial<GameSettings>) => void;
   onBack: () => void;
+  /**
+   * The Display and Sound sections after Game (chunk 9.1, `DisplayAndSound.tsx`): keep screen
+   * on, sound, vibration. The app always passes them; absent, they are not drawn.
+   */
+  device?: DisplayAndSoundProps | undefined;
   data?: DataSection | undefined;
   diagnostics?: DiagnosticsSection | undefined;
 }
@@ -83,6 +90,7 @@ export function Settings({
   available,
   onChangeSettings,
   onBack,
+  device,
   data,
   diagnostics,
 }: SettingsProps) {
@@ -152,6 +160,7 @@ export function Settings({
             onChange={(amounts) => onChangeSettings({ amounts })}
           />
         </section>
+        {device !== undefined && <DisplayAndSound {...device} />}
 
         {data && <DataRows id={`${id}-data`} data={data} />}
         {diagnostics && <DiagnosticsRows id={`${id}-diag`} diagnostics={diagnostics} />}
