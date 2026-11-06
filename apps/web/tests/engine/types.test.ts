@@ -12,9 +12,12 @@ import {
 import { allInShowdown, clone, foldedToBigBlind, handAtStart, headsUpFlop } from './fixtures.ts';
 
 describe('engine/types', () => {
-  it('ENGINE_VERSION is the version in apps/web/package.json (§4.6)', () => {
-    expect(ENGINE_VERSION).toBe(webPackage.version);
+  it("ENGINE_VERSION is the engine's own semver, not the app's version (§4.6): pinned at 0.1.0", () => {
+    // A new major voids unfinished hands and makes older hands uncheckable (H.2 rule 4, §16.3):
+    // change it only with the engine's rules or state shape, and this line with it.
+    expect(ENGINE_VERSION).toBe('0.1.0');
     expect(ENGINE_VERSION).toMatch(/^\d+\.\d+\.\d+$/);
+    expect(webPackage.version).toMatch(/^\d+\.\d+\.\d+$/);
   });
 
   it('re-exports the error classes of core/assert (A.1, A.3)', () => {
