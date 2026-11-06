@@ -90,6 +90,22 @@ describe('navigation in the store (app/navigation.ts, §12.1)', () => {
     expect(reduceUi(ui, { type: 'back' }).screen).toBe('table');
   });
 
+  it('lesson from Stats (a leak`s link, §8.9): over Stats, and Back returns to Stats', () => {
+    let ui = reduceUi(initialUi(false), { type: 'go', screen: 'stats' });
+    ui = reduceUi(ui, { type: 'lesson', lesson: 6 });
+    expect(ui).toMatchObject({ screen: 'lesson', lesson: 6, overlays: [] });
+    expect(ui.nav.screens).toEqual(['home', 'stats', 'lesson']);
+    expect(reduceUi(ui, { type: 'back' }).nav.screens).toEqual(['home', 'stats']);
+    // Stats over the Table: the lesson goes on top, and Back returns to Stats, then the hand.
+    let table = reduceUi(onTable(), { type: 'go', screen: 'stats' });
+    table = reduceUi(table, { type: 'lesson', lesson: 3 });
+    expect(table.nav.screens).toEqual(['home', 'table', 'stats', 'lesson']);
+    expect(table.gates).toContain('offTable');
+    table = reduceUi(table, { type: 'back' });
+    expect(table.screen).toBe('stats');
+    expect(reduceUi(table, { type: 'back' }).screen).toBe('table');
+  });
+
   it('a navigation action that changes nothing leaves ui as it was', () => {
     const ui = reduceUi(onTable(), { type: 'open', overlay: 'menu' });
     expect(reduceUi(ui, { type: 'open', overlay: 'menu' })).toBe(ui);

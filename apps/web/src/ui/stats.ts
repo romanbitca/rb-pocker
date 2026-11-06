@@ -31,6 +31,32 @@ export const MISTAKE_SESSIONS = 10;
 export const TOP_LEAKS = 3;
 export const LEAK_MIN_COUNT = 3;
 
+/** The lessons a leak links to (Appendix F.8): Your options, Position, Pot odds, Outs. */
+export type LeakLesson = 3 | 5 | 6 | 7;
+
+/**
+ * §8.9 "Lesson links": the lesson that teaches what each leak gets wrong. Before the flop, how
+ * many hands to play is Position; the moves (limping, not betting a strong hand, bluffing) are
+ * Your options; chasing a draw is Outs; every call or fold against the price, and a bet's size
+ * (which sets the price), is Pot odds. Stats opens it by number (`{ type: 'lesson' }`), so Learn's
+ * lessons stay in Learn's chunk; the titles of these four are in `i18n/stats.ts`.
+ */
+export const LEAK_LESSON: Readonly<Record<LeakId, LeakLesson>> = {
+  'open-loose': 5,
+  'open-tight': 5,
+  limp: 3,
+  'call-pre-wide': 6,
+  'fold-pre-much': 6,
+  pushfold: 6,
+  'missed-value': 3,
+  'bluff-much': 3,
+  overfold: 6,
+  chase: 7,
+  'river-call': 6,
+  'call-light': 6,
+  sizing: 6,
+};
+
 const BOT_LEVELS: readonly BotLevel[] = ['easy', 'medium', 'hard', 'expert'];
 
 /** Half away from zero (Math.round sends −2.5 to −2). */

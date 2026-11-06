@@ -454,6 +454,11 @@ export interface ControllerOptions {
    * a moment no spec controls (and stay there on a paused clock).
    */
   offlineToast?: boolean;
+  /**
+   * The system asks for reduced motion (`prefers-reduced-motion: reduce`, §12.8): then the
+   * default speed is Fast, so a profile not written yet (the first launch, §12.1) starts at Fast.
+   */
+  reducedMotion?: boolean;
 }
 
 /** The parts of `navigator.storage` used to keep the data (§14.8). */
@@ -658,9 +663,17 @@ export class TableController {
   private readonly updates: UpdatePort | null;
   /** `ControllerOptions.offlineToast`. */
   private readonly offlineToast: boolean;
+  /** `ControllerOptions.reducedMotion`. */
+  private readonly reducedMotion: boolean;
   private update: UpdateState = 'none';
   /** "Update ready. It installs after this hand." was shown (once per launch). */
   private updateToastShown = false;
+  /**
+   * The reload's only reason is a lazy chunk that could not load (`stale`, §15.1 "Redeploys"): no
+   * new version came from the service worker. A failed chunk proves none (a bad deploy, a 404 kept
+   * by a cache), so no "Update ready" toast, and no reload while the page is offline.
+   */
+  private staleOnly = false;
   /** When the app last asked the server for a new version (`timers.now()`). */
   private updateCheckedAt = Number.NEGATIVE_INFINITY;
   private updateCheckTimer: unknown = null;
@@ -792,6 +805,7 @@ export class TableController {
     this.sha256 = options.sha256 ?? null;
     this.updates = options.updates ?? null;
     this.offlineToast = options.offlineToast !== false;
+    this.reducedMotion = options.reducedMotion === true;
     this.unsubscribe = this.store.subscribe((s, prev) => {
       if (s.ui.nav !== prev.ui.nav) this.onNav(s.ui, prev.ui);
       // §15.1: a toast closed, or the page came to the front: a waiting version may go in now.
@@ -856,7 +870,13 @@ export class TableController {
     this.profile = loaded.profile;
     this.suggestionTools?.forget(); // §10.4: the coach sample is read again when it matters
     this.seatStats = heroOnly(NO_SEAT_STATS, loaded.profile.heroModel);
-    this.store.setState({ settings: sanitize(loaded.profile.settings, {}) });
+    // §12.8: under reduced motion the default speed is Fast. The defaults are what a profile not
+    // written yet holds (`rev` 0: the first launch, or a damaged one started again, §14.6), so
+    // only they change; a stored speed is the player's.
+    const fast = this.reducedMotion && loaded.profile.rev === 0;
+    this.store.setState({
+      settings: sanitize(loaded.profile.settings, fast ? { speed: 'fast' } : {}),
+    });
     if (notify && (loaded.status === 'reset' || loaded.status === 'restored')) {
       this.error(`profile ${loaded.status}`, loaded.problem);
       this.toast({ kind: loaded.status === 'reset' ? 'dataRecovered' : 'dataRestored' });
@@ -2724,10 +2744,13 @@ export class TableController {
         this.offlineReady();
         break;
       case 'updateReady':
-        if (this.update === 'none') this.update = 'ready';
+        // After a failed chunk too: the version waiting in the service worker goes in first.
+        if (this.update === 'none' || this.staleOnly) this.update = 'ready';
+        this.staleOnly = false;
         this.updateWhenSafe();
         break;
       case 'activated':
+        this.staleOnly = false;
         if (this.update === 'applying') {
           // This tab let it in, at a safe moment, with everything saved: reload now.
           this.reloadForUpdate();
@@ -2738,6 +2761,16 @@ export class TableController {
         // the game must go to that tab's new page, not to this old one.
         this.update = 'activated';
         if (this.tab !== 'writer') this.tabLock?.standAside();
+        this.updateWhenSafe();
+        break;
+      case 'stale':
+        // §15.1 "Redeploys": a lazy chunk of this page's version could not load: the server may
+        // run a newer version. The page reloads when safe, as for `activated` (a version waiting
+        // in the service worker goes in first: `ready` stays), but without the toast.
+        if (this.update === 'none') {
+          this.update = 'activated';
+          this.staleOnly = true;
+        }
         this.updateWhenSafe();
         break;
     }
@@ -2772,6 +2805,7 @@ export class TableController {
       this.tab === 'writer' &&
       handOnShow &&
       !this.updateToastShown &&
+      !this.staleOnly &&
       this.storage?.failure === null
     ) {
       this.updateToastShown = true;
@@ -2824,6 +2858,9 @@ export class TableController {
     if (storage === null || port === null || storage.failure !== null || this.tab === 'pending') {
       return false;
     }
+    // Only a chunk failed, and the page is offline now: the chunk is only out of reach, and the
+    // reload would show the browser's error page (§15.1 "Redeploys"). The next safe moment asks.
+    if (this.staleOnly && port.online?.() === false) return false;
     if (this.tab === 'writer') {
       this.flushSettings();
       // The settings could not be written, or the write found another tab's game (§14.7): a

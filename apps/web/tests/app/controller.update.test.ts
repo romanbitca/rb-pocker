@@ -6,8 +6,13 @@
  * version (a new launch over the same storage) goes straight back to the Table and deals that
  * hand. With no hand unfinished, on Welcome or Home, it goes in at once (an update found at
  * launch). It waits on other screens, in a tab without the game, and for good when the browser
- * keeps nothing (§14.6). Without a service worker (a plain-http LAN address, §12.14) nothing of
- * this happens. The Playwright run of the same (Stage 9 acceptance 5) is `tests/e2e/update.spec.ts`.
+ * keeps nothing (§14.6). Without a port (the dev server) nothing of this happens. The Playwright
+ * run of the same (Stage 9 acceptance 5) is `tests/e2e/update.spec.ts`.
+ *
+ * A lazy chunk gone from the server after a redeploy (`stale`, §15.1 "Redeploys", on every page of
+ * a production build, with or without a service worker) reloads the page the same way, at the
+ * same safe moments, but without the toast and not while offline; `tests/e2e/staleChunk.spec.ts`
+ * is its Playwright run.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { TIMING } from '../../src/app/controller.ts';
@@ -37,6 +42,8 @@ class FakePort implements UpdatePort {
   reloads = 0;
   /** `apply()` is answered with `activated` at once (the worker takes over within milliseconds). */
   answerApply = true;
+  /** `navigator.onLine`. */
+  onLine = true;
   started(): boolean {
     return this.listener !== null;
   }
@@ -52,6 +59,9 @@ class FakePort implements UpdatePort {
   }
   reload(): void {
     this.reloads++;
+  }
+  online(): boolean {
+    return this.onLine;
   }
   emit(event: UpdateEvent): void {
     this.listener?.(event);
@@ -416,7 +426,7 @@ describe('when it never reloads', () => {
     expect(deals()).toBe(dealtBefore);
   });
 
-  it('no service worker (a plain-http LAN address, §12.14): no port, no timers of its own', async () => {
+  it('no port (the dev server; tests): no timers of its own, no toast', async () => {
     const backend = new FakeStorage();
     const h = makeHarness({ storage: createSafeStorage(() => backend) });
     expect(vi.getTimerCount()).toBe(0);
@@ -428,6 +438,133 @@ describe('when it never reloads', () => {
     await drive(h, { hands: 1, hero: passive });
     expect(toasts(h)).toEqual([]);
     expect(session(backend).resumeAfterUpdate).toBe(false);
+  });
+});
+
+describe('a lazy chunk gone after a redeploy (`stale`, §15.1 "Redeploys")', () => {
+  it('mid-hand: never then; the hand plays to its end; the reload comes with the next hand', async () => {
+    const backend = new FakeStorage();
+    const { h, port } = launch(backend);
+    setUp(h);
+    h.dispatch({ type: 'play' });
+    await playUntil(h, heroTurn(h));
+    const handSeq = h.state().game.hand?.handSeq as number;
+
+    port.emit('stale'); // e.g. Learn, opened from the Menu, could not load
+    expect(port.applies + port.reloads).toBe(0);
+    // A failed chunk proves no new version (a bad deploy, a 404 kept by a cache): no toast.
+    expect(toasts(h)).toEqual([]);
+    await playUntil(h, () => {
+      expect(port.reloads).toBe(0);
+      return handEnd(h)();
+    });
+    port.emit('stale'); // another chunk: nothing more
+    expect(toasts(h)).toEqual([]);
+    await vi.advanceTimersByTimeAsync(10_000); // the banner waits for its tap
+    expect(port.reloads).toBe(0);
+    expect(profile(backend).lastCommittedHandSeq).toBe(handSeq); // counted in the old page
+
+    h.dispatch({ type: 'nextHand' });
+    // Nothing to let in (no service worker waits): the session is saved, the page reloads.
+    expect([port.applies, port.reloads]).toEqual([0, 1]);
+    expect(h.state().game.hand?.handSeq).toBe(handSeq);
+    expect(session(backend)).toMatchObject({ hand: null, resumeAfterUpdate: true });
+    h.controller.dispose();
+
+    // The reloaded page (the new version): back at the Table, the next hand dealt.
+    const v2 = launch(backend).h;
+    expect(v2.state().ui.screen).toBe('table');
+    expect(v2.state().game.hand?.handSeq).toBe(handSeq + 1);
+    expect(session(backend).resumeAfterUpdate).toBe(false);
+  });
+
+  it('Home with no hand unfinished: at once, no toast; another screen waits until Home', () => {
+    const home = launch(new FakeStorage());
+    home.port.emit('stale'); // e.g. the screens chunk, asked for after the first paint
+    expect([home.port.applies, home.port.reloads]).toEqual([0, 1]);
+    expect(toasts(home.h)).toEqual([]);
+
+    const { h, port } = launch(new FakeStorage());
+    h.dispatch({ type: 'go', screen: 'about' });
+    port.emit('stale'); // About could not load: its page says so, and Back is there
+    expect(port.reloads).toBe(0);
+    expect(toasts(h)).toEqual([]);
+    h.dispatch({ type: 'back' });
+    expect(port.reloads).toBe(1);
+  });
+
+  it('a version waiting in the service worker goes in first: one reload, into the newest', async () => {
+    const { h, port } = launch(new FakeStorage());
+    setUp(h);
+    h.dispatch({ type: 'play' });
+    await playUntil(h, heroTurn(h));
+    port.emit('updateReady');
+    port.emit('stale');
+    expect(toasts(h)).toEqual(['updateReady']); // the worker's new version: its toast
+    await playUntil(h, handEnd(h));
+    expect(port.applies + port.reloads).toBe(0);
+    h.dispatch({ type: 'nextHand' });
+    expect([port.applies, port.reloads]).toEqual([1, 1]);
+
+    // The other order: a chunk fails first (no toast), then the worker finds a new version.
+    const other = launch(new FakeStorage());
+    setUp(other.h);
+    other.h.dispatch({ type: 'play' });
+    await playUntil(other.h, heroTurn(other.h));
+    other.port.emit('stale');
+    expect(toasts(other.h)).toEqual([]);
+    other.port.emit('updateReady');
+    expect(toasts(other.h)).toEqual(['updateReady']);
+    await playUntil(other.h, handEnd(other.h));
+    other.h.dispatch({ type: 'nextHand' });
+    expect([other.port.applies, other.port.reloads]).toEqual([1, 1]);
+  });
+
+  it('offline when the reload would come: none (the chunk is only out of reach); online, the next safe moment', async () => {
+    const backend = new FakeStorage();
+    const { h, port } = launch(backend);
+    setUp(h);
+    h.dispatch({ type: 'play' });
+    await playUntil(h, heroTurn(h));
+    const handSeq = h.state().game.hand?.handSeq as number;
+    port.emit('stale');
+    await playUntil(h, handEnd(h));
+    port.onLine = false; // the connection is gone by the banner's tap
+    h.dispatch({ type: 'nextHand' });
+    await playUntil(h, () => h.state().game.hand?.handSeq === handSeq + 1); // dealt as usual
+    expect(port.applies + port.reloads).toBe(0);
+    await playUntil(h, handEnd(h));
+    port.onLine = true;
+    h.dispatch({ type: 'nextHand' });
+    expect([port.applies, port.reloads]).toEqual([0, 1]);
+    expect(session(backend)).toMatchObject({ hand: null, resumeAfterUpdate: true });
+
+    // Welcome (nothing unfinished): offline, no reload; online again, the next navigation reloads.
+    const first = launch(new FakeStorage());
+    first.port.onLine = false;
+    first.port.emit('stale');
+    expect(first.port.reloads).toBe(0);
+    expect(toasts(first.h)).toEqual([]);
+    first.port.onLine = true;
+    first.h.dispatch({ type: 'go', screen: 'settings' });
+    expect(first.port.reloads).toBe(0); // Settings: the player is choosing
+    first.h.dispatch({ type: 'back' });
+    expect(first.h.state().ui.screen).toBe('welcome');
+    expect(first.port.reloads).toBe(1);
+  });
+
+  it('never when the browser keeps nothing (§14.6): the game plays on in memory', async () => {
+    const backend = new FakeStorage();
+    backend.failAll = securityError();
+    const { h, port } = launch(backend);
+    setUp(h, true);
+    h.dispatch({ type: 'play' });
+    port.emit('stale');
+    const played = await drive(h, { hands: 2, hero: passive });
+    expect(played).toHaveLength(2);
+    h.dispatch({ type: 'leaveTable' });
+    expect(port.reloads).toBe(0);
+    expect(toasts(h)).not.toContain('updateReady');
   });
 });
 

@@ -97,6 +97,8 @@ export interface HarnessOptions {
   updates?: UpdatePort;
   /** Chunk 9.5: "Ready to play offline." (default on; the E2E fixture turns it off). */
   offlineToast?: boolean;
+  /** §12.8: the system asks for reduced motion (a first launch then starts at Fast). */
+  reducedMotion?: boolean;
 }
 
 export function makeHarness(options: HarnessOptions = {}): Harness {
@@ -127,6 +129,7 @@ export function makeHarness(options: HarnessOptions = {}): Harness {
     ...(options.sha256 !== undefined && { sha256: options.sha256 }),
     ...(options.updates !== undefined && { updates: options.updates }),
     ...(options.offlineToast !== undefined && { offlineToast: options.offlineToast }),
+    ...(options.reducedMotion !== undefined && { reducedMotion: options.reducedMotion }),
   });
   controller.boot();
   return {

@@ -48,6 +48,10 @@ interface PcState {
     tip: string | null;
     /** The toasts on show (§12.11), by kind. */
     toasts: readonly { kind: string }[];
+    /** The screen stack, oldest first (app/navigation.ts). */
+    nav: { screens: readonly string[]; overlays: readonly string[] };
+    /** Learn's lesson on the 'lesson' screen (chunk 9.2). */
+    lesson: number;
   };
   settings: { players: number; speed: string; autoNext: boolean } & Record<string, unknown>;
   /**

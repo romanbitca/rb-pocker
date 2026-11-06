@@ -28,6 +28,8 @@ import { feedbackCard, nextPoint, pauseClock, playTo, SCRIPT, SEED, tapAct } fro
 //   (transform, translate, rotate, scale) or a transition of those properties;
 //   motion allowed (no preference), and the setting Off over a system that reduces: the same
 //   check finds the motion, so the reduced reads are not empty by accident.
+// Also §12.8's "default speed Fast": a first launch under the system's reduced motion plays at
+// Fast, which Settings shows as the chosen speed, and a speed the player picks stays.
 // One phone size per browser: the CSS is the same at every size.
 
 type Variant = 'system reduces' | 'setting On' | 'motion allowed' | 'setting Off';
@@ -331,5 +333,57 @@ test.describe('reduced motion: the tips and an all-in run-out', () => {
 
     motion.done();
     expect(errors).toEqual([]);
+  });
+});
+
+test.describe('reduced motion: the default speed is Fast (§12.8, §12.1 notes)', () => {
+  // eslint-disable-next-line no-empty-pattern -- Playwright reads the fixtures from this pattern
+  test.beforeEach(({}, testInfo) => {
+    test.skip(sizeOf(testInfo) !== '390x844', 'one phone size per browser');
+  });
+
+  /** The speed the game runs at: the store's setting and the root's `--speed` factor. */
+  const speedOf = (page: Page): Promise<[string, string]> =>
+    page.evaluate(() => [
+      String(window.__pc?.state().settings.speed),
+      getComputedStyle(document.documentElement).getPropertyValue('--speed').trim(),
+    ]);
+
+  test('a first launch under the system`s reduced motion plays at Fast; Settings shows it', async ({
+    page,
+  }, testInfo) => {
+    test.setTimeout(60_000);
+    const errors = collectErrors(page);
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await openApp(page, seedFor(testInfo, 'motion-speed'));
+    await expect(page.getByRole('button', { name: 'Play', exact: true })).toBeVisible(); // Welcome
+    expect(await speedOf(page)).toEqual(['fast', '0.5']);
+
+    // Play (one tap), then Menu → Settings: the Speed row has Fast chosen, like any speed.
+    await page.getByRole('button', { name: 'Play', exact: true }).click();
+    await expect(page.locator('[data-hero-cards] [role="img"]')).toHaveCount(2);
+    await page.getByRole('button', { name: 'Menu', exact: true }).click();
+    await page.getByRole('button', { name: 'Settings', exact: true }).click();
+    const speed = page.getByRole('group', { name: 'Speed', exact: true });
+    await expect(speed.getByRole('radio', { name: 'Fast', exact: true })).toBeChecked();
+
+    // The player's choice is theirs: Normal stays Normal at the next launch, under reduced motion.
+    const normal = speed.getByRole('radio', { name: 'Normal', exact: true });
+    await normal.click();
+    await expect(normal).toBeChecked();
+    await page.waitForFunction(() => {
+      const raw = localStorage.getItem('pc.v1.profile');
+      const stored = raw === null ? null : (JSON.parse(raw) as { settings: { speed: string } });
+      return stored?.settings.speed === 'normal';
+    });
+    await openApp(page, seedFor(testInfo, 'motion-speed'));
+    expect(await speedOf(page)).toEqual(['normal', '1']);
+    expect(errors).toEqual([]);
+  });
+
+  test('without reduced motion a first launch plays at Normal', async ({ page }, testInfo) => {
+    await page.emulateMedia({ reducedMotion: 'no-preference' });
+    await openApp(page, seedFor(testInfo, 'motion-speed'));
+    expect(await speedOf(page)).toEqual(['normal', '1']);
   });
 });

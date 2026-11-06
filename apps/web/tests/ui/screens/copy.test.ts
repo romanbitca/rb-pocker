@@ -7,6 +7,7 @@ import { coachWords } from '../../../src/i18n/coachUi.ts';
 import { dataWords as D } from '../../../src/i18n/data.ts';
 import { deviceWords } from '../../../src/i18n/device.ts';
 import { learnWords as W } from '../../../src/i18n/learn.ts';
+import { statsWords } from '../../../src/i18n/stats.ts';
 import { suggestionWords } from '../../../src/i18n/suggestions.ts';
 import { quizWords } from '../../../src/i18n/quiz.ts';
 import { shortcutWords } from '../../../src/i18n/shortcuts.ts';
@@ -121,6 +122,8 @@ const PLAN_WORDS: Record<string, string> = {
   'setup.more.fourColour': `"${en.setup.more.fourColour.label}" ("${en.setup.more.fourColour.hint}")`,
   'setup.more.ownLevels': `the lines "${en.setup.more.ownLevels(1)}" · "${en.setup.more.ownLevels(2).replace('2', placeholder('n'))}"`,
   'settings.botLevel.own': `"${en.settings.botLevel.own(1)}" · "${en.settings.botLevel.own(2).replace('2', placeholder('n'))}"`,
+  // feature/stage-9-follow-ups: a leak's lesson link on Stats (§8.9 "Lesson links", F.10).
+  'stats.lessonLink': `each leak's lesson link "${statsWords.progress.lessonLink(0, placeholder('title')).replace('0', placeholder('n'))}" ("${statsWords.progress.lessonLink(6, statsWords.lessons[6])}"`,
   ...Object.fromEntries(
     Object.entries(en.personality).map(([id, name]) => [`personality.${id}`, `| ${name} |`]),
   ),

@@ -15,6 +15,9 @@
  * - Chunk 8.4: the level suggestion card (§10.4) at the top of Progress, and History's footer
  *   [Export] [Import] (§14.4, the same commands as Settings → Data; the Data chunk loads when Stats
  *   opens, `DATA_SCREENS`, so Export's share sheet opens inside the tap).
+ * - Each leak links to the lesson about it (§8.9, `LEAK_LESSON`): "Lesson 6: Pot odds" opens it
+ *   in Learn over Stats (the `lesson` command, by number: Learn's lessons stay in its own chunk),
+ *   and Back comes back to Progress.
  */
 import {
   memo,
@@ -44,7 +47,14 @@ import { FileButton } from '../components/FileButton.tsx';
 import { LevelSuggestion } from '../components/SuggestionCard.tsx';
 import { formatChips } from '../format.ts';
 import { exampleCards } from '../rankings.ts';
-import { statsView, type ProgressView, type ResultsView, type StatsView } from '../stats.ts';
+import {
+  LEAK_LESSON,
+  statsView,
+  type LeakLesson,
+  type ProgressView,
+  type ResultsView,
+  type StatsView,
+} from '../stats.ts';
 import { ScreenBar } from './ScreenBar.tsx';
 import screen from './Screen.module.css';
 import { STATS_MARKER } from './statsMarker.ts';
@@ -123,6 +133,8 @@ const S = {
     cursor: 'pointer',
   },
   lock: { width: 14, height: 14, flex: 'none' },
+  /** A leak's lesson link (§8.9): its own line, its words flush with the leak's. */
+  lessonLink: { display: 'block', padding: 0, textAlign: 'left' },
   line: { display: 'flex', alignItems: 'center', gap: '6px' },
 } satisfies Record<string, CSSProperties>;
 
@@ -320,7 +332,7 @@ function Empty({ hands }: { hands: number }) {
 // ---------------------------------------------------------------------------------------------
 // Pages
 
-function Progress({ p }: { p: ProgressView }) {
+function Progress({ p, onLesson }: { p: ProgressView; onLesson: (n: LeakLesson) => void }) {
   const sessionLabel = p.score.last ? W.progress.lastSession : W.progress.session;
   return (
     <div style={S.page}>
@@ -386,15 +398,27 @@ function Progress({ p }: { p: ProgressView }) {
           <p style={S.text}>{W.progress.leaksNone}</p>
         ) : (
           <ol style={S.rows}>
-            {p.leaks.map((leak) => (
-              <li key={leak.id} data-leak={leak.id}>
-                <span style={S.strong}>{W.leaks[leak.id]}</span>
-                <br />
-                <span style={S.muted}>
-                  {W.progress.leakLine(formatChips(leak.count), formatChips(leak.chips))}
-                </span>
-              </li>
-            ))}
+            {p.leaks.map((leak) => {
+              const lesson = LEAK_LESSON[leak.id];
+              return (
+                <li key={leak.id} data-leak={leak.id}>
+                  <span style={S.strong}>{W.leaks[leak.id]}</span>
+                  <br />
+                  <span style={S.muted}>
+                    {W.progress.leakLine(formatChips(leak.count), formatChips(leak.chips))}
+                  </span>
+                  <button
+                    type="button"
+                    className={screen.link}
+                    style={S.lessonLink}
+                    onClick={() => onLesson(lesson)}
+                    data-leak-lesson={lesson}
+                  >
+                    {W.progress.lessonLink(lesson, W.lessons[lesson])}
+                  </button>
+                </li>
+              );
+            })}
           </ol>
         )}
       </Section>
@@ -679,6 +703,8 @@ export interface StatsProps {
   tab: StatsTab;
   onTab: (tab: StatsTab) => void;
   onOpenHand: (handSeq: number) => void;
+  /** A leak's lesson link (§8.9): Learn opens that lesson over Stats; Back returns here. */
+  onLesson: (lesson: number) => void;
   onBack: () => void;
   /** History's footer (chunk 8.4): Export, from the tap itself; the file picked for Import. */
   onExport?: (() => void) | undefined;
@@ -693,6 +719,7 @@ export function Stats({
   tab,
   onTab,
   onOpenHand,
+  onLesson,
   onBack,
   onExport,
   onImport,
@@ -704,7 +731,7 @@ export function Stats({
   if (tab === 'history') {
     page = <History items={history} onOpen={onOpenHand} onExport={onExport} onImport={onImport} />;
   } else if (view === null || (tab !== 'hands' && !view.ready)) page = <Empty hands={hands} />;
-  else if (tab === 'progress') page = <Progress p={view.progress} />;
+  else if (tab === 'progress') page = <Progress p={view.progress} onLesson={onLesson} />;
   else if (tab === 'results') page = <Results r={view.results} />;
   else page = <Collection view={view} />;
 
@@ -765,6 +792,7 @@ export function StatsRoute() {
         setTab(t);
       }}
       onOpenHand={(handSeq) => dispatch({ type: 'historyReview', handSeq })}
+      onLesson={(lesson) => dispatch({ type: 'lesson', lesson })}
       onBack={() => dispatch({ type: 'back' })}
       onExport={() => dispatch({ type: 'exportStats' })}
       onImport={(file) => dispatch({ type: 'importFile', file })}

@@ -5,10 +5,18 @@
  * update check, and pages without service workers (§12.14: a plain-http LAN address,
  * `serviceWorkerOf` in `app/lifecycle.ts`). When the game lets a new version in is
  * `updateMayReload`'s (below, also `app/lifecycle.ts`) and the controller's
- * (`tests/app/controller.update.test.ts`).
+ * (`tests/app/controller.update.test.ts`). A lazy chunk gone after a redeploy is
+ * `watchStaleChunks` (below; §15.1 "Redeploys"); its reload is the controller's too.
  */
 import { describe, expect, it, vi } from 'vitest';
-import { serviceWorkerOf, updateMayReload, type UpdateMoment } from '../../src/app/lifecycle.ts';
+import {
+  serviceWorkerOf,
+  STALE_RELOAD_GUARD_MS,
+  STALE_RELOAD_KEY,
+  updateMayReload,
+  watchStaleChunks,
+  type UpdateMoment,
+} from '../../src/app/lifecycle.ts';
 import {
   browserUpdateEnv,
   createUpdatePort,
@@ -358,5 +366,111 @@ describe('updateMayReload: when a new version may reload the page (§15.1)', () 
     // The tab with the game loses nothing on Home, in front or not.
     expect(at({ hidden: true })).toBe(true);
     expect(at({ hidden: true, update: 'activated' })).toBe(true);
+  });
+});
+
+describe('watchStaleChunks: a lazy chunk gone after a redeploy (§15.1 "Redeploys")', () => {
+  /** A page: its `vite:preloadError` events, sessionStorage (null: none) and `navigator.onLine`. */
+  function page(options: { session?: Map<string, string> | null; onLine?: boolean } = {}) {
+    const target = new EventTarget();
+    const session = options.session === undefined ? new Map<string, string>() : options.session;
+    const win = {
+      addEventListener: target.addEventListener.bind(target),
+      navigator: { onLine: options.onLine ?? true },
+      get sessionStorage() {
+        if (session === null) throw new DOMException('denied', 'SecurityError');
+        return {
+          getItem: (key: string) => session.get(key) ?? null,
+          setItem: (key: string, value: string) => void session.set(key, value),
+        };
+      },
+    };
+    let stale = 0;
+    watchStaleChunks(win as unknown as Window, () => stale++);
+    /** What Vite's import wrapper does when an `import()` fails: this event, with the error. */
+    const fail = (message: string): boolean => {
+      const event = new Event('vite:preloadError', { cancelable: true });
+      Object.assign(event, { payload: new TypeError(message) });
+      target.dispatchEvent(event);
+      return event.defaultPrevented;
+    };
+    return { session, fail, stale: () => stale };
+  }
+
+  const LEARN = 'Failed to fetch dynamically imported module: http://x/assets/Learn-B9e2aKad.js';
+  const STATS = 'Failed to fetch dynamically imported module: http://x/assets/Stats-mTa8sU3i.js';
+  const noted = (session: Map<string, string> | null): unknown =>
+    JSON.parse(session?.get(STALE_RELOAD_KEY) ?? 'null');
+
+  it('asks for a reload and notes the chunk and the time first; the import still fails', () => {
+    vi.useFakeTimers({ now: new Date('2026-11-06T10:00:00Z') });
+    try {
+      const p = page();
+      expect(p.fail(LEARN), 'no preventDefault: the screen shows its own failure').toBe(false);
+      expect(p.stale()).toBe(1);
+      expect(noted(p.session)).toEqual({
+        chunk: `TypeError: ${LEARN}`,
+        at: Date.parse('2026-11-06T10:00:00Z'),
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('once: within 10 minutes of its note no chunk asks again, whichever fails (no loop)', () => {
+    vi.useFakeTimers({ now: new Date('2026-11-06T10:00:00Z') });
+    try {
+      const session = new Map<string, string>();
+      // At boot several lazy chunks load; two fail (their errors name different chunks): one ask.
+      const old = page({ session });
+      old.fail(LEARN);
+      old.fail(STATS);
+      expect(old.stale()).toBe(1);
+      expect(noted(session)).toMatchObject({ chunk: `TypeError: ${LEARN}` });
+      // The reloaded page in the same tab (its sessionStorage) still misses both (a bad deploy, a
+      // 404 kept by a cache): they fail in the other order, and neither asks for a reload.
+      const reloaded = page({ session });
+      vi.advanceTimersByTime(STALE_RELOAD_GUARD_MS - 1);
+      reloaded.fail(STATS);
+      reloaded.fail(LEARN);
+      reloaded.fail(STATS);
+      expect(reloaded.stale()).toBe(0);
+      expect(noted(session), 'the first note stands').toMatchObject({
+        chunk: `TypeError: ${LEARN}`,
+      });
+      // Ten minutes after its note, a chunk that fails asks again (a later redeploy): once.
+      vi.advanceTimersByTime(1);
+      const later = page({ session });
+      later.fail(STATS);
+      later.fail(LEARN);
+      expect(later.stale()).toBe(1);
+      expect(noted(session)).toMatchObject({ chunk: `TypeError: ${STATS}` });
+      // WebKit names no URL: the same, one reload per 10 minutes.
+      const webkit = page();
+      webkit.fail('Importing a module script failed.');
+      webkit.fail('Importing a module script failed.');
+      expect(webkit.stale()).toBe(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('none offline, none without sessionStorage (nothing would stop a loop) or with a broken note', () => {
+    const offline = page({ onLine: false });
+    offline.fail(LEARN);
+    expect(offline.stale()).toBe(0);
+    expect(offline.session?.size).toBe(0);
+    const noStorage = page({ session: null });
+    noStorage.fail(LEARN);
+    expect(noStorage.stale()).toBe(0);
+    for (const note of ['null', '{', '7']) {
+      const broken = page({ session: new Map([[STALE_RELOAD_KEY, note]]) });
+      broken.fail(LEARN);
+      expect(broken.stale(), note).toBe(note === '7' ? 1 : 0);
+    }
+    // A note without a time: asked for.
+    const other = page({ session: new Map([[STALE_RELOAD_KEY, '{"chunk":1,"at":"x"}']]) });
+    other.fail(LEARN);
+    expect(other.stale()).toBe(1);
   });
 });

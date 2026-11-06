@@ -18,6 +18,7 @@ import {
   isStandalone,
   serviceWorkerOf,
   storageManagerOf,
+  watchStaleChunks,
 } from './lifecycle.ts';
 import { pageSha256 } from './shuffleCode.ts';
 import { appStore, setDrillLoader } from './store.ts';
@@ -36,25 +37,32 @@ export interface StartOptions {
   /** The storage (tests pass one over a fake `localStorage`). */
   storage?: SafeStorage;
   /**
-   * The service worker (§15.1). Default: the page's, in a production build (`vite build`, the E2E
-   * build too) on a page that has service workers; none on the dev server (it serves no `sw.js`)
-   * or an insecure page (§12.14). Tests pass a fake, or null.
+   * New versions (§15.1). Default: the page's, in a production build (`vite build`, the E2E build
+   * too): its service worker where it has one (none on an insecure page, §12.14), and lazy chunks
+   * gone after a redeploy on every page; none on the dev server (it serves no `sw.js`, and its
+   * imports are not Vite's wrapped ones). Tests pass a fake, or null.
    */
   updates?: UpdatePort | null;
 }
 
 /**
- * The page's service worker port (see `StartOptions.updates`). Its code is a lazy chunk
- * (`app/swUpdate.ts`, kept out of the initial JS, §15.3), loaded when the controller starts it at
- * boot; the registration waits for the page's `load` anyway. Not loaded (a first visit that went
- * offline): no new versions this launch.
+ * The page's port for new versions (see `StartOptions.updates`), in a production build. Its
+ * service worker code is a lazy chunk (`app/swUpdate.ts`, kept out of the initial JS, §15.3),
+ * loaded when the controller starts it at boot; the registration waits for the page's `load`
+ * anyway. Not loaded (a first visit that went offline): no new versions this launch.
+ *
+ * A lazy chunk gone from the server after a redeploy (§15.1 "Redeploys", `watchStaleChunks`) is a
+ * new version too, with or without a service worker: the port says `stale`, and the controller
+ * reloads the page at the next safe moment, as for a new version that took over.
  */
 function pageUpdates(win: Window): UpdatePort | null {
-  const serviceWorker = import.meta.env.PROD ? serviceWorkerOf(win) : null;
-  if (serviceWorker === null) return null;
+  if (!import.meta.env.PROD) return null;
+  const serviceWorker = serviceWorkerOf(win);
   let port: UpdatePort | null = null;
   return {
     start(listener) {
+      watchStaleChunks(win, () => listener('stale'));
+      if (serviceWorker === null) return;
       void import('./swUpdate.ts').then(
         ({ browserUpdateEnv, createUpdatePort }) => {
           port = createUpdatePort(browserUpdateEnv(win, serviceWorker));
@@ -68,6 +76,7 @@ function pageUpdates(win: Window): UpdatePort | null {
     check: () => port?.check(),
     apply: () => port?.apply(),
     reload: () => win.location.reload(),
+    online: () => win.navigator.onLine !== false,
   };
 }
 
@@ -116,6 +125,8 @@ export function startApp(options: StartOptions): TableController {
     // toast off unless a spec is about it (`tests/e2e/fixtures.ts`), as with the tips.
     updates: options.updates === undefined ? pageUpdates(win) : options.updates,
     offlineToast: hooks?.offlineToastWanted(win) ?? true,
+    // §12.8: the system asks for less motion, so the first launch's speed is Fast.
+    reducedMotion: win.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true,
   });
   installLifecycle(win, appStore);
   // The hand drill's logic, loaded when its page opens (§13.5).

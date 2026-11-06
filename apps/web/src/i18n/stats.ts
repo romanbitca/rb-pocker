@@ -49,6 +49,8 @@ export const statsWords = {
     leaks: 'Your biggest leaks',
     leakLine: (count: string, chips: string) => `${count} times · about ${chips} chips lost`,
     leaksNone: 'No leaks yet. A leak shows after the same mistake 3 times.',
+    /** A leak's link to the lesson about it (§8.9): "Lesson 6: Pot odds", as Learn names it. */
+    lessonLink: (n: number, title: string) => `Lesson ${n}: ${title}`,
     undo: (n: string) => `Fixed with Undo: ${n}`,
     quiz: (right: string, asked: string, pct: string) =>
       `Quiz answers right: ${right} of ${asked} (${pct})`,
@@ -69,6 +71,18 @@ export const statsWords = {
     'river-call': 'Calling river bets with weak hands',
     'call-light': 'Calling bets without enough chance to win',
     sizing: 'Bet sizes too big or too small',
+  },
+
+  /**
+   * The titles of the lessons the leaks link to (Appendix F.8; `LEAK_LESSON` in `ui/stats.ts`).
+   * Only these four, so the lessons themselves stay in Learn's chunk; a test keeps them equal to
+   * `data/lessons.ts`.
+   */
+  lessons: {
+    3: 'Your options',
+    5: 'Position',
+    6: 'Pot odds',
+    7: 'Outs',
   },
 
   results: {
