@@ -6,7 +6,7 @@ This is the working checklist for building [PLAN.md](PLAN.md). PLAN.md is the so
 
 Legend: `[ ]` todo · `[~]` in progress (branch exists) · `[x]` merged to `main` · `[H]` waiting on the human
 
-**Current position:** ▶ **Running (owner, 5 Nov ~22:50Z): use the weekly limit fully until the reset (6 Nov 18:00Z), up to 95%; after it, weekly cap 80%, don't stop.** **Stages 0–7 ✅, 8.1 ✅, 8.3 ✅** (#65 a8d29dd). **Live:** https://poker.romanbitca.com (Coolify app `rb-poker`, redeploys on every push to main; PLAN §17.6; R22: /sw.js gets a 4 h browser TTL from Cloudflare, a cache rule waits for the owner's OK). Merge train (only the orchestrator runs `scripts/ci-local.sh`, one PR at a time; agents run targeted tests only since the Mac's load reached ~45): [#66](https://github.com/romanbitca/rb-pocker/pull/66) 8.2 → [#64](https://github.com/romanbitca/rb-pocker/pull/64) labels fix → 8.4 (agent) → Stage 8 gate (`ci-local.sh main --post` and `--slow`) → Stage 9 in order: [#67](https://github.com/romanbitca/rb-pocker/pull/67) 9.1, [#69](https://github.com/romanbitca/rb-pocker/pull/69) 9.2, 9.2b drill (agent), 9.3 (agent), [#68](https://github.com/romanbitca/rb-pocker/pull/68) 9.4, 9.5 (agent) → 9.6, 9.7 → Stage 9 gate → 9.8 [H].
+**Current position:** ▶ **Running (owner, 5 Nov ~22:50Z): use the weekly limit fully until the reset (6 Nov 18:00Z), up to 95%; after it, weekly cap 80%, don't stop.** **Stages 0–7 ✅; Stage 8 merged** (8.1 #61, 8.3 #65, and on 6 Nov the Stage 8 train [#66](https://github.com/romanbitca/rb-pocker/pull/66) 8.2 → [#64](https://github.com/romanbitca/rb-pocker/pull/64) labels fix → [#73](https://github.com/romanbitca/rb-pocker/pull/73) 8.4: tip 955a712 `local-ci` ✅ 17 min, unit 3168, e2e 358; main 1226b72 is that tree). **Live:** https://poker.romanbitca.com (Coolify app `rb-poker`, redeploys on every push to main; PLAN §17.6; R22: /sw.js gets a 4 h browser TTL from Cloudflare, a cache rule waits for the owner's OK). **Next:** the Stage 8 gate (`ci-local.sh main --slow`); `fix/tabs-spec-flake` (agent; 8.3's `tabs.spec.ts:97` fails on main 2–5 runs in 12); the **Stage 9 train** `train/stage-9` (agent: [#67](https://github.com/romanbitca/rb-pocker/pull/67) 9.1 → [#69](https://github.com/romanbitca/rb-pocker/pull/69) 9.2 → [#71](https://github.com/romanbitca/rb-pocker/pull/71) 9.2b → [#72](https://github.com/romanbitca/rb-pocker/pull/72) 9.3 → [#68](https://github.com/romanbitca/rb-pocker/pull/68) 9.4 → [#70](https://github.com/romanbitca/rb-pocker/pull/70) 9.5, then 9.2c About (agent)), one `local-ci` on its tip, merges in order (PLAN §17.5 merge trains); then 9.6, 9.7, the Stage 9 gate, 9.8 [H]. Only the orchestrator runs `ci-local`; agents test their own files only (`.loop/AGENT_RULES.md`, CPU budget).
 
 ---
 
@@ -89,7 +89,7 @@ Legend: `[ ]` todo · `[~]` in progress (branch exists) · `[x]` merged to `main
 - [x] 5.9 `feature/coach-strip-and-sheet` - Beginner/Intermediate UI, recommended ring, "Use coach size", RANGE_ADJUST, glossary popovers.
 - [x] 5.10 `feature/bot-and-coach-level-selectors` - level cards, personality labels, bot card.
 - [x] 5.11 `test/self-play-calibration` - `scripts/selfplay.ts` + baselines; acceptance 5–6.
-- [ ] 5.12 [H] **Human gate:** read 10 hints on the phone → announce MVP.
+- [H] 5.12 [H] **Human gate:** read 10 hints on the phone → announce MVP.
 
 ## Stage 6 - Grading, feedback, Undo, Advanced/Exam (PLAN §8.9, §10.2–10.3, §11)
 
@@ -108,19 +108,20 @@ Legend: `[ ]` todo · `[~]` in progress (branch exists) · `[x]` merged to `main
 ## Stage 8 - Persistence and stats (PLAN §14, Appendix H)
 
 - [x] 8.1 `feature/profile-commit-protocol` - schema guards, migrations scaffold, atomic commit + backup, crash injection tests.
-- [~] 8.2 `feature/stats-model-and-screen` - stats reducers, Stats screen (4 tabs, charts), 20-hand fixture.
+- [x] 8.2 `feature/stats-model-and-screen` - stats reducers, Stats screen (4 tabs, charts), 20-hand fixture. [#66](https://github.com/romanbitca/rb-pocker/pull/66) 64e1ce1 (Stage 8 train).
 - [x] 8.3 `feature/tab-lock-and-export-import` - Web Locks writer, `rev` fallback, export/import/reset, `persist()`.
-- [ ] 8.4 `feature/level-suggestions-and-install-hints` - Settings Data section, install nudge, suggestions.
-- [ ] 8.5 [H] **Human gate:** iOS Export → Save to Files → Import.
+- [x] 8.4 `feature/level-suggestions-and-install-hints` - Settings Data section, install nudge, suggestions. [#73](https://github.com/romanbitca/rb-pocker/pull/73) 1226b72 (Stage 8 train).
+- [H] 8.5 [H] **Human gate:** iOS Export → Save to Files → Import (steps in "Waiting on the human").
 
 ## Stage 9 - Polish, accessibility, fairness, release (PLAN §12.11–12.14, §15, §16)
 
 - [~] 9.1 `feature/sounds-haptics-and-wake-lock` - draft [#67](https://github.com/romanbitca/rb-pocker/pull/67).
 - [~] 9.2 `feature/learn-lessons-and-glossary` - lessons, glossary, full-page rankings, "Which hand wins?". Draft [#69](https://github.com/romanbitca/rb-pocker/pull/69).
-- [~] 9.2b `feature/hand-drill-page` - **owner request (6 Nov):** the owner's Poker Hand Drill (github.com/romanbitca/Poker-hand-drill, v5: 8 games, 3 difficulties, stats, All hands drawer) as a page of its own: ported to React/TypeScript on RB's evaluator, `Card`, rankings list, seeded RNG and tokens; key `pc.v1.drill`; Home + Menu entries; lazy chunk. The standalone GitHub Pages app stays as it is.
-- [~] 9.3 `feature/first-table-tips-and-keyboard-shortcuts` (agent)
+- [~] 9.2b `feature/hand-drill-page` - **owner request (6 Nov):** the owner's Poker Hand Drill (github.com/romanbitca/Poker-hand-drill, v5: 8 games, 3 difficulties, stats, All hands drawer) as a page of its own: ported to React/TypeScript on RB's evaluator, `Card`, rankings list, seeded RNG and tokens; key `pc.v1.drill`; Home + Menu entries; lazy chunk. The standalone GitHub Pages app stays as it is. Draft [#71](https://github.com/romanbitca/rb-pocker/pull/71).
+- [~] 9.2c `feature/about-screen` - **gap found 6 Nov:** no chunk built the About screen (§12.1: how this app works G.5, how the coach works, Privacy, disclaimer G.1, help lines G.3 re-checked, licences, version). Agent.
+- [~] 9.3 `feature/first-table-tips-and-keyboard-shortcuts` - draft [#72](https://github.com/romanbitca/rb-pocker/pull/72).
 - [~] 9.4 `feature/provable-shuffle-check` - Review ✓ over 1,000 recorded hands. Draft [#68](https://github.com/romanbitca/rb-pocker/pull/68).
-- [~] 9.5 `feature/service-worker-update-between-hands` (agent; also the `/api/` navigateFallbackDenylist fix)
+- [~] 9.5 `feature/service-worker-update-between-hands` - draft [#70](https://github.com/romanbitca/rb-pocker/pull/70) (also the `/api/` navigateFallbackDenylist fix).
 - [ ] 9.6 `chore/accessibility-audit` - axe clean, reduced motion, keyboard-only hand.
 - [ ] 9.7 `chore/performance-pass` - Lighthouse ≥ 90 / 95, budgets.
 - [ ] 9.8 [H] **Human gate:** Coolify ✅ (5 Nov, https://poker.romanbitca.com), device matrix, VoiceOver/TalkBack → release v1.0.
@@ -135,9 +136,13 @@ If the human's answer later reveals a problem, the fix becomes a new chunk ahead
 
 ### Waiting on the human
 
-- **4.8 — `#bench` on an Android phone**: with the server running, open `http://<Mac LAN IP>:3000/#bench` in Chrome on the phone, wait a few seconds, copy the "results as text" box and paste it into the chat (or into PR #36).
+- **5.12 — read 10 coach hints on your phone** (Stage 5 manual gate): on https://poker.romanbitca.com play with the coach at **Beginner** and read 10 hints. Do they make sense, and are the words plain enough? Tell Claude which ones were unclear.
 
-- **3.9 — play 10 hands on your phone** (Stage 3 manual gate). On the Mac: `npm run build && npm start` in the repo (Node 24), then on the phone (same Wi-Fi) open `http://<Mac LAN IP>:3000`. Check it feels right one-handed, and confirm the §1.5 assumptions (Q1: "undo" and "levels for both" as planned). Claude can start the server for you on request.
+- **8.5 — iPhone: Export → Save to Files → Import** (Stage 8 manual gate), in Safari on https://poker.romanbitca.com: 1. play 3 hands; 2. Menu (☰) → Settings → **Data** → **Export** → **Save to Files** → Save; 3. the Files app shows `rb-poker-coach-stats-<date>.json`; 4. Settings → Data → **Reset stats** → **Delete my stats** (Stats shows no hands); 5. Settings → Data → **Import**, pick the file: "3 hands, exported <date>" → **Replace** → Stats shows the 3 hands again; 6. optional: Share → Add to Home Screen, open it from there: "Played in Safari before?" → Import the same file. Tell Claude what happened.
+
+- **4.8 — `#bench` on an Android phone**: in Chrome on the phone open **https://poker.romanbitca.com/#bench** (the live app, since 5 Nov), wait a few seconds, copy the "results as text" box and paste it into the chat.
+
+- **3.9 — play 10 hands on your phone** (Stage 3 manual gate): open **https://poker.romanbitca.com** on the phone (Add to Home Screen if you like). Check it feels right one-handed, and confirm the §1.5 assumptions (Q1: "undo" and "levels for both" as planned).
 
 - Q (from 4.1, PR #27): by §6.3 rule 3's wording, a card that makes **trips on the board** counts as an out (e.g. Q♠J♦ on 9♣9♥4♦2♠ → 9♠, 9♦ "improve" a board pair to board trips). Everyone shares it. Default: keep the rule as written but mark such outs risky? Owner to confirm; until then the code follows the text.
 
@@ -237,3 +242,4 @@ If the human's answer later reveals a problem, the fix becomes a new chunk ahead
 | 5 Nov 20:00–21:10Z | `chore/initial-bundle-headroom` | [PR #63](https://github.com/romanbitca/rb-pocker/pull/63) merged (1e02342): Table, Setup, Settings, Menu and dialogs in one screens chunk loaded right after first paint (no `React.lazy`: React 19 holds Suspense content 300 ms), reload-to-retry when it fails; one stylesheet (`cssCodeSplit: false`: the gate counts every CSS file and split files compress worse). Initial JS 149.88 → 125.14 KB, CSS 19.94 → 16.43 KB; Home → cards at 6× 113 → 105 ms. Explicit timeouts for four slow test files (load). `local-ci` ✅ 11 min, unit 2892, e2e 318 | weekly 34% → 38% (4 agents) |
 | 5 Nov 20:40–22:45Z | 8.1 merged; 8.2, 8.3, labels fix built | [#61](https://github.com/romanbitca/rb-pocker/pull/61) restacked onto main (row 1.3.60), `pc.v1.diag` stored (last 5 voided hands), initial JS 127.15 KB; `local-ci` ✅ 20 min, unit 2946, e2e 324 → merged 7c41deb. Built: [#66](https://github.com/romanbitca/rb-pocker/pull/66) 8.2 (20-hand fixture exact, Stats lazy 6.85 KB, +2.23 KB initial; R21: 10,000 hands = 553 KB of storage, budget raised to 600 KB, hand-end commit 19–30 ms at 6×, records average 3,963 chars), [#65](https://github.com/romanbitca/rb-pocker/pull/65) 8.3 (Web Locks + rev fallback, export/import/reset with crash injection, +2.40 KB; Settings buttons left for 8.4; pitfall 48: WebKit `close({runBeforeUnload})`), [#64](https://github.com/romanbitca/rb-pocker/pull/64) labels ("All 5 players: 17%. Raiser alone: about 38%."; the price bar showed ✓ next to Fold or ✗ next to Call in 114 of 634 facing-a-bet hints, now follows E·R / implied price) | weekly 38% → ~42% |
 | 5 Nov 22:45Z–6 Nov 00:35Z | 8.3 merged; Coolify live; 9.1, 9.2, 9.4 built | [#65](https://github.com/romanbitca/rb-pocker/pull/65) merged (a8d29dd). Coolify: app `rb-poker`, https://poker.romanbitca.com healthy; the first deploy failed (NODE_ENV=production at build time made `npm ci` skip devDependencies → runtime-only). check-deploy ✅ except /sw.js (Cloudflare Browser Cache TTL 4 h, R22). Drafts: [#67](https://github.com/romanbitca/rb-pocker/pull/67) 9.1, [#68](https://github.com/romanbitca/rb-pocker/pull/68) 9.4 (initial JS −1.46 KB → 128.10 KB), [#69](https://github.com/romanbitca/rb-pocker/pull/69) 9.2 (Learn chunk 4.54 KB gzip). Every ci-local run since 22:28Z failed on timeouts only (load 43–70; the owner's Docker projects take ~4 cores): agents now run targeted tests only, and only the orchestrator runs ci-local. | weekly 44% → 53% |
+| 6 Nov 00:35–01:05Z | Stage 8 merged (8.2, labels fix, 8.4) | One `local-ci` on the train tip 955a712 (main + [#66](https://github.com/romanbitca/rb-pocker/pull/66) + [#64](https://github.com/romanbitca/rb-pocker/pull/64) + [#73](https://github.com/romanbitca/rb-pocker/pull/73), one squash commit each): ✅ 17 min, unit 3168, e2e 358, docker ✅ (load ~20 once the agents' processes ran at nice 15). Merged in order: 64e1ce1, e0044e4, 1226b72 (each branch reset to its train commit; main = the tested tree). PLAN §17.5 + 1.3.65: merge trains. #66 alone had failed only on 8.3's flaky `tabs.spec.ts:97` (a first hand that is a walk). Drafts: [#70](https://github.com/romanbitca/rb-pocker/pull/70) 9.5, [#71](https://github.com/romanbitca/rb-pocker/pull/71) 9.2b, [#72](https://github.com/romanbitca/rb-pocker/pull/72) 9.3. | weekly 53% → 55% |
