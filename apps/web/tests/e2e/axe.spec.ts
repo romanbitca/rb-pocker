@@ -8,6 +8,7 @@ import {
   newTable,
   nextFlowPoint,
   openApp,
+  openSummary,
   pcState,
   playHands,
   prng,
@@ -337,7 +338,8 @@ test.describe('axe', () => {
     await audit.check('Table: a toast', { clockPaused: true });
     await page.clock.resume();
 
-    // Call: the hand end with its summary (Beginner shows one every hand), then the banner.
+    // Call: the hand end. Beginner has a summary every hand, which the banner's "Hand summary"
+    // opens (1.3.92: never by itself); then the banner, with that button.
     await tapAct(page, 'middle');
     for (let points = 0; points < 10; points++) {
       const point = await nextPoint(page);
@@ -345,10 +347,12 @@ test.describe('axe', () => {
       if (point === 'feedback') await keepMove(page);
       else await tapAct(page, 'middle');
     }
+    await openSummary(page);
     await expect(page.locator('[data-summary-next]')).toBeVisible();
     await audit.check('Table: the hand summary');
     await closeSummary(page);
     await expect(page.locator('[data-hand-end]')).toBeVisible();
+    await expect(page.locator('[data-hand-summary]')).toBeVisible();
     await audit.check('Table: the hand-end banner');
 
     // Review, and its shuffle check.

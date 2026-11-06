@@ -372,6 +372,13 @@ describe('screen copy comes from docs/PLAN.md', () => {
     expect(PLAN).toContain(`The Menu's "${shortcutWords.title}" opens it too`);
   });
 
+  // 1.3.92 (§12.9, F.10): the hand-end banner's button that opens the summary, quoted in PLAN; the
+  // sheet's Exam heading is the same words.
+  it('1.3.92 the banner`s "Hand summary" and "Exam result"', () => {
+    for (const w of [en.handEnd.summary, en.handEnd.examResult]) expect(PLAN).toContain(`"${w}"`);
+    expect(summaryWords.exam).toBe(en.handEnd.examResult);
+  });
+
   // Chunk 9.4 (§16.3, F.10): Review's "Check the shuffle" row, each string quoted in PLAN.
   it.each(Object.entries(enReview.shuffle))('9.4 shuffle.%s', (_key, words) => {
     expect(PLAN).toContain(`"${words}"`);

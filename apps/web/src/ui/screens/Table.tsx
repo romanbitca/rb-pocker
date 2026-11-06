@@ -35,13 +35,15 @@
  * takes the coach's place on 1 in 4 decisions, and Row A waits for it (portrait: the strip's row
  * grows; compact: over the bottom of the table, like the tray; landscape: the column; wide: the
  * panel); the rankings show tips, "By river" and "Which hand wins?" by level. At the hand end the
- * summary sheet (a lazy chunk) opens when the level shows one.
+ * banner offers the summary when the level shows one ("Hand summary", Exam's "Exam result"), and
+ * its tap opens the sheet (a lazy chunk); it never opens by itself (1.3.92).
  *
  * Keys and first-table tips (§12.5, §12.11, §12.12; chunk 9.3, `ui/shortcuts.ts`, `ui/tips.ts`):
  * F, C, B/R press Row A as a tap does, 1–5 and ↑/↓ size the tray, Enter confirms it, U undoes, H
- * does what a tap on the coach does, K shows or hides the hand rankings and ? lists the keys (a
- * lazy dialog). The tips point at what they explain (`data-tip-anchor`), one at a time, once each,
- * never before the hero's cards are dealt and never over the tray and Row A (`data-action-area`).
+ * does what a tap on the coach does, K shows or hides the hand rankings, S opens the hand summary
+ * the banner offers and ? lists the keys (a lazy dialog). The tips point at what they explain
+ * (`data-tip-anchor`), one at a time, once each, never before the hero's cards are dealt and never
+ * over the tray and Row A (`data-action-area`).
  */
 import {
   lazy,
@@ -77,6 +79,7 @@ import {
   selectQuiz,
   selectQuizAsking,
   selectSeatViews,
+  selectSummaryOffer,
   selectTableInfo,
   selectTip,
   selectUndoButton,
@@ -86,6 +89,7 @@ import {
   useOverlay,
   type ActionBarInputData,
   type AppState,
+  type SummaryOffer,
   type TipId,
 } from '../../app/store.ts';
 import type { Grade } from '../../brain/types.ts';
@@ -316,28 +320,36 @@ function useHandEndLines(): readonly string[] | null {
   }, [view, luck]);
 }
 
+/** Where the banner goes in the table box (`bannerPlace`). */
+export interface BannerPlace {
+  /** The column the banner may use: clear of the side pods, from the box's top to the hero. */
+  readonly area: CSSProperties;
+  /** The room above its place under the board; it gives way first when the banner is taller. */
+  readonly gap: number;
+}
+
 /**
- * The banner's box in the table: under the board, clear of the side pods, when there is room;
- * else at the foot of the table, just above the hero's cards, growing upward. It never reaches
- * above the table box, where the top bar is: the old spot above the pot did on the 340 px tall
- * wide table, and its result lines sat under the top bar.
+ * The banner's place in the table (§12.9): under the board, clear of the side pods, when it fits
+ * there; else it slides up to end just above the hero's cards, over the board, and never reaches
+ * above the table box, where the top bar is (the old spot above the pot did on the 340 px tall
+ * wide table, and its result lines sat under the top bar); taller still, it scrolls. A flex
+ * column (`area`) whose first child, a spacer `gap` tall, shrinks first, so the place comes from
+ * the banner's real height (1.3.92: an estimate of ~110 px left "Hand summary" and "Review this
+ * hand", two lines each on a phone, over the hero's cards at 375×667, and long results ran over
+ * them at Large text). Wide screens put the links in the card's "Next hand ›" row, so the card
+ * there may be 440 px wide (at Large text too); always, so a late grade's button moves nothing.
  */
-export function bannerStyle(geometry: TableGeometry): CSSProperties {
+export function bannerPlace(geometry: TableGeometry): BannerPlace {
   const { size, board, hero } = geometry;
-  const width = Math.max(180, Math.min(360, size.w - 2 * 76));
+  const max = geometry.layout === 'wide' ? 440 : 360;
+  const width = Math.max(180, Math.min(max, size.w - 2 * 76));
   const left = Math.round((size.w - width) / 2);
-  const top = board.y + board.h + 10;
+  const top = 4;
   // The lowest it may reach: the hero strip's cards reach up into the box.
   const limit = hero.y - 4;
-  // About three lines and "Next hand ›" need ~110 px.
-  if (limit - top >= 110) return { position: 'absolute', left, top, width };
   return {
-    position: 'absolute',
-    left,
-    width,
-    bottom: size.h - limit,
-    maxHeight: limit - 4,
-    overflowY: 'auto',
+    area: { left, top, width, height: Math.max(0, limit - top) },
+    gap: Math.max(0, board.y + board.h + 10 - top),
   };
 }
 
@@ -348,20 +360,38 @@ function useReviewHand(): () => void {
   return useCallback(() => dispatch({ type: 'review', handSeq }), [dispatch, handSeq]);
 }
 
+/**
+ * "Hand summary" (Exam's "Exam result") on the banner (§10.2, §12.9; 1.3.92): what the controller
+ * offers for the hand that just ended, and the tap that opens the sheet. It never opens by itself.
+ */
+function useSummaryButton(): [offer: SummaryOffer, open: () => void] {
+  const offer = useAppStore(selectSummaryOffer);
+  const [, setOpen] = useOverlay('summary');
+  const open = useCallback(() => setOpen(true), [setOpen]);
+  return [offer, open];
+}
+
 const BannerLayer = memo(function BannerLayer({ geometry }: { geometry: TableGeometry }) {
   const lines = useHandEndLines();
   const dispatch = useDispatch();
   const next = useCallback(() => dispatch({ type: 'nextHand' }), [dispatch]);
   const review = useReviewHand();
+  const [summary, openSummary] = useSummaryButton();
   if (lines === null) return null;
+  const place = bannerPlace(geometry);
   return (
-    <HandEndBanner
-      lines={lines}
-      onNext={next}
-      onReview={review}
-      wide={geometry.layout === 'wide'}
-      style={bannerStyle(geometry)}
-    />
+    <div className={styles.bannerArea} style={place.area}>
+      <div className={styles.bannerGap} style={{ flexBasis: place.gap }} aria-hidden="true" />
+      <HandEndBanner
+        lines={lines}
+        onNext={next}
+        onReview={review}
+        summary={summary}
+        onSummary={openSummary}
+        wide={geometry.layout === 'wide'}
+        className={styles.bannerHolder}
+      />
+    </div>
   );
 });
 
@@ -600,8 +630,18 @@ const SideBanner = memo(function SideBanner() {
   const dispatch = useDispatch();
   const next = useCallback(() => dispatch({ type: 'nextHand' }), [dispatch]);
   const review = useReviewHand();
+  const [summary, openSummary] = useSummaryButton();
   if (lines === null) return null;
-  return <HandEndBanner lines={lines} onNext={next} onReview={review} side />;
+  return (
+    <HandEndBanner
+      lines={lines}
+      onNext={next}
+      onReview={review}
+      summary={summary}
+      onSummary={openSummary}
+      side
+    />
+  );
 });
 
 // ---------------------------------------------------------------------------------------------
@@ -1137,8 +1177,9 @@ const loadSummary = () => import('../summaryEntry.ts');
 const HandSummary = lazy(() => loadSummary().then((m) => ({ default: m.HandSummary })));
 
 /**
- * The summary sheet while the `summary` overlay is open (the controller opens it at the hand end,
- * §12.9); the sheet itself closes the overlay when there is nothing to show (a new hand began).
+ * The summary sheet while the `summary` overlay is open (the banner's "Hand summary" or "Exam
+ * result" opens it, §12.9; never the controller, 1.3.92); the sheet itself closes the overlay when
+ * there is nothing to show (a new hand began).
  */
 const SummaryLayer = memo(function SummaryLayer() {
   const [open, setOpen] = useOverlay('summary');
@@ -1255,11 +1296,17 @@ const CoachKey = memo(function CoachKey({ layout }: { layout: TableLayout }) {
   return null;
 });
 
-/** K and ? (§12.5): show or hide the hand rankings (the top bar's Hands button); list the keys. */
+/**
+ * K, S and ? (§12.5): show or hide the hand rankings (the top bar's Hands button); the banner's
+ * "Hand summary" or "Exam result" while the hand end offers one (1.3.92); list the keys.
+ */
 const TableKeys = memo(function TableKeys({ onToggleHands }: { onToggleHands: () => void }) {
   const [, setHelp] = useOverlay('shortcuts');
   const openHelp = useCallback(() => setHelp(true), [setHelp]);
+  // The offer is there only while the hand-end banner is (`game.summary`).
+  const [summary, openSummary] = useSummaryButton();
   useShortcut('hands', onToggleHands);
+  useShortcut('summary', summary !== null ? openSummary : null);
   useShortcut('help', openHelp);
   return null;
 });

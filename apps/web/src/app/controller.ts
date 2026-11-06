@@ -51,9 +51,11 @@
  *   on show, so it counts as helped (`meta.hintShown`, kept in the session).
  * - Advanced: the hint job of a decision that rolls the quiz (`app/quiz.ts`) starts it; its score
  *   goes into the decision's record when the hero acts.
- * - At the hand end the controller opens the hand summary (the `summary` overlay, which closes the
- *   `sheet` gate, so the next hand waits for a tap, §12.8) once per hand, when the level of the
- *   hand's latest decision shows one; a late grade can still open it during the hand end.
+ * - At the hand end the controller offers the hand summary (`game.summary`: the banner's "Hand
+ *   summary", Exam's "Exam result") when the level of the hand's latest decision shows one; a late
+ *   grade can still bring the offer during the hand end. It never opens the sheet (1.3.92): the
+ *   player's tap opens the `summary` overlay, which closes the `sheet` gate, so the next hand
+ *   waits for its "Next hand ›" (§12.8).
  *
  * The provable shuffle (§16.3, chunk 9.4, `app/shuffleCode.ts`): with a hash function (the app's
  * `crypto.subtle`; none on a plain-http page) every hand's seed is drawn and committed to (its
@@ -167,6 +169,7 @@ import {
   type Nudge,
   type Screen,
   type Speed,
+  type SummaryOffer,
   type TabMode,
   type TipId,
   type Toast,
@@ -399,9 +402,10 @@ export interface ControllerOptions {
    */
   hints?: boolean;
   /**
-   * Open the end-of-hand summary when the coach level shows one (§10.2, §12.9, chunk 6.4): it
-   * closes the `sheet` gate, so the next hand waits for its "Next hand ›". The app turns it on;
-   * tests of other features leave it off, and their hands go on by themselves.
+   * Offer the end-of-hand summary on the hand-end banner when the coach level shows one (§10.2,
+   * §12.9; chunk 6.4, on demand since 1.3.92): `game.summary`. The sheet opens only on the
+   * player's tap; while it is open the `sheet` gate keeps the next hand waiting for its "Next
+   * hand ›". The app turns it on; tests of other features leave it off (no offer).
    */
   summaries?: boolean;
   /**
@@ -752,11 +756,9 @@ export class TableController {
    */
   private readonly levels = new Map<number, CoachLevel>();
   private latched: CoachLevel | null = null;
-  /** The hand whose summary was opened (§12.9: once per hand). */
-  private summaryHand: number | null = null;
   /** A resumed decision whose hint was open (`coachKeyOf`): it opens again on the hero's turn. */
   private reopenHint: string | null = null;
-  /** Open the end-of-hand summary (`ControllerOptions.summaries`). */
+  /** Offer the end-of-hand summary (`ControllerOptions.summaries`). */
   private readonly summaries: boolean;
   /** The first-table tips are on (`ControllerOptions.tips`). */
   private readonly tips: boolean;
@@ -1822,21 +1824,21 @@ export class TableController {
   }
 
   /**
-   * §10.2, §12.9: at the hand end, the hand summary opens once per hand when the level of the
-   * hand's latest decision shows one (a late grade can still bring it). It closes the `sheet`
-   * gate, so the next hand waits for its "Next hand ›".
+   * §10.2, §12.9: at the hand end, the hand summary the banner offers when the level of the hand's
+   * latest decision shows one (a late grade can still bring it): Exam's "Exam result", else the
+   * "Hand summary"; null for none. Since 1.3.92 (the owner: "i dont want to see exam result
+   * automatically after every game, i need to have a button to open it if i want") nothing opens
+   * by itself: the player's tap opens the `summary` overlay, and its `sheet` gate keeps the next
+   * hand waiting for its "Next hand ›".
    */
-  private offerSummary(): void {
+  private summaryOffer(): SummaryOffer {
     const h = this.hand;
-    if (!this.summaries || this.mode !== 'handEnd' || this.headless || h === null) return;
-    if (h.phase !== 'complete') return;
-    if (this.summaryHand === h.handSeq) return;
+    if (!this.summaries || this.mode !== 'handEnd' || this.headless || h === null) return null;
+    if (h.phase !== 'complete') return null;
     const level = this.latched ?? this.settings().coachLevel;
     const grades = this.meta.decisions.map((d) => d.grade);
-    if (!summaryShows(level, grades) || this.store.getState().ui.screen !== 'table') return;
-    this.summaryHand = h.handSeq;
-    this.trace('summary', { handSeq: h.handSeq });
-    this.ui({ type: 'open', overlay: 'summary' });
+    if (!summaryShows(level, grades)) return null;
+    return LEVEL_RULES[level].exam ? 'exam' : 'hand';
   }
 
   /** What a hero decision at `h` is, before the act changes anything (§8.2: the HUD's number). */
@@ -3324,7 +3326,11 @@ export class TableController {
     const heroBust = this.heroBust();
     const canUndo = this.undoBlocked() === null;
     const decisions = this.meta.decisions;
+    const summary = this.summaryOffer();
     const g = this.store.getState().game;
+    if (summary !== null && g.summary !== summary && hand !== null) {
+      this.trace('summary offered', { handSeq: hand.handSeq, summary });
+    }
     if (
       g.mode !== this.mode ||
       g.table !== this.table ||
@@ -3337,7 +3343,8 @@ export class TableController {
       g.canUndo !== canUndo ||
       g.feedback !== this.feedback ||
       g.decisions !== decisions ||
-      g.coachLevel !== this.latched
+      g.coachLevel !== this.latched ||
+      g.summary !== summary
     ) {
       this.store.setState({
         game: {
@@ -3353,6 +3360,7 @@ export class TableController {
           feedback: this.feedback,
           decisions,
           coachLevel: this.latched,
+          summary,
         },
       });
     }
@@ -3367,7 +3375,6 @@ export class TableController {
       this.reopenHint = null;
       this.store.getState().dispatch({ type: 'showHint' });
     }
-    this.offerSummary();
     // After the game slice, so the equity slice never describes a hand the store does not have.
     this.equityJobs?.sync(this.headless ? null : hand, this.epoch);
     // The coach's hint for the hero's decision; null cancels it (§8.2, chunk 5.7).

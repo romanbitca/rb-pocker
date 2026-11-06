@@ -7,6 +7,7 @@ import {
   newTable,
   nextFlowPoint,
   openApp,
+  openSummary,
   seedFor,
   sizeOf,
   slot,
@@ -215,7 +216,8 @@ test.describe('reduced motion', () => {
     await motion.scan('Table: a toast');
     await page.clock.resume();
 
-    // The call: the showdown (the bots' cards turn up), the summary sheet, the banner.
+    // The call: the showdown (the bots' cards turn up), the summary sheet (opened with the banner's
+    // "Hand summary", 1.3.92), the banner.
     await tapAct(page, 'middle');
     for (let points = 0; points < 10; points++) {
       const point = await nextPoint(page);
@@ -223,6 +225,7 @@ test.describe('reduced motion', () => {
       if (point === 'feedback') await keepMove(page);
       else await tapAct(page, 'middle');
     }
+    await openSummary(page);
     await expect(page.locator('[data-summary-next]')).toBeVisible();
     await motion.scan('Table: the showdown and the hand summary');
     await closeSummary(page);

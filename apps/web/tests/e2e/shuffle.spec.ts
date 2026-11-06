@@ -2,7 +2,6 @@ import { createHash } from 'node:crypto';
 import { expect, heading, test } from './fixtures.ts';
 import {
   CARD_NAMES,
-  closeSummary,
   collectErrors,
   heroAct,
   newTable,
@@ -60,7 +59,6 @@ test('Check the shuffle: the hand just played shows ✓ and the deck it was deal
   const random = prng(seed);
 
   await playToEnd(page, random);
-  await closeSummary(page);
   await tapNextHand(page);
   // Hand 2 is dealt, or the hero is out of chips and reloads (§3.1), which deals it.
   const next = async (): Promise<string> => {
@@ -95,7 +93,6 @@ test('Check the shuffle: the hand just played shows ✓ and the deck it was deal
   for (const commit of commits) expect(commit).toMatch(/^[0-9a-f]{64}$/);
 
   // Review: the shuffle code and the seed, under the replay.
-  await closeSummary(page);
   await page.getByRole('button', { name: 'Review this hand' }).click();
   await expect(heading(page)).toHaveText(/^Hand \d+$/);
   const row = page.getByRole('region', { name: 'Fair shuffle' });

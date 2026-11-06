@@ -3,7 +3,8 @@
  * - the per-decision latch: a level chosen in Settings applies from the next hero decision; a
  *   decision started at Beginner had its hint on show, so it counts as helped (`hintSeen`);
  * - the pause and Undo per level (Exam: never; Advanced: only inside the feedback card);
- * - the end-of-hand summary per level, and the next hand waiting for its tap;
+ * - the end-of-hand summary offered per level (1.3.92: never opened by itself, a late grade can
+ *   bring the offer), and the next hand waiting while the player has it open;
  * - the Advanced quiz: its roll only at Advanced, never again on an undone decision, and its
  *   score in the decision's record.
  * Stub graders (`graders.ts`) and fake timers throughout.
@@ -185,72 +186,138 @@ describe('pause and Undo per level (§10.2, §11.3 r8)', () => {
   });
 });
 
-describe('the end-of-hand summary (§10.2, §12.9)', () => {
+describe('the end-of-hand summary (§10.2, §12.9; on demand since 1.3.92)', () => {
   const summaryOpen = (s: AppState): boolean => s.ui.overlays.includes('summary');
   const handEnd = (s: AppState): boolean => s.game.mode === 'handEnd';
+  /** The hero's acts in the hand so far (each one a decision, recorded once graded). */
+  const heroActs = (s: AppState): number =>
+    s.game.hand?.log.filter((e) => e.e === 'act' && e.seat === 0).length ?? 0;
 
-  /** Plays one hand to its end; returns whether the hero made a decision in it. */
+  /** Plays one hand to its end; returns how many decisions the hero made in it. */
   async function oneHand(h: Harness): Promise<number> {
     await playUntil(h, handEnd);
     return h.state().game.decisions.length;
   }
 
-  it('Beginner: every hand with a decision; the next hand waits for its tap', async () => {
-    const h = game({ level: 'beginner', summaries: true });
-    let decisions = 0;
-    for (let i = 0; i < 6 && decisions === 0; i++) {
-      decisions = await oneHand(h);
-      if (decisions === 0) {
-        expect(summaryOpen(h.state())).toBe(false);
-        h.dispatch({ type: 'nextHand' });
-      }
+  /** Plays hands (each to its end) until one where the hero made a decision. */
+  async function toHandEndWithDecision(h: Harness): Promise<void> {
+    for (let i = 0; i < 6; i++) {
+      if ((await oneHand(h)) > 0) return;
+      expect(h.state().game.summary).toBeNull(); // nothing to sum up
+      h.dispatch({ type: 'nextHand' });
     }
-    expect(decisions).toBeGreaterThan(0);
-    expect(summaryOpen(h.state())).toBe(true);
-    expect(h.state().ui.gates).toContain('sheet');
-    const handSeq = h.state().game.hand?.handSeq;
-    await elapse(30_000);
-    expect(h.state().game.hand?.handSeq).toBe(handSeq); // it waits (§12.8)
-    h.dispatch({ type: 'nextHand' }); // the sheet's "Next hand ›"
-    expect(h.state().game.hand?.handSeq).toBe((handSeq as number) + 1);
+    throw new Error('no hand with a hero decision');
+  }
+
+  it('Beginner: every hand with a decision is offered, never opened; the next hand comes by itself', async () => {
+    const h = game({ level: 'beginner', summaries: true });
+    await toHandEndWithDecision(h);
+    expect(h.state().game.summary).toBe('hand'); // the banner's "Hand summary"
+    expect(summaryOpen(h.state())).toBe(false);
+    expect(h.state().ui.gates).not.toContain('sheet');
+    // As for a hand with no summary: the banner's 3 s wait, then the next hand (auto-next).
+    const handSeq = h.state().game.hand?.handSeq as number;
+    await elapse(3_100);
+    expect(h.state().game.hand?.handSeq).toBe(handSeq + 1);
+    expect(h.state().game.summary).toBeNull(); // a new hand: no offer until it ends
     expect(summaryOpen(h.state())).toBe(false);
   });
 
-  it('closing it lets the 3 s wait run on; it does not open again for that hand', async () => {
-    const h = game({ level: 'exam', summaries: true });
-    let decisions = 0;
-    while (decisions === 0) {
-      decisions = await oneHand(h);
-      if (decisions === 0) h.dispatch({ type: 'nextHand' });
-    }
-    expect(summaryOpen(h.state())).toBe(true); // Exam: every hand
+  it('the tap opens it: the next hand waits for its "Next hand ›"; ✕ returns to the banner, whose wait runs on', async () => {
+    const h = game({ level: 'beginner', summaries: true });
+    await toHandEndWithDecision(h);
     const handSeq = h.state().game.hand?.handSeq as number;
+    // The banner's "Hand summary" (the Table opens the overlay, as for the other sheets).
+    h.dispatch({ type: 'open', overlay: 'summary' });
+    expect(summaryOpen(h.state())).toBe(true);
+    expect(h.state().ui.gates).toContain('sheet');
+    await elapse(30_000);
+    expect(h.state().game.hand?.handSeq).toBe(handSeq); // it waits (§12.8)
+    expect(h.state().game.mode).toBe('handEnd');
+    // ✕ (Esc, the scrim, Back): the banner again, the offer still there, the wait runs on.
     h.dispatch({ type: 'close', overlay: 'summary' });
+    expect(h.state().game.summary).toBe('hand');
+    expect(h.state().ui.gates).not.toContain('sheet');
     await elapse(3_100);
     expect(h.state().game.hand?.handSeq).toBe(handSeq + 1);
   });
 
-  it('Intermediate: only after an Inaccuracy or worse; Advanced: only after a Mistake or worse', async () => {
-    const cases: [CoachLevel, StubAnswer, boolean][] = [
-      ['intermediate', 'good', false],
-      ['intermediate', 'inaccuracy', true],
-      ['advanced', 'inaccuracy', false],
-      ['advanced', 'mistake', true],
-    ];
-    for (const [level, grade, shows] of cases) {
-      const h = game({ level, summaries: true, answer: () => grade });
-      let decisions = 0;
-      while (decisions === 0) {
-        decisions = await oneHand(h);
-        if (decisions === 0) h.dispatch({ type: 'nextHand' });
-      }
-      expect(summaryOpen(h.state()), `${level} ${grade}`).toBe(shows);
+  it('the sheet`s "Next hand ›" deals the next hand and closes it; it can be opened again first', async () => {
+    const h = game({ level: 'beginner', summaries: true });
+    await toHandEndWithDecision(h);
+    const handSeq = h.state().game.hand?.handSeq as number;
+    h.dispatch({ type: 'open', overlay: 'summary' });
+    h.dispatch({ type: 'close', overlay: 'summary' });
+    h.dispatch({ type: 'open', overlay: 'summary' }); // again: still the same hand's
+    expect(summaryOpen(h.state())).toBe(true);
+    await elapse(10_000);
+    expect(h.state().game.hand?.handSeq).toBe(handSeq);
+    h.dispatch({ type: 'nextHand' }); // the sheet's "Next hand ›"
+    expect(h.state().game.hand?.handSeq).toBe(handSeq + 1);
+    expect(summaryOpen(h.state())).toBe(false);
+    expect(h.state().game.summary).toBeNull();
+  });
+
+  it('Exam: the "Exam result", offered every hand and never opened', async () => {
+    const h = game({ level: 'exam', summaries: true });
+    for (let hands = 0; hands < 2; hands++) {
+      await toHandEndWithDecision(h);
+      expect(h.state().game.summary).toBe('exam');
+      expect(summaryOpen(h.state())).toBe(false);
+      h.dispatch({ type: 'nextHand' }); // the banner's tap
     }
   });
 
-  it('off without the `summaries` option (the other tests): hands go on by themselves', async () => {
+  it('Intermediate: only after an Inaccuracy or worse; Advanced: only after a Mistake or worse', async () => {
+    const cases: [CoachLevel, StubAnswer, 'hand' | null][] = [
+      ['intermediate', 'good', null],
+      ['intermediate', 'inaccuracy', 'hand'],
+      ['advanced', 'inaccuracy', null],
+      ['advanced', 'mistake', 'hand'],
+    ];
+    for (const [level, grade, offer] of cases) {
+      const h = game({ level, summaries: true, answer: () => grade });
+      await toHandEndWithDecision(h);
+      expect(h.state().game.summary, `${level} ${grade}`).toBe(offer);
+      expect(summaryOpen(h.state()), `${level} ${grade}`).toBe(false);
+    }
+  });
+
+  it('a late grade brings the offer during the hand end; it never opens the sheet', async () => {
+    // Advanced shows a summary only after a Mistake. Every grade comes 10 s late: an earlier
+    // decision's is dropped at the next decision (recorded ungraded, r5); the last one's arrives
+    // while the banner waits for its tap (auto-next off).
+    const h = makeHarness({
+      brain: passiveBots(),
+      grader: stubGrader({ answer: () => 'mistake', delayMs: 10_000 }),
+      settings: { players: 3, coachLevel: 'advanced', speed: 'normal', autoNext: false },
+      summaries: true,
+    });
+    h.dispatch({ type: 'play' });
+    for (let i = 0; i < 6; i++) {
+      await playUntil(h, handEnd);
+      if (heroActs(h.state()) > 0) break;
+      h.dispatch({ type: 'nextHand' });
+    }
+    const acts = heroActs(h.state());
+    expect(acts).toBeGreaterThan(0);
+    // The hand has ended; its last decision's grade is still on its way.
+    expect(h.state().game.decisions).toHaveLength(acts - 1);
+    expect(h.state().game.decisions.every((d) => d.grade === null)).toBe(true);
+    expect(h.state().game.summary).toBeNull();
+    await elapse(10_000);
+    expect(h.state().game.mode).toBe('handEnd');
+    expect(h.state().game.decisions).toHaveLength(acts);
+    expect(h.state().game.decisions.at(-1)?.grade).toBe('mistake');
+    expect(h.state().game.summary).toBe('hand'); // the button appears...
+    expect(summaryOpen(h.state())).toBe(false); // ...and nothing opens
+    expect(h.state().ui.gates).not.toContain('sheet');
+  });
+
+  it('off without the `summaries` option (the other tests): no offer, hands go on by themselves', async () => {
     const h = game({ level: 'beginner' });
     await playUntil(h, (s) => handEnd(s) && s.game.decisions.length > 0);
+    expect(h.state().game.summary).toBeNull();
     expect(summaryOpen(h.state())).toBe(false);
   });
 });

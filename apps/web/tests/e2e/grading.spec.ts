@@ -4,6 +4,7 @@ import {
   collectErrors,
   keepMove,
   nextFlowPoint,
+  openSummary,
   pcState,
   seedFor,
   sizeOf,
@@ -250,8 +251,10 @@ test.describe('Stage 6 acceptance 4: a grade job that fails', () => {
     await expect.poll(() => gameMode(page), { timeout: 30_000 }).toBe('handEnd');
     const last = (await decisions(page)).at(-1);
     expect(last).toMatchObject({ street: 'river', grade: null });
-    // Beginner shows a summary after every hand (§10.2): the river row has no grade.
-    const row = page.locator('[data-summary-row="none"]');
+    // Beginner has a summary after every hand (§10.2), opened with the banner's "Hand summary"
+    // (1.3.92): the river row has no grade.
+    const sheet = await openSummary(page);
+    const row = sheet.locator('[data-summary-row="none"]');
     await expect(row).toHaveCount(1);
     await expect(row).toContainText('No grade');
     expect(errors).toEqual([]);

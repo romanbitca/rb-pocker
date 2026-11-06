@@ -104,6 +104,11 @@ test('a full hand at Normal speed plays to its end', async ({ page }, testInfo) 
   await page.getByRole('button', { name: 'Play', exact: true }).click();
   await expect(page.locator('[data-hero-cards] [role="img"]')).toHaveCount(2);
   expect(await page.evaluate(() => window.__pc?.state().settings.speed)).toBe('normal');
+  // The hand end waits for the tap while the page is checked below: since 1.3.92 nothing holds it
+  // at Beginner (the summary opens only on the banner's button), and its 3 s run in real time.
+  await page.evaluate(() => {
+    window.__pc?.dispatch({ type: 'settings', patch: { autoNext: false } });
+  });
 
   for (let point = await nextFlowPoint(page, true); point !== 'end';) {
     if (point === 'hero') await slot(page, 'middle').click();
@@ -122,8 +127,10 @@ test('a full hand at Normal speed plays to its end', async ({ page }, testInfo) 
   const text = await page.evaluate(() => document.documentElement.outerHTML);
   expect(SUITS.test(text)).toBe(false);
 
-  // At Beginner the hand summary is open over the banner (§10.2, §12.9): its "Next hand ›" (or a
-  // tap on the banner when there is none) moves on to the next hand.
+  // Beginner's hand summary does not open by itself (§10.2, §12.9; 1.3.92): the banner's tap
+  // moves on to the next hand.
+  expect(await page.evaluate(() => window.__pc?.state().ui.overlays)).not.toContain('summary');
+  await expect(page.locator('[data-summary]')).toHaveCount(0);
   await tapNextHand(page);
   await expect(banner).toHaveCount(0);
   expect(errors).toEqual([]);

@@ -2,13 +2,13 @@
  * The words of the end-of-hand summary and the Exam result (PLAN §10.2, §12.9, Appendix F.10;
  * chunk 6.4). They load with the summary's lazy chunk (`ui/summaryEntry.ts`, §15.3).
  */
-import { about } from './en.ts';
+import { about, en } from './en.ts';
 
 export const summaryWords = {
   /** "Hand 12: +160" (a real minus sign for a loss). */
   title: (hand: string, net: string) => `Hand ${hand}: ${net}`,
-  /** Exam's heading above the title (§10.2). */
-  exam: 'Exam result',
+  /** Exam's heading above the title (§10.2): the words of the banner's button that opens it. */
+  exam: en.handEnd.examResult,
   /** "Your score: 82 of 100" (the decision score of the hand, §14.4). */
   score: (score: number) => `Your score: ${score} of 100`,
   streets: {

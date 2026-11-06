@@ -36,6 +36,8 @@ interface PcState {
     }[];
     /** §10: the coach level fixed for the hero's current (or latest) decision, else null. */
     coachLevel: string | null;
+    /** 1.3.92 (§12.9): the summary the hand-end banner offers ('hand', 'exam'), else null. */
+    summary: 'hand' | 'exam' | null;
     /** Refused inputs, bot fallbacks and voided hands since the launch (§12.14). */
     diag: { engineErrors: number; botFallbacks: number; voidedHands: number };
   };
@@ -270,8 +272,9 @@ export type FlowPoint = 'hero' | 'end' | 'bust';
  * - the Advanced quiz (§10.3, chunk 6.4): Row A waits for its answers; the helpers tap "Skip";
  * - a first-table tip (§12.11, chunk 9.3; only in specs that turn tips on, `fixtures.ts`): the
  *   game waits for a tap; the helpers tap the tip.
- * At a hand end the summary sheet (§12.9, chunk 6.4) may be open, over the banner: the hand-end
- * point then waits for its "Next hand ›" (the tap `tapNextHand` and `playHands` make).
+ * At a hand end the summary sheet (§12.9, chunk 6.4) is open only when a spec opened it with the
+ * banner's button (`openSummary`; since 1.3.92 it never opens by itself): the hand-end point then
+ * waits for its "Next hand ›" (the tap `tapNextHand` and `playHands` make).
  */
 type Waypoint = FlowPoint | 'feedback' | 'quiz' | 'tip';
 
@@ -327,6 +330,40 @@ export async function tapNextHand(page: Page): Promise<void> {
     () => window.__pc?.state().ui.overlays.includes('summary') === true,
   );
   await page.locator(summary ? '[data-summary-next]' : '[data-hand-end]').click();
+}
+
+/**
+ * At a hand end whose banner offers the summary (§10.2, §12.9; 1.3.92: "Hand summary", Exam's
+ * "Exam result"): taps that button and waits for the sheet. It is a lazy chunk; a first showing
+ * waits for React's Suspense reveal, a timer: with `pausedClock` (a spec that paused the clock)
+ * the clock is moved on in small steps for it, which moves nothing else, since the open sheet
+ * holds the game (its `sheet` gate). Returns the sheet (`[data-summary]`).
+ */
+export async function openSummary(
+  page: Page,
+  options: { pausedClock?: boolean } = {},
+): Promise<Locator> {
+  const button = page.locator('[data-hand-summary]');
+  await expect(button).toBeVisible();
+  await expect(page.locator('[data-summary]')).toHaveCount(0); // never open by itself
+  await button.click();
+  await expect
+    .poll(() => page.evaluate(() => window.__pc?.state().ui.overlays.includes('summary')))
+    .toBe(true);
+  const sheet = page.locator('[data-summary]');
+  if (options.pausedClock === true) {
+    await expect
+      .poll(
+        async () => {
+          if ((await sheet.count()) === 0) await page.clock.runFor(300);
+          return sheet.count();
+        },
+        { timeout: 15_000, intervals: [20, 50, 100] },
+      )
+      .toBe(1);
+  }
+  await expect(sheet).toBeVisible();
+  return sheet;
 }
 
 /**
@@ -455,7 +492,7 @@ export interface PlayOptions {
   fast?: boolean;
   /**
    * Called at every hand end, before the banner (or the summary's "Next hand ›") is tapped. It
-   * may close the summary (`closeSummary`) to read the banner.
+   * may open the summary with the banner's button (`openSummary`) and close it again.
    */
   onHandEnd?: (record: HandRecord) => Promise<void>;
   /** Called at every hero turn, before the tap (e.g. to wait for the final win chance). */
@@ -586,8 +623,8 @@ async function heroTap(page: Page, view: FlowView, random: () => number): Promis
 
 /**
  * Plays `hands` full hands through the UI: the hero taps Row A (as heroAct chooses), the
- * hand-end banner is tapped to deal the next hand (the summary's "Next hand ›" while it is open,
- * Stage 6), "Reload" when the hero is out of chips, Keep my move on a feedback card and Skip on
+ * hand-end banner is tapped to deal the next hand (the summary's "Next hand ›" while a spec has
+ * it open, Stage 6), "Reload" when the hero is out of chips, Keep my move on a feedback card and Skip on
  * the Advanced quiz (Stage 6), and a tap on a first-table tip (Stage 9, when a spec turns them on).
  * For speed each step reads the state and the buttons' places in one round trip and taps there
  * with real mouse clicks (Playwright's locator checks cost several round trips per tap, which
@@ -630,7 +667,7 @@ export async function playHands(page: Page, options: PlayOptions): Promise<HandR
         };
         records.push(record);
         await options.onHandEnd?.(record);
-        // `onHandEnd` may have closed the summary: tap what is there now.
+        // `onHandEnd` may have opened (or closed) the summary: tap what is there now.
         view = await page.evaluate(readFlowView);
         if (view.point !== 'end' || view.tap === null) continue;
       }

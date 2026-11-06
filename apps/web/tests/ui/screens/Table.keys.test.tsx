@@ -3,8 +3,9 @@
  * The keyboard on the Table (PLAN §12.5, §12.12, chunk 9.3), with the real store and controller:
  * F, C, B/R press Row A as a tap does (the legal actions only: a disabled button says why and
  * sends nothing), 1–5 and ↑/↓ size the tray inside the legal bounds, Enter confirms it, H does what
- * a tap on the coach does, K shows and hides the hand rankings, ? lists the keys; nothing while a
- * text field, a dialog or a sheet has the keyboard. Each Row A button names its keys.
+ * a tap on the coach does, K shows and hides the hand rankings, S opens the hand summary the
+ * banner offers (1.3.92), ? lists the keys; nothing while a text field, a dialog or a sheet has the
+ * keyboard. Each Row A button names its keys.
  */
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
@@ -22,6 +23,7 @@ beforeAll(async () => {
   await loadScreens(); // the screens lazy chunk, as App asks for it after the first paint
   await loadCoach(); // the coach's chunk, as the Table asks for it when it mounts
   await import('../../../src/ui/components/ShortcutsDialog.tsx'); // the "?" list's chunk
+  await import('../../../src/ui/summaryEntry.ts'); // the summary's chunk, asked for at mount
 });
 
 let h: TableHarness | null = null;
@@ -238,7 +240,7 @@ describe('focus rules (§12.5: never while typing, nor while a dialog or a sheet
   }, 30_000);
 });
 
-describe('the table keys: K, ?, H (§12.5)', () => {
+describe('the table keys: K, ?, H, S (§12.5)', () => {
   it('? lists the keys (a dialog: the game waits, Row A keys do nothing); Esc closes it', async () => {
     start();
     await heroTurnWhere(() => true);
@@ -293,5 +295,37 @@ describe('the table keys: K, ?, H (§12.5)', () => {
     await settle();
     press('h', document.body);
     expect(state().ui.overlays).toEqual(['coach']);
+  }, 30_000);
+
+  it('S opens the hand summary the banner offers (1.3.92); nothing while there is none', async () => {
+    h = startTableHarness({ summaries: true, settings: { players: 3, speed: 'normal' } });
+    render(<App />);
+    act(() => state().dispatch({ type: 'play' }));
+    await heroTurnWhere(() => true);
+    press('s'); // the hero's turn: no summary to open
+    expect(state().ui.overlays).toEqual([]);
+    // Beginner: every hand with a decision has one, offered on the banner, never opened by itself.
+    await playUntil(() => state().game.mode === 'handEnd' && state().game.summary !== null);
+    await settle();
+    expect(state().ui.overlays).toEqual([]);
+    const button = document.querySelector('[data-hand-summary]');
+    expect(button?.textContent).toBe(en.handEnd.summary);
+    expect(button?.getAttribute('aria-keyshortcuts')).toBe('S');
+    const handSeq = state().game.hand?.handSeq;
+    press('S', document.body);
+    expect(state().ui.overlays).toEqual(['summary']);
+    expect(state().ui.gates).toContain('sheet');
+    for (let i = 0; i < 200 && document.querySelector('[data-summary]') === null; i++) {
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(5);
+      });
+    }
+    expect(document.querySelector('[data-summary]')).not.toBeNull();
+    press('s'); // the sheet has the keyboard: nothing more
+    expect(state().ui.overlays).toEqual(['summary']);
+    press('Escape'); // closes it: the banner again, the same hand
+    expect(state().ui.overlays).toEqual([]);
+    expect(state().game.hand?.handSeq).toBe(handSeq);
+    expect(state().game.mode).toBe('handEnd');
   }, 30_000);
 });

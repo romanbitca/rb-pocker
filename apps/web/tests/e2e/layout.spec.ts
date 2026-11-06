@@ -3,7 +3,6 @@ import { tableFrame } from '../../src/ui/layout/seats.ts';
 import { expect, test } from './fixtures.ts';
 import {
   ACCEPTANCE_SIZES,
-  closeSummary,
   heroAct,
   newTable,
   nextFlowPoint,
@@ -28,7 +27,9 @@ import {
 // the page does not scroll. At every hand end of a nine-player table (phones in portrait and the
 // wide screen) the hand-end banner, the result lines and the "Review this hand" link, stays on the
 // table: clear of the top bar, inside the viewport, with its first result line readable (chunk
-// 6.3: on the 340 px tall wide table the banner used to reach up under the top bar).
+// 6.3: on the 340 px tall wide table the banner used to reach up under the top bar); since 1.3.92
+// with the "Hand summary" button too (Beginner offers it every hand, and nothing opens over the
+// banner), whose words never cover "Next hand ›" or the hero's cards.
 
 interface Box {
   x: number;
@@ -139,12 +140,21 @@ function tableProblems(m: TableBoxes, dealt: TableBoxes, when: string): string[]
 
 /** The hand-end banner, the top bar and the table box, in viewport pixels. */
 interface BannerBoxes {
-  /** The result lines, "Next hand ›" and the "Review this hand" link. */
+  /** The result lines, "Next hand ›", the "Review this hand" link and "Hand summary". */
   banner: Box;
   topBar: Box;
   table: Box;
   /** Whether the middle of the first result line is what a tap there would hit. */
   resultReadable: boolean;
+  /**
+   * 1.3.92: "Hand summary" (null when the hand has none), "Next hand ›" and the hero's cards,
+   * to check that the button's box never covers the other two, and that a tap on the middle of
+   * the card is still the card's (it deals the next hand).
+   */
+  summary: Box | null;
+  next: Box;
+  heroCards: Box | null;
+  middleIsCard: boolean;
   vw: number;
   vh: number;
 }
@@ -158,22 +168,33 @@ function measureBanner(page: Page): Promise<BannerBoxes> {
     };
     const card = document.querySelector('[data-hand-end]');
     const link = document.querySelector('[data-hand-review]');
+    const summary = document.querySelector('[data-hand-summary]');
     const topBar = document.querySelector('main > header');
     const table = document.querySelector('[data-table-box]');
     const result = card?.querySelector('span');
-    if (card === null || link === null || topBar === null || table === null || !result) {
+    const next = card?.querySelector('span:last-child');
+    const hero = document.querySelector('[data-hero-cards]');
+    if (card === null || link === null || topBar === null || table === null || !result || !next) {
       throw new Error('hand end: no banner, link, top bar or table box');
     }
-    const [a, b] = [rect(card), rect(link)];
-    const [x, y] = [Math.min(a.x, b.x), Math.min(a.y, b.y)];
-    const [right, bottom] = [Math.max(a.x + a.w, b.x + b.w), Math.max(a.y + a.h, b.y + b.h)];
+    const boxes = [rect(card), rect(link), ...(summary === null ? [] : [rect(summary)])];
+    const x = Math.min(...boxes.map((b) => b.x));
+    const y = Math.min(...boxes.map((b) => b.y));
+    const right = Math.max(...boxes.map((b) => b.x + b.w));
+    const bottom = Math.max(...boxes.map((b) => b.y + b.h));
     const r = result.getBoundingClientRect();
     const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+    const c = card.getBoundingClientRect();
+    const middle = document.elementFromPoint(c.left + c.width / 2, c.top + c.height / 2);
     return {
       banner: { x, y, w: right - x, h: bottom - y },
       topBar: rect(topBar),
       table: rect(table),
       resultReadable: hit !== null && card.contains(hit),
+      summary: summary === null ? null : rect(summary),
+      next: rect(next),
+      heroCards: hero === null ? null : rect(hero),
+      middleIsCard: middle !== null && card.contains(middle),
       vw: document.documentElement.clientWidth,
       vh: document.documentElement.clientHeight,
     };
@@ -191,6 +212,13 @@ function bannerProblems(m: BannerBoxes, when: string): string[] {
   }
   if (b.y < m.table.y - 0.5) say(`the banner starts above the table box ${fmt(m.table)}`);
   if (!m.resultReadable) say('something covers the first result line');
+  if (!m.middleIsCard) say('a tap on the middle of the card is not the card');
+  if (m.summary !== null) {
+    if (overlaps(m.summary, m.next)) say(`"Hand summary" covers "Next hand" ${fmt(m.next)}`);
+    if (m.heroCards !== null && overlaps(m.summary, m.heroCards)) {
+      say(`"Hand summary" covers the hero's cards ${fmt(m.heroCards)}`);
+    }
+  }
   return problems;
 }
 
@@ -281,8 +309,7 @@ test.describe('table layout', () => {
       fast: true,
       onHandEnd: async () => {
         ends++;
-        // The hand summary (Beginner, §12.9) covers the table: closed, the banner is measured.
-        await closeSummary(page);
+        // Nothing covers the banner (1.3.92: the summary opens only on its button).
         problems.push(...bannerProblems(await measureBanner(page), `hand end ${ends}`));
       },
     });

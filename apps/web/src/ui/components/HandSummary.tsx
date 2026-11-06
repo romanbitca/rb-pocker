@@ -13,8 +13,9 @@
  * suggestion card when there is one (§10.4, chunk 8.4).
  *
  * The Table hosts it while the `summary` overlay is open (its `sheet` gate keeps the next hand
- * waiting, §12.8); it reads the hand and its records from the store (`ui/summary.ts` builds the
- * rows), and closes the overlay when there is nothing to show. Part of the summary's lazy chunk
+ * waiting, §12.8); only the player opens it, with the hand-end banner's "Hand summary" or "Exam
+ * result" (or S), never the controller (1.3.92). It reads the hand and its records from the store
+ * (`ui/summary.ts` builds the rows), and closes the overlay when there is nothing to show. Part of the summary's lazy chunk
  * (`ui/summaryEntry.ts`, §15.3).
  */
 import { memo, useEffect, useId, useMemo } from 'react';

@@ -231,6 +231,28 @@
   box-shadow: inset 0 0 0 2px rgb(255 255 255 / 6%);
 }
 
+/* The hand-end banner's column (§12.9, `bannerPlace`): from the box's top to the hero's cards. Its
+   spacer holds the banner under the board and gives way first when the banner is taller than the
+   room there, so the banner slides up over the board; taller still, the column scrolls. The column
+   takes no taps: the pods and the board under it stay the player's; the banner takes its own. */
+.bannerArea {
+  position: absolute;
+  z-index: 8;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  pointer-events: none;
+}
+.bannerGap {
+  flex: 0 1 auto;
+  min-height: 0;
+}
+.bannerHolder {
+  flex: none;
+  pointer-events: auto;
+}
+
 /* The Hands edge tab: in the gutter at the right edge, vertically centred (§13.1). */
 .tabSlot {
   position: absolute;
