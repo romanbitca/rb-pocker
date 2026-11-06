@@ -10,6 +10,8 @@ you what to do, and why. Play money only. It is live at https://poker.romanbitca
 - One tap on **Play** deals a hand. You choose 2 to 9 players, the chips and the blinds.
 - Four bot levels: Easy, Medium, Hard and Expert.
 - **Undo** a move and try again (not in Exam).
+- After a hand, the result stays until you tap **Next hand** (or turn on "Deal the next hand by itself"
+  in Settings).
 - It works offline, and you can install it on the home screen (iPhone and Android).
 - A new version installs only between hands, never during one.
 
@@ -40,7 +42,7 @@ you what to do, and why. Play money only. It is live at https://poker.romanbitca
 
 ### Quality
 
-- 3,744 unit tests and 484 browser tests (Chromium and WebKit, phone to desktop sizes).
+- 3,761 unit tests and 485 browser tests (Chromium and WebKit, phone to desktop sizes).
 - 10 bot-against-bot self-play checks, and an accessibility check on every screen.
 - Lighthouse on a phone: Performance 94, Accessibility 100, Best practices 100, installable.
 - A review of 964 coach decisions found the coach's maths correct. Its advice and words were fixed
