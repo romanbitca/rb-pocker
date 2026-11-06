@@ -10,7 +10,7 @@ import { decisionRecord } from '../../src/app/undo.ts';
 import { grade } from '../../src/brain/grade.ts';
 import { hudEquity } from '../../src/brain/features.ts';
 import type { PlayerAction } from '../../src/engine/types.ts';
-import { rowNotes } from '../../src/ui/components/HandSummary.tsx';
+import { rowDid, rowNotes } from '../../src/ui/components/HandSummary.tsx';
 import { rowNumbers, type RowNumbers, type SummaryRow } from '../../src/ui/summary.ts';
 import { observeSpot, playSpot } from '../brain/fixtures.ts';
 import { bet, call, check, raise } from '../engine/play.ts';
@@ -40,10 +40,11 @@ describe('the summary numbers tell the grade’s story (§12.9, QA-1)', () => {
     expect(rowNotes(row({ grade: 'inaccuracy', eRange: 0.2, R: 0.92 }), money)).toBe(
       'Coach: Fold · Any cards: 45%. Their likely hands: about 20%, needed 30%.',
     );
-    // Hand 3's river: "<1% against their likely hands" on the feedback card.
+    // Hand 3's river: "<1% against their likely hands" on the feedback card (a bound says no
+    // "about", QA-2 item 8).
     expect(
       rowNotes(row({ street: 'river', eRandom: 0.38, need: 0.29, eRange: 0.004, R: 1 }), money),
-    ).toBe('Coach: Fold · Any cards: 38%. Their likely hands: about <1%, needed 29%.');
+    ).toBe('Coach: Fold · Any cards: 38%. Their likely hands: <1%, needed 29%.');
   });
 
   it('close numbers keep today’s line; later bets explain a fold the price would pay', () => {
@@ -119,6 +120,104 @@ describe('the summary numbers tell the grade’s story (§12.9, QA-1)', () => {
   });
 });
 
+describe('QA-2 of 6 Nov 2026 (fix/coach-words-round-2)', () => {
+  const RAISE_2100: PlayerAction = { type: 'raise', to: 2100 };
+
+  it('item 1: a call where raising wins more says so (seed 5eed2301, hand 1)', () => {
+    // "River · You called · Big mistake · Coach: Raise to 2,100 · You had >99%, needed 30%."
+    const r = row({
+      street: 'river',
+      taken: CALL,
+      rec: RAISE_2100,
+      grade: 'inaccuracy',
+      eRandom: 0.999,
+      need: 0.3,
+      eRange: 0.996,
+      R: 1,
+    });
+    expect(rowNotes(r, money)).toBe('Raising to 2100 wins more here. · You had >99%, needed 30%.');
+    // A check where the coach bets; Good keeps "Coach: …" (the coach's move wins only a little).
+    const checked = row({ taken: { type: 'check' }, rec: { type: 'bet', to: 220 }, need: null });
+    expect(rowNotes({ ...checked, grade: 'inaccuracy' }, money)).toBe(
+      'Betting 220 wins more here. · You had 45%.',
+    );
+    expect(rowNotes({ ...checked, grade: 'good' }, money)).toBe('Coach: Bet 220 · You had 45%.');
+  });
+
+  it('item 3: the hint’s number with the hint’s words, from the record (seed 5eed2103)', () => {
+    // The hint said "All 3 players: 34%. Raiser alone: about 56%."; the summary said "Their
+    // likely hands: about 33%, needed 33%." (the grade's own number, against all three).
+    const alone = row({
+      taken: CALL,
+      rec: CALL,
+      grade: 'best',
+      eRandom: 0.34,
+      eRange: 0.56,
+      R: 0.95,
+      need: 0.33,
+      callers: 0,
+      players: 3,
+    });
+    expect(rowNotes(alone, money)).toBe('All 3 players: 34%. Raiser alone: about 56%, needed 33%.');
+    // The raiser and a caller already in; a fold that later bets explain.
+    const callers = row({
+      taken: FOLD,
+      rec: FOLD,
+      grade: 'best',
+      eRandom: 0.28,
+      eRange: 0.34,
+      R: 0.7,
+      need: 0.25,
+      callers: 1,
+      players: 3,
+    });
+    expect(rowNotes(callers, money)).toBe(
+      'All 3 players: 28%. Raiser + 1 caller: about 34%, needed 25%. Counting later bets: about 24%.',
+    );
+    // Heads-up: "Their likely hands", as the strip says it.
+    expect(
+      rowNotes({ ...alone, callers: null, players: 1, eRandom: 0.67, eRange: 0.54 }, money),
+    ).toBe('Any cards: 67%. Their likely hands: about 54%, needed 33%.');
+  });
+
+  it('item 6: an all-in says all-in, as the action bar does (seed 5eed2102, hand 2)', () => {
+    // "Coach: Raise to 200" when 200 was the hero's whole stack.
+    const shove: PlayerAction = { type: 'raise', to: 200 };
+    const r = row({
+      street: 'preflop',
+      taken: FOLD,
+      rec: shove,
+      grade: 'inaccuracy',
+      eRandom: 0.55,
+      need: 0.25,
+      eRange: 0.5555,
+      R: 0.95,
+      allInTo: 200,
+    });
+    expect(rowNotes(r, money)).toBe('Coach: All-in 200 · You had 55%, needed 25%.');
+    expect(rowDid({ ...r, taken: shove }, money)).toBe('You went all-in for 200');
+    expect(rowDid({ ...r, taken: { type: 'raise', to: 150 } }, money)).toBe('You raised to 150');
+    expect(rowNotes({ ...r, taken: shove, rec: FOLD, grade: 'best' }, money)).toMatch(
+      /^Going all-in for 200 was as good as folding here\./,
+    );
+    // A call that puts the hero all-in.
+    const allInCall = row({ taken: CALL, rec: FOLD, callAllIn: true, grade: 'mistake' });
+    expect(rowDid(allInCall, money)).toBe('You called all-in');
+    expect(rowNotes({ ...allInCall, taken: FOLD, rec: CALL }, money)).toMatch(
+      /^Coach: Call all-in · /,
+    );
+    // Older records (no `allInTo`): as before.
+    expect(rowNotes({ ...r, allInTo: null }, money)).toMatch(/^Coach: Raise to 200 · /);
+  });
+
+  it('item 8: a bound needs no "about": "Their likely hands: >99%"', () => {
+    const r = row({ rec: CALL, taken: FOLD, eRandom: 0.9, eRange: 0.999, R: 1, need: 0.3 });
+    expect(rowNotes(r, money)).toBe(
+      'Coach: Call · Any cards: 90%. Their likely hands: >99%, needed 30%.',
+    );
+  });
+});
+
 describe('through the real grade (§8.9): the record keeps the grade’s numbers', () => {
   it('F19: K4o calls a river overbet; any cards say 20%+, the bettor’s likely hands far less', () => {
     // Heads-up, the button raises, the big blind calls and calls two barrels, then faces an
@@ -159,7 +258,12 @@ describe('through the real grade (§8.9): the record keeps the grade’s numbers
       },
       result,
     );
-    expect(record).toMatchObject({ eRange: price.E, R: price.R });
+    expect(record).toMatchObject({
+      eRange: price.E,
+      R: price.R,
+      callers: price.callers,
+      players: price.players,
+    });
     const r = row({
       street: 'river',
       grade: record.grade,

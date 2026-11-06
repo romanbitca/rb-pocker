@@ -327,6 +327,11 @@ export interface PostflopRead {
   made: MadeHandRead;
   band: 1 | 2 | 3;
   committed: boolean;
+  /**
+   * The call ends the betting (the hero all-in after it, or every opponent all-in): nothing can
+   * come later, so commitment no longer overrides the price (QA-2 of 6 Nov 2026, item 4).
+   */
+  ends: boolean;
   /** `spr > 6` with one pair: no raise, at most two value streets. */
   potControl: boolean;
   /** One pair at `spr > 6` that already bet two streets: no more value bets. */
@@ -350,6 +355,7 @@ export function postflopRead(f: Features, spot: PostflopSpot): PostflopRead {
     made,
     band,
     committed: isCommitted(f, made),
+    ends,
     potControl,
     valueCapped: potControl && spot.heroBetStreets >= ONE_PAIR_VALUE_STREETS,
   };
@@ -380,7 +386,10 @@ export function postflopIntent(
         read.committed && read.band === 1,
       );
     }
-    return read.ev > 0 || read.committed ? intent('call') : intent('fold');
+    // Committed means never fold while betting can go on (§8.5 step 6). When the call ends the
+    // betting the price alone decides, as §8.4 does: "folding gives up too much" beside 25% against
+    // a 36% price was false (QA-2 item 4, J♠J♦ on 6♦4♥6♣ facing an all-in, graded Best).
+    return read.ev > 0 || (read.committed && !read.ends) ? intent('call') : intent('fold');
   }
   switch (f.bucket) {
     case 'monster':

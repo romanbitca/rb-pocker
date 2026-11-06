@@ -53,7 +53,7 @@ describe('the card (F.4, F.5)', () => {
   it('title by grade, the F.5 reason, the coach move', () => {
     const texts = feedbackTexts(
       view(
-        { row: 'foldedPrice', E: 0.999, need: 0.2, rangeAdjust: false, players: null },
+        { row: 'foldedPrice', E: 0.999, need: 0.2, rangeAdjust: false, callers: null },
         'blunder',
       ),
       'chips',
@@ -72,7 +72,7 @@ describe('the card (F.4, F.5)', () => {
   it('every F.5 row reads as one plain reason', () => {
     const rows: [FeedbackInput, string][] = [
       [
-        { row: 'calledPrice', E: 0.2, need: 0.25, rangeAdjust: true, players: null },
+        { row: 'calledPrice', E: 0.2, need: 0.25, rangeAdjust: true, callers: null },
         'You called with a 20% win chance against their likely hands. You needed 25%. Calling loses chips over time.',
       ],
       [

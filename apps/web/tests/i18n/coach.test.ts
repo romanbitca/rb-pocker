@@ -22,6 +22,7 @@ import {
   topText,
   type CoachStrings,
 } from '../../src/i18n/coach.ts';
+import { about } from '../../src/i18n/en.ts';
 import { enCoach } from '../../src/i18n/enCoach.ts';
 import { percentText } from '../../src/ui/equity.ts';
 
@@ -99,6 +100,44 @@ describe('numbers', () => {
       '2.5',
       '1,250',
       '0.3',
+    ]);
+  });
+});
+
+describe('"about" only for an estimate (QA-2 of 6 Nov 2026, item 8)', () => {
+  it('a bound or a sure number is said as it is: ">99%", never "about >99%"', () => {
+    const best = (points: number): string =>
+      lineText(
+        l('VALUE_BET.noExample', {
+          handName: { kind: 'name', text: 'Flush, Ace-high' },
+          E: { kind: 'pct', value: points },
+          size: { kind: 'size', to: 200, bb: 10 },
+        }),
+      );
+    expect(best(99.94)).toBe('Your Flush, Ace-high is probably best (>99%). Bet 200 (10 BB).');
+    expect(best(62.4)).toBe('Your Flush, Ace-high is probably best (about 62%). Bet 200 (10 BB).');
+    expect(best(100)).toBe('Your Flush, Ace-high is probably best (100%). Bet 200 (10 BB).');
+    // At a sentence start too ("About {needImplied}% is enough.").
+    const implied = lineText(
+      l('IMPLIED', {
+        need: { kind: 'pct', value: 30 },
+        draw: { kind: 'draw', draw: 'flush' },
+        needImplied: { kind: 'pct', value: 0.3 },
+      }),
+    );
+    expect(implied).toMatch(/ <1% is enough\.$/);
+    expect(implied).not.toMatch(/about/i);
+  });
+
+  it('the UI words use the same rule (`about`)', () => {
+    expect(['62%', '>99%', '<1%', '0%', '100%', '62', '>99'].map(about)).toEqual([
+      'about 62%',
+      '>99%',
+      '<1%',
+      '0%',
+      '100%',
+      'about 62',
+      '>99',
     ]);
   });
 });

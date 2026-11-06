@@ -3,10 +3,12 @@
  * level shows one (Beginner every hand; Intermediate after an Inaccuracy or worse; Advanced after
  * a Mistake or worse; Exam every hand, as the "Exam result"). Title "Hand 12: +160"; one row per
  * hero decision: street, what you did, the grade chip, the coach's move when it was another (with
- * a Best grade: "Calling was as good as folding here."), and the numbers at the decision ("You
- * had 45%, needed 25%."; the grade's own, labelled when they differ: "Any cards: 45%. Their likely
- * hands: about 20%, needed 30%.", `rowNumbers` in `ui/summary.ts`, QA-1). Exam adds the score of
- * the hand (§14.4). Buttons [Review hand] and [Next hand ›]; ✕, Esc, the scrim and Back close it
+ * a Best grade: "Calling was as good as folding here."; a check or a call Slightly off or worse
+ * where the coach bet or raised: "Raising to 2,100 wins more here."), and the numbers at the
+ * decision ("You had 45%, needed 25%."; the hint's and the grade's own, labelled when they differ:
+ * "Any cards: 45%. Their likely hands: about 20%, needed 30%.", "All 3 players: 34%. Raiser
+ * alone: about 56%, …", `rowNumbers` in `ui/summary.ts`, QA-1 and QA-2). An all-in says so ("You
+ * went all-in for 710", "Coach: All-in 200"). Exam adds the score of the hand (§14.4). Buttons [Review hand] and [Next hand ›]; ✕, Esc, the scrim and Back close it
  * (the banner stays, and the next hand waits its 3 s again). Above the buttons, the level
  * suggestion card when there is one (§10.4, chunk 8.4).
  *
@@ -18,7 +20,13 @@
 import { memo, useEffect, useId, useMemo } from 'react';
 import { selectCoachLevel, useAppStore, type AppState } from '../../app/store.ts';
 import type { PlayerAction } from '../../engine/types.ts';
-import { rowNumbers, summaryOf, type SummaryData, type SummaryRow } from '../summary.ts';
+import {
+  isAllInMove,
+  rowNumbers,
+  summaryOf,
+  type SummaryData,
+  type SummaryRow,
+} from '../summary.ts';
 import { summaryWords as W } from '../../i18n/summary.ts';
 import { formatAmount } from '../actionBar.ts';
 import { percentText } from '../equity.ts';
@@ -64,48 +72,36 @@ const sameMove = (a: PlayerAction, b: PlayerAction): boolean =>
   a.type === b.type &&
   (a.type === 'bet' || a.type === 'raise' ? a.to === (b as { to: number }).to : true);
 
-function didText(a: PlayerAction, money: (x: number) => string): string {
-  switch (a.type) {
-    case 'fold':
-    case 'check':
-    case 'call':
-      return W.did[a.type];
-    case 'bet':
-      return W.did.bet(money(a.to));
-    case 'raise':
-      return W.did.raise(money(a.to));
-  }
-}
+/** The words for each move: "You called" (`did`), "Coach: Call" (`coach`), "Calling" (`doing`)… */
+type MoveWords = typeof W.did | typeof W.coach | typeof W.doing | typeof W.coachDoing;
 
-function coachText(a: PlayerAction, money: (x: number) => string): string {
-  switch (a.type) {
-    case 'fold':
-    case 'check':
-    case 'call':
-      return W.coach[a.type];
-    case 'bet':
-      return W.coach.bet(money(a.to));
-    case 'raise':
-      return W.coach.raise(money(a.to));
-  }
-}
-
-/** "Calling", "Raising to 60" (`doing`) or "folding", "raising to 60" (`coachDoing`). */
-function doingText(
+/**
+ * A move of the row in one of the word sets; an all-in says so, as the action bar does ("All-in
+ * 200", "Call all-in"; QA-2 of 6 Nov 2026, item 6).
+ */
+function moveText(
+  row: SummaryRow,
   a: PlayerAction,
-  words: typeof W.doing | typeof W.coachDoing,
+  words: MoveWords,
   money: (x: number) => string,
 ): string {
+  const allIn = isAllInMove(row, a);
   switch (a.type) {
     case 'fold':
     case 'check':
-    case 'call':
       return words[a.type];
+    case 'call':
+      return allIn ? words.callAllIn : words.call;
     case 'bet':
-      return words.bet(money(a.to));
+      return allIn ? words.allIn(money(a.to)) : words.bet(money(a.to));
     case 'raise':
-      return words.raise(money(a.to));
+      return allIn ? words.allIn(money(a.to)) : words.raise(money(a.to));
   }
+}
+
+/** The row's first line after the street: "You called", "You went all-in for 200". */
+export function rowDid(row: SummaryRow, money: (x: number) => string): string {
+  return moveText(row, row.taken, W.did, money);
 }
 
 /** The numbers of a row in words (`rowNumbers`: the ones that tell the grade's story). */
@@ -121,25 +117,51 @@ function numbersText(row: SummaryRow): string | null {
     case 'price':
       return W.numbers(pct(n.win), pct(n.need)) + later(n.later);
     case 'likelyOnly':
-      return W.likelyOnly(pct(n.win), pct(n.likely));
+      return n.whom === null
+        ? W.likelyOnly(pct(n.win), pct(n.likely))
+        : W.whomOnly(W.whom(n.whom.players, pct(n.win), n.whom.callers, pct(n.likely)));
     case 'likely':
-      return W.likely(pct(n.win), pct(n.likely), pct(n.need)) + later(n.later);
+      return (
+        (n.whom === null
+          ? W.likely(pct(n.win), pct(n.likely), pct(n.need))
+          : W.whomPrice(
+              W.whom(n.whom.players, pct(n.win), n.whom.callers, pct(n.likely)),
+              pct(n.need),
+            )) + later(n.later)
+      );
   }
 }
+
+const isPassive = (a: PlayerAction): boolean => a.type === 'check' || a.type === 'call';
+const isAggressive = (a: PlayerAction): boolean => a.type === 'bet' || a.type === 'raise';
 
 /**
  * The second line of a row: the coach's move when it was another, then the numbers. A Best grade
  * for another move says it was as good ("Calling was as good as folding here."), never "Best move"
  * next to a bare "Coach: Fold" (§8.9: the close alternative, or a loss of at most 1% of the pot).
+ * A check or a call graded Slightly off or worse where the coach bet or raised says the coach's
+ * move wins more ("Raising to 2,100 wins more here."; §8.9 "value missed", QA-2 item 1).
  */
 export function rowNotes(row: SummaryRow, money: (x: number) => string): string {
   const notes: string[] = [];
   if (!sameMove(row.taken, row.rec)) {
-    notes.push(
-      row.grade === 'best'
-        ? W.asGood(doingText(row.taken, W.doing, money), doingText(row.rec, W.coachDoing, money))
-        : coachText(row.rec, money),
-    );
+    if (row.grade === 'best') {
+      notes.push(
+        W.asGood(
+          moveText(row, row.taken, W.doing, money),
+          moveText(row, row.rec, W.coachDoing, money),
+        ),
+      );
+    } else if (
+      row.grade !== null &&
+      row.grade !== 'good' &&
+      isPassive(row.taken) &&
+      isAggressive(row.rec)
+    ) {
+      notes.push(W.winsMore(moveText(row, row.rec, W.doing, money)));
+    } else {
+      notes.push(moveText(row, row.rec, W.coach, money));
+    }
   }
   const numbers = numbersText(row);
   if (numbers !== null) notes.push(numbers);
@@ -196,7 +218,7 @@ export const SummarySheet = memo(function SummarySheet({
             return (
               <li key={`${row.decisionId}-${i}`} data-summary-row={row.grade ?? 'none'}>
                 <p className={s.bold}>
-                  {W.streets[row.street]} · {didText(row.taken, money)}
+                  {W.streets[row.street]} · {rowDid(row, money)}
                 </p>
                 {row.undone ? (
                   <span className={s.muted}>{W.undone}</span>

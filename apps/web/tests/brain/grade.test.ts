@@ -447,7 +447,8 @@ describe('the feedback card’s reason (Appendix F.5)', () => {
       R: 1,
       need: 0.25,
       rangeAdjust: false,
-      raiserRange: false,
+      callers: null,
+      valueMissed: false,
       ...over,
     });
   /** Unopened before the flop, 8 bb: the coach shoves (the legal maximum). */
@@ -532,7 +533,7 @@ describe('the feedback card’s reason (Appendix F.5)', () => {
       E: 0.5,
       need: 0.25,
       rangeAdjust: false,
-      players: null,
+      callers: null,
     });
     expect(fb({ taken: FOLD, rangeAdjust: true })).toMatchObject({ rangeAdjust: true });
     // E·R and need show the same whole number: no price sentence.
@@ -545,12 +546,12 @@ describe('the feedback card’s reason (Appendix F.5)', () => {
       E: 0.1,
       need: 0.25,
       rangeAdjust: false,
-      players: null,
+      callers: null,
     });
     expect(fb({ ...called, rangeAdjust: true })).toMatchObject({ rangeAdjust: true });
-    // The hint's range number was the raiser's alone: the row names all the players `E` counts.
-    expect(fb({ ...called, nOpp: 5, raiserRange: true })).toMatchObject({ players: 5 });
-    expect(fb({ taken: FOLD, nOpp: 3, raiserRange: true })).toMatchObject({ players: 3 });
+    // The hint's range number was the raiser's alone (and its callers'): the row says whom.
+    expect(fb({ ...called, nOpp: 5, callers: 0 })).toMatchObject({ callers: 0 });
+    expect(fb({ taken: FOLD, nOpp: 3, callers: 1 })).toMatchObject({ callers: 1 });
     expect(fb({ ...called, E: 0.248, need: 0.251 })).toMatchObject({ row: 'fallback' });
     // E·R below the price but {E} above it: "You called with 30%. You needed 28%" would be false.
     expect(fb({ ...called, E: 0.3, R: 0.8, need: 0.28 })).toMatchObject({ row: 'fallback' });
@@ -622,10 +623,11 @@ describe('the feedback card’s reason (Appendix F.5)', () => {
       fb({ ...pre, taken: raiseTo(200), rec: raiseTo(250 * 4) }),
       fb({ taken: FOLD }),
       fb({ taken: FOLD, rangeAdjust: true }),
-      fb({ taken: FOLD, rangeAdjust: true, raiserRange: true, nOpp: 4 }),
+      fb({ taken: FOLD, rangeAdjust: true, callers: 0, nOpp: 4 }),
       fb({ taken: CALL, rec: FOLD, E: 0.1 }),
       fb({ taken: CALL, rec: FOLD, E: 0.1, rangeAdjust: true }),
-      fb({ taken: CALL, rec: FOLD, E: 0.1, rangeAdjust: true, raiserRange: true, nOpp: 4 }),
+      fb({ taken: CALL, rec: FOLD, E: 0.1, rangeAdjust: true, callers: 1, nOpp: 4 }),
+      fb({ taken: CALL, rec: raiseTo(400), E: 0.6, valueMissed: true }),
       fb({ ...free, taken: CHECK, rec: betTo(300), bucket: 'monster' }),
       fb({ ...free, taken: betTo(300), rec: CHECK, bucket: 'air', nOpp: 2 }),
       fb({ ...free, taken: betTo(300), rec: CHECK, bucket: 'air' }),
@@ -633,7 +635,7 @@ describe('the feedback card’s reason (Appendix F.5)', () => {
     ];
     const keys = new Set(rows.map((r) => feedbackLine(r).key));
     const f5 = TEMPLATE_KEYS.filter((k) => k.startsWith('feedback.'));
-    expect(f5).toHaveLength(16);
+    expect(f5).toHaveLength(17);
     expect([...keys].sort()).toEqual([...f5].sort());
   });
 });
@@ -879,7 +881,7 @@ describe('real spots: the grade, the leak and the F.5 reason a player meets', ()
     expect(E?.kind === 'pct' && need?.kind === 'pct' && E.value < need.value).toBe(true);
   });
 
-  it('calling an early raise with players behind: the price row names every player (§8.10)', () => {
+  it('calling an early raise with players behind: the price row says the hint’s whom (§8.10)', () => {
     // UTG raises to 3 bb, two folds, the hero on the button with Q♥10♦; both blinds to act.
     const s = spot(
       {
@@ -895,15 +897,16 @@ describe('real spots: the grade, the leak and the F.5 reason a player meets', ()
     expect(s.answer.hint.explanation.reasons[0]?.key).toBe('RANGE_ADJUST.raiser');
     const g = s.answer.grade(CALL, 2);
     expect(isMistake(g.grade)).toBe(true);
-    // The grade's E counts all 3 players: the row says so, never "their likely hands".
-    expect(g.feedback?.key).toBe('feedback.calledPriceAll');
-    expect(g.feedback?.params.n).toEqual({ kind: 'count', value: 3 });
+    // The grade compares the hint's own number, the raiser's alone (1.3.90, QA-2 item 3): the
+    // row says so, never "their likely hands" (it counted all 3 players' eRange before).
+    expect(g.price).toMatchObject({ callers: 0, players: 3 });
+    expect(g.feedback?.key).toBe('feedback.calledPriceRaiser');
     expect(lineText(g.feedback as Line)).toMatch(
-      /^You called with a \d+% win chance against the likely hands of all 3 players\. You needed \d+%\. Calling loses chips over time\.$/,
+      /^You called with a \d+% win chance against the raiser's likely hands alone\. You needed \d+%\. Calling loses chips over time\.$/,
     );
   });
 
-  it('checking a set: a Mistake, missed-value, "You checked a very strong hand"', () => {
+  it('checking a set: value missed, Slightly off, missed-value, "You checked a very strong hand"', () => {
     const s = spot(
       {
         stacks: [10000, 10000],
@@ -916,7 +919,10 @@ describe('real spots: the grade, the leak and the F.5 reason a player meets', ()
     );
     expect(s.rec.type).toBe('bet');
     const g = s.answer.grade(CHECK, 1);
-    expect(g).toMatchObject({ grade: 'mistake', leak: 'missed-value' });
+    // The check wins chips; the bet wins more: never worse than Slightly off (§8.9 value missed,
+    // QA-2 item 1; it was a Mistake by the loss alone).
+    expect(g.lossPot).toBeGreaterThan(0.15);
+    expect(g).toMatchObject({ grade: 'inaccuracy', leak: 'missed-value' });
     expect(g.feedback?.key).toBe('feedback.checkedStrong');
   });
 

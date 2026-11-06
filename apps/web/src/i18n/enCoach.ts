@@ -31,6 +31,7 @@ export const enCoach = {
           '{hand} is not strong enough here. {behind} players act after you. Folding saves chips.',
       },
       ISOLATE: 'Players only called. Raise to {size} to play against fewer players.',
+      'ISOLATE.headsUp': 'They only called. {hand} is strong enough to raise to {size}.',
       CHECK_FREE: 'Checking costs nothing. Never fold when you can check.',
       THREE_BET_VALUE:
         'Your {hand} beats most hands that raise here (about {E}%). Re-raise to {size}.',
@@ -130,6 +131,31 @@ export const enCoach = {
         other:
           'Only {S} {g:big blind}s left: go {g:all-in} or fold. They fold only about {Pfold}%. If called, you win only about {E}%.',
       },
+      // The short stack is an opponent's (QA-2 item 2): whose it is.
+      'PUSH_FOLD.them': {
+        count: 'S',
+        one: 'They have only {S} {g:big blind}: go {g:all-in} or fold. They fold about {Pfold}%. If called, you still win about {E}%.',
+        other:
+          'They have only {S} {g:big blind}s: go {g:all-in} or fold. They fold about {Pfold}%. If called, you still win about {E}%.',
+      },
+      'PUSH_FOLD.themFold': {
+        count: 'S',
+        one: 'They have only {S} {g:big blind}: go {g:all-in} or fold. They fold only about {Pfold}%. If called, you win only about {E}%.',
+        other:
+          'They have only {S} {g:big blind}s: go {g:all-in} or fold. They fold only about {Pfold}%. If called, you win only about {E}%.',
+      },
+      'PUSH_FOLD.others': {
+        count: 'S',
+        one: 'No one else has more than {S} {g:big blind}: go {g:all-in} or fold. They fold about {Pfold}%. If called, you still win about {E}%.',
+        other:
+          'No one else has more than {S} {g:big blind}s: go {g:all-in} or fold. They fold about {Pfold}%. If called, you still win about {E}%.',
+      },
+      'PUSH_FOLD.othersFold': {
+        count: 'S',
+        one: 'No one else has more than {S} {g:big blind}: go {g:all-in} or fold. They fold only about {Pfold}%. If called, you win only about {E}%.',
+        other:
+          'No one else has more than {S} {g:big blind}s: go {g:all-in} or fold. They fold only about {Pfold}%. If called, you win only about {E}%.',
+      },
       'RANGE_ADJUST.weaker':
         'Against any cards you win {eRandom}%. How they played makes strong hands less likely. Against their likely hands, you win about {eRange}%.',
       'RANGE_ADJUST.plain':
@@ -200,14 +226,15 @@ export const enCoach = {
       'feedback.foldedPrice': 'You folded with a {E}% win chance. You needed only {need}% to call.',
       'feedback.foldedPriceRange':
         'You folded with a {E}% win chance against their likely hands. You needed only {need}% to call.',
-      'feedback.foldedPriceAll':
-        'You folded with a {E}% win chance against the likely hands of all {n} players. You needed only {need}% to call.',
+      'feedback.foldedPriceRaiser':
+        'You folded with a {E}% win chance against {who}. You needed only {need}% to call.',
       'feedback.calledPrice':
         'You called with a {E}% win chance. You needed {need}%. Calling loses chips over time.',
       'feedback.calledPriceRange':
         'You called with a {E}% win chance against their likely hands. You needed {need}%. Calling loses chips over time.',
-      'feedback.calledPriceAll':
-        'You called with a {E}% win chance against the likely hands of all {n} players. You needed {need}%. Calling loses chips over time.',
+      'feedback.calledPriceRaiser':
+        'You called with a {E}% win chance against {who}. You needed {need}%. Calling loses chips over time.',
+      'feedback.calledValue': 'Calling wins chips too, but raising wins more here.',
       'feedback.checkedStrong':
         'You checked a very strong hand. Betting wins more from worse hands.',
       'feedback.airMultiway':
@@ -218,17 +245,31 @@ export const enCoach = {
       'feedback.openLoose': '{hand} is too weak to play from here. Most players fold it.',
       'feedback.foldedStrong':
         '{hand} is in the top {rankPct}% of hands. It is strong enough to play.',
-      'feedback.pushFoldAllIn': {
-        count: 'S',
-        one: 'With {S} big blind, {hand} should go all-in.',
-        other: 'With {S} big blinds, {hand} should go all-in.',
-      },
-      'feedback.pushFoldFold': {
-        count: 'S',
-        one: 'With {S} big blind, {hand} should fold.',
-        other: 'With {S} big blinds, {hand} should fold.',
-      },
+      'feedback.pushFoldAllIn': '{stack} {hand} should go all-in.',
+      'feedback.pushFoldFold': '{stack} {hand} should fold.',
       'feedback.fallback': "The coach's move wins more chips here: {alt}.",
+      // F.5 `{who}` (the price rows) and `{stack}` (the push/fold rows): QA-2 items 2 and 3.
+      'who.raiser': "the raiser's likely hands alone",
+      'who.callers': {
+        count: 'callers',
+        one: 'the likely hands of the raiser and {callers} caller',
+        other: 'the likely hands of the raiser and {callers} callers',
+      },
+      'stack.own': {
+        count: 'S',
+        one: 'With {S} big blind,',
+        other: 'With {S} big blinds,',
+      },
+      'stack.them': {
+        count: 'S',
+        one: 'They have only {S} big blind, so',
+        other: 'They have only {S} big blinds, so',
+      },
+      'stack.others': {
+        count: 'S',
+        one: 'No one else has more than {S} big blind, so',
+        other: 'No one else has more than {S} big blinds, so',
+      },
     } satisfies Record<TemplateKey, CoachTemplate>,
     /** `{draw}` when the hand has no named draw. */
     genericDraw: 'draw',

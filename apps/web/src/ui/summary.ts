@@ -20,14 +20,35 @@ export interface SummaryRow {
   readonly eRandom: number | null;
   readonly need: number | null;
   /**
-   * The grade's own numbers (`DecisionRecord.eRange`, `.R`): the chance against the likely hands
-   * of every live opponent, and the call's realisation; null without them (no grade, nothing to
-   * call, an older record).
+   * The numbers the hint and the grade compared (`DecisionRecord.eRange`, `.R`): the hint's
+   * "likely hands" number (§8.10's range number) and the call's realisation; null without them
+   * (no grade, nothing to call, an older record).
    */
   readonly eRange: number | null;
   readonly R: number | null;
+  /**
+   * Whom `eRange` counts (`DecisionRecord.callers`, `.players`; QA-2 of 6 Nov 2026, item 3): the
+   * raiser and `callers` callers already in when that is fewer than the `players` live opponents
+   * the HUD's number counts; null or absent: every live opponent (or an older record).
+   */
+  readonly callers?: number | null;
+  readonly players?: number | null;
+  /**
+   * The "to" of the hero's all-in bet or raise at the decision, and whether a call put the hero
+   * all-in (`DecisionRecord.allInTo`, `.callAllIn`; QA-2 item 6): the row says "All-in 200" as the
+   * action bar does. Absent in older records.
+   */
+  readonly allInTo?: number | null;
+  readonly callAllIn?: boolean;
   /** Taken back with Undo (it still counts, §11.4). */
   readonly undone: boolean;
+}
+
+/** A move at the row's decision is an all-in: a bet or raise to the whole stack, or such a call. */
+export function isAllInMove(row: SummaryRow, a: PlayerAction): boolean {
+  if (a.type === 'call') return row.callAllIn === true;
+  if (a.type === 'bet' || a.type === 'raise') return row.allInTo != null && a.to === row.allInTo;
+  return false;
 }
 
 /**
@@ -37,7 +58,8 @@ export interface SummaryRow {
  * - `price`: "You had 45%, needed 25%.", the HUD's number when it tells the grade's story;
  * - `likely`: the HUD's number and the grade's `eRange` labelled ("Any cards: 45%. Their likely
  *   hands: about 20%, needed 30%."), when they differ as §8.10's RANGE_ADJUST rule says (5 points,
- *   or the price between the two whole numbers), or when only the grade's number agrees;
+ *   or the price between the two whole numbers), or when only the grade's number agrees; `whom`
+ *   when the two count different players ("All 3 players: 34%. Raiser alone: about 56%, …");
  * - `later` (with `price` or `likely`): the realised `eRange × R` ("Counting later bets: about
  *   26%.") when only it explains a fold the price alone would not (the sheet's price bar, §12.6).
  * A comparison that would argue against the coach's move (a call at a price the numbers beat,
@@ -52,14 +74,35 @@ export type RowNumbers =
       readonly need: number;
       readonly later: number | null;
     }
-  | { readonly kind: 'likelyOnly'; readonly win: number; readonly likely: number }
+  | {
+      readonly kind: 'likelyOnly';
+      readonly win: number;
+      readonly likely: number;
+      readonly whom: Whom | null;
+    }
   | {
       readonly kind: 'likely';
       readonly win: number;
       readonly likely: number;
       readonly need: number;
       readonly later: number | null;
+      readonly whom: Whom | null;
     };
+
+/**
+ * Whom the two numbers count when they count different players (§8.10): the HUD's every one of
+ * `players` live opponents, the likely-hands number the raiser and `callers` callers already in.
+ */
+export interface Whom {
+  readonly players: number;
+  readonly callers: number;
+}
+
+/** The row's `Whom`, or null when both numbers count every live opponent (or it is not known). */
+function whomOf(row: SummaryRow): Whom | null {
+  const { callers, players } = row;
+  return callers == null || players == null ? null : { players, callers };
+}
 
 /** A fraction as the whole number the summary shows (the HUD's rounding). */
 const whole = (x: number): number => Math.round(100 * x);
@@ -89,12 +132,14 @@ export function rowNumbers(row: SummaryRow): RowNumbers {
     // A fold the price alone would pay: later bets decided it (§8.5 R, §8.3 R), as the sheet's bar.
     const realised = R === null ? null : likely * R;
     if (!fold || realised === null || !agrees(realised)) {
-      return labelled ? { kind: 'likelyOnly', win, likely } : { kind: 'win', win };
+      return labelled
+        ? { kind: 'likelyOnly', win, likely, whom: whomOf(row) }
+        : { kind: 'win', win };
     }
     later = realised;
   }
   return labelled
-    ? { kind: 'likely', win, likely, need, later }
+    ? { kind: 'likely', win, likely, need, later, whom: whomOf(row) }
     : { kind: 'price', win, need, later };
 }
 
@@ -143,6 +188,10 @@ export function summaryOf(game: AppState['game'], level: CoachLevel): SummaryDat
       need: d.need,
       eRange: d.eRange ?? null,
       R: d.R ?? null,
+      callers: d.callers ?? null,
+      players: d.players ?? null,
+      allInTo: d.allInTo ?? null,
+      callAllIn: d.callAllIn ?? false,
       undone: d.undone,
     })),
     score: exam ? decisionScore(grades) : null,

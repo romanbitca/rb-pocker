@@ -29,6 +29,13 @@
  *    bb floors: the same chips are a big mistake in a small pot and nothing in a big one.
  * 6. A preflop bluff re-raise (C10, `bluffReraise`: facing a raise, a raise the rule did not make)
  *    is never Best, at most Good: the coach never recommends one (fix/coach-strategy-audit).
+ * 7. Value missed (`valueMissed`, 1.3.90): a check, or a call the price pays, that wins chips where
+ *    the coach bets or raises is at most an Inaccuracy: the coach's move wins more, the move loses
+ *    nothing (QA-2 of 6 Nov 2026: the nut flush called on the river was a "Big mistake").
+ *
+ * `E` in the price signal and the F.5 rows is the "likely hands" number the hint showed
+ * (`rangeNumber`, §8.10: before the flop a range code's own E against the raiser and its callers,
+ * else `eRange`), so the hint, the feedback card and the hand summary say one number (1.3.90).
  *
  * Then the leak tag (`leakOf`: the §8.9 table, first matching row, only for Inaccuracy or worse)
  * and the feedback card's reason (`feedbackRow`: Appendix F.5 in its order; null for Best and
@@ -69,7 +76,16 @@ import {
   PRICE_SIGNAL_MISTAKE,
   SAME_SIZE_SHARE,
 } from './tunables.ts';
-import type { Bucket, Facing, Grade, GradeResult, LeakId, Reason, ReasonCode } from './types.ts';
+import type {
+  Bucket,
+  Facing,
+  Features,
+  Grade,
+  GradeResult,
+  LeakId,
+  Reason,
+  ReasonCode,
+} from './types.ts';
 
 /**
  * Floating-point slack at the §8.9 boundaries: "≤" holds at the boundary and "<" does not, also
@@ -182,6 +198,21 @@ export interface Scored {
   lossBB: number;
 }
 
+/**
+ * §8.9 "value missed" (QA-2 of 6 Nov 2026, item 1): a check, or a call whose price pays (`E·R ≥
+ * need`), that wins chips (`EV(taken) > 0`, better than folding) where the coach bets or raises.
+ * The coach's move wins more, but the move loses nothing: the loss is value not won, never a Big
+ * mistake. Calling the river with the nut flush where the coach raised was graded "Big mistake ·
+ * You had >99%, needed 30%".
+ */
+export function valueMissed(
+  x: Pick<GradeFacts, 'taken' | 'takenEV' | 'rec' | 'E' | 'R' | 'need'>,
+): boolean {
+  if (!isAggressive(x.rec.type) || x.takenEV <= EPS) return false;
+  if (x.taken.type === 'check') return true;
+  return x.taken.type === 'call' && x.E * x.R >= x.need - EPS;
+}
+
 /** The §8.9 grade of `taken` (see the header for the order of the rules). */
 export function scoreGrade(x: GradeFacts): Scored {
   const freeFold = x.taken.type === 'fold' && x.legal.canCheck;
@@ -199,6 +230,7 @@ export function scoreGrade(x: GradeFacts): Scored {
   if (signal !== null) grade = worseOf(grade, signal);
   grade = capByBB(grade, lossBB);
   if (x.bluffReraise === true && grade === 'best') grade = 'good';
+  if (valueMissed({ ...x, takenEV })) grade = milderOf(grade, 'inaccuracy');
   return scored(grade);
 }
 
@@ -276,17 +308,21 @@ export interface FeedbackFacts {
   toCall: number;
   taken: PlayerAction;
   rec: PlayerAction;
-  /** `eRange`, the call's realisation and the price, as the grade read them. */
+  /** The hint's range number, the call's realisation and the price, as the grade read them. */
   E: number;
   R: number;
   need: number;
   /** §8.10's RANGE_ADJUST condition with the HUD's number: the price rows add "against their likely hands". */
   rangeAdjust: boolean;
   /**
-   * The hint's range number counted only the raiser and the callers already in, not all `nOpp`
-   * players `E` counts (§8.3, §8.10): the price rows then name all of them.
+   * Whom `E` counts: the raiser and `callers` callers already in when that is fewer than the
+   * `nOpp` live opponents (§8.3, §8.10), and the price rows then say so; null: every opponent.
    */
-  raiserRange: boolean;
+  callers: number | null;
+  /** §8.9 "value missed" (`valueMissed`): the call wins chips, the coach's raise wins more. */
+  valueMissed: boolean;
+  /** Whose stack §8.4's `S` is (the push/fold row): the hero's, or an opponent's (QA-2 item 2). */
+  stack?: 'own' | 'them' | 'others';
 }
 
 /** An all-in move: a bet or raise to the legal maximum, or a call that puts the hero all-in. */
@@ -308,9 +344,12 @@ function allInMove(action: PlayerAction, legal: LegalActions): boolean {
  * - The price rows compare the numbers they show: a fold when `E·R` beats the price in whole
  *   percentages (so `{E}` does too), a call when `{E}` itself is below it (so `E·R` is too); a
  *   fold before anyone raised has no price row (the coach never just calls there, C10).
- *   `{E}` is `eRange` and `{need}` the capped price, as the grade read them. `{E}` counts every
- *   live opponent: when the hint's range number counted only the raiser (§8.10), the row says so.
+ *   `{E}` is the hint's range number and `{need}` the capped price, as the grade read them: when
+ *   that number counted only the raiser and its callers (§8.10), the row says so, as the hint did.
+ * - "Called where raising wins more" (§8.9 value missed): a call that wins chips where the coach
+ *   raises, after the price rows (it pays its price, so they never fit it).
  * - "Bet/raised with Air heads-up" ends "Checking was cheaper": only when checking was possible.
+ * - The push/fold row says whose stack `{S}` is when it is an opponent's (`stack`, §8.4).
  * - The fallback, "The coach's move wins more chips here: {alt}", otherwise.
  */
 export function feedbackRow(x: FeedbackFacts): FeedbackInput {
@@ -320,7 +359,10 @@ export function feedbackRow(x: FeedbackFacts): FeedbackInput {
   const open = unopened(x.street, x.facing);
   if (x.pushFold) {
     const move = allInMove(rec, x.legal) ? 'allin' : rec.type === 'fold' ? 'fold' : null;
-    if (move !== null) return { row: 'pushFold', S: x.S, hand: x.hand, move };
+    if (move !== null) {
+      const stack = x.stack ?? 'own';
+      return { row: 'pushFold', S: x.S, hand: x.hand, move, ...(stack === 'own' ? {} : { stack }) };
+    }
   }
   if (open && (t === 'raise' || t === 'call') && rec.type === 'fold') {
     return { row: 'openLoose', hand: x.hand };
@@ -335,18 +377,14 @@ export function feedbackRow(x: FeedbackFacts): FeedbackInput {
   ) {
     return { row: 'size', tooBig: taken.to > rec.to, to: rec.to, bb: x.bb };
   }
-  const price = {
-    E: x.E,
-    need: x.need,
-    rangeAdjust: x.rangeAdjust,
-    players: x.raiserRange ? x.nOpp : null,
-  };
+  const price = { E: x.E, need: x.need, rangeAdjust: x.rangeAdjust, callers: x.callers };
   if (t === 'fold' && !open && shownPct(x.E * x.R) > shownPct(x.need)) {
     return { row: 'foldedPrice', ...price };
   }
   if (t === 'call' && shownPct(x.E) < shownPct(x.need)) {
     return { row: 'calledPrice', ...price };
   }
+  if (t === 'call' && x.valueMissed) return { row: 'calledValue' };
   if (t === 'check' && (x.bucket === 'strong' || x.bucket === 'monster')) {
     return { row: 'checkedStrong' };
   }
@@ -376,21 +414,34 @@ export function gradeDecision(
   const rec = decision.action;
   const freeFold = taken.type === 'fold' && legal.canCheck;
   const R = callEndsBetting(obs, f.ranges) ? 1 : d.R;
-  const scored = scoreGrade({
+  // The "likely hands" number the hint showed (§8.10's range number: before the flop §8.3's E
+  // against the raiser and its callers, else eRange) and whom it counts. The price signal, the
+  // F.5 rows and the summary read this one number (QA-2 of 6 Nov 2026, item 3: the summary said
+  // "about 61%" where the hint had said 54%, "33%" where it had said "Raiser alone: 56%").
+  const shown = rangeNumber({
+    action: rec,
+    trace: decision.trace,
+    legal,
+    eRange: decision.eRange,
+    nOpp: f.nOpp,
+  });
+  const takenEV = freeFold ? 0 : model.ev(taken);
+  const facts: GradeFacts = {
     legal,
     rec,
     recEV: model.ev(rec),
     alt: decision.confidence === 'close' ? decision.alt : null,
     taken,
     // A fold is worth 0; any other move's EV comes from the hint's model (once per action).
-    takenEV: freeFold ? 0 : model.ev(taken),
+    takenEV,
     pot: f.pot,
     bb: obs.bb,
-    E: f.eRange,
+    E: shown.E,
     R,
     need: f.need,
     bluffReraise: bluffReraise(f, rec, taken),
-  });
+  };
+  const scored = scoreGrade(facts);
   const pushFold = pushFoldApplies(f);
   const leak = leakOf({
     street: f.street,
@@ -417,18 +468,13 @@ export function gradeDecision(
       toCall: f.toCall,
       taken,
       rec,
-      E: f.eRange,
+      E: shown.E,
       R,
       need: f.need,
-      rangeAdjust: showsRangeAdjust(eRandom ?? decision.eRandom, f.eRange, f.need),
-      raiserRange:
-        rangeNumber({
-          action: rec,
-          trace: decision.trace,
-          legal,
-          eRange: decision.eRange,
-          nOpp: f.nOpp,
-        }).callers !== null,
+      rangeAdjust: showsRangeAdjust(eRandom ?? decision.eRandom, shown.E, f.need),
+      callers: shown.callers,
+      valueMissed: valueMissed(facts),
+      stack: pushFoldWhose(obs, f),
     });
     if (row.row !== 'fallback') feedback = feedbackLine(row);
   }
@@ -443,8 +489,25 @@ export function gradeDecision(
     leak,
     trace: recommendationTrace(decision.trace),
     feedback,
-    price: f.toCall > 0 ? { E: f.eRange, R, need: f.need } : null,
+    price:
+      f.toCall > 0
+        ? { E: shown.E, R, need: f.need, callers: shown.callers, players: f.nOpp }
+        : null,
   };
+}
+
+/**
+ * Whose stack §8.4's `S` is, by the rule the hint's PUSH_FOLD uses (§8.4 notes): the hero's, or,
+ * when the hero has more chips than every live opponent, the only opponent's or every
+ * opponent's at most (QA-2 of 6 Nov 2026, item 2).
+ */
+function pushFoldWhose(
+  obs: Pick<Observation, 'stacks' | 'streetBets' | 'seat' | 'bb'>,
+  f: Pick<Features, 'effBB' | 'nOpp'>,
+): 'own' | 'them' | 'others' {
+  const chips = (obs.stacks[obs.seat] as number) + (obs.streetBets[obs.seat] as number);
+  if (Math.round(chips / obs.bb) <= pushFoldStack(f.effBB)) return 'own';
+  return f.nOpp === 1 ? 'them' : 'others';
 }
 
 /** The hint's own lines (§8.10 hint structure 3–5): they show the HUD number, so a grade leaves them out. */

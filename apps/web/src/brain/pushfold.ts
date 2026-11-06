@@ -26,7 +26,9 @@
  * Units in `Reason.data`: equities, `need` and `Pfold` are fractions in [0, 1]; `rankPct`,
  * `pushRank` (the place in the push order), `pushPct` (the threshold) and `V` are percents of the
  * 1,326 combos; `S` is big blinds; `behind` is `k`;
- * `callers` (facing an all-in) is how many callers already in `E` counts besides the shover.
+ * `callers` (facing an all-in) is how many callers already in `E` counts besides the shover;
+ * `short` is `'them'` when `S` is an opponent's stack, not the hero's (the hero has more chips
+ * than every live opponent: the text says whose, QA-2 of 6 Nov 2026, item 2), else absent.
  */
 import { className } from '../core/cards.ts';
 import { COMBOS_TOTAL, comboCount, RANGE_CLASSES } from '../data/rangesLayout.ts';
@@ -114,7 +116,13 @@ export interface UnopenedPushInput {
   canCheck: boolean;
   /** `PreflopStyle.thresholdFactor` (1 for the coach). */
   thresholdFactor: number;
+  /** The effective stack is an opponent's (the hero has more): `data.short` 'them'. */
+  theirs?: boolean;
 }
+
+/** `data.short` when the effective stack is an opponent's (see the header). */
+const shortOf = (theirs: boolean | undefined): Reason['data'] =>
+  theirs === true ? { short: 'them' } : {};
 
 /**
  * Unopened or limped pot, short stack: shove the solver's push set of `(k, S)` (`pushOrderPct ≤`
@@ -147,6 +155,7 @@ export function unopenedPush(input: UnopenedPushInput): PushFoldVerdict {
           pushPct: threshold,
           Pfold: pfold,
           E: eCalled,
+          ...shortOf(input.theirs),
         },
       },
     ],
@@ -165,6 +174,8 @@ export interface ShoveVsRaiseInput {
   finalPot: number;
   /** `PreflopStyle.equityNoise` (0 for the coach). */
   equityNoise: number;
+  /** The effective stack is an opponent's (the hero has more): `data.short` 'them'. */
+  theirs?: boolean;
 }
 
 /** Facing a raise with a short stack: all-in when `EV(shove) > 0`, else fold (§8.4). */
@@ -192,6 +203,7 @@ export function shoveVsRaise(input: ShoveVsRaiseInput): PushFoldVerdict & { ev: 
           Pfold: pfold,
           E: eCalled,
           ev,
+          ...shortOf(input.theirs),
         },
       },
     ],

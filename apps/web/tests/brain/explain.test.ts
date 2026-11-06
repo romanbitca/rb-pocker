@@ -132,7 +132,7 @@ describe('every reason code renders (Appendix F.1)', () => {
     ],
     [
       'ISOLATE',
-      preflop({ facing: 'limpers', action: RAISE_TO(60), trace: [r('ISOLATE')] }),
+      preflop({ facing: 'limpers', nOpp: 3, action: RAISE_TO(60), trace: [r('ISOLATE')] }),
       'Players only called. Raise to 60 (3 BB) to play against fewer players.',
     ],
     [
@@ -315,6 +315,49 @@ describe('every reason code renders (Appendix F.1)', () => {
     ];
     const all = TEMPLATE_KEYS.filter((k) => /^[A-Z_0-9]+$/.test(k) && k !== 'FALLBACK');
     expect([...cases.map(([code]) => code), ...derived].sort()).toEqual([...all].sort());
+  });
+
+  it('QA-2 of 6 Nov 2026: the heads-up isolation and whose short stack (items 7 and 2)', () => {
+    // Heads-up nobody else is left to keep out.
+    const hu = explain(
+      preflop({ facing: 'limpers', nOpp: 1, action: RAISE_TO(60), trace: [r('ISOLATE')] }),
+    );
+    expect(reasonText(hu)).toContain(
+      'They only called. King-Queen suited is strong enough to raise to 60 (3 BB).',
+    );
+    // `S` is an opponent's stack: whose it is, heads-up and against more.
+    const shove = (nOpp: number, action: 'allin' | 'fold'): ExplainInput =>
+      preflop({
+        nOpp,
+        action: action === 'allin' ? RAISE_TO(2000) : { type: 'fold' },
+        trace: [r('PUSH_FOLD', { action, S: 5, Pfold: 0.4, E: 0.45, short: 'them' })],
+      });
+    const said: [ExplainInput, string][] = [
+      [shove(1, 'allin'), 'They have only 5 big blinds: go all-in or fold. They fold about 40%.'],
+      [
+        shove(1, 'fold'),
+        'They have only 5 big blinds: go all-in or fold. They fold only about 40%.',
+      ],
+      [
+        shove(3, 'allin'),
+        'No one else has more than 5 big blinds: go all-in or fold. They fold about 40%.',
+      ],
+      [
+        shove(3, 'fold'),
+        'No one else has more than 5 big blinds: go all-in or fold. They fold only about 40%.',
+      ],
+    ];
+    for (const [spot, sentence] of said) {
+      const e = explain(spot);
+      expect(reasonText(e)).toContain(sentence);
+      expect(checkHint(e, spot)).toEqual([]);
+    }
+    expect(
+      checkHint(
+        hu,
+        preflop({ facing: 'limpers', nOpp: 1, action: RAISE_TO(60), trace: [r('ISOLATE')] }),
+      ),
+    ).toEqual([]);
   });
 
   it('the {detail} of every guardrail (F.1)', () => {
@@ -1584,35 +1627,42 @@ describe('Appendix E spots E9, E13, E16 (Stage 5 acceptance 7)', () => {
 describe('feedback rows (Appendix F.5): the template plumbing', () => {
   const cases: ReadonlyArray<[Parameters<typeof feedbackLine>[0], string]> = [
     [
-      { row: 'foldedPrice', E: 0.4, need: 0.25, rangeAdjust: false, players: null },
+      { row: 'foldedPrice', E: 0.4, need: 0.25, rangeAdjust: false, callers: null },
       'You folded with a 40% win chance. You needed only 25% to call.',
     ],
     [
-      { row: 'foldedPrice', E: 0.4, need: 0.25, rangeAdjust: true, players: null },
+      { row: 'foldedPrice', E: 0.4, need: 0.25, rangeAdjust: true, callers: null },
       'You folded with a 40% win chance against their likely hands. You needed only 25% to call.',
     ],
     [
-      { row: 'calledPrice', E: 0.2, need: 0.25, rangeAdjust: true, players: null },
+      { row: 'calledPrice', E: 0.2, need: 0.25, rangeAdjust: true, callers: null },
       'You called with a 20% win chance against their likely hands. You needed 25%. Calling loses chips over time.',
     ],
     [
-      { row: 'calledPrice', E: 0.2, need: 0.25, rangeAdjust: false, players: null },
+      { row: 'calledPrice', E: 0.2, need: 0.25, rangeAdjust: false, callers: null },
       'You called with a 20% win chance. You needed 25%. Calling loses chips over time.',
     ],
-    // The hint's range number counted only the raiser (§8.10): the row names every player.
+    // The hint's range number counted only the raiser (§8.10): the row says so, as the hint did
+    // (1.3.90, QA-2 item 3; before, the decision's eRange "of all 5 players").
     [
-      { row: 'foldedPrice', E: 0.4, need: 0.25, rangeAdjust: true, players: 5 },
-      'You folded with a 40% win chance against the likely hands of all 5 players. You needed only 25% to call.',
+      { row: 'foldedPrice', E: 0.4, need: 0.25, rangeAdjust: true, callers: 0 },
+      "You folded with a 40% win chance against the raiser's likely hands alone. You needed only 25% to call.",
     ],
     [
-      { row: 'calledPrice', E: 0.2, need: 0.25, rangeAdjust: true, players: 3 },
-      'You called with a 20% win chance against the likely hands of all 3 players. You needed 25%. Calling loses chips over time.',
+      { row: 'calledPrice', E: 0.2, need: 0.25, rangeAdjust: true, callers: 1 },
+      'You called with a 20% win chance against the likely hands of the raiser and 1 caller. You needed 25%. Calling loses chips over time.',
+    ],
+    [
+      { row: 'calledPrice', E: 0.2, need: 0.25, rangeAdjust: true, callers: 2 },
+      'You called with a 20% win chance against the likely hands of the raiser and 2 callers. You needed 25%. Calling loses chips over time.',
     ],
     // Without RANGE_ADJUST's condition the number is the HUD's, unlabelled, whoever counted.
     [
-      { row: 'calledPrice', E: 0.2, need: 0.25, rangeAdjust: false, players: 3 },
+      { row: 'calledPrice', E: 0.2, need: 0.25, rangeAdjust: false, callers: 0 },
       'You called with a 20% win chance. You needed 25%. Calling loses chips over time.',
     ],
+    // §8.9 value missed (QA-2 item 1).
+    [{ row: 'calledValue' }, 'Calling wins chips too, but raising wins more here.'],
     [
       { row: 'checkedStrong' },
       'You checked a very strong hand. Betting wins more from worse hands.',
@@ -1645,6 +1695,15 @@ describe('feedback rows (Appendix F.5): the template plumbing', () => {
     [
       { row: 'pushFold', S: 1, hand: 'Nine-Four offsuit', move: 'fold' },
       'With 1 big blind, Nine-Four offsuit should fold.',
+    ],
+    // The short stack is an opponent's (QA-2 item 2).
+    [
+      { row: 'pushFold', S: 5, hand: 'Queen-Seven suited', move: 'allin', stack: 'them' },
+      'They have only 5 big blinds, so Queen-Seven suited should go all-in.',
+    ],
+    [
+      { row: 'pushFold', S: 1, hand: 'Nine-Four offsuit', move: 'fold', stack: 'others' },
+      'No one else has more than 1 big blind, so Nine-Four offsuit should fold.',
     ],
     [
       { row: 'fallback', alt: { type: 'call' }, legal: FACING, toCall: 40, bb: 20 },

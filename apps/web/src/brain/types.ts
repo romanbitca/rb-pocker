@@ -196,12 +196,21 @@ export interface GradeResult {
    */
   feedback: Line | null;
   /**
-   * The numbers the grade read for the price (§8.9's price signal): `E` = `eRange` (against the
-   * likely hands of every live opponent), the call's realisation `R` and the price `need`; null
-   * with nothing to call. The hand summary shows them (§12.9), so its numbers say what the grade
-   * said, never the HUD's any-cards number alone beside a grade it did not decide (QA-1).
+   * The numbers the grade read for the price (§8.9's price signal): `E`, the "likely hands" number
+   * the hint showed (§8.10's range number: a range code's own `data.E` before the flop, else
+   * `eRange`; QA-2 of 6 Nov 2026, item 3), the call's realisation `R` and the price `need`; and
+   * whom `E` counts: the raiser and `callers` callers already in when that is fewer than the
+   * `players` live opponents (`callers` null: every one, as `eRandom`). Null with nothing to call.
+   * The hand summary shows them (§12.9), so its numbers say what the hint and the grade said,
+   * never the HUD's any-cards number alone beside a grade it did not decide (QA-1).
    */
-  price: { E: number; R: number; need: number } | null;
+  price: {
+    E: number;
+    R: number;
+    need: number;
+    callers: number | null;
+    players: number;
+  } | null;
 }
 
 // --- 5.5 guardrails / EV ---
