@@ -236,6 +236,15 @@ export function initialSlots(cfg: TableConfig, tableSeed: Seed128, heroName: str
 }
 
 /**
+ * A table's id (A.3 `TableState.tableId`): the first 8 hex characters of `deriveSeed(tableSeed,
+ * 'id')`. The controller knows it before the table exists, to commit to its first hand's shuffle
+ * before the deal (§16.3).
+ */
+export function tableIdOf(tableSeed: Seed128): string {
+  return deriveSeed(tableSeed, 'id').slice(0, 8);
+}
+
+/**
  * A new table (§3.1–§3.2, §9.3). `slots` are the players, index = seat (usually
  * `initialSlots(cfg, tableSeed, heroName)`; tests pass their own stacks), and at least two need
  * chips. The first hand's button is drawn from the table seed by `startHand`; until then
@@ -249,7 +258,7 @@ export function createTable(cfg: TableConfig, slots: PlayerSlot[], tableSeed: Se
   return {
     schema: 1,
     engineVersion: ENGINE_VERSION,
-    tableId: deriveSeed(tableSeed, 'id').slice(0, 8),
+    tableId: tableIdOf(tableSeed),
     tableSeed,
     config: copyConfig(cfg),
     slots: slots.map(copySlot),

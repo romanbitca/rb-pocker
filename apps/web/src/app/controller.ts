@@ -55,6 +55,13 @@
  *   `sheet` gate, so the next hand waits for a tap, §12.8) once per hand, when the level of the
  *   hand's latest decision shows one; a late grade can still open it during the hand end.
  *
+ * The provable shuffle (§16.3, chunk 9.4, `app/shuffleCode.ts`): with a hash function (the app's
+ * `crypto.subtle`; none on a plain-http page) every hand's seed is drawn and committed to (its
+ * shuffle code) before the hand is dealt: the next hand's at this table as soon as a hand is dealt,
+ * and the first hand's of the next new table, whose table seed is drawn ahead too. The deal never
+ * waits for the digest. The code goes into the session, the replay record and the hand record;
+ * never to a worker.
+ *
  * One writer at a time (§14.7, chunk 8.3): with a tab lock (`app/tabLock.ts`) the controller boots
  * `pending` and only reads until the lock answers; granted, it reads the storage again and writes;
  * denied or taken, it is read-only: it writes nothing, its game stops and Home shows the §12.11
@@ -72,7 +79,14 @@ import { legalActions } from '../engine/legal.ts';
 import { observe } from '../engine/observe.ts';
 import { startHand } from '../engine/start.ts';
 import { step } from '../engine/step.ts';
-import { createTable, initialSlots, nextTable, topUp, withLevels } from '../engine/table.ts';
+import {
+  createTable,
+  initialSlots,
+  nextTable,
+  tableIdOf,
+  topUp,
+  withLevels,
+} from '../engine/table.ts';
 import {
   ENGINE_VERSION,
   type BotLevel,
@@ -125,6 +139,7 @@ import {
   type GradeOutcome,
 } from './grading.ts';
 import { addHand, addStoredHand, initialReview, type ReviewHand } from './review.ts';
+import { startShuffleCode, type Sha256, type ShuffleCode } from './shuffleCode.ts';
 import { handEndViewOf, labelVisible, seatLevelOf } from './tableViews.ts';
 import type { DataCommand, DataCommands, DataHost, ShareEnv } from './dataTools.ts';
 import type { InstallEnv } from './lifecycle.ts';
@@ -401,6 +416,12 @@ export interface ControllerOptions {
    * tip). Without it (tests) there is no Install tile and no install card.
    */
   install?: InstallEnv | null;
+  /**
+   * The provable shuffle's hash (§16.3, chunk 9.4): the app passes `pageSha256()`, null where
+   * `crypto.subtle` is missing (plain http, §12.14). Without it (tests) the seeds are drawn at the
+   * deal as before and every hand's `commit` is null.
+   */
+  sha256?: Sha256 | null;
 }
 
 /** The parts of `navigator.storage` used to keep the data (§14.8). */
@@ -669,6 +690,14 @@ export class TableController {
   private readonly tips: boolean;
   /** The tips seen, without storage (with it they are the profile's `flags.tips`). */
   private memoryTips: Readonly<Record<string, boolean>> = {};
+  /** §16.3: hashes the shuffle codes; null: no codes (`commit: null` everywhere). */
+  private readonly sha256: Sha256 | null;
+  /** §16.3: the seeds of the hands that may be dealt next, each committed to before its deal. */
+  private readonly codes = new Map<string, ShuffleCode>();
+  /** §16.3: the next new table's seed (and id), drawn ahead so its first hand is committed too. */
+  private tableAhead: { seed: Seed128; id: string } | null = null;
+  /** The current hand's shuffle code (also the finished hand's until the next deal). */
+  private code: ShuffleCode | null = null;
   private readonly events: ControllerEvent[] = [];
   private readonly errors: ControllerEvent[] = [];
   private readonly brainEvents: ControllerEvent[] = [];
@@ -699,6 +728,7 @@ export class TableController {
     this.install?.listen(() => {
       if (!this.disposed) this.publish();
     });
+    this.sha256 = options.sha256 ?? null;
     this.unsubscribe = this.store.subscribe((s, prev) => {
       if (s.ui.nav !== prev.ui.nav) this.onNav(s.ui, prev.ui);
       if (s.ui.gates !== prev.ui.gates) this.onGates();
@@ -1172,16 +1202,21 @@ export class TableController {
     this.bumpEpoch();
     const levelled = this.withSettingsLevels(table);
     // §14.3 handSeq rule: global across tables, and above every hand the profile has counted.
-    const floor = Math.max(this.handSeqFloor, (this.profile?.lastCommittedHandSeq ?? 0) + 1);
-    const t = levelled.nextHandSeq < floor ? { ...levelled, nextHandSeq: floor } : levelled;
+    const seq = this.handSeqAt(levelled.nextHandSeq);
+    const t = levelled.nextHandSeq < seq ? { ...levelled, nextHandSeq: seq } : levelled;
+    // §16.3: the seed committed to before this deal (prepared when the previous hand was dealt,
+    // or at boot); one drawn now only when nothing foresaw this hand.
+    const code = this.codeFor(t.tableId, seq);
     let hand: HandState;
     try {
-      hand = startHand(t, this.seeds.handSeed(t.nextHandSeq));
+      hand = startHand(t, code?.seed ?? this.seeds.handSeed(seq));
     } catch (e) {
       this.error('cannot deal', e);
       this.mode = 'idle';
       return;
     }
+    this.codes.clear();
+    this.code = code;
     this.table = t;
     this.hand = hand;
     this.next = null;
@@ -1198,6 +1233,8 @@ export class TableController {
       button: hand.button,
       seats: hand.seats.length,
       levels: levelsOf(t).slice(1), // the levels in force, per bot seat (§10, §14.4)
+      // §16.3: 'ready' = the shuffle code was computed before this deal; 'late' = not yet.
+      shuffleCode: code === null ? 'off' : code.commit === null ? 'late' : 'ready',
     });
     this.saveSession();
     if (this.newcomers.length > 0) {
@@ -1279,6 +1316,7 @@ export class TableController {
       coachLevel: this.latched ?? this.settings().coachLevel,
       allIn: this.store.getState().equity.allIn,
       at: now.toISOString(),
+      commit: this.commitOf(h),
     });
     if (record === null) {
       if (session !== null) saveSession(storage, session);
@@ -1336,6 +1374,7 @@ export class TableController {
       at: this.now().toISOString(),
       record: this.record(h),
       heroHole: h.seats[HERO]?.hole ?? null,
+      board: [...h.board],
       end,
     };
     this.store.setState((s) => ({ review: addHand(s.review, hand) }));
@@ -2229,6 +2268,7 @@ export class TableController {
       this.inputs = [...session.handInputs];
       this.meta = session.meta;
       this.undoSnapshot = session.undoSnapshot;
+      this.code = this.resumedCode(t.tableId, h, session.commit ?? null);
       this.resumeDecision();
       // A hint opened before the page went is open again on that decision (§14.5).
       if (isHeroTurn(h) && this.meta.hintShown[heroDecisionsTaken(h)] === true) {
@@ -2267,6 +2307,7 @@ export class TableController {
       undoSnapshot: withHand ? this.undoSnapshot : null,
       seatStats: statsBySeat(this.seatStats, table),
       resumeAfterUpdate: false,
+      ...(withHand && this.hand !== null && { commit: this.commitOf(this.hand) }),
     };
   }
 
@@ -2738,7 +2779,9 @@ export class TableController {
       seatLevels,
     };
     try {
-      const tableSeed = this.seeds.tableSeed();
+      // §16.3: the seed drawn ahead (its first hand is committed to already), else a new one.
+      const tableSeed = this.tableAhead?.seed ?? this.seeds.tableSeed();
+      this.tableAhead = null;
       return createTable(cfg, initialSlots(cfg, tableSeed, this.heroName), tableSeed);
     } catch (e) {
       this.refused(e, null);
@@ -2832,10 +2875,58 @@ export class TableController {
     return {
       engineVersion: h.engineVersion,
       seed: h.seed,
-      commit: null,
+      commit: this.commitOf(h),
       table: this.table as TableState,
       inputs: [...this.inputs],
     };
+  }
+
+  /** §14.3 handSeq rule: the handSeq of the next hand dealt from a table at `nextHandSeq`. */
+  private handSeqAt(nextHandSeq: number): number {
+    return Math.max(nextHandSeq, this.handSeqFloor, (this.profile?.lastCommittedHandSeq ?? 0) + 1);
+  }
+
+  /**
+   * §16.3: the code of the hand (tableId, handSeq), its seed drawn and its digest started on the
+   * first ask (null without a hash function). Kept until the next deal.
+   */
+  private codeFor(tableId: string, handSeq: number): ShuffleCode | null {
+    const sha256 = this.sha256;
+    if (sha256 === null) return null;
+    const key = `${tableId}:${handSeq}`;
+    let code = this.codes.get(key);
+    if (code === undefined) {
+      code = startShuffleCode(sha256, this.seeds.handSeed(handSeq), tableId, handSeq);
+      this.codes.set(key, code);
+    }
+    return code;
+  }
+
+  /**
+   * §16.3, off the deal's path (every `publish`; a no-op once done): the next hand's code at this
+   * table, and the first hand's at the next new table, whose table seed is drawn ahead for it.
+   */
+  private prepareCodes(): void {
+    if (this.sha256 === null) return;
+    const table = this.next ?? this.table;
+    if (table !== null) this.codeFor(table.tableId, this.handSeqAt(table.nextHandSeq));
+    if (this.tableAhead === null) {
+      const seed = this.seeds.tableSeed();
+      this.tableAhead = { seed, id: tableIdOf(seed) };
+    }
+    this.codeFor(this.tableAhead.id, this.handSeqAt(1));
+  }
+
+  /** A resumed hand's code: the session's, else computed again from its seed (§16.3). */
+  private resumedCode(tableId: string, h: HandState, commit: string | null): ShuffleCode | null {
+    if (commit !== null) return { handSeq: h.handSeq, seed: h.seed, commit };
+    return this.sha256 === null ? null : startShuffleCode(this.sha256, h.seed, tableId, h.handSeq);
+  }
+
+  /** The shuffle code of `h` (§16.3), or null (none, or its digest has not answered). */
+  private commitOf(h: HandState): string | null {
+    const code = this.code;
+    return code !== null && code.handSeq === h.handSeq && code.seed === h.seed ? code.commit : null;
   }
 
   private legalOf(h: HandState): LegalActions | null {
@@ -2845,6 +2936,7 @@ export class TableController {
 
   /** Writes the `game` slice when something in it changed; the equity jobs follow the hand. */
   private publish(): void {
+    this.prepareCodes();
     this.latchLevel();
     const hand = this.hand;
     const legal = this.mode === 'heroTurn' && hand !== null ? this.legalOf(hand) : null;

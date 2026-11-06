@@ -157,6 +157,7 @@ function makeTemplates(): { records: HandRecord[]; middle: SessionState } {
       coachLevel: k % 2 === 0 ? 'intermediate' : 'advanced',
       allIn: null,
       at: new Date(START).toISOString(),
+      commit: null,
     });
     if (record === null) throw new Error(`template ${k}: no record`);
     records.push(record);

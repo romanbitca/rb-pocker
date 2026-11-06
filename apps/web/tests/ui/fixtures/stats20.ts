@@ -640,6 +640,7 @@ export function recordOf(script: Script, handSeq: number): HandRecord {
     coachLevel: script.coach,
     allIn,
     at: script.at,
+    commit: null,
   });
   if (record === null) throw new Error(`hand ${handSeq}: no record`);
   return record;

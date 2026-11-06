@@ -3,7 +3,13 @@
    - wide: the same beside a column of recent hands;
    - landscape: the table, and a 280 px column with what happened and the controls.
    Unlike the Table it may scroll, so large text and 200% zoom never clip. Tap targets: 44 px or
-   more, 8 px apart. */
+   more, 8 px apart. The shuffle row (§16.3) comes after the grid, so it never takes height from
+   the table. */
+
+.page {
+  background: var(--bg);
+  color: var(--text);
+}
 
 .review {
   --hero-strip: 112px;
@@ -390,4 +396,116 @@
   font-weight: 700;
   font-variant-numeric: tabular-nums;
   text-align: right;
+}
+
+/* ---- "Check the shuffle" (§16.3): the codes, the check and its answer, under the replay ---- */
+
+.shuffle {
+  display: grid;
+  gap: var(--space-2);
+  width: 100%;
+  max-width: 560px;
+  margin: 0 auto;
+  padding: var(--space-4) max(var(--space-4), env(safe-area-inset-right))
+    max(var(--space-5), env(safe-area-inset-bottom)) max(var(--space-4), env(safe-area-inset-left));
+  border-top: 1px solid rgb(242 245 243 / 10%);
+}
+/* Wide: centred under the replay column (the list column's width is the grid's, above). */
+.page[data-layout='wide'] .shuffle {
+  margin-right: 0;
+  margin-left: max(0px, calc((100% - clamp(260px, 24vw, 320px) - 560px) / 2));
+}
+
+.codes {
+  display: grid;
+  gap: var(--space-1);
+  margin: 0;
+}
+.codes div {
+  display: grid;
+  grid-template-columns: 7.5em minmax(0, 1fr);
+  gap: var(--space-2);
+}
+.codes dt {
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+.codes dd {
+  margin: 0;
+}
+
+/* 64 and 32 hex digits: they wrap anywhere rather than scroll the page sideways. */
+.hex {
+  font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.check {
+  justify-self: start;
+  min-width: var(--tap-min);
+  min-height: var(--tap-min);
+  padding: 0 var(--space-4);
+  border: 1px solid var(--control-border);
+  border-radius: var(--radius-2);
+  background: var(--control-bg);
+  color: var(--text);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+.check:active {
+  background: var(--control-bg-pressed);
+}
+.check:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* ✓ or ✗ as a drawn mark (never a glyph, §12.12), with the words beside it. */
+.verdict {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font-weight: 600;
+}
+.verdict:empty {
+  display: none;
+}
+.verdict[data-good]::before {
+  content: '';
+  flex: none;
+  width: 18px;
+  height: 18px;
+  background-color: var(--grade-best);
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='none' stroke='black' stroke-width='3.2' stroke-linecap='round' stroke-linejoin='round' d='m4.5 12.5 5 5 10-11'/%3E%3C/svg%3E")
+    center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='none' stroke='black' stroke-width='3.2' stroke-linecap='round' stroke-linejoin='round' d='m4.5 12.5 5 5 10-11'/%3E%3C/svg%3E")
+    center / contain no-repeat;
+}
+.verdict[data-good='false']::before {
+  background-color: var(--grade-big-mistake);
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='none' stroke='black' stroke-width='3.2' stroke-linecap='round' d='M6 6l12 12M18 6 6 18'/%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='none' stroke='black' stroke-width='3.2' stroke-linecap='round' d='M6 6l12 12M18 6 6 18'/%3E%3C/svg%3E");
+}
+
+.deckTitle {
+  margin: var(--space-1) 0 0;
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+
+/* The 52 cards in dealing order, small (24 × 34), wrapping. */
+.deck {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.deck li {
+  display: flex;
 }

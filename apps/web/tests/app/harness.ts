@@ -33,6 +33,7 @@ import {
   type GameSettings,
 } from '../../src/app/store.ts';
 import type { Grader } from '../../src/app/grading.ts';
+import type { Sha256 } from '../../src/app/shuffleCode.ts';
 import { fixedSeeds } from '../../src/app/testHooks.ts';
 import {
   createBrainClient,
@@ -89,6 +90,8 @@ export interface HarnessOptions {
   standalone?: boolean;
   /** Chunk 8.4: installing (§12.13): the browser's offer, iOS and the secure context. */
   install?: InstallEnv;
+  /** Chunk 9.4: the provable shuffle's hash (default none: every `commit` is null). */
+  sha256?: Sha256;
 }
 
 export function makeHarness(options: HarnessOptions = {}): Harness {
@@ -116,6 +119,7 @@ export function makeHarness(options: HarnessOptions = {}): Harness {
     ...(options.storageManager !== undefined && { storageManager: options.storageManager }),
     ...(options.standalone !== undefined && { standalone: options.standalone }),
     ...(options.install !== undefined && { install: options.install }),
+    ...(options.sha256 !== undefined && { sha256: options.sha256 }),
   });
   controller.boot();
   return {

@@ -13,19 +13,34 @@
  *   tests/ui/screens/Review.leak.test.tsx checks both).
  * - Phones show either the list or one replay ("All hands" switches); wide screens show the list
  *   beside the replay. Back leaves the screen (Android Back too), whichever it shows.
- * - Stage 9 (§16.3) adds the "Check the shuffle" row at the end of the replay column; Stage 6.1
- *   adds a hero decision's grade, win chance and the coach's move to its step.
+ * - Under the controls, "Check the shuffle" (§16.3, chunk 9.4): the hand's shuffle code and seed;
+ *   the check deals the hand again from the seed and says ✓ or ✗ (drawn marks, never glyphs),
+ *   and only then shows the whole deck, folded and unseen cards included.
+ * - Stage 6.1 adds a hero decision's grade, win chance and the coach's move to its step.
  */
-import { memo, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react';
 import {
   buildReview,
+  loadShuffleCheck,
   selectReviewHand,
   selectReviewList,
+  shuffleRowOf,
   useAppStore,
   useDispatch,
   type ReviewListItem,
   type ReviewReplay,
   type ReviewSummary,
+  type ShuffleCheck,
+  type ShuffleRow,
 } from '../../app/store.ts';
 import { en } from '../../i18n/en.ts';
 import { enReview } from '../../i18n/review.ts';
@@ -136,6 +151,89 @@ function StepButton({ label, off, onClick, children }: StepButtonProps) {
     >
       {children}
     </button>
+  );
+}
+
+// ---------------------------------------------------------------------------------------------
+// "Check the shuffle" (§16.3)
+
+/** The row's data and its check, made by the screen from the hand (the seed stays out of view). */
+interface ShuffleProps {
+  row: ShuffleRow;
+  check: () => Promise<ShuffleCheck>;
+}
+
+const SHUFFLE_SAYS: Record<Exclude<ShuffleCheck['status'], 'ok'>, string> = {
+  code: enReview.shuffle.badCode,
+  cards: enReview.shuffle.badCards,
+  broken: enReview.shuffle.broken,
+  none: enReview.shuffle.none,
+  insecure: enReview.shuffle.insecure,
+};
+
+/**
+ * The shuffle code and the seed, "Check the shuffle", and its answer: ✓ with the deck the hand was
+ * dealt from, or ✗ and why. On a plain-http page, or for a hand without a code, one line says so.
+ */
+function Shuffle({ row, check }: ShuffleProps) {
+  const T = enReview.shuffle;
+  const deckId = useId();
+  const [result, setResult] = useState<ShuffleCheck | null>(null);
+  if (row.kind !== 'code') {
+    return (
+      <section className={styles.shuffle} aria-label={T.title} data-shuffle={row.kind}>
+        <p className={styles.hint}>{row.kind === 'insecure' ? T.insecure : T.none}</p>
+      </section>
+    );
+  }
+  const run = (): void => {
+    void check().then(setResult);
+  };
+  const ok = result?.status === 'ok' ? result : null;
+  const says = result === null ? '' : result.status === 'ok' ? T.ok : SHUFFLE_SAYS[result.status];
+  return (
+    <section
+      className={styles.shuffle}
+      aria-label={T.title}
+      data-shuffle={result?.status ?? 'code'}
+    >
+      <dl className={styles.codes}>
+        <div>
+          <dt>{T.code}</dt>
+          <dd className={styles.hex}>{row.commit}</dd>
+        </div>
+        <div>
+          <dt>{T.seed}</dt>
+          <dd className={styles.hex}>{row.seed}</dd>
+        </div>
+      </dl>
+      <p className={styles.hint}>{T.saved}</p>
+      <button type="button" className={styles.check} onClick={run}>
+        {T.check}
+      </button>
+      <p
+        className={styles.verdict}
+        data-good={result === null ? undefined : String(ok !== null)}
+        aria-live="polite"
+      >
+        {says}
+      </p>
+      {ok !== null && (
+        <>
+          <p id={deckId} className={styles.deckTitle}>
+            {T.deck}
+          </p>
+          <ol className={styles.deck} aria-labelledby={deckId}>
+            {ok.deck.map((card) => (
+              <li key={card}>
+                <Card card={card} size="sm" />
+              </li>
+            ))}
+          </ol>
+          {ok.reshuffled && <p className={styles.hint}>{T.reshuffled}</p>}
+        </>
+      )}
+    </section>
   );
 }
 
@@ -262,7 +360,6 @@ function Replay({ view, layout }: { view: ReviewReplay; layout: TableLayout }) {
           </StepButton>
         </div>
       </div>
-      {/* Stage 9 (§16.3): the "Check the shuffle" row goes here, under the controls. */}
     </>
   );
 }
@@ -293,6 +390,22 @@ export function ReviewRoute() {
   const items = useAppStore(selectReviewList);
   const hand = useAppStore(selectReviewHand);
   const view = useMemo(() => (hand === null ? null : buildReview(hand)), [hand]);
+  // §16.3: the shuffle row's data. The check is a lazy chunk, loaded when asked for; when it
+  // cannot load (offline and not cached) the row says the hand cannot be checked.
+  const shuffle = useMemo<ShuffleProps | null>(
+    () =>
+      hand === null
+        ? null
+        : {
+            row: shuffleRowOf(hand),
+            check: () =>
+              loadShuffleCheck().then(
+                (m) => m.checkShuffle(m.shuffleInputOf(hand)),
+                (): ShuffleCheck => ({ status: 'broken' }),
+              ),
+          },
+    [hand],
+  );
   const open = useCallback(
     (handSeq: number | null) => dispatch({ type: 'review', handSeq }),
     [dispatch],
@@ -315,36 +428,39 @@ export function ReviewRoute() {
   const title = view === null ? enReview.listTitle : enReview.title(formatChips(view.handNumber));
   const replay = view?.replayable === true ? view : null;
   const showList = wide ? items.length > 0 : view === null && items.length > 0;
+  // The replay fills the screen as one grid; the shuffle row comes after it, below the fold on a
+  // phone, so it never takes height from the table.
   return (
-    <main
-      className={cx(styles.review, styles[layout], replay === null && styles.plain)}
-      data-layout={layout}
-      data-review={REVIEW_MARKER}
-    >
-      <header className={styles.top}>
-        <button type="button" className={cx(screen.back, styles.back)} onClick={back}>
-          <ChevronLeftIcon />
-          <span>{en.back}</span>
-        </button>
-        <h1 ref={heading} tabIndex={-1} className={styles.title}>
-          {title}
-        </h1>
-        {view !== null && !wide ? (
-          <button type="button" className={styles.allHands} onClick={() => open(null)}>
-            {enReview.allHands}
+    <main className={styles.page} data-layout={layout} data-review={REVIEW_MARKER}>
+      <div className={cx(styles.review, styles[layout], replay === null && styles.plain)}>
+        <header className={styles.top}>
+          <button type="button" className={cx(screen.back, styles.back)} onClick={back}>
+            <ChevronLeftIcon />
+            <span>{en.back}</span>
           </button>
-        ) : (
-          <span aria-hidden="true" />
+          <h1 ref={heading} tabIndex={-1} className={styles.title}>
+            {title}
+          </h1>
+          {view !== null && !wide ? (
+            <button type="button" className={styles.allHands} onClick={() => open(null)}>
+              {enReview.allHands}
+            </button>
+          ) : (
+            <span aria-hidden="true" />
+          )}
+        </header>
+        {replay !== null && <Replay key={replay.handSeq} view={replay} layout={layout} />}
+        {view !== null && !view.replayable && <SummaryOnly view={view} />}
+        {items.length === 0 && <Empty onBack={back} />}
+        {showList && (
+          <section className={styles.listSlot} aria-label={enReview.listTitle}>
+            {wide && <h2 className={styles.listTitle}>{enReview.listTitle}</h2>}
+            <HandList items={items} current={view?.handSeq ?? null} onOpen={open} />
+          </section>
         )}
-      </header>
-      {replay !== null && <Replay key={replay.handSeq} view={replay} layout={layout} />}
-      {view !== null && !view.replayable && <SummaryOnly view={view} />}
-      {items.length === 0 && <Empty onBack={back} />}
-      {showList && (
-        <section className={styles.listSlot} aria-label={enReview.listTitle}>
-          {wide && <h2 className={styles.listTitle}>{enReview.listTitle}</h2>}
-          <HandList items={items} current={view?.handSeq ?? null} onOpen={open} />
-        </section>
+      </div>
+      {replay !== null && shuffle !== null && (
+        <Shuffle key={replay.handSeq} row={shuffle.row} check={shuffle.check} />
       )}
     </main>
   );

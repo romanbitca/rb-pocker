@@ -75,6 +75,7 @@ export function keep(final: HandState, record: ReplayRecord, handSeq = final.han
     at: '2026-10-09T00:00:00.000Z',
     record,
     heroHole: final.seats[0]?.hole ?? null,
+    board: [...final.board],
     end,
   };
 }

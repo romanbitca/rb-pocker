@@ -26,6 +26,8 @@ export interface ReviewHand {
   record: ReplayRecord;
   /** The hero's own hole cards (null when the hero was not dealt in). */
   heroHole: [Card, Card] | null;
+  /** The board as the hand ended (A.7 `HandRecord.board`): "Check the shuffle" compares it (§16.3). */
+  board: Card[];
   /** The result as the hand-end banner shows it (§12.9); `shown` holds only hands that were shown. */
   end: HandEndView;
 }
