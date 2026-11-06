@@ -558,6 +558,36 @@ function readBadge(): { text: string; width: number; room: number; inside: boole
   };
 }
 
+/**
+ * Waits (the clock paused at the hero's turn) until nothing more is on its way that would write the
+ * equity slice back: the equity jobs are done (the win chance, final, and the hand analysis, a
+ * second job of the same worker) and every decision of the hand has its grade. A grade that comes
+ * late makes the controller publish, and each publish writes the jobs' own estimate over the one a
+ * spec wrote (`EquityJobs.write`): a final 100% between two written numbers, so the badge kept
+ * "~100%" for a provisional 99.7% (its hysteresis, §7.6). Worker replies: the 15 s of the wait for
+ * the first number.
+ */
+async function quiet(page: Page): Promise<void> {
+  await expect
+    .poll(
+      () =>
+        page.evaluate(() => {
+          const s = window.__pc?.state();
+          const hand = s?.game.hand;
+          if (s === undefined || hand === null || hand === undefined) return 'no hand';
+          const acts = hand.log.filter((e) => e.e === 'act' && e.seat === 0).length;
+          if (s.equity['status'] !== 'done' || s.equity.result?.final !== true) {
+            return 'the win chance';
+          }
+          if (s.equity['analysis'] === null) return 'the hand analysis';
+          if (s.game.decisions.length < acts) return 'a grade';
+          return 'quiet';
+        }),
+      { timeout: 15_000 },
+    )
+    .toBe('quiet');
+}
+
 test.describe('the win badge holds every number (1.3.91)', () => {
   // eslint-disable-next-line no-empty-pattern -- Playwright reads the fixtures from this pattern
   test.beforeEach(({}, testInfo) => {
@@ -578,6 +608,7 @@ test.describe('the win badge holds every number (1.3.91)', () => {
         () => document.querySelector('[data-win-badge]')?.firstElementChild?.textContent ?? null,
       );
     await expect.poll(shown, { timeout: 15_000 }).toBe('100%');
+    await quiet(page);
     // The other long numbers, written into the equity slice as the equity jobs would: a final one
     // shows as it is, a provisional one within a point of the one on show keeps it, with "~" (§7.6).
     const NUMBERS: [number, boolean, string][] = [
@@ -602,7 +633,7 @@ test.describe('the win badge holds every number (1.3.91)', () => {
             },
             { equity, final },
           );
-          await expect.poll(shown).toBe(number);
+          await expect.poll(shown, { message: `${where}, ${text} text` }).toBe(number);
           const badge = await page.evaluate(readBadge);
           if (badge === null) throw new Error('no badge');
           expect(
