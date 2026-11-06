@@ -32,7 +32,8 @@ describe('Board (PLAN §12.3)', () => {
       <Board
         cards={[
           { card: card('Ah'), highlight: 'core' },
-          { card: card('2c'), highlight: 'off' },
+          { card: card('Kd'), highlight: 'kicker' },
+          { card: card('2c') },
         ]}
         card={{ w: 37, h: 52 }}
         place={{ x: 72, y: 173, w: 201, h: 52 }}
@@ -42,9 +43,45 @@ describe('Board (PLAN §12.3)', () => {
     expect(board.style.getPropertyValue('--board-card-w')).toBe('37px');
     expect(board.style.getPropertyValue('--board-card-h')).toBe('52px');
     expect([board.style.left, board.style.top]).toEqual(['72px', '173px']);
-    const [a, b] = screen.getAllByRole('img');
+    const [a, b, c] = screen.getAllByRole('img');
     expect(a?.className).toMatch(/core/);
-    expect(b?.className).toMatch(/off/);
+    expect(b?.className).toMatch(/kicker/);
+    // Out of the best five: no mark, no fade (1.3.97).
+    expect(c?.className).not.toMatch(/core|kicker|off|dim/);
+    // The gold edge has words for screen readers (§12.12).
+    expect(screen.getAllByRole('img').map((x) => x.getAttribute('aria-label'))).toEqual([
+      'Ace of hearts, part of your hand',
+      'King of diamonds, part of your hand',
+      'Two of clubs',
+    ]);
+    // Only the Table's board is the gold edge tip's anchor (§12.11): not this one.
+    expect(board.hasAttribute('data-tip-anchor')).toBe(false);
+  });
+
+  it('names a winner’s five after a showdown, and anchors the gold edge tip on the Table', () => {
+    render(
+      <Board
+        cards={[
+          { card: card('6h'), highlight: 'core', winning: true },
+          { card: card('8h') },
+          { card: card('4s') },
+          { card: card('Js'), highlight: 'kicker', winning: true },
+          { card: card('Ad'), highlight: 'kicker', winning: true },
+        ]}
+        card={{ w: 37, h: 52 }}
+        tipSide="below"
+      />,
+    );
+    const board = screen.getByRole('group');
+    expect(board.getAttribute('data-tip-anchor')).toBe('bestFive');
+    expect(board.getAttribute('data-tip-side')).toBe('below');
+    expect(screen.getAllByRole('img').map((x) => x.getAttribute('aria-label'))).toEqual([
+      'Six of hearts, part of the winning hand',
+      'Eight of hearts',
+      'Four of spades',
+      'Jack of spades, part of the winning hand',
+      'Ace of diamonds, part of the winning hand',
+    ]);
   });
 });
 

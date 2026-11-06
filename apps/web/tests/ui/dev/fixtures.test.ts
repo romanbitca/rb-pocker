@@ -21,14 +21,15 @@ suite('dev preview fixtures', () => {
     }).toEqual(SAMPLE.flop);
   });
 
-  it('highlight the board like §6.1: core raised, kickers outlined, the rest dimmed', () => {
+  it('highlight the board like §6.1: the five with the gold edge, core raised, the rest plain', () => {
     expect(previewBoard('river').map((c) => c.highlight)).toEqual([
       'kicker', // Qh
       'kicker', // 7h
-      'off', // 2h
+      undefined, // 2h: out of the five, no mark and no fade (1.3.97)
       'core', // Kd
-      'off', // 4s
+      undefined, // 4s
     ]);
+    expect(previewBoard('river')[2]).toEqual({ card: SAMPLE.board[2] });
     expect(previewBoard('preflop')).toEqual([]);
   });
 

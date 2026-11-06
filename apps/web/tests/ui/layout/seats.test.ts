@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
   BET,
+  BOARD_TIP_ROOM,
   boardCardSize,
+  boardTipSide,
   ellipseSeats,
   layoutFor,
   POD,
@@ -299,5 +301,34 @@ describe('bets (§12.4)', () => {
       y: Math.round(cy - BET.h / 2),
       ...BET,
     });
+  });
+});
+
+describe('boardTipSide (§12.11, 1.3.97: the gold edge tip)', () => {
+  it('under the board when the bubble fits above the hero’s cards, else above the board', () => {
+    for (const viewport of [...TARGETS, ...EXTRA]) {
+      const frame = tableFrame(viewport);
+      for (let opponents = 1; opponents <= 8; opponents++) {
+        const g = tableGeometry(frame.layout, frame.box, opponents);
+        const what = `${name(viewport)}, ${opponents} bots`;
+        if (boardTipSide(g) === 'below') {
+          // The bubble and its gap end above the hero's cards.
+          expect(g.board.y + g.board.h + BOARD_TIP_ROOM, what).toBeLessThanOrEqual(g.hero.y);
+        } else {
+          // Above the board there is room for it inside the window (the top bar may be covered).
+          expect(frame.box.y + g.board.y - BOARD_TIP_ROOM, what).toBeGreaterThanOrEqual(8);
+        }
+      }
+    }
+    // The tips spec's sizes see both sides: below in portrait and on wide screens, above on a
+    // phone on its side, where a bubble under the board covered the top of the hero's cards.
+    const sideAt = (viewport: Size): string => {
+      const frame = tableFrame(viewport);
+      return boardTipSide(tableGeometry(frame.layout, frame.box, 2));
+    };
+    expect(sideAt({ w: 375, h: 667 })).toBe('below');
+    expect(sideAt({ w: 390, h: 844 })).toBe('below');
+    expect(sideAt({ w: 1280, h: 800 })).toBe('below');
+    expect(sideAt({ w: 844, h: 390 })).toBe('above');
   });
 });

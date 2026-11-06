@@ -10,7 +10,7 @@ import {
   suitOf,
 } from '../../../src/core/cards.ts';
 import { en } from '../../../src/i18n/en.ts';
-import { Card, type CardSize } from '../../../src/ui/components/Card.tsx';
+import { Card, cardViewLabel, type CardSize } from '../../../src/ui/components/Card.tsx';
 import { SUIT_SYMBOLS } from '../../../src/ui/components/SvgSprite.tsx';
 import { card } from '../../helpers/cards.ts';
 
@@ -110,7 +110,7 @@ describe('Card (PLAN §13.4)', () => {
       <>
         <Card card={card('Ah')} size="board" highlight="core" />
         <Card card={card('Kh')} size="board" highlight="kicker" />
-        <Card card={card('2c')} size="board" highlight="off" />
+        <Card card={card('2c')} size="board" />
         <Card card={card('Qs')} size="sm" dim />
         <Card card={card('Js')} size="sm" used />
       </>,
@@ -118,8 +118,43 @@ describe('Card (PLAN §13.4)', () => {
     const classes = [...container.querySelectorAll('[role="img"]')].map((e) => e.className);
     expect(classes[0]).toMatch(/core/);
     expect(classes[1]).toMatch(/kicker/);
-    expect(classes[2]).toMatch(/off/);
+    // A card outside the best five carries no mark at all (1.3.97: no fade on the Table).
+    expect(classes[2]).not.toMatch(/core|kicker|off|dim|used/);
     expect(classes[3]).toMatch(/dim/);
     expect(classes[4]).toMatch(/used/);
+  });
+
+  it('gives all five cards of the best hand one gold edge, raises the category, fades none', () => {
+    // [selector, declarations] of every rule (comments out; rules inside @media too).
+    const rules = [
+      ...CARD_CSS.replace(/\/\*[\s\S]*?\*\//g, '').matchAll(/([^{}]+)\{([^{}]*)\}/g),
+    ].map((m) => [(m[1] ?? '').trim().replace(/\s+/g, ' '), m[2] ?? ''] as const);
+    const body = (selector: string): string =>
+      rules.find(([s]) => s === selector)?.[1].replace(/\s+/g, ' ') ?? '';
+    // One edge for core and kicker alike (§6.1), so the five read as one group at a glance.
+    expect(body('.core, .kicker')).toContain('outline: 3px solid var(--accent);');
+    expect(rules.filter(([s]) => /\b(core|kicker)\b/.test(s)).map(([s]) => s)).toEqual([
+      '.core, .kicker',
+      '.core',
+    ]);
+    expect(body('.core')).toContain('transform: translateY(-6px);');
+    expect(body('.core')).not.toContain('outline');
+    // The only fade left is `dim`, the rankings examples' and lessons' style (§13.2), never the
+    // Table's: the old 60% "off" class made cards out of the five look inactive (the owner).
+    const faded = rules.filter(([, b]) => /(^|[\s;])opacity:/.test(b)).map(([s]) => s);
+    expect(faded).toEqual(['.dim']);
+  });
+
+  it('names a Table card with the gold edge for screen readers (§12.12)', () => {
+    expect(cardViewLabel({ card: card('Kh') })).toBeUndefined();
+    expect(cardViewLabel({ card: null })).toBeUndefined();
+    expect(cardViewLabel({ card: card('Kh'), highlight: 'kicker' })).toBe(
+      'King of hearts, part of your hand',
+    );
+    expect(cardViewLabel({ card: card('6d'), highlight: 'core', winning: true })).toBe(
+      'Six of diamonds, part of the winning hand',
+    );
+    render(<Card card={card('Kh')} size="board" highlight="core" label={en.cards.yourHand('X')} />);
+    expect(screen.getByRole('img').getAttribute('aria-label')).toBe('X, part of your hand');
   });
 });
