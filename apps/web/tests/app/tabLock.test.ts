@@ -173,8 +173,16 @@ describe('without Web Locks: the rev check and the storage event (§14.7)', () =
     // "Play here": A writes again at once (the controller then writes the profile, and B hears it).
     a.lock.takeOver();
     expect(a.events).toEqual(['granted', 'lost', 'changed', 'granted']);
+    // B saves one more step of its hand before it hears A's claim: A keeps the game (else both
+    // tabs end read-only); only B's profile writes count for A now.
+    origin.broadcast(pageB, STORAGE_KEYS.session);
+    expect(a.events).toEqual(['granted', 'lost', 'changed', 'granted']);
     origin.broadcast(pageA, STORAGE_KEYS.profile);
     expect(b.events).toEqual(['granted', 'lost']);
+    // B takes it back with a profile write: A gives way.
+    b.lock.takeOver();
+    origin.broadcast(pageB, STORAGE_KEYS.profile);
+    expect(a.events).toEqual(['granted', 'lost', 'changed', 'granted', 'lost']);
   });
 
   it('a whole-storage clear counts as a profile write; other storage areas are not ours', () => {

@@ -192,25 +192,35 @@ export interface TableOptions {
  */
 export async function newTable(page: Page, options: TableOptions): Promise<void> {
   const { players, speed = 'instant', autoNext = false } = options;
-  await page.evaluate(
+  const before = await page.evaluate(
     ({ players, speed, autoNext }) => {
       const pc = window.__pc;
       if (pc === undefined) throw new Error('no window.__pc: is this the E2E build?');
+      const game = pc.state().game;
+      const old = (game.table ?? game.next)?.tableId ?? null;
       pc.dispatch({ type: 'settings', patch: { speed, autoNext } });
       pc.dispatch({ type: 'newTable', setup: { players }, confirmed: true });
+      return old;
     },
     { players, speed, autoNext },
   );
-  await page.waitForFunction((players) => {
-    const s = window.__pc?.state();
-    return (
-      s !== undefined &&
-      s.ui.screen === 'table' &&
-      s.game.hand !== null &&
-      s.game.hand.seats.length === players &&
-      s.game.hand.phase !== 'complete'
-    );
-  }, players);
+  // The new table's first hand, in play or already over: at Instant speed a hand that everybody
+  // folds to the hero's big blind ends in about 0.2 s, before a busy machine looks (and with
+  // autoNext off the next one waits for a tap). `before`: not the old table's hand.
+  await page.waitForFunction(
+    ({ players, before }) => {
+      const s = window.__pc?.state();
+      return (
+        s !== undefined &&
+        s.ui.screen === 'table' &&
+        s.game.hand !== null &&
+        s.game.hand.seats.length === players &&
+        s.game.table !== null &&
+        s.game.table.tableId !== before
+      );
+    },
+    { players, before },
+  );
   await expect(page.locator('[data-hero-cards] [role="img"]')).toHaveCount(2);
 }
 

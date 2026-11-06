@@ -265,6 +265,61 @@ describe('without Web Locks: the rev check and the storage event (§14.7)', () =
   }, 30_000);
 });
 
+describe('without Web Locks: "Play here" while the other tab is still playing', () => {
+  /** A plays heads-up to the hero's turn of its second hand; B opened meanwhile is read-only. */
+  async function twoTabs(origin: FakeOrigin) {
+    const a = openTab(origin);
+    a.dispatch({ type: 'settings', patch: { players: 2, speed: 'instant', autoNext: false } });
+    a.dispatch({ type: 'play' });
+    await drive(a, { hands: 1, hero: passive });
+    const b = openTab(origin);
+    a.dispatch({ type: 'nextHand' }); // A writes the game: B hears it
+    await toHeroTurn(a);
+    await flush();
+    expect(b.state().data.tab).toBe('readOnly');
+    return { a, b };
+  }
+
+  it('a step A saves before it hears the claim does not take the game back (both read-only)', async () => {
+    // Storage events arrive later, as in browsers: A acts once more before it hears B.
+    const origin = new FakeOrigin(new FakeStorage(), null, { lateEvents: true });
+    const { a, b } = await twoTabs(origin);
+    b.dispatch({ type: 'playHere' }); // B's claim (a profile write) is on its way to A
+    const legal = a.state().game.legal;
+    if (legal === null) throw new Error('no hero turn');
+    a.dispatch({ type: 'act', action: passive(legal) }); // A still writes: a session step
+    expect(a.page.writes.at(-1)).toBe(K.session);
+    await flush();
+    expect(a.state().data.tab).toBe('readOnly');
+    expect(b.state().data.tab).toBe('writer');
+    expect(b.state().ui.screen).toBe('table');
+    await drive(b, { hands: 1, hero: passive });
+    expect(counted(profileOf(origin))).toBe(2);
+    a.controller.dispose();
+    b.controller.dispose();
+  }, 30_000);
+
+  it('a claim that finds a commit of the other tab since its read: that tab keeps the game', async () => {
+    const origin = new FakeOrigin(new FakeStorage(), null);
+    const { a, b } = await twoTabs(origin);
+    // A commits between B's read and B's claim (both happen inside the "Play here" tap).
+    origin.beforeRead = (key) => {
+      if (key !== K.session) return;
+      origin.beforeRead = null;
+      const stored = profileOf(origin);
+      origin.backend.data.set(K.profile, JSON.stringify({ ...stored, rev: stored.rev + 1 }));
+    };
+    const writes = b.page.writes.length;
+    b.dispatch({ type: 'playHere' });
+    await flush();
+    expect(b.state().data.tab).toBe('readOnly');
+    expect(b.page.writes.slice(writes)).not.toContain(K.profile);
+    expect(b.controller.logs().errors.map((e) => e.what)).toContain('another writer');
+    a.controller.dispose();
+    b.controller.dispose();
+  }, 30_000);
+});
+
 describe('a rev conflict (§14.3 step 2): another writer without the lock', () => {
   it('the tab becomes read-only: the game stops, Home shows the banner, nothing more is written', async () => {
     const backend = new FakeStorage();

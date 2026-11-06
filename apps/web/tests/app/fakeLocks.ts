@@ -83,13 +83,22 @@ export class FakeOrigin {
   readonly pages: FakePage[] = [];
   readonly backend: StorageBackend & { data: Map<string, string> };
   readonly locks: FakeLocks | null;
+  /**
+   * Deliver `storage` events later (on a microtask), as browsers queue them, instead of inside
+   * the write: then a tab can still write before it hears another tab's write.
+   */
+  readonly lateEvents: boolean;
+  /** A tab's next `getItem` of a key runs this first (to change the storage between two reads). */
+  beforeRead: ((key: string) => void) | null = null;
 
   constructor(
     backend: StorageBackend & { data: Map<string, string> },
     locks: FakeLocks | null = new FakeLocks(),
+    options: { lateEvents?: boolean } = {},
   ) {
     this.backend = backend;
     this.locks = locks;
+    this.lateEvents = options.lateEvents === true;
   }
 
   /** A new tab (its own `storage` listeners). */
@@ -103,7 +112,10 @@ export class FakeOrigin {
   storageFor(page: FakePage): StorageBackend {
     const { backend } = this;
     return {
-      getItem: (key) => backend.getItem(key),
+      getItem: (key) => {
+        this.beforeRead?.(key);
+        return backend.getItem(key);
+      },
       setItem: (key, value) => {
         backend.setItem(key, value);
         page.writes.push(key);
@@ -120,7 +132,10 @@ export class FakeOrigin {
   /** Another tab wrote `key`: every other tab hears it (as browsers do, after the write). */
   broadcast(from: FakePage | null, key: string | null): void {
     for (const page of this.pages) {
-      if (page !== from) page.hear({ key, storageArea: this.backend });
+      if (page === from) continue;
+      const event = { key, storageArea: this.backend };
+      if (this.lateEvents) queueMicrotask(() => page.hear(event));
+      else page.hear(event);
     }
   }
 }
