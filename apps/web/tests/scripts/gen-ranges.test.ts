@@ -15,7 +15,12 @@ import {
 } from '../../src/data/rangesLayout.ts';
 import {
   basisPoints,
+  CALLER_RANGE_PCT,
+  CALLER_WEIGHT,
+  callerJobs,
+  callerSeed,
   encodeRanges,
+  finalOrder,
   generate,
   GENERATOR,
   RANGES_FILE,
@@ -74,6 +79,16 @@ describe('z-scores and the ranking', () => {
     expect(RANK_OPPONENTS).toEqual([1, 4]);
     expect(TRIALS).toBe(200_000);
   });
+
+  it('the final order: half equity against a caller (the top 25% of the first pass), half share of five', () => {
+    // The equity against random hands alone ranked 22 at 54% (audit #5); a pair is a coin flip
+    // against the overcards that call, which a random hand is not.
+    expect(CALLER_RANGE_PCT).toBe(25);
+    expect(CALLER_WEIGHT).toBe(0.5);
+    expect(finalOrder(ascending, descending, 1)).toEqual(identity);
+    expect(finalOrder(ascending, descending, 0)).toEqual([...identity].reverse());
+    expect(finalOrder(ascending, descending)).toEqual(rankOrder(ascending, descending, 0.5));
+  });
 });
 
 describe('the jobs', () => {
@@ -110,6 +125,24 @@ describe('the jobs', () => {
       });
       expect(job?.weights).toEqual(Array.from(topWeights(order, RANGE_KNOTS[knot] as number)));
     }
+  });
+
+  it('caller cells: every class against one hand from the top 25% of the first order', () => {
+    const first = [...identity].reverse();
+    const jobs = callerJobs(first, 55);
+    expect(jobs).toHaveLength(RANGE_CLASSES);
+    expect(new Set(jobs.map((j) => j.seed)).size).toBe(RANGE_CLASSES);
+    const weights = Array.from(topWeights(first, 25));
+    jobs.forEach((job, cls) => {
+      expect(job).toMatchObject({
+        kind: 'range',
+        cls,
+        trials: 55,
+        seed: callerSeed(TABLE_SEED, cls),
+      });
+      expect(job.weights).toEqual(weights);
+    });
+    expect(callerSeed(TABLE_SEED, 3)).not.toBe(rangeSeed(TABLE_SEED, 3, 0));
   });
 
   it('seeds depend on every argument', () => {
@@ -160,6 +193,7 @@ describe('generate (a trial run, into a temporary folder)', () => {
     expect(entry).toMatchObject({ generator: GENERATOR, seed: TABLE_SEED, trials: 60 });
     expect(readNumberExport(text, 'RANGES_TRIALS')).toBe(60);
     expect(readNumberExport(text, 'RANK_WEIGHT_PERCENT')).toBe(25);
+    expect(readNumberExport(text, 'CALLER_WEIGHT_PERCENT')).toBe(50);
     expect(text).toContain('Never edit by hand');
     const table = decodeRanges(readBase64Export(text, 'RANGES_B64'));
     const pct = rankPctFromOrder(table.order);

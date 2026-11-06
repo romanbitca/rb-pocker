@@ -25,7 +25,8 @@ import { GRADE_CHIP_TEXT, GradeChip } from '../../../src/ui/components/GradeChip
 import { netText, rowNotes, SummarySheet } from '../../../src/ui/components/HandSummary.tsx';
 import { QuizStrip, rightText } from '../../../src/ui/components/QuizStrip.tsx';
 import { ruleText, WhichHandWins } from '../../../src/ui/components/WhichHandWins.tsx';
-import type { SummaryData } from '../../../src/ui/summary.ts';
+import type { PlayerAction } from '../../../src/engine/types.ts';
+import type { SummaryData, SummaryRow } from '../../../src/ui/summary.ts';
 import { smallTargets } from '../screens/targets.ts';
 
 afterEach(cleanup);
@@ -311,10 +312,53 @@ describe('the hand summary (§12.9) and the Exam result (§10.2)', () => {
     expect(rowNotes(SUMMARY.rows[0] as never, money)).toBe('You had 40%, needed 20%.');
     expect(
       rowNotes(
-        { ...(SUMMARY.rows[0] as object), need: null, rec: { type: 'check' } } as never,
+        {
+          ...(SUMMARY.rows[0] as object),
+          need: null,
+          rec: { type: 'check' },
+          grade: 'good',
+        } as never,
         money,
       ),
     ).toBe('Coach: Check · You had 40%.');
+  });
+
+  it('a Best grade for another move than the coach’s says it was as good (QA hand 9 of 5ca70001)', () => {
+    // "Best move" next to "Coach: Fold" left the player guessing whether the call was right.
+    const money = (x: number) => String(x);
+    const row = (taken: PlayerAction, rec: PlayerAction, grade: Grade): SummaryRow => ({
+      ...(SUMMARY.rows[0] as SummaryRow),
+      taken,
+      rec,
+      grade,
+      eRandom: 0.23,
+      need: 0.17,
+    });
+    const call = { type: 'call' } as const;
+    const fold = { type: 'fold' } as const;
+    expect(rowNotes(row(call, fold, 'best'), money)).toBe(
+      'Calling was as good as folding here. · You had 23%, needed 17%.',
+    );
+    expect(rowNotes(row({ type: 'raise', to: 65 }, { type: 'raise', to: 60 }, 'best'), money)).toBe(
+      'Raising to 65 was as good as raising to 60 here. · You had 23%, needed 17%.',
+    );
+    expect(rowNotes(row(fold, { type: 'bet', to: 40 }, 'best'), money)).toBe(
+      'Folding was as good as betting 40 here. · You had 23%, needed 17%.',
+    );
+    // Any other grade keeps "Coach: …"; the coach's own move needs no note.
+    expect(rowNotes(row(call, fold, 'good'), money)).toBe('Coach: Fold · You had 23%, needed 17%.');
+    expect(rowNotes(row(call, call, 'best'), money)).toBe('You had 23%, needed 17%.');
+    render(
+      <SummarySheet
+        summary={{ ...SUMMARY, rows: [row(call, fold, 'best')] }}
+        unit="chips"
+        onNext={vi.fn()}
+        onReview={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+    expect(screen.getByText(/Calling was as good as folding here\./)).toBeTruthy();
+    expect(screen.queryByText(/Coach: Fold/)).toBeNull();
   });
 });
 

@@ -126,18 +126,31 @@ describe('damaged tables are caught', () => {
     push[0] = 9_000; // k = 1, S = 1: the small blind shoves only 90%
     push[1] = 10_001; // k = 1, S = 2
     push[0 * PUSH_MAX_STACK_BB + 9] = 3_000; // SB at 10 bb: 30%, outside 55.4-61.4%
-    const problems = checkPushFoldTable({ push, call: base.call });
+    const problems = checkPushFoldTable({ push, call: base.call, sets: base.sets });
     expect(problems.some((p) => p.includes('value 1 is 100.01%'))).toBe(true);
     expect(problems.some((p) => p.includes('small blind with 1 bb shoves 90%'))).toBe(true);
     expect(problems.some((p) => p.includes('SB at 10 bb: 30.0%'))).toBe(true);
-    expect(problems).toHaveLength(3);
+    // The three changed pushPct values are now far from their games' push sets too.
+    const sets = problems.filter((p) => p.includes('push set of'));
+    expect(sets).toHaveLength(3);
+    expect(problems).toHaveLength(6);
+  });
+
+  it('a push set that does not hold about its pushPct of the combos (fix/coach-strategy-audit)', () => {
+    const base = committedPushFold();
+    expect(checkPushFoldTable(base)).toEqual([]);
+    const sets = base.sets.slice();
+    sets.fill(0, 24 * 22, 25 * 22); // the button at 10 bb (k = 2, S = 10) shoves nothing
+    expect(checkPushFoldTable({ ...base, sets })).toEqual([
+      'pushfold: the push set of k = 2, S = 10 holds 0.0% of the combos, pushPct is 32.44%',
+    ]);
   });
 
   it('a spot just outside its band names the band and the published value', () => {
     const base = committedPushFold();
     const push = base.push.slice();
     push[2 * PUSH_MAX_STACK_BB + 9] = 2_270; // k = 3, S = 10: the CO at 10 bb, 22.7% < 22.8%
-    expect(checkPushFoldTable({ push, call: base.call })).toEqual([
+    expect(checkPushFoldTable({ push, call: base.call, sets: base.sets })).toEqual([
       'pushfold: CO at 10 bb: 22.7%, expected 22.8–28.8% (published 25.8%)',
     ]);
   });

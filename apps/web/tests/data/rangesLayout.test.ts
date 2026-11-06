@@ -9,6 +9,9 @@ import {
   orderProblem,
   PUSH_FOLD_BYTES,
   PUSH_FOLD_SPOTS,
+  PUSH_SET_BYTES_PER_GAME,
+  pushGameIndex,
+  pushSetHas,
   PUSH_FOLD_TOLERANCE_POINTS,
   pushFoldAcceptance,
   RANGE_CLASSES,
@@ -116,16 +119,33 @@ describe('the blobs', () => {
     expect(() => decodeRanges(b64(bytes.slice(1)))).toThrow(/ranges: .* bytes/);
   });
 
-  it('reads the pushfold blob: little-endian words, pushPct then callPct', () => {
+  it('reads the pushfold blob: little-endian words, pushPct then callPct, then the push sets', () => {
     const bytes = new Uint8Array(PUSH_FOLD_BYTES);
     const view = new DataView(bytes.buffer);
     view.setUint16(0, 10_000, true);
     view.setUint16(2 * 119, 1234, true); // the last pushPct word
     view.setUint16(2 * 120, 4321, true); // the first callPct word
+    const sets = 2 * 135;
+    bytes[sets] = 0b0000_0101; // game 0 (k = 1, S = 1): classes 0 (AA) and 2 (AQs)
+    bytes[sets + PUSH_SET_BYTES_PER_GAME * 119 + 21] = 1; // the last game: class 168 (22)
     const table = decodePushFold(b64(bytes));
     expect(table.push).toHaveLength(120);
     expect(table.call).toHaveLength(15);
+    expect(table.sets).toHaveLength(120 * PUSH_SET_BYTES_PER_GAME);
     expect([table.push[0], table.push[119], table.call[0]]).toEqual([10_000, 1234, 4321]);
+    expect([0, 1, 2, 3].map((cls) => pushSetHas(table.sets, 0, cls))).toEqual([
+      true,
+      false,
+      true,
+      false,
+    ]);
+    expect(pushSetHas(table.sets, 119, 168)).toBe(true);
+    expect(pushSetHas(table.sets, 119, 167)).toBe(false);
+    expect(pushGameIndex(1, 1)).toBe(0);
+    expect(pushGameIndex(8, 15)).toBe(119);
+    expect(pushGameIndex(2, 10)).toBe(24);
+    expect(() => pushGameIndex(0, 10)).toThrow(RangeError);
+    expect(() => pushGameIndex(2, 16)).toThrow(RangeError);
     expect(() => decodePushFold(b64(bytes.slice(2)))).toThrow(/pushfold: .* bytes/);
   });
 });
@@ -148,11 +168,25 @@ describe('acceptance functions', () => {
     good['72o'] = 99;
     good['76s'] = 40;
     good['K2o'] = 41;
+    // The late-position opens (audit #5): 22 and 33 in the small blind's 40%, 44 in the
+    // cutoff's 27%, 55 in the hijack's 21%, 76s in the button's 43%.
+    good['22'] = 40;
+    good['33'] = 40;
+    good['44'] = 27;
+    good['55'] = 21;
     expect(rangeAcceptance(at(good))).toEqual([]);
     expect(rangeAcceptance(at({ ...good, JJ: 5.01 }))).toHaveLength(1);
     expect(rangeAcceptance(at({ ...good, KQo: 15.01 }))).toHaveLength(1);
     expect(rangeAcceptance(at({ ...good, '72o': 98.99 }))).toHaveLength(1);
     expect(rangeAcceptance(at({ ...good, '76s': 41 }))).toHaveLength(1);
+    expect(rangeAcceptance(at({ ...good, '76s': 43.01, K2o: 50 }))).toEqual([
+      '76s is at 43.01%, not in the top 43%',
+    ]);
+    expect(rangeAcceptance(at({ ...good, '22': 40.01 }))).toHaveLength(1);
+    expect(rangeAcceptance(at({ ...good, '44': 27.01 }))).toHaveLength(1);
+    expect(rangeAcceptance(at({ ...good, '55': 21.01 }))).toEqual([
+      '55 is at 21.01%, not in the top 21%',
+    ]);
   });
 
   it('push/fold acceptance carries the five published no-ante spots of the plan, ± 3 points', () => {

@@ -211,6 +211,31 @@ export const GUARD_ALLIN_FOLD_MARGIN = 0.25;
 /** §8.9: each opponent continues with `c = clamp(MDF × stickiness, CONTINUE_MIN, CONTINUE_MAX)`. */
 export const CONTINUE_MIN = 0.15;
 export const CONTINUE_MAX = 0.95;
+/**
+ * §8.9 (fix/coach-strategy-audit): the coach's fold equity is the MDF model's × this factor of
+ * the situation, the bots' measured folds against the model's (self-play, 6-max 100 bb, the §9.3
+ * Medium list at Medium, 10,000 hands; Easy and Hard in brackets). With `MDF` the opponents defend
+ * exactly enough to make a pure bluff break even, so every bluff was within a hair of a fold or a
+ * check ("Close call: raise is also fine" with 7♣2♦); the bots fold far less than that, after the
+ * flop above all to a raise. HEURISTIC, round numbers.
+ */
+export const FOLD_FACTOR = {
+  /** Before the flop, the first raise (an open or an isolation): 0.40 (0.37, 0.44). */
+  open: 0.4,
+  /**
+   * Before the flop, a re-raise or any all-in (an open shove too: the players behind call it only
+   * with good hands): re-raises 0.75, all-ins 0.91 (Easy 0.56 and 0.33, Hard 0.83 and 0.94).
+   */
+  reraise: 0.75,
+  /** A bet on the flop: 0.34 (0.26, 0.28). */
+  flopBet: 0.3,
+  /** A bet on the turn: 0.58 (0.38, 0.57). */
+  turnBet: 0.5,
+  /** A bet on the river: 0.96 (0.84, 0.88). */
+  riverBet: 0.9,
+  /** A raise after the flop: 0.11 to 0.22 (0.04 to 0.13, 0.31 to 1.0). */
+  raise: 0.2,
+} as const;
 /** §8.9 candidates: postflop bets as fractions of the pot (all-in is added separately). */
 export const EV_BET_FRACTIONS: readonly number[] = [1 / 3, 1 / 2, 2 / 3, 3 / 4, 1];
 /** §8.9 candidates: raises to these multiples of the bet (plus the minimum and all-in). */

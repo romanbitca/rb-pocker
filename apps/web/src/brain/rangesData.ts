@@ -10,7 +10,8 @@
  *   is exactly `rankPct ≤ X`. Class indexes are `classOf` in `core/cards.ts` (AA = 0, AKs = 1,
  *   AKo = 13, 22 = 168): suits do not matter.
  * - `equityVsTopOfClass`: the class's equity against ONE rival holding a hand from the top X% of
- *   that ranking, linear between the 13 ranges of `RANGE_KNOTS` (3 to 100 percent), as §8.3 asks.
+ *   that ranking, linear between the 14 ranges of `RANGE_KNOTS` (2.5 to 100 percent), as §8.3
+ *   asks. 2.5% is the 4-bet range's own column (fix/coach-strategy-audit).
  */
 import { classOf, isCard, type Card } from '../core/cards.ts';
 import { RANGES_B64, RANGES_TRIALS } from '../data/generated/ranges.ts';
@@ -87,7 +88,9 @@ export function topRangeWeights(pct: number): Float64Array {
 /**
  * The equity (a fraction of 1) of `cls` against one rival holding a hand from the top `pct`% of the
  * ranking: the table's value at a knot, a straight line between two knots, and the nearest knot
- * beyond the ends (below 3% there is no table: a 2.5% range reads as 3%).
+ * beyond the ends (below 2.5%, the 4-bet range, there is no table). Until fix/coach-strategy-audit
+ * the table started at 3% and the 4-bet range read that column, which holds most of 99 too: JJ
+ * showed 45% against it (37% in truth) and called a 100 bb 5-bet shove that needs 41%.
  */
 export function equityVsTopOfClass(cls: number, pct: number): number {
   checkClass('equityVsTop', cls);

@@ -318,7 +318,9 @@ export function readsFoldStats(profile: BrainProfile): boolean {
 /**
  * The EV model of the decision with equity `E` (the coach: `eRange`; a bot: `E'`): the policy's
  * realisation and implied odds (§8.3 steps 3–4, §8.5 steps 2–3), `E_called` trials capped at the
- * profile's own `mcTrials`; Expert reads its fold equity after the flop (`readsFoldStats`).
+ * profile's own `mcTrials`; Expert reads its fold equity after the flop (`readsFoldStats`); the
+ * coach's fold equity is the measured one (`measuredFoldFactor`, §8.9, fix/coach-strategy-audit),
+ * the bots' the MDF model their personalities were calibrated with (§9.7).
  */
 function evModelOf(
   obs: Observation,
@@ -343,6 +345,7 @@ function evModelOf(
     seed,
     trials: Math.min(E_CALLED_TRIALS, profile.mcTrials),
     readsFolds: readsFoldStats(profile),
+    measuredFolds: profile.deterministic,
   });
   // Each action's EV once per decision (a bet's E_called is a Monte Carlo of its own).
   const memo = new Map<CandidateKey, number>();
@@ -617,14 +620,33 @@ function coachAggression(
 }
 
 /**
+ * A preflop bluff re-raise (C10; fix/coach-strategy-audit): before the flop, facing a raise, a
+ * raise when the rule did not raise. The §8.3–8.4 rules re-raise every hand they re-raise for
+ * value (`E ≥ 0.58`, all-in against a 4-bet with `E ≥ 0.50`, a short stack's shove with
+ * `EV(shove) > 0`), so any other re-raise is a bluff, which the coach never recommends: it is
+ * never a sensible alternative ("Close call: raise is also fine") and never graded Best (§8.9).
+ * Measured, the bots fold to a re-raise often enough (§8.9 `FOLD_FACTOR`) that the EV model can
+ * rate a 3-bet with 9♠5♥ near a fold.
+ */
+export function bluffReraise(
+  f: Pick<Features, 'street' | 'facing'>,
+  rec: PlayerAction,
+  move: PlayerAction,
+): boolean {
+  const facingRaise =
+    f.facing === 'open' || f.facing === '3bet' || f.facing === '4bet+' || f.facing === 'allin';
+  return f.street === 'preflop' && facingRaise && isAggressive(move) && !isAggressive(rec);
+}
+
+/**
  * The coach's sensible alternatives (§8.10 "one line per other sensible action"), with their EVs:
  * for each kind of legal action other than the recommendation's, the one the coach would take of
  * that kind. A fold when there is something to call; a check; a call, but never a limp or a
  * complete (C10) nor a flat call of a raise with a short stack (§8.4: fold or all-in); a bet or
  * raise of the coach's own size (§8.3 before the flop, §8.7 by texture after it), so all-in only
- * where those sizes go all-in. The EV-best of the §8.9 sizes is never offered: the fold-equity
- * heuristic can rate a deep all-in near a normal open, and "Close call: All-in 21,800 is also
- * fine" would be absurd (chunk 5.7).
+ * where those sizes go all-in, and never a preflop bluff re-raise (C10, `bluffReraise`). The
+ * EV-best of the §8.9 sizes is never offered: the fold-equity heuristic can rate a deep all-in
+ * near a normal open, and "Close call: All-in 21,800 is also fine" would be absurd (chunk 5.7).
  */
 export function sensibleAlternatives(
   obs: Observation,
@@ -644,7 +666,7 @@ export function sensibleAlternatives(
       (f.facing === 'allin' || !pushFoldApplies(f)));
   if (legal.canCall && flat) raw.push(CALL);
   const aggressive = coachAggression(obs, f, spot);
-  if (aggressive !== null) raw.push(aggressive);
+  if (aggressive !== null && !bluffReraise(f, action, aggressive)) raw.push(aggressive);
   return unique(
     legal,
     raw.filter((a) => a.type !== action.type),

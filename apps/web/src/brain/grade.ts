@@ -27,6 +27,8 @@
  *    call ends the betting); then the bb floors cap it (below 0.25 bb at most Good, below 1 bb at
  *    most Inaccuracy; a Blunder from any path needs 5 bb, else Mistake). Pot-relative bands with
  *    bb floors: the same chips are a big mistake in a small pot and nothing in a big one.
+ * 6. A preflop bluff re-raise (C10, `bluffReraise`: facing a raise, a raise the rule did not make)
+ *    is never Best, at most Good: the coach never recommends one (fix/coach-strategy-audit).
  *
  * Then the leak tag (`leakOf`: the §8.9 table, first matching row, only for Inaccuracy or worse)
  * and the feedback card's reason (`feedbackRow`: Appendix F.5 in its order; null for Best and
@@ -39,7 +41,7 @@
  */
 import type { LegalActions, Observation, PlayerAction, Street } from '../engine/types.ts';
 import { describe } from '../eval/describe.ts';
-import { deliberate, type CoachHint, type Deliberation } from './decide.ts';
+import { bluffReraise, deliberate, type CoachHint, type Deliberation } from './decide.ts';
 import { callEndsBetting } from './ev.ts';
 import {
   explain,
@@ -167,6 +169,8 @@ export interface GradeFacts {
   E: number;
   R: number;
   need: number;
+  /** The move is a preflop bluff re-raise (C10, `bluffReraise`): at most Good. Default false. */
+  bluffReraise?: boolean;
 }
 
 /** The grade of one move and the loss behind it. */
@@ -193,7 +197,9 @@ export function scoreGrade(x: GradeFacts): Scored {
   let grade = gradeOfLoss(lossPot);
   const signal = priceSignal(x.taken.type, x.E * x.R, x.need);
   if (signal !== null) grade = worseOf(grade, signal);
-  return scored(capByBB(grade, lossBB));
+  grade = capByBB(grade, lossBB);
+  if (x.bluffReraise === true && grade === 'best') grade = 'good';
+  return scored(grade);
 }
 
 // ── Leak tags (§8.9) ───────────────────────────────────────────────────────────────────────────
@@ -383,6 +389,7 @@ export function gradeDecision(
     E: f.eRange,
     R,
     need: f.need,
+    bluffReraise: bluffReraise(f, rec, taken),
   });
   const pushFold = pushFoldApplies(f);
   const leak = leakOf({

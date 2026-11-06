@@ -66,9 +66,9 @@ describe('the ranking', () => {
     expect(rankPctOfClass(classAtRank(168))).toBeCloseTo(100, 9);
   });
 
-  it('starts like the charts: pairs and big aces first, AA, KK, QQ, JJ, TT, then AKs', () => {
+  it('starts like the charts: pairs and big aces first, AA, KK, QQ, JJ, AKs, then TT', () => {
     const first = Array.from({ length: 6 }, (_, rank) => classAtRank(rank));
-    expect(first).toEqual(['AA', 'KK', 'QQ', 'JJ', 'TT', 'AKs'].map(classByName));
+    expect(first).toEqual(['AA', 'KK', 'QQ', 'JJ', 'AKs', 'TT'].map(classByName));
     expect(pct('AA')).toBeCloseTo((100 * 6) / COMBOS_TOTAL, 9);
   });
 
@@ -140,19 +140,33 @@ describe('equity against the top X%', () => {
     RANGE_KNOTS.forEach((knot, j) => {
       expect(equityVsTopOfClass(cls, knot)).toBe(equityVsKnot(cls, j));
     });
-    const mid = (equityVsKnot(cls, 4) + equityVsKnot(cls, 5)) / 2; // 15% and 20%
+    const mid = (equityVsKnot(cls, 5) + equityVsKnot(cls, 6)) / 2; // 15% and 20%
     expect(equityVsTopOfClass(cls, 17.5)).toBeCloseTo(mid, 12);
-    const quarter = equityVsKnot(cls, 11) + 0.25 * (equityVsKnot(cls, 12) - equityVsKnot(cls, 11));
+    const quarter = equityVsKnot(cls, 12) + 0.25 * (equityVsKnot(cls, 13) - equityVsKnot(cls, 12));
     expect(equityVsTopOfClass(cls, 85)).toBeCloseTo(quarter, 12);
   });
 
-  it('reads the nearest knot beyond the ends (below 3% there is no table)', () => {
+  it('reads the nearest knot beyond the ends (below 2.5% there is no table)', () => {
     const cls = classByName('AKs');
     expect(equityVsTopOfClass(cls, 2.5)).toBe(equityVsKnot(cls, 0));
+    expect(equityVsTopOfClass(cls, 1)).toBe(equityVsKnot(cls, 0));
     expect(equityVsTopOfClass(cls, 0)).toBe(equityVsKnot(cls, 0));
     expect(equityVsTopOfClass(cls, -4)).toBe(equityVsKnot(cls, 0));
-    expect(equityVsTopOfClass(cls, 100)).toBe(equityVsKnot(cls, 12));
-    expect(equityVsTopOfClass(cls, 250)).toBe(equityVsKnot(cls, 12));
+    expect(equityVsTopOfClass(cls, 100)).toBe(equityVsKnot(cls, 13));
+    expect(equityVsTopOfClass(cls, 250)).toBe(equityVsKnot(cls, 13));
+  });
+
+  it('reads the 4-bet range (2.5%) at its own column, not the 3% one (audit #2)', () => {
+    // The top 2.5% is AA–JJ, AKs and most of TT; the top 3% adds the rest of TT, AQs and a little
+    // AKo. JJ has about 36% against the first (18 combos of AA–QQ at about 18.5%, one JJ, four
+    // AKs at 54%, 5.15 of TT at 81%), so it folds to a 100 bb 5-bet shove that needs 41% (P25 of
+    // the audit); read at the 3% column it showed 45% and called.
+    const jj = classByName('JJ');
+    expect(RANGE_KNOTS[0]).toBe(2.5);
+    const at25 = equityVsTopOfClass(jj, 2.5);
+    expect(Math.abs(at25 - 0.361)).toBeLessThan(0.015);
+    expect(at25).toBeLessThan(0.41);
+    expect(equityVsTopOfClass(jj, 3)).toBeGreaterThan(at25 + 0.02);
   });
 
   it('reads two hole cards as their class and rejects bad input', () => {
@@ -163,7 +177,7 @@ describe('equity against the top X%', () => {
     expect(() => equityVsTop([1, 2, 3], 25)).toThrow(RangeError);
     expect(() => equityVsTopOfClass(0, Number.NaN)).toThrow(RangeError);
     expect(() => equityVsTopOfClass(169, 10)).toThrow(RangeError);
-    expect(() => equityVsKnot(0, 13)).toThrow(RangeError);
+    expect(() => equityVsKnot(0, 14)).toThrow(RangeError);
     expect(() => equityVsKnot(0, -1)).toThrow(RangeError);
     expect(() => equityVsKnot(200, 0)).toThrow(RangeError);
   });

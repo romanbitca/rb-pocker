@@ -16,8 +16,9 @@
  *   the raiser's and the callers' ranges when callers are in; `R` = 0.95 in position, 0.80 out of
  *   position, × 0.9 for gapped offsuit hands; set-mining `implied = 0.118 × 0.4 × effStackAfterCall`
  *   for pocket pairs; `EV(call) = E·R·(winPot + toCall) − toCall + implied`. 3-bet for value if
- *   `E ≥ 0.58`; else call if `EV(call) > 0` and (`rankPct ≤ min(50, 1.5·V)` or the big blind); else
- *   fold.
+ *   `E ≥ 0.58`; else call if `EV(call) > 0` and (`rankPct ≤ min(50, 1.5·V)`, the big blind, or a
+ *   pocket pair whose set alone pays: `0.118 × (winPot + toCall) + implied ≥ toCall`, about 15×
+ *   the call behind, the 15–20× rule); else fold.
  * - **A 3-bet:** `V = max(3, 0.25 × the opener's range)`; 4-bet if `E ≥ 0.58`; call if `EV(call) > 0`
  *   and `rankPct ≤ 1.5·V`; else fold. **A 4-bet or more:** `V = 2.5`; all-in if `E ≥ 0.50`; call if
  *   `EV(call) > 0`; else fold.
@@ -444,6 +445,21 @@ export function preflopImplied(
   return SET_HIT_CHANCE * SET_PAYOFF_SHARE * afterCall;
 }
 
+/**
+ * §8.3 step 6, set-mining (fix/coach-strategy-audit): a pocket pair calls one raise outside the
+ * call cap when the set alone pays for the call, `0.118 × (winPot + toCall) + implied ≥ toCall`
+ * with the step 4 implied odds: an effective stack of about 15 times the call behind, the 15–20×
+ * rule that step 4 reproduces. The cap (`rankPct ≤ min(50, 1.5 × V)`) folded every small pair
+ * against an early open, also where the price says call (22 never set-mined).
+ */
+export function setMinePays(
+  spot: { pair: boolean; f: Pick<Features, 'winPot' | 'toCall'> },
+  implied: number,
+): boolean {
+  const { winPot, toCall } = spot.f;
+  return spot.pair && SET_HIT_CHANCE * (winPot + toCall) + implied >= toCall;
+}
+
 /** Facing an open, a 3-bet or a 4-bet or more that is not all-in (§8.3). */
 function facingRaise(spot: Spot): PreflopDecision {
   const { f, obs } = spot;
@@ -468,7 +484,7 @@ function facingRaise(spot: Spot): PreflopDecision {
       valueRaise = raiseTo(spot, mult * currentBet);
     }
     const cap = threshold(spot, Math.min(CALL_RANGE_CAP_PCT, CALL_RANGE_FACTOR * V));
-    callOk = evCall > 0 && (f.rankPct <= cap || spot.isBB);
+    callOk = evCall > 0 && (f.rankPct <= cap || spot.isBB || setMinePays(spot, implied));
   } else if (last.level === 2) {
     valueCode = 'FOUR_BET_VALUE';
     if (E >= RERAISE_VALUE_EQUITY) {

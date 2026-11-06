@@ -3,20 +3,25 @@
  * `node scripts/gen-ranges.ts` (`npm run gen:ranges`). Writes `src/data/generated/ranges.ts` and its
  * entry in `checksums.json`; commit both. ⚠️ Never edit them by hand.
  *
- * - `rankPct[169]`: for every class, the equity against 1 random hand and against 4 random hands
- *   (200,000 trials each, `equity()` itself), `score = w·z(eqVs1) + (1 − w)·z(shareVs4)` with
- *   w = 0.25 (`RANK_WEIGHT`), sorted best first. The table stores that order; `rankPct` is the
- *   combo-weighted percentile derived from it (`rankPctFromOrder`).
- * - `eqVsRange[169][13]`: each class's equity against ONE rival holding a hand from the top X% of
- *   the 1,326 combos in that order, X in 3, 5, 8, 12, 15, 20, 25, 30, 40, 50, 65, 80, 100 (the class
- *   on the edge of a range counts in part, so the range is exactly X% of the combos). 200,000
- *   trials per cell, the rival drawn from the range with card removal.
+ * - `rankPct[169]`, in two passes. First: for every class, the equity against 1 random hand and
+ *   against 4 random hands (200,000 trials each, `equity()` itself), `w·z(eqVs1) + (1 − w)·z(shareVs4)`
+ *   with w = 0.25 (`RANK_WEIGHT`), sorted best first. Then each class's equity against ONE caller,
+ *   a hand from the top 25% of that first order (§8.6's "call a raise"; 200,000 trials), and the
+ *   final score `0.5·z(eqVsCaller) + 0.5·z(shareVs4)` (`CALLER_WEIGHT`), sorted best first. The
+ *   equity against random hands alone ranks the small pairs far too low (22 at 54%, folded on the
+ *   button): a pair is a coin flip against the overcards that call, which a random hand is not
+ *   (fix/coach-strategy-audit). The table stores the final order; `rankPct` is the combo-weighted
+ *   percentile derived from it (`rankPctFromOrder`).
+ * - `eqVsRange[169][14]`: each class's equity against ONE rival holding a hand from the top X% of
+ *   the 1,326 combos in the final order, X in 2.5, 3, 5, 8, 12, 15, 20, 25, 30, 40, 50, 65, 80, 100
+ *   (the class on the edge of a range counts in part, so the range is exactly X% of the combos).
+ *   200,000 trials per cell, the rival drawn from the range with card removal.
  *
- * Both steps are seeded from the fixed table seed and dealt across `worker_threads`.
+ * Every step is seeded from the fixed table seed and dealt across `worker_threads`.
  *
  * Options: `--threads N` (default: one per core); for trial runs `--trials N` with `--out DIR` (a
- * different `--trials` never writes into the committed folder); `--scan` prints which weights pass
- * the §8.3 acceptance and writes nothing.
+ * different `--trials` never writes into the committed folder); `--scan` prints which caller
+ * weights pass the §8.3 acceptance and writes nothing.
  */
 import { resolve } from 'node:path';
 import { parseArgs } from 'node:util';
@@ -39,19 +44,29 @@ import { defaultThreads } from './pool.ts';
 import { runRangeJobs, type RandomJob, type RangeJob, type Shares } from './range-jobs.ts';
 
 /** Bumped whenever the method or the layout changes: `check-tables` then demands a regeneration. */
-export const GENERATOR = 'gen-ranges@1';
+export const GENERATOR = 'gen-ranges@2';
 
 /** Monte Carlo trials of every ranking cell and every range cell (PLAN §8.3). */
 export const TRIALS = 200_000;
 
 /**
- * The weight of `z(eqVs1)` in the score; `z(shareVs4)` gets the rest. The plan starts at 0.5 and
- * says "tune the 0.5 weight if any fails": at 0.5 the only failure is "72o is in the bottom 1%"
- * (42o and 32o rank below it), which holds from 0 to 0.35 and fails from 0.4 up (`--scan`). 0.25
- * sits in the middle of that range: its ordering of 72o, the class above and the class below is
- * at least 3 standard deviations of the sampling noise from flipping.
+ * The weight of `z(eqVs1)` in the first pass; `z(shareVs4)` gets the rest. The plan starts at 0.5
+ * and says "tune the 0.5 weight if any fails": at 0.5 the only failure is "72o is in the bottom 1%"
+ * (42o and 32o rank below it), which holds from 0 to 0.35 and fails from 0.4 up. 0.25 sits in the
+ * middle of that range (chunk 5.1). The first pass was the whole ranking until
+ * fix/coach-strategy-audit; now it only picks the caller's range.
  */
 export const RANK_WEIGHT = 0.25;
+
+/** The caller's range of the second pass: the top 25% of the first order (§8.6, "call a raise"). */
+export const CALLER_RANGE_PCT = 25;
+
+/**
+ * The weight of `z(eqVsCaller)` in the final score; `z(shareVs4)` gets the rest: heads-up against
+ * the hands that call an open, and the share of a five-way pot (the suited connectors' strength).
+ * At 0.5 the §8.3 acceptance passes with the late-position opens (`--scan`).
+ */
+export const CALLER_WEIGHT = 0.5;
 
 /** The rivals of the two ranking cells: one random hand, and four (the equity share of five). */
 export const RANK_OPPONENTS: readonly [number, number] = [1, 4];
@@ -71,6 +86,11 @@ export function rangeSeed(parent: Seed128, cls: number, knot: number): Seed128 {
   return deriveSeed(parent, 'range', cls, knot);
 }
 
+/** The seed of the second pass's cell (class against the caller's range) under `parent`. */
+export function callerSeed(parent: Seed128, cls: number): Seed128 {
+  return deriveSeed(parent, 'caller', cls);
+}
+
 /** z-scores: (x − mean) / standard deviation, over the classes (population deviation). */
 export function zScores(values: readonly number[]): number[] {
   const n = values.length;
@@ -81,22 +101,48 @@ export function zScores(values: readonly number[]): number[] {
 }
 
 /**
- * The classes from the best to the worst by `weight·z(eq1) + (1 − weight)·z(share4)`; equal
- * scores keep the order of the class index.
+ * The classes from the best to the worst by `weight·z(first) + (1 − weight)·z(share4)`; equal
+ * scores keep the order of the class index. The first pass passes `eqVs1` and `RANK_WEIGHT`, the
+ * final one `eqVsCaller` and `CALLER_WEIGHT` (`finalOrder`).
  */
 export function rankOrder(
-  eq1: readonly number[],
+  first: readonly number[],
   share4: readonly number[],
   weight: number = RANK_WEIGHT,
 ): number[] {
-  if (eq1.length !== RANGE_CLASSES || share4.length !== RANGE_CLASSES) {
+  if (first.length !== RANGE_CLASSES || share4.length !== RANGE_CLASSES) {
     throw new RangeError(`rankOrder: need ${RANGE_CLASSES} values each`);
   }
   if (!(weight >= 0 && weight <= 1)) throw new RangeError(`rankOrder: weight ${weight}`);
-  const z1 = zScores(eq1);
+  const z1 = zScores(first);
   const z4 = zScores(share4);
   const score = z1.map((a, i) => weight * a + (1 - weight) * (z4[i] as number));
   return [...score.keys()].sort((a, b) => (score[b] as number) - (score[a] as number) || a - b);
+}
+
+/** The final order: `CALLER_WEIGHT·z(eqVsCaller) + (1 − CALLER_WEIGHT)·z(shareVs4)`. */
+export function finalOrder(
+  eqCaller: readonly number[],
+  share4: readonly number[],
+  weight: number = CALLER_WEIGHT,
+): number[] {
+  return rankOrder(eqCaller, share4, weight);
+}
+
+/** The second pass's jobs: every class against one hand from the top 25% of the first order. */
+export function callerJobs(
+  firstOrder: readonly number[],
+  trials: number,
+  parent: Seed128 = TABLE_SEED,
+): RangeJob[] {
+  const weights = Array.from(topWeights(firstOrder, CALLER_RANGE_PCT));
+  return Array.from({ length: RANGE_CLASSES }, (_, cls) => ({
+    kind: 'range' as const,
+    cls,
+    weights,
+    trials,
+    seed: callerSeed(parent, cls),
+  }));
 }
 
 /** The ranking jobs: every class against 1 and against 4 random hands. */
@@ -159,25 +205,32 @@ export function encodeRanges(order: readonly number[], cells: readonly Shares[])
   return out;
 }
 
-function rangesModule(bytes: Uint8Array, trials: number, weight: number): string {
+function rangesModule(bytes: Uint8Array, trials: number): string {
+  const knots = RANGE_KNOTS.length;
   return binaryModule(
     [
       `Generated by scripts/gen-ranges.ts (${GENERATOR}). Never edit by hand: \`npm run gen\``,
       'rewrites this file and `npm run gen:check` fails when it changes (PLAN section 7.5).',
       '',
       'The starting-hand ranking of the 169 classes and their equity against ranges (PLAN 8.3).',
-      `score = ${weight}·z(equity vs 1 random hand) + ${1 - weight}·z(equity vs 4 random hands),`,
-      `${trials} trials each, table seed ${TABLE_SEED}. rankPct is derived from the order:`,
-      'the percent of the 1,326 combos that rank at least as well as the class (AA = 0.45).',
+      `First pass: ${RANK_WEIGHT}·z(equity vs 1 random hand) + ${1 - RANK_WEIGHT}·z(equity vs 4 random hands).`,
+      `Final score: ${CALLER_WEIGHT}·z(equity vs one hand from the top ${CALLER_RANGE_PCT}% of the first pass)`,
+      `+ ${1 - CALLER_WEIGHT}·z(equity vs 4 random hands). ${trials} trials each, table seed ${TABLE_SEED}.`,
+      'rankPct is derived from the order: the percent of the 1,326 combos that rank at least as',
+      'well as the class (AA = 0.45).',
       '',
       `Layout: ${bytes.length} bytes. First ${RANGE_CLASSES} bytes: the class at each rank, best first`,
-      '(class index: core/cards.ts classOf; AA = 0, AKs = 1, AKo = 13, 22 = 168). Then 169 x 13',
+      `(class index: core/cards.ts classOf; AA = 0, AKs = 1, AKo = 13, 22 = 168). Then 169 x ${knots}`,
       'words in two planes (all the high bytes, then all the low bytes): the equity of class c',
-      `against the top X% of the combos, word c * 13 + j for X = ${RANGE_KNOTS.join(', ')},`,
+      `against the top X% of the combos, word c * ${knots} + j for X = ${RANGE_KNOTS.join(', ')},`,
       'in basis points (1 = 0.01 %). A class on the edge of a range counts in part. One rival,',
       "drawn from the range without the hero's cards.",
     ],
-    { RANGES_TRIALS: trials, RANK_WEIGHT_PERCENT: Math.round(weight * 100) },
+    {
+      RANGES_TRIALS: trials,
+      RANK_WEIGHT_PERCENT: Math.round(RANK_WEIGHT * 100),
+      CALLER_WEIGHT_PERCENT: Math.round(CALLER_WEIGHT * 100),
+    },
     'RANGES_B64',
     bytes,
   );
@@ -209,16 +262,27 @@ export async function sampleRanking(
   return { eq1, share4 };
 }
 
+/** Each class's equity against one hand from the top 25% of `firstOrder` (the second pass). */
+export async function sampleCaller(
+  firstOrder: readonly number[],
+  trials: number,
+  threads: number,
+): Promise<number[]> {
+  const results = await runRangeJobs(callerJobs(firstOrder, trials), threads);
+  return results.map((r) => r.win + r.split);
+}
+
 /** Builds the ranking and the range equities and writes them with their checksum. Returns seconds. */
 export async function generate(options: GenerateOptions): Promise<number> {
   const log = options.log ?? (() => undefined);
   const started = performance.now();
   const seconds = (): string => ((performance.now() - started) / 1000).toFixed(0);
   log(
-    `ranking: ${2 * RANGE_CLASSES} cells x ${options.trials} trials on ${options.threads} threads`,
+    `ranking: ${3 * RANGE_CLASSES} cells x ${options.trials} trials on ${options.threads} threads`,
   );
   const { eq1, share4 } = await sampleRanking(options.trials, options.threads);
-  const order = rankOrder(eq1, share4);
+  const eqCaller = await sampleCaller(rankOrder(eq1, share4), options.trials, options.threads);
+  const order = finalOrder(eqCaller, share4);
   const pct = rankPctFromOrder(order);
   const problems = rangeAcceptance((cls) => pct[cls] as number);
   log(
@@ -237,7 +301,7 @@ export async function generate(options: GenerateOptions): Promise<number> {
   writeGenerated(
     options.out,
     RANGES_FILE,
-    rangesModule(encodeRanges(order, cells), options.trials, RANK_WEIGHT),
+    rangesModule(encodeRanges(order, cells), options.trials),
     {
       generator: GENERATOR,
       seed: TABLE_SEED,
@@ -248,31 +312,32 @@ export async function generate(options: GenerateOptions): Promise<number> {
   return (performance.now() - started) / 1000;
 }
 
-/** The weights 0, 0.05, ..., 1 and what each does to the §8.3 acceptance (`--scan`). */
+/** The caller weights 0, 0.05, ..., 1 and what each does to the §8.3 acceptance (`--scan`). */
 export async function scanWeights(
   trials: number,
   threads: number,
   log: (line: string) => void,
 ): Promise<void> {
   const { eq1, share4 } = await sampleRanking(trials, threads);
+  const eqCaller = await sampleCaller(rankOrder(eq1, share4), trials, threads);
   log(
-    'weight of z(eqVs1): acceptance problems (percentile = combos strictly better | combos at least as good: the one used)',
+    'weight of z(eqVsCaller): acceptance problems (percentile = combos strictly better | combos at least as good: the one used)',
   );
   for (let step = 0; step <= 20; step++) {
     const weight = step / 20;
-    const order = rankOrder(eq1, share4, weight);
+    const order = finalOrder(eqCaller, share4, weight);
     const inclusive = rankPctFromOrder(order);
     const strict = (cls: number): number =>
       (inclusive[cls] as number) - (100 * comboCount(cls)) / COMBOS_TOTAL;
-    const at = (name: string): number => order.indexOf(classByName(name));
+    const at = (name: string): string => (inclusive[classByName(name)] as number).toFixed(1);
     log(
       `w = ${weight.toFixed(2)}: strict [${rangeAcceptance(strict).join('; ') || 'pass'}] | ` +
         `inclusive [${rangeAcceptance((c) => inclusive[c] as number).join('; ') || 'pass'}] | ` +
-        `rank of 72o ${at('72o') + 1}, 32o ${at('32o') + 1}, 76s ${at('76s') + 1}, K2o ${at('K2o') + 1} of ${RANGE_CLASSES}`,
+        `rankPct 22 ${at('22')}, 44 ${at('44')}, 55 ${at('55')}, 76s ${at('76s')}, K2o ${at('K2o')}, 72o ${at('72o')}`,
     );
   }
-  const order = rankOrder(eq1, share4, RANK_WEIGHT);
-  log(`worst five at w = ${RANK_WEIGHT}: ${order.slice(-5).map(className).join(' ')}`);
+  const order = finalOrder(eqCaller, share4);
+  log(`worst five at w = ${CALLER_WEIGHT}: ${order.slice(-5).map(className).join(' ')}`);
 }
 
 function positiveInteger(text: string, name: string): number {

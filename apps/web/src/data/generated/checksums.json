@@ -13,14 +13,14 @@
       "trials": 500000
     },
     "pushfold.ts": {
-      "sha256": "691bd1ed589cc95e8cc1e7085d88d8a3a783c764f78e5d6b2572056b243a61af",
-      "generator": "gen-pushfold@2",
+      "sha256": "dd5c4b9f6441c3a96711c8c45bc95ec76dd229b52b5c00a1ecb72a7c117cf3f1",
+      "generator": "gen-pushfold@3",
       "seed": "b3fa9e20b507129b4a198627aa09d24e",
       "trials": 40000
     },
     "ranges.ts": {
-      "sha256": "ece38fce2aacabb2df5a558a470095a458cb550d62a6225bbf1f6f19c962c4c0",
-      "generator": "gen-ranges@1",
+      "sha256": "97d8ce89f7976401ac56d60b13ab12cd64f28b8384244528b82424b0d1d9a31d",
+      "generator": "gen-ranges@2",
       "seed": "7f0e28a4e1791a3f0d00a20e796c2353",
       "trials": 200000
     }
