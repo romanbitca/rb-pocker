@@ -133,6 +133,86 @@ export function storageManagerOf(
   }
 }
 
+/** Chrome's `beforeinstallprompt` event (not in the DOM types). */
+interface InstallOffer extends Event {
+  prompt(): Promise<unknown>;
+  readonly userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>;
+}
+
+/** What the controller needs to offer installing (§12.13 "Install", chunk 8.4). */
+export interface InstallEnv {
+  /** iOS or iPadOS: no install prompt there; the one-time Share tip instead. */
+  readonly ios: boolean;
+  /** https or http://localhost: installing needs it (never a plain-http LAN address, §12.14). */
+  readonly secure: boolean;
+  /** The browser offers installing now (it fired `beforeinstallprompt`). */
+  ready(): boolean;
+  /** `onChange` runs when `ready()` changes. */
+  listen(onChange: () => void): void;
+  /**
+   * The browser's install dialog. Call it inside the tap (a user activation). Resolves true when
+   * the app was installed; null when the browser does not offer it (an offer is used once).
+   */
+  prompt(): Promise<boolean> | null;
+}
+
+/**
+ * iPhone, iPod or iPad (iPadOS says "Macintosh", with touch). Never throws. The Share tip is the
+ * only way to install there (§12.13).
+ */
+export function isIos(win: Window): boolean {
+  try {
+    const nav = win.navigator;
+    return (
+      /iPhone|iPad|iPod/.test(nav.userAgent) ||
+      (/Macintosh/.test(nav.userAgent) && nav.maxTouchPoints > 1)
+    );
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Keeps the browser's install offer (§12.13): Chrome fires `beforeinstallprompt` when the app can
+ * be installed (secure pages with the manifest and the service worker only); the default mini
+ * banner is held back and the offer waits for "Install app". `appinstalled` ends it.
+ */
+export function installEnv(win: Window): InstallEnv {
+  let offer: InstallOffer | null = null;
+  let changed = (): void => {};
+  const set = (next: InstallOffer | null): void => {
+    offer = next;
+    changed();
+  };
+  win.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault();
+    set(e as InstallOffer);
+  });
+  win.addEventListener('appinstalled', () => set(null));
+  return {
+    ios: isIos(win),
+    secure: win.isSecureContext === true,
+    ready: () => offer !== null,
+    listen: (onChange) => {
+      changed = onChange;
+    },
+    prompt: () => {
+      const e = offer;
+      if (e === null) return null;
+      set(null);
+      // `prompt()` rejects when the browser refuses (no user activation, used twice): not installed.
+      try {
+        return e.prompt().then(
+          () => e.userChoice.then((choice) => choice.outcome === 'accepted'),
+          () => false,
+        );
+      } catch {
+        return Promise.resolve(false);
+      }
+    },
+  };
+}
+
 /** Everything above; returns one uninstall. */
 export function installLifecycle(win: Window, store: AppStore): () => void {
   const off = [

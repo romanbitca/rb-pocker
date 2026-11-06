@@ -21,6 +21,7 @@ import {
   type Timers,
 } from '../../src/app/controller.ts';
 import type { ShareEnv } from '../../src/app/dataTools.ts';
+import type { InstallEnv } from '../../src/app/lifecycle.ts';
 import type { TabLock } from '../../src/app/tabLock.ts';
 import {
   createAppStore,
@@ -84,6 +85,8 @@ export interface HarnessOptions {
   shareEnv?: ShareEnv;
   storageManager?: StorageManagerLike;
   standalone?: boolean;
+  /** Chunk 8.4: installing (§12.13): the browser's offer, iOS and the secure context. */
+  install?: InstallEnv;
 }
 
 export function makeHarness(options: HarnessOptions = {}): Harness {
@@ -109,6 +112,7 @@ export function makeHarness(options: HarnessOptions = {}): Harness {
     ...(options.shareEnv !== undefined && { shareEnv: options.shareEnv }),
     ...(options.storageManager !== undefined && { storageManager: options.storageManager }),
     ...(options.standalone !== undefined && { standalone: options.standalone }),
+    ...(options.install !== undefined && { install: options.install }),
   });
   controller.boot();
   return {

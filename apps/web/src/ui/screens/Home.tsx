@@ -9,10 +9,13 @@
  * Read-only (§14.7, chunk 8.3: another tab has the game): the §12.11 banner and its "Play here"
  * take the place of Play and New table, and Settings is hidden (nothing could be saved); Learn and
  * Stats stay.
+ *
+ * The one-time card about installing (§12.11, §12.13, chunk 8.4) sits under the tiles.
  */
 import { Fragment, useId } from 'react';
 import type { BotLevel, CoachLevel } from '../../engine/types.ts';
 import { en } from '../../i18n/en.ts';
+import { NudgeCard, type NudgeCardProps } from '../components/NudgeCard.tsx';
 import { formatChips } from './numbers.ts';
 import styles from './Screen.module.css';
 
@@ -42,6 +45,8 @@ export interface HomeProps {
   onInstall?: (() => void) | undefined;
   /** Read-only (§14.7): "Play here" (the banner replaces Play and New table). */
   onPlayHere?: (() => void) | undefined;
+  /** The one-time card (§12.11), or absent. */
+  nudge?: NudgeCardProps | undefined;
 }
 
 /** The parts of "Hand 23 · 6 players · You have 2,340 chips · Easy bots · Beginner coach". */
@@ -65,6 +70,7 @@ export function Home({
   onOpenStats,
   onInstall,
   onPlayHere,
+  nudge,
 }: HomeProps) {
   const sessionId = useId();
   const tiles: { key: string; label: string; onClick: () => void }[] = [];
@@ -132,6 +138,8 @@ export function Home({
             </button>
           ))}
         </div>
+
+        {nudge && <NudgeCard {...nudge} />}
       </div>
 
       <footer className={styles.footer}>

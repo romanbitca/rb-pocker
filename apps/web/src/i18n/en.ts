@@ -599,6 +599,8 @@ export const en = {
     sessionScore: (score: number) => `Decision score ${score}`,
     sessionMistakes: (n: number) => (n === 1 ? '1 mistake' : `${n} mistakes`),
     separator: ' · ',
+    /** "Export debug report" could only copy the report (Settings → Diagnostics, §4.5). */
+    debugCopied: 'The report was copied. Paste it into a message to send it.',
   },
 
   /** Another tab has the game (PLAN §12.11, §14.7): the game screens show this instead. */
@@ -607,13 +609,28 @@ export const en = {
     playHere: 'Play here',
   },
 
-  /**
-   * The storage-failure banner (PLAN §12.11, §12.14), once per launch. Its second sentence
-   * ("Export before you close the tab.") arrives with the Export button (chunk 8.4).
-   */
+  /** The storage-failure banner (PLAN §12.11, §12.14), once per launch. */
   storage: {
-    banner: "Stats can't be saved in this browser mode (for example private browsing).",
+    banner:
+      "Stats can't be saved in this browser mode (for example private browsing). Export before you close the tab.",
     ok: 'OK',
+  },
+
+  /**
+   * The one-time cards on Home and Welcome (PLAN §12.11, §12.13; chunk 8.4): installing, and a
+   * home-screen app's own storage.
+   */
+  nudge: {
+    iosTip:
+      "Tip: add RB Poker Coach to your Home Screen. Tap Share, then 'Add to Home Screen'. It works offline and keeps your stats safer.",
+    gotIt: 'Got it',
+    installCard:
+      'Install RB Poker Coach? It opens like an app, works offline and keeps your stats safer.',
+    installNow: 'Install',
+    notNow: 'Not now',
+    safariImport: 'Played in Safari before? Export your stats there, then Import them here.',
+    import: 'Import',
+    skip: 'Skip',
   },
 
   /** The hand-rankings panel and drawer (PLAN §13). The ten rows are in `data/rankings.ts`. */

@@ -24,6 +24,7 @@ import { createSafeStorage, STORAGE_KEYS, type SafeStorage } from '../../src/per
 import {
   buildExport,
   countedHands,
+  debugData,
   EXPORT_APP,
   exportData,
   exportFileName,
@@ -107,6 +108,28 @@ describe('export (§14.8)', () => {
       'rb-poker-coach-stats-2026-09-12.json',
     );
     expect(exportFileName(new Date(2027, 0, 3, 0, 1))).toBe('rb-poker-coach-stats-2027-01-03.json');
+    expect(exportFileName(new Date(2027, 0, 3), 'debug')).toBe(
+      'rb-poker-coach-debug-2027-01-03.json',
+    );
+  });
+
+  it('the debug report (§4.5, chunk 8.4): the stored voided hands as they are, and the report', () => {
+    const ring = { schema: 1, records: [{ engineVersion: '1.0.0' }] };
+    const fake = new FakeStorage({ [K.diag]: JSON.stringify(ring) });
+    const { name, text } = debugData(kit, storeOver(fake), { counters: { voidedHands: 1 } }, NOW);
+    expect(name).toBe(exportFileName(NOW, 'debug'));
+    expect(JSON.parse(text)).toEqual({
+      app: 'poker-coach',
+      kind: 'debug',
+      exportedAt: NOW.toISOString(),
+      counters: { voidedHands: 1 },
+      diag: ring,
+    });
+    // Unreadable text is sent as it is; nothing stored: null.
+    fake.data.set(K.diag, '{broken');
+    expect(JSON.parse(debugData(kit, storeOver(fake), {}, NOW).text).diag).toBe('{broken');
+    fake.data.delete(K.diag);
+    expect(JSON.parse(debugData(kit, storeOver(fake), {}, NOW).text).diag).toBeNull();
   });
 
   it('writes the profile as stored and its counted hand records', () => {

@@ -145,6 +145,65 @@ describe('Home', () => {
   });
 });
 
+describe('Home: the one-time install cards (§12.11, §12.13; chunk 8.4)', () => {
+  const card = () => document.querySelector('[data-nudge]');
+
+  it('no card without one; the iOS tip with [Got it] under the tiles, never before Play', () => {
+    renderHome();
+    expect(card()).toBeNull();
+    cleanup();
+    const onDismiss = vi.fn();
+    renderHome({ nudge: { nudge: 'iosTip', onDismiss } });
+    const tip = screen.getByRole('region', {
+      name: "Tip: add RB Poker Coach to your Home Screen. Tap Share, then 'Add to Home Screen'. It works offline and keeps your stats safer.",
+    });
+    expect(document.querySelector('button')?.textContent).toBe('Play'); // Play stays first
+    expect(tip.querySelectorAll('button')).toHaveLength(1);
+    fireEvent.click(screen.getByRole('button', { name: 'Got it' }));
+    expect(onDismiss).toHaveBeenCalledTimes(1);
+  });
+
+  it('the install card: [Install] opens the browser`s dialog, [Not now] answers it', () => {
+    const onDismiss = vi.fn();
+    const onInstall = vi.fn();
+    renderHome({ nudge: { nudge: 'installCard', onDismiss, onInstall } });
+    expect(card()?.textContent).toContain(
+      'Install RB Poker Coach? It opens like an app, works offline and keeps your stats safer.',
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Install' }));
+    expect(onInstall).toHaveBeenCalledTimes(1);
+    expect(onDismiss).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Not now' }));
+    expect(onDismiss).toHaveBeenCalledTimes(1);
+  });
+
+  it('"Played in Safari before?": [Import] is the file picker, [Skip] answers it', () => {
+    const onDismiss = vi.fn();
+    const onImportFile = vi.fn();
+    const { container } = renderHome({
+      nudge: { nudge: 'safariImport', onDismiss, onImportFile },
+    });
+    expect(card()?.textContent).toContain(
+      'Played in Safari before? Export your stats there, then Import them here.',
+    );
+    const input = container.querySelector('input[type="file"]') as HTMLInputElement;
+    expect(input.accept).toBe('application/json,.json');
+    expect(input.labels?.[0]?.textContent).toBe('Import');
+    const file = new File(['{}'], 'stats.json', { type: 'application/json' });
+    fireEvent.change(input, { target: { files: [file] } });
+    expect(onImportFile).toHaveBeenCalledWith(file);
+    fireEvent.click(screen.getByRole('button', { name: 'Skip' }));
+    expect(onDismiss).toHaveBeenCalledTimes(1);
+  });
+
+  it('every control of a card is at least 44×44 px (§12.12)', () => {
+    const { container } = renderHome({
+      nudge: { nudge: 'safariImport', onDismiss: () => {}, onImportFile: () => {} },
+    });
+    expect(smallTargets(container, (el) => el.classList.contains(PRIMARY))).toEqual([]);
+  });
+});
+
 describe('the tap-target check itself', () => {
   it('flags controls without a declared size, and a primary button under 56 px', () => {
     const { container } = render(

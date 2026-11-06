@@ -4,6 +4,8 @@
 import { describe, expect, it } from 'vitest';
 import { en } from '../../../src/i18n/en.ts';
 import { coachWords } from '../../../src/i18n/coachUi.ts';
+import { dataWords as D } from '../../../src/i18n/data.ts';
+import { suggestionWords } from '../../../src/i18n/suggestions.ts';
 import { quizWords } from '../../../src/i18n/quiz.ts';
 import { summaryWords } from '../../../src/i18n/summary.ts';
 import { whichWinsWords } from '../../../src/i18n/whichWins.ts';
@@ -183,6 +185,65 @@ describe('screen copy comes from docs/PLAN.md', () => {
     }),
   )('6.4 %s', (_key, words) => {
     for (const w of Array.isArray(words) ? words : [words]) expect(PLAN).toContain(w);
+  });
+
+  // Chunk 8.4 (§10.4, §12.11, §12.13, §14.8, §4.5, F.10): Settings → Data, Diagnostics, the Data
+  // dialogs, the install cards and the level suggestion card, each quoted in PLAN.
+  it.each(
+    Object.entries({
+      data: [
+        D.title,
+        D.saved,
+        D.export.label,
+        D.export.hint,
+        D.import.label,
+        D.import.hint,
+        D.reset.label,
+        D.reset.hint,
+        D.protectedYes,
+        D.protectedNo,
+        D.protectedHint,
+      ].map((w) => `"${w}"`),
+      importDialog: [
+        D.importTitle,
+        D.reading,
+        D.preview('{n}', false, '{date}'),
+        D.replaceText,
+        D.handCancelled,
+        D.replace,
+        D.cancel,
+        ...Object.values(D.failed),
+        D.ok,
+      ].map((w) => `"${w}"`),
+      resetDialog: [D.resetTitle, D.resetText, D.deleteMyStats].map((w) => `"${w}"`),
+      diagnostics: [
+        D.diagnostics.title,
+        D.diagnostics.since,
+        D.diagnostics.errors,
+        D.diagnostics.voided,
+        D.diagnostics.fallbacks,
+        `${D.diagnostics.off} {features}.`,
+        D.diagnostics.allOn,
+        ...Object.values(D.diagnostics.features),
+        D.diagnostics.export,
+        D.diagnostics.exportHint,
+      ].map((w) => `"${w}"`),
+      nudges: [
+        `"${en.nudge.iosTip}" | [${en.nudge.gotIt}]`,
+        `"${en.nudge.installCard}" | [${en.nudge.installNow}] [${en.nudge.notNow}]`,
+        `"${en.nudge.safariImport}" | [${en.nudge.import}] [${en.nudge.skip}]`,
+      ],
+      toasts: [`toast "${en.toast.debugCopied}"`, en.storage.banner],
+      suggestions: [
+        `"${suggestionWords.botsUp('{Easy}', '{Medium}')}"`,
+        `"${suggestionWords.botsDown}"`,
+        `"${suggestionWords.coachDown}"`,
+        `[${suggestionWords.accept('{level}')}]`,
+        `[${suggestionWords.notNow}]`,
+      ],
+    }),
+  )('8.4 %s', (_key, words) => {
+    for (const w of words) expect(PLAN).toContain(w);
   });
 
   it('the Welcome bullets are the four §12.1 bullets, capitalised', () => {

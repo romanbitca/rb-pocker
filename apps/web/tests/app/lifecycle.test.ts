@@ -9,8 +9,10 @@ import { createTableController, TIMING } from '../../src/app/controller.ts';
 import {
   canGoBack,
   installBackHandler,
+  installEnv,
   installLayout,
   installVisibility,
+  isIos,
   LAYOUT_QUERIES,
   layoutFor,
 } from '../../src/app/lifecycle.ts';
@@ -166,5 +168,75 @@ describe('layout (§12.3)', () => {
     const store = createAppStore();
     off.push(installLayout({} as Window, store));
     expect(store.getState().ui.layout).toBe('portrait');
+  });
+});
+
+describe('installing (§12.13, chunk 8.4)', () => {
+  /** A page with an event target, a navigator and a secure flag. */
+  function page(navigator: Partial<Navigator>, secure = true) {
+    const target = new EventTarget();
+    const win = Object.assign(target, { navigator, isSecureContext: secure }) as unknown as Window;
+    return win;
+  }
+
+  /** Chrome's `beforeinstallprompt`, answered with `outcome`. */
+  function offer(outcome: 'accepted' | 'dismissed', refuse = false) {
+    const e = new Event('beforeinstallprompt', { cancelable: true }) as Event & {
+      prompt: () => Promise<void>;
+      userChoice: Promise<{ outcome: string }>;
+      prompted: number;
+    };
+    e.prompted = 0;
+    e.prompt = () => {
+      e.prompted++;
+      return refuse ? Promise.reject(new DOMException('no', 'NotAllowedError')) : Promise.resolve();
+    };
+    e.userChoice = Promise.resolve({ outcome });
+    return e;
+  }
+
+  it('iOS and iPadOS: by the user agent, iPadOS by a Mac with touch', () => {
+    const iphone = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15';
+    const mac = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15';
+    expect(isIos(page({ userAgent: iphone, maxTouchPoints: 5 }))).toBe(true);
+    expect(isIos(page({ userAgent: mac, maxTouchPoints: 5 }))).toBe(true);
+    expect(isIos(page({ userAgent: mac, maxTouchPoints: 0 }))).toBe(false);
+    expect(isIos(page({ userAgent: 'Mozilla/5.0 (Linux; Android 15)', maxTouchPoints: 5 }))).toBe(
+      false,
+    );
+    expect(isIos({} as Window)).toBe(false); // no navigator: never throws
+  });
+
+  it('keeps Chrome`s offer for the Install tap; the dialog opens once, and says whether it installed', async () => {
+    const win = page({ userAgent: 'Android', maxTouchPoints: 5 });
+    const env = installEnv(win);
+    const changes = vi.fn();
+    env.listen(changes);
+    expect(env).toMatchObject({ ios: false, secure: true });
+    expect(env.ready()).toBe(false);
+    expect(env.prompt()).toBeNull();
+    const e = offer('accepted');
+    win.dispatchEvent(e);
+    expect(e.defaultPrevented).toBe(true); // the browser's own mini banner waits for our tile
+    expect(env.ready()).toBe(true);
+    expect(changes).toHaveBeenCalledTimes(1);
+    const asked = env.prompt();
+    expect(e.prompted).toBe(1);
+    expect(env.ready()).toBe(false); // used once
+    expect(await asked).toBe(true);
+    expect(env.prompt()).toBeNull();
+  });
+
+  it('a dismissed or refused dialog is "not installed"; appinstalled ends the offer', async () => {
+    const win = page({ userAgent: 'Android', maxTouchPoints: 5 }, false);
+    const env = installEnv(win);
+    expect(env.secure).toBe(false);
+    win.dispatchEvent(offer('dismissed'));
+    expect(await env.prompt()).toBe(false);
+    win.dispatchEvent(offer('accepted', true));
+    expect(await env.prompt()).toBe(false);
+    win.dispatchEvent(offer('accepted'));
+    win.dispatchEvent(new Event('appinstalled'));
+    expect(env.ready()).toBe(false);
   });
 });

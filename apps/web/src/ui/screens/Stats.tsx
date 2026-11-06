@@ -12,6 +12,9 @@
  *   `:hover` or media rules), which travel in this lazy chunk. All CSS is one stylesheet that first
  *   paint loads (§15.3), so rules for Stats there would cost every launch.
  * - The page the player looked at last comes back when the screen does (Review → Back).
+ * - Chunk 8.4: the level suggestion card (§10.4) at the top of Progress, and History's footer
+ *   [Export] [Import] (§14.4, the same commands as Settings → Data; the Data chunk loads when Stats
+ *   opens, `DATA_SCREENS`, so Export's share sheet opens inside the tap).
  */
 import {
   memo,
@@ -37,6 +40,8 @@ import type { HandCategory } from '../../eval/evaluate.ts';
 import { en } from '../../i18n/en.ts';
 import { statsWords as W } from '../../i18n/stats.ts';
 import { Card } from '../components/Card.tsx';
+import { FileButton } from '../components/FileButton.tsx';
+import { LevelSuggestion } from '../components/SuggestionCard.tsx';
 import { formatChips } from '../format.ts';
 import { exampleCards } from '../rankings.ts';
 import { statsView, type ProgressView, type ResultsView, type StatsView } from '../stats.ts';
@@ -319,6 +324,7 @@ function Progress({ p }: { p: ProgressView }) {
   const sessionLabel = p.score.last ? W.progress.lastSession : W.progress.session;
   return (
     <div style={S.page}>
+      <LevelSuggestion />
       <Section title={W.progress.score}>
         <p className={screen.hint}>{W.progress.scoreHint}</p>
         <Rows
@@ -618,9 +624,13 @@ const HistoryList = memo(function HistoryList({
 function History({
   items,
   onOpen,
+  onExport,
+  onImport,
 }: {
   items: readonly HistoryItem[] | null;
   onOpen: (handSeq: number) => void;
+  onExport: (() => void) | undefined;
+  onImport: ((file: File) => void) | undefined;
 }) {
   return (
     <div style={S.page}>
@@ -634,6 +644,18 @@ function History({
       )}
       <footer style={S.card}>
         <p style={S.text}>{W.history.saved}</p>
+        {onExport && onImport && (
+          <div className={screen.cardButtons}>
+            <button type="button" className={screen.secondary} onClick={() => onExport()}>
+              {W.history.export}
+            </button>
+            <FileButton
+              label={W.history.import}
+              className={`${screen.secondary} ${screen.fileButton}`}
+              onFile={onImport}
+            />
+          </div>
+        )}
         <details>
           <summary style={S.summary}>{W.history.where}</summary>
           <p style={S.text}>{W.history.whereText}</p>
@@ -658,15 +680,30 @@ export interface StatsProps {
   onTab: (tab: StatsTab) => void;
   onOpenHand: (handSeq: number) => void;
   onBack: () => void;
+  /** History's footer (chunk 8.4): Export, from the tap itself; the file picked for Import. */
+  onExport?: (() => void) | undefined;
+  onImport?: ((file: File) => void) | undefined;
 }
 
-export function Stats({ stats, bb, now, history, tab, onTab, onOpenHand, onBack }: StatsProps) {
+export function Stats({
+  stats,
+  bb,
+  now,
+  history,
+  tab,
+  onTab,
+  onOpenHand,
+  onBack,
+  onExport,
+  onImport,
+}: StatsProps) {
   const name = useId();
   const view = useMemo(() => (stats === null ? null : statsView(stats, bb, now)), [stats, bb, now]);
   const hands = view?.hands ?? 0;
   let page: ReactNode;
-  if (tab === 'history') page = <History items={history} onOpen={onOpenHand} />;
-  else if (view === null || (tab !== 'hands' && !view.ready)) page = <Empty hands={hands} />;
+  if (tab === 'history') {
+    page = <History items={history} onOpen={onOpenHand} onExport={onExport} onImport={onImport} />;
+  } else if (view === null || (tab !== 'hands' && !view.ready)) page = <Empty hands={hands} />;
   else if (tab === 'progress') page = <Progress p={view.progress} />;
   else if (tab === 'results') page = <Results r={view.results} />;
   else page = <Collection view={view} />;
@@ -729,6 +766,8 @@ export function StatsRoute() {
       }}
       onOpenHand={(handSeq) => dispatch({ type: 'historyReview', handSeq })}
       onBack={() => dispatch({ type: 'back' })}
+      onExport={() => dispatch({ type: 'exportStats' })}
+      onImport={(file) => dispatch({ type: 'importFile', file })}
     />
   );
 }

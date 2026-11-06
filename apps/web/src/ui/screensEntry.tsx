@@ -1,6 +1,7 @@
 /**
  * The screens after the first tap (PLAN §12.1, §15.3), wired to the store: the Table, Setup,
- * Settings, and the overlays that open over them (the Table's Menu and the two §3.1 dialogs).
+ * Settings, and the overlays that open over them (the Table's Menu, the two §3.1 dialogs, and the
+ * Data dialogs of §14.8: Import's preview and "Delete my stats", chunk 8.4).
  *
  * This file starts a lazy chunk. The first screen (Welcome or Home) does not need any of it, so
  * the initial bundle does not carry it. App loads it with `import()` (`ui/screensModule.ts`) right
@@ -8,15 +9,23 @@
  * (§12.1); the service worker precaches it like every chunk, so it also loads offline.
  */
 import {
+  missingFeatures,
+  secureFeatures,
   selectCanTopUp,
   selectCurrentTable,
+  selectDiagnostics,
+  selectHandInProgress,
+  selectImportCheck,
+  selectInstall,
   selectLayout,
+  selectPersisted,
   selectReviewCount,
   useAppStore,
   useAppStoreShallow,
   useDispatch,
 } from '../app/store.ts';
 import type { CoachLevel, TableConfig } from '../engine/types.ts';
+import { ImportDialog, ResetDialog } from './screens/DataDialogs.tsx';
 import { NewTableDialog, OutOfChipsDialog } from './screens/Dialogs.tsx';
 import { Menu } from './screens/Menu.tsx';
 import { Settings } from './screens/Settings.tsx';
@@ -76,6 +85,8 @@ export function SettingsScreen() {
   }));
   // How many bots have a level of their own (§9.3): the Bot level row says so.
   const ownLevels = useAppStore((s) => ownLevelCount(s.settings.seatLevels));
+  const persisted = useAppStore(selectPersisted);
+  const counters = useAppStore(selectDiagnostics);
   return (
     <Settings
       settings={settings}
@@ -83,6 +94,18 @@ export function SettingsScreen() {
       available={AVAILABLE_LEVELS}
       onChangeSettings={(patch) => dispatch({ type: 'settings', patch })}
       onBack={() => dispatch({ type: 'back' })}
+      data={{
+        persisted,
+        // From the tap itself: the share sheet opens only inside it (§14.8).
+        onExport: () => dispatch({ type: 'exportStats' }),
+        onImport: (file) => dispatch({ type: 'importFile', file }),
+        onReset: () => dispatch({ type: 'open', overlay: 'dataReset' }),
+      }}
+      diagnostics={{
+        counters,
+        featuresOff: missingFeatures(secureFeatures()),
+        onExportDebug: () => dispatch({ type: 'exportDebug' }),
+      }}
     />
   );
 }
@@ -96,6 +119,7 @@ export function MenuOverlay() {
   const startingStack = useAppStore((s) => selectCurrentTable(s)?.config.startingStack ?? null);
   const wide = useAppStore((s) => selectLayout(s) === 'wide');
   const hands = useAppStore(selectReviewCount);
+  const install = useAppStore(selectInstall);
   const close = () => dispatch({ type: 'close', overlay: 'menu' });
   return (
     <Menu
@@ -113,6 +137,15 @@ export function MenuOverlay() {
       onOpenHands={hands > 0 ? () => dispatch({ type: 'review', handSeq: null }) : undefined}
       onOpenSettings={() => dispatch({ type: 'go', screen: 'settings' })}
       onOpenStats={() => dispatch({ type: 'go', screen: 'stats' })}
+      onInstall={
+        install
+          ? () => {
+              // The browser's install dialog, from the tap itself (§12.13).
+              dispatch({ type: 'install' });
+              close();
+            }
+          : undefined
+      }
       onLeaveTable={() => dispatch({ type: 'leaveTable' })}
       onNewTable={() => dispatch({ type: 'go', screen: 'setup' })}
     />
@@ -127,6 +160,41 @@ export function OutOfChipsOverlay() {
       startingStack={startingStack}
       onTopUp={() => dispatch({ type: 'reload' })}
       onChangeTable={() => dispatch({ type: 'changeTable' })}
+    />
+  );
+}
+
+/**
+ * Import's dialog (§14.8): open while the controller holds a picked file's check (it opens and
+ * closes the `dataImport` overlay with it). Replace writes it; Cancel, OK, Esc and the scrim
+ * forget it (Back too: the controller sees the overlay close).
+ */
+export function ImportOverlay() {
+  const dispatch = useDispatch();
+  const check = useAppStore(selectImportCheck);
+  const handInProgress = useAppStore(selectHandInProgress);
+  if (check === null) return null;
+  return (
+    <ImportDialog
+      check={check}
+      handInProgress={handInProgress}
+      onReplace={() => dispatch({ type: 'importConfirm' })}
+      onCancel={() => dispatch({ type: 'importCancel' })}
+    />
+  );
+}
+
+/** Reset stats (§14.8): "Delete my stats" sends Reset; Cancel, Esc, the scrim and Back close it. */
+export function ResetOverlay() {
+  const dispatch = useDispatch();
+  const close = () => dispatch({ type: 'close', overlay: 'dataReset' });
+  return (
+    <ResetDialog
+      onConfirm={() => {
+        close();
+        dispatch({ type: 'resetStats' });
+      }}
+      onCancel={close}
     />
   );
 }

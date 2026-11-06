@@ -14,17 +14,20 @@
  * 3. the clipboard, `navigator.clipboard.writeText()`, as the last resort ("Your stats were copied…").
  *
  * Import: the picked file is read and checked (`persist/transfer.ts`), its preview goes to the
- * store (`data.importCheck`), and Replace writes it. Reset empties the stats. The storage protocols
+ * store (`data.importCheck`), and Replace writes it. Reset empties the stats. "Export debug report"
+ * (Settings → Diagnostics, §4.5, chunk 8.4) goes out the same ways as Export. The storage protocols
  * are `persist/transfer.ts`; what they do to the game in this tab (a hand waiting for its grade, an
  * unfinished hand, the new profile in memory) goes through `DataHost`, the controller's side.
  *
  * Only pure modules are imported at run time (pitfall 47): the persist functions come in
- * `DataHost.kit`.
+ * `DataHost.kit`; `app/secure.ts` (the debug report's features) imports nothing either. (The
+ * bundler moves it into a small lazy chunk of its own that Settings shares: no initial cost.)
  */
 import type { TableState } from '../engine/types.ts';
 import type { Profile } from '../persist/schema.ts';
 import type { SafeStorage } from '../persist/storage.ts';
 import {
+  debugData,
   exportData,
   importProfile,
   IMPORT_MAX_CHARS,
@@ -36,6 +39,7 @@ import {
   type PersistKit,
   type TransferResult,
 } from '../persist/transfer.ts';
+import { missingFeatures, secureFeatures } from './secure.ts';
 import type { ImportCheck } from './store.ts';
 
 /** Where an export went (`shared`, `downloaded`, `copied`), or did not (`cancelled`, `failed`). */
@@ -49,6 +53,8 @@ export interface ShareEnv {
     clipboard?: { writeText(text: string): Promise<void> };
     /** iOS only: true in a home-screen app. */
     standalone?: boolean;
+    /** For the debug report. */
+    userAgent?: string;
   };
   document?: Pick<Document, 'createElement' | 'body'>;
   URL?: Pick<typeof URL, 'createObjectURL' | 'revokeObjectURL'>;
@@ -58,7 +64,7 @@ export interface ShareEnv {
 
 /** The Data commands' toasts (§12.11). */
 export type DataToast =
-  'exportCopied' | 'exportFailed' | 'imported' | 'statsReset' | 'dataNotChanged';
+  'exportCopied' | 'exportFailed' | 'imported' | 'statsReset' | 'dataNotChanged' | 'debugCopied';
 
 /** The controller's side of the Data commands (`TableController`). */
 export interface DataHost {
@@ -90,6 +96,11 @@ export interface DataHost {
   /** Another tab wrote the profile since (§14.3 step 2): this tab becomes read-only (§14.7). */
   conflict(storedRev: number): void;
   importCheck(check: ImportCheck | null): void;
+  /**
+   * What the debug report says from the game (§4.5): this launch's counters and last errors. No
+   * cards of a hand in play.
+   */
+  debugReport(): Record<string, unknown>;
   toast(kind: DataToast): void;
   log(what: string, detail?: unknown): void;
 }
@@ -100,7 +111,8 @@ export type DataCommand =
   | { type: 'importFile'; file: Blob }
   | { type: 'importConfirm' }
   | { type: 'importCancel' }
-  | { type: 'resetStats' };
+  | { type: 'resetStats' }
+  | { type: 'exportDebug' };
 
 export interface DataCommands {
   run(cmd: DataCommand): void;
@@ -223,6 +235,25 @@ export function dataCommands(host: DataHost): DataCommands {
     });
   };
 
+  /**
+   * "Export debug report" (§4.5): the same ways out as Export, from the tap. Besides the voided
+   * hands and the game's counters, the features this page lacks (§12.14) and the browser.
+   */
+  const exportDebug = (): void => {
+    const report = {
+      ...host.debugReport(),
+      featuresOff: missingFeatures(secureFeatures()),
+      standalone: host.env.navigator?.standalone === true,
+      userAgent: host.env.navigator?.userAgent ?? null,
+    };
+    const { name, text } = debugData(host.kit, host.storage, report, host.now());
+    void deliverExport(host.env, name, text).then((outcome) => {
+      host.log('debug report', outcome);
+      if (outcome === 'copied') host.toast('debugCopied');
+      else if (outcome === 'failed') host.toast('exportFailed');
+    });
+  };
+
   const importFile = (file: Blob): void => {
     if (!host.canChange()) {
       host.toast('dataNotChanged');
@@ -308,6 +339,9 @@ export function dataCommands(host: DataHost): DataCommands {
           break;
         case 'resetStats':
           resetStats();
+          break;
+        case 'exportDebug':
+          exportDebug();
           break;
       }
     },

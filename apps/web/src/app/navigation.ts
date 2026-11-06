@@ -28,6 +28,9 @@ export type Screen = 'welcome' | 'home' | 'setup' | 'table' | 'settings' | 'revi
  * - 'rankings', 'coach', 'botCard', 'summary': the modal sheets (§13.1, §12.6, §9.3, §12.9).
  * - 'tray': the sizing tray (§12.7): Back closes it first, but it is not a gate.
  * - 'feedback', 'quiz', 'tip': the mistake card, the quiz and a first-table tip (Stages 6, 5, 9).
+ * - 'dataImport', 'dataReset': Import's preview with Replace, and "Delete my stats" (§14.8, chunk
+ *   8.4). The controller opens and closes 'dataImport' with Import's check (`data.importCheck`);
+ *   Back closing it cancels the import.
  */
 export type Overlay =
   | 'menu'
@@ -40,7 +43,9 @@ export type Overlay =
   | 'tray'
   | 'feedback'
   | 'quiz'
-  | 'tip';
+  | 'tip'
+  | 'dataImport'
+  | 'dataReset';
 
 export interface Nav {
   /** The back stack, oldest first; the last one is on screen. Never empty; [0] is a root. */
@@ -80,6 +85,8 @@ const BACK_CLOSES: Readonly<Record<Overlay, boolean>> = {
   feedback: true,
   quiz: true,
   tip: true,
+  dataImport: true,
+  dataReset: true,
 };
 
 /** The first screen: Welcome on the first launch (no saved profile), Home after that (§12.1). */

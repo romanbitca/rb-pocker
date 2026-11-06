@@ -8,7 +8,9 @@ import '../../../src/ui/styles/tokens.css';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
+  appStore,
   dealPair,
+  initialData,
   quizQuestions,
   quizScore,
   rightAnswers,
@@ -270,6 +272,32 @@ describe('the hand summary (§12.9) and the Exam result (§10.2)', () => {
     expect(screen.getByText('Your score: 63 of 100')).toBeTruthy();
     // Amounts in big blinds when the player chose them.
     expect(screen.getByText(/You raised to 15/)).toBeTruthy();
+  });
+
+  it('the level suggestion card (§10.4, chunk 8.4) sits above the buttons when there is one', () => {
+    const offer = { rule: 'botsUp', from: 'easy', to: 'medium' } as const;
+    appStore.setState({ data: { ...initialData(), suggestion: offer } });
+    try {
+      render(
+        <SummarySheet
+          summary={SUMMARY}
+          unit="chips"
+          onNext={vi.fn()}
+          onReview={vi.fn()}
+          onClose={vi.fn()}
+        />,
+      );
+      const dialog = screen.getByRole('dialog', { name: 'Hand 12: −40' });
+      const card = screen.getByRole('region', { name: 'You beat Easy bots. Try Medium?' });
+      expect(dialog.contains(card)).toBe(true);
+      const next = screen.getByRole('button', { name: 'Next hand ›' });
+      expect(card.compareDocumentPosition(next) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      expect(smallTargets(dialog, (el) => el.getAttribute('data-summary-next') !== null)).toEqual(
+        [],
+      );
+    } finally {
+      appStore.setState({ data: initialData() });
+    }
   });
 
   it('net text and row notes', () => {

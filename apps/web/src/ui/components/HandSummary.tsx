@@ -5,7 +5,8 @@
  * hero decision: street, what you did, the grade chip, the coach's move when it was another, and
  * the numbers at the decision ("You had 45%, needed 25%."). Exam adds the score of the hand
  * (§14.4). Buttons [Review hand] and [Next hand ›]; ✕, Esc, the scrim and Back close it (the
- * banner stays, and the next hand waits its 3 s again).
+ * banner stays, and the next hand waits its 3 s again). Above the buttons, the level suggestion
+ * card when there is one (§10.4, chunk 8.4).
  *
  * The Table hosts it while the `summary` overlay is open (its `sheet` gate keeps the next hand
  * waiting, §12.8); it reads the hand and its records from the store (`ui/summary.ts` builds the
@@ -22,6 +23,7 @@ import { percentText } from '../equity.ts';
 import { formatChips } from '../format.ts';
 import { GradeChip } from './GradeChip.tsx';
 import { Modal } from './Modal.tsx';
+import { LevelSuggestion } from './SuggestionCard.tsx';
 import screen from '../screens/Screen.module.css';
 import s from './Levels.module.css';
 
@@ -163,6 +165,7 @@ export const SummarySheet = memo(function SummarySheet({
             );
           })}
         </ol>
+        <LevelSuggestion />
         <div className={cx(s.row, s.stick)}>
           <button
             type="button"

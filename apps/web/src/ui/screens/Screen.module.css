@@ -174,10 +174,88 @@
   text-underline-offset: 3px;
 }
 
+/* A red button for what cannot be undone ("Delete my stats", §14.8); white text, 4.6:1. */
+.danger {
+  background: var(--grade-big-mistake);
+  color: #fff;
+}
+
+/* A file picker drawn as a button (ui/components/FileButton.tsx): the input covers the face. */
+.fileButton {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.fileButton input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.fileButton:focus-within {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
 .actions {
   display: grid;
   gap: var(--space-2);
   justify-items: center;
+}
+
+/* A one-time card on Home and Welcome (§12.11): its text, then its buttons side by side. */
+.card {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border: 1px solid rgb(242 245 243 / 30%);
+  border-radius: var(--radius-3);
+  background: rgb(15 21 18 / 55%);
+}
+
+.card p {
+  margin: 0;
+}
+
+.cardButtons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.cardButtons > * {
+  flex: 1 1 120px;
+}
+
+/* Settings: one Data action, its button above its hint. */
+.action {
+  display: grid;
+  gap: var(--space-2);
+}
+
+/* Settings → Diagnostics: name and number on one line. */
+.facts {
+  display: grid;
+  gap: var(--space-1);
+  margin: 0;
+}
+
+.facts div {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.facts dd {
+  margin: 0;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
 }
 
 .tiles {

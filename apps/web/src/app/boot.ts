@@ -11,7 +11,7 @@ import {
 } from './controller.ts';
 import { createSafeStorage } from '../persist/storage.ts';
 import { brainGrader } from './grading.ts';
-import { installLifecycle, isStandalone, storageManagerOf } from './lifecycle.ts';
+import { installEnv, installLifecycle, isStandalone, storageManagerOf } from './lifecycle.ts';
 import { appStore } from './store.ts';
 import { browserTabLockEnv, createTabLock } from './tabLock.ts';
 import { startBrainWorker, startEquityWorker } from './workerClient.ts';
@@ -61,6 +61,8 @@ export function startApp(options: StartOptions): TableController {
     // Keeping the data (§14.8): persist() where it exists (secure pages), at once when installed.
     storageManager: storageManagerOf(win),
     standalone: isStandalone(win),
+    // Installing (§12.13): the browser's offer, kept for "Install app"; iOS gets the Share tip.
+    install: installEnv(win),
   });
   installLifecycle(win, appStore);
   if (hooks !== undefined) {
