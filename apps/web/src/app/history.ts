@@ -73,8 +73,11 @@ export function reviewHandOf(record: HandRecord): ReviewHand {
     at: record.at,
     record: replayRecord,
     heroHole: record.heroHole,
-    // The board as the hand ended: "Check the shuffle" compares it (§16.3, chunk 9.4).
+    // The board as the hand ended: "Check the shuffle" compares it (§16.3, chunk 9.4), and the
+    // Undos with the logged reshuffles; "saved before the cards were dealt" only when known.
     board: [...record.board],
+    undoCount: record.undoCount,
+    commitBeforeDeal: record.commitBeforeDeal === true,
     end: end ?? {
       handSeq: record.handSeq,
       endedBy: 'fold',

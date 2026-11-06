@@ -108,13 +108,50 @@ describe('every hand is committed to before it is dealt (§16.3)', () => {
     const starts = dealt(h);
     expect(starts.length).toBeGreaterThanOrEqual(12);
     expect(starts.filter((s) => s.shuffleCode !== 'ready')).toEqual([]);
-    // Review's hands (from memory) carry the same codes.
+    // The records say so (Review's "saved before the cards were dealt").
+    expect(ring.filter((r) => r.commitBeforeDeal !== true)).toEqual([]);
+    // Review's hands (from memory) carry the same codes, and the Undo count the check compares.
     for (const kept of h.state().review.hands) {
       const r = ring.find((x) => x.handSeq === kept.handSeq) as HandRecord;
       expect(kept.record.commit).toBe(r.commit);
+      expect(kept.commitBeforeDeal).toBe(true);
+      expect(kept.undoCount).toBe(r.undoCount);
       expect(kept.board).toEqual(r.board);
     }
   }, 60_000);
+
+  it('while a hand is played, the code made ahead is the next hand’s, never the dealt one’s again', async () => {
+    const hashed: number[] = [];
+    const sha256: Sha256 = (text) => {
+      hashed.push(Number(text.split(':')[2]));
+      return nodeSha256(text);
+    };
+    const h = launch(new FakeStorage(), {
+      settings: { players: 3, speed: 'instant', autoNext: false },
+      sha256,
+    });
+    await flush();
+    let since = hashed.length;
+    h.dispatch({ type: 'play' });
+    for (let n = 0; n < 3; n++) {
+      const handSeq = h.state().game.hand?.handSeq as number;
+      for (let i = 0; i < 400 && h.state().game.mode !== 'handEnd'; i++) {
+        const s = h.state();
+        if (s.game.mode === 'heroTurn' && s.game.legal !== null) {
+          h.dispatch({ type: 'act', action: passive(s.game.legal) });
+        } else await tick();
+      }
+      expect(h.state().game.mode).toBe('handEnd');
+      // From the deal to the hand's end: the codes of the hands to come (this table's next and
+      // the next new table's first), made at the deal; never this hand's again.
+      const made = hashed.slice(since);
+      expect(made.length).toBeGreaterThan(0);
+      expect(made.filter((seq) => seq !== handSeq + 1)).toEqual([]);
+      since = hashed.length;
+      h.dispatch({ type: 'nextHand' });
+      expect(dealt(h).at(-1)).toMatchObject({ handSeq: handSeq + 1, shuffleCode: 'ready' });
+    }
+  }, 30_000);
 
   it('a tap before the digest answered: dealt at once anyway, and the code still reaches the record', async () => {
     const backend = new FakeStorage();
@@ -125,6 +162,9 @@ describe('every hand is committed to before it is dealt (§16.3)', () => {
     await drive(h, { hands: 2, hero: passive });
     await expectVerified(ringOf(backend));
     expect(dealt(h)[1]?.shuffleCode).toBe('ready');
+    // Only the second hand's code was made before its deal; the first one's right after it.
+    expect(ringOf(backend).map((r) => r.commitBeforeDeal)).toEqual([false, true]);
+    expect(h.state().review.hands.map((kept) => kept.commitBeforeDeal)).toEqual([true, false]);
   }, 30_000);
 
   it('a New table: its first hand was committed to with its table seed, drawn ahead', async () => {
@@ -194,10 +234,10 @@ describe('the deals do not change (the `?seed=` games)', () => {
     expect(withHash.out).toHaveLength(5);
     expect(withHash.out).toEqual(without.out);
     expect(new Set(withHash.out.map((x) => x.tableSeed)).size).toBe(2);
-    expect(without.ring.every((r) => r.commit === null)).toBe(true);
-    expect(withHash.ring.map((r) => ({ ...r, commit: null, at: '' }))).toEqual(
-      without.ring.map((r) => ({ ...r, at: '' })),
-    );
+    expect(without.ring.every((r) => r.commit === null && r.commitBeforeDeal === false)).toBe(true);
+    expect(
+      withHash.ring.map((r) => ({ ...r, commit: null, commitBeforeDeal: false, at: '' })),
+    ).toEqual(without.ring.map((r) => ({ ...r, at: '' })));
   }, 60_000);
 });
 
@@ -217,6 +257,7 @@ describe('the code survives a reload (§14.5) and the next launch (§14.3 load t
     const table = a.state().game.table as TableState;
     const session = read<SessionState>(backend, K.session);
     expect(session.commit).toBe(codeOf(hand.seed, table, hand.handSeq));
+    expect(session.commitBeforeDeal).toBe(true);
     a.controller.dispose();
 
     const b = launch(backend);
@@ -225,6 +266,7 @@ describe('the code survives a reload (§14.5) and the next launch (§14.3 load t
     await drive(b, { hands: 1, hero: passive });
     const [record] = ringOf(backend);
     expect(record?.handSeq).toBe(hand.handSeq);
+    expect(record?.commitBeforeDeal).toBe(true);
     await expectVerified(ringOf(backend));
   }, 30_000);
 
@@ -237,12 +279,35 @@ describe('the code survives a reload (§14.5) and the next launch (§14.3 load t
     a.controller.dispose();
     const old = read<SessionState>(backend, K.session);
     delete old.commit;
+    delete old.commitBeforeDeal;
     backend.data.set(K.session, JSON.stringify(old));
 
     const b = launch(backend);
     b.dispatch({ type: 'play' });
     await drive(b, { hands: 1, hero: passive });
     await expectVerified(ringOf(backend));
+    // Computed after the reload, so after the deal: Review does not say it came before.
+    expect(ringOf(backend)[0]?.commitBeforeDeal).toBe(false);
+    expect(b.state().review.hands[0]?.commitBeforeDeal).toBe(false);
+  }, 30_000);
+
+  it('a session that has the code but not when it was made (9.4’s own): not said to be before', async () => {
+    const backend = new FakeStorage();
+    const a = launch(backend, { settings: { players: 3, speed: 'instant' } });
+    await flush();
+    a.dispatch({ type: 'play' });
+    await toHeroTurn(a);
+    a.controller.dispose();
+    const old = read<SessionState>(backend, K.session);
+    expect(old.commit).toMatch(/^[0-9a-f]{64}$/);
+    delete old.commitBeforeDeal;
+    backend.data.set(K.session, JSON.stringify(old));
+
+    const b = launch(backend);
+    b.dispatch({ type: 'play' });
+    await drive(b, { hands: 1, hero: passive });
+    await expectVerified(ringOf(backend));
+    expect(ringOf(backend)[0]?.commitBeforeDeal).toBe(false);
   }, 30_000);
 
   it('a complete hand left in the session is counted at the next launch with its code', async () => {
@@ -265,6 +330,7 @@ describe('the code survives a reload (§14.5) and the next launch (§14.3 load t
     launch(backend); // boot counts it (synchronously, with the session's code)
     const [record] = ringOf(backend);
     expect(record?.handSeq).toBe(hand?.handSeq);
+    expect(record?.commitBeforeDeal).toBe(true);
     await expectVerified(ringOf(backend));
   }, 30_000);
 });

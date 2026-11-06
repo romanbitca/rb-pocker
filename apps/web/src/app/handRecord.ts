@@ -8,7 +8,8 @@
  * is the hero's category when the hero was still in the hand as the river card came (it may fold
  * after it); `allIn` is the hero's share of the main pot against the face-up hands, as expected
  * (`equity.allIn`, the board at the reveal) and as it happened, with that pot in chips. `commit`
- * is the hand's shuffle code (chunk 9.4, §16.3), made before the deal; null without `crypto.subtle`.
+ * is the hand's shuffle code (chunk 9.4, §16.3), made before the deal; null without `crypto.subtle`;
+ * `commitBeforeDeal` says whether it was ready before the deal (1.3.82).
  * Chunk 8.2: `heroPlay`, what the hero did (VPIP, PFR, flop, showdown, payout), read from the log
  * here because `persist` may not replay a hand.
  */
@@ -37,6 +38,8 @@ export interface HandEnd {
   at: string;
   /** The shuffle code made before the deal (§16.3), or null. */
   commit: string | null;
+  /** `commit` was ready before the hand was dealt (§16.3; false when it came after the deal). */
+  commitBeforeDeal: boolean;
 }
 
 /** The hero's category if the hero was in the hand when the river came (or at the showdown). */
@@ -88,6 +91,7 @@ export function handRecordOf(end: HandEnd): HandRecord | null {
     at: end.at,
     seed: h.seed,
     commit: end.commit,
+    commitBeforeDeal: end.commit !== null && end.commitBeforeDeal,
     engineVersion: h.engineVersion,
     table,
     inputs: [...end.inputs],

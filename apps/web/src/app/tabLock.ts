@@ -7,6 +7,8 @@
  * `steal: true`; the tab that held it sees its request fail with `AbortError` and becomes
  * read-only. A read-only tab also waits in line for the lock (a request without `ifAvailable`),
  * so closing the other tab hands the game to this one, as the banner says ("Close it, or…").
+ * Except once a new version controls a read-only tab's page (§15.1): `standAside()` takes it out
+ * of the line, so the tab that reloads into the new version gets the game back on its new page.
  *
  * Without Web Locks (a plain-http LAN address, §12.14) the `rev` check of every profile write
  * (§14.3 step 2) is the guard, plus the `storage` event: the tab starts as the writer, and when
@@ -44,6 +46,13 @@ export interface TabLock {
   start(listener: (event: TabLockEvent) => void): void;
   /** "Play here" (§12.11): the lock is taken from the other tab; `granted` follows. */
   takeOver(): void;
+  /**
+   * A tab without the game leaves the line for the lock and does not join it again (until "Play
+   * here"): a new version controls its page now (§15.1), so when the tab with the game reloads into
+   * it, the game must go to that tab's new page, not to this old one. Its own reload asks again.
+   * A tab that holds the lock keeps it.
+   */
+  standAside(): void;
   /** Lets the lock go and stops listening (tests; the app keeps it for the page's life). */
   release(): void;
 }
@@ -52,7 +61,7 @@ export interface TabLock {
 export interface LockManagerLike {
   request(
     name: string,
-    options: { ifAvailable?: boolean; steal?: boolean },
+    options: { ifAvailable?: boolean; steal?: boolean; signal?: AbortSignal },
     callback: (lock: unknown) => unknown,
   ): Promise<unknown>;
 }
@@ -113,6 +122,10 @@ export function createTabLock(env: TabLockEnv): TabLock {
   /** Each request's number: a request that a newer one replaced is not listened to any more. */
   let generation = 0;
   let letGo: (() => void) | null = null;
+  /** `standAside()`: a denied or lost request does not wait in line again. */
+  let aside = false;
+  /** The request waiting in line (its number, and how to drop it), for `standAside()`. */
+  let inLine: { mine: number; drop: () => void } | null = null;
 
   const emit = (event: TabLockEvent): void => listener?.(event);
 
@@ -138,24 +151,37 @@ export function createTabLock(env: TabLockEnv): TabLock {
     grant();
   };
 
+  /** Waits in line for the lock (a request without `ifAvailable`), unless standing aside. */
+  const queue = (): void => {
+    if (!aside) ask({});
+  };
+
   const ask = (options: { ifAvailable?: boolean; steal?: boolean }): void => {
     const lockManager = locks;
     if (lockManager === null) return;
     const mine = ++generation;
     letGo?.();
     letGo = null;
+    // A request in line can be dropped (`standAside`), where the browser has abort signals.
+    const waits = options.ifAvailable !== true && options.steal !== true;
+    const dropper = waits && typeof AbortController === 'function' ? new AbortController() : null;
+    inLine = waits ? { mine, drop: () => dropper?.abort() } : null;
     let request: Promise<unknown>;
     try {
-      request = lockManager.request(WRITER_LOCK, options, (lock) => {
-        if (mine !== generation) return undefined;
-        if (lock === null) {
-          emit('denied');
-          ask({}); // wait in line: granted once the other tab lets go (closes)
-          return undefined;
-        }
-        grant();
-        return hold();
-      });
+      request = lockManager.request(
+        WRITER_LOCK,
+        dropper === null ? options : { ...options, signal: dropper.signal },
+        (lock) => {
+          if (mine !== generation) return undefined; // replaced, or dropped: let it go at once
+          if (lock === null) {
+            emit('denied');
+            queue(); // wait in line: granted once the other tab lets go (closes)
+            return undefined;
+          }
+          grant();
+          return hold();
+        },
+      );
     } catch {
       fallBack();
       return;
@@ -167,7 +193,7 @@ export function createTabLock(env: TabLockEnv): TabLock {
         return;
       }
       lose();
-      ask({}); // in line again, behind the tab that took it
+      queue(); // in line again, behind the tab that took it
     });
   };
 
@@ -194,9 +220,18 @@ export function createTabLock(env: TabLockEnv): TabLock {
       else ask({ ifAvailable: true });
     },
     takeOver() {
+      aside = false;
       if (locks === null) claimed = true;
       if (locks === null || holding) grant();
       else ask({ steal: true });
+    },
+    standAside() {
+      aside = true;
+      const waiting = inLine;
+      if (holding || waiting === null || waiting.mine !== generation) return;
+      generation++; // a grant that still comes is let go at once
+      inLine = null;
+      waiting.drop();
     },
     release() {
       generation++;

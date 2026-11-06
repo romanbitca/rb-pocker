@@ -1,33 +1,77 @@
 /**
  * Messages over every screen (PLAN §12.11, §12.14):
  * - `Toasts`: short messages from the controller ("Nora sits down."). The controller removes each
- *   after 4 s; a tap removes it at once. A polite live region reads them.
+ *   after 4 s; a tap removes it at once. A polite live region reads them. The launch's own words
+ *   are on the first screen (`enStart.toast`); the others come after a tap, so they load with the
+ *   screens' words (`i18n/en.ts`, chunk 9.7): a toast shows once its words are there (at once in
+ *   practice: the screens chunk has loaded them by then).
  * - `StorageBanner`: "Stats can't be saved in this browser mode…", once per launch when the
  *   browser storage fails (§14.6); [OK] hides it. The game stays playable in memory.
  */
+import { useEffect, useSyncExternalStore } from 'react';
 import type { SessionSummary, Toast } from '../../app/store.ts';
 import { enStart as en } from '../../i18n/start.ts';
 import { formatChips } from '../format.ts';
 import { joinNames } from '../names.ts';
 import styles from './Notices.module.css';
 
+/** The words of the toasts that come after a tap: `en`, a lazy chunk (see the module note). */
+export type LaterWords = typeof import('../../i18n/en.ts').en;
+
+let later: LaterWords | null = null;
+let asked = false;
+const listeners = new Set<() => void>();
+const subscribe = (listener: () => void) => {
+  listeners.add(listener);
+  return () => void listeners.delete(listener);
+};
+const laterWords = (): LaterWords | null => later;
+
+/** Loads `en` once (again after a failure); the toasts waiting for it then show. */
+function loadLaterWords(): void {
+  if (later !== null || asked) return;
+  asked = true;
+  import('../../i18n/en.ts').then(
+    (m) => {
+      later = m.en;
+      for (const listener of listeners) listener();
+    },
+    () => {
+      asked = false;
+    },
+  );
+}
+
 /**
  * A toast's text (§12.11): each kind is a key of `en.toast` (Leave table's line, chunk 8.2, is
- * built; the collection moment, §12.9, names the category as the hand-end banner does).
+ * built; the collection moment, §12.9, names the category as the hand-end banner does). Null for
+ * a toast that comes after a tap while `words` (the lazy `en`) are not there yet.
  */
-export function toastText(toast: Toast): string {
-  if (toast.kind === 'botsJoined') {
-    return en.toast.botsJoined(joinNames(toast.names), toast.names.length === 1);
+export function toastText(toast: Toast, words: LaterWords | null = later): string | null {
+  switch (toast.kind) {
+    case 'handNotRestored':
+    case 'dataRecovered':
+    case 'dataRestored':
+    case 'offlineReady':
+      return en.toast[toast.kind];
   }
-  if (toast.kind === 'collection') {
-    return en.toast.collection(en.handEnd.category[toast.category]);
+  if (words === null) return null;
+  const t = words.toast;
+  switch (toast.kind) {
+    case 'botsJoined':
+      return t.botsJoined(joinNames(toast.names), toast.names.length === 1);
+    case 'collection':
+      return t.collection(words.handEnd.category[toast.category]);
+    case 'session':
+      return sessionText(words, toast.session);
+    default:
+      return t[toast.kind];
   }
-  return toast.kind === 'session' ? sessionText(toast.session) : en.toast[toast.kind];
 }
 
 /** Leave table (§14.4): "This session: 45 hands · +640 chips · Decision score 82 · 4 mistakes." */
-function sessionText(s: SessionSummary): string {
-  const t = en.toast;
+function sessionText(words: LaterWords, s: SessionSummary): string {
+  const t = words.toast;
   const net = s.netChips;
   const chips = net > 0 ? `+${formatChips(net)}` : net < 0 ? `−${formatChips(-net)}` : '0';
   const parts = [t.sessionHands(s.hands, formatChips(s.hands)), t.sessionChips(chips)];
@@ -42,17 +86,26 @@ export interface ToastsProps {
 }
 
 export function Toasts({ toasts, onDismiss }: ToastsProps) {
+  const words = useSyncExternalStore(subscribe, laterWords, laterWords);
+  const shown = toasts.flatMap((toast) => {
+    const text = toastText(toast, words);
+    return text === null ? [] : [{ toast, text }];
+  });
+  const waiting = shown.length < toasts.length;
+  useEffect(() => {
+    if (waiting) loadLaterWords();
+  }, [waiting]);
   // Always mounted: a live region must exist before its text changes.
   return (
     <div className={styles.toasts} role="status" aria-live="polite">
-      {toasts.map((toast) => (
+      {shown.map(({ toast, text }) => (
         <button
           key={toast.id}
           type="button"
           className={styles.toast}
           onClick={() => onDismiss(toast.id)}
         >
-          {toastText(toast)}
+          {text}
         </button>
       ))}
     </div>

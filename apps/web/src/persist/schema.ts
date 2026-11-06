@@ -91,6 +91,13 @@ export interface HandRecord {
   seed: Seed128;
   /** The shuffle code (§16.3): SHA-256 hex of `seed:tableId:handSeq`, made before the deal; null without `crypto.subtle`. */
   commit: string | null;
+  /**
+   * §16.3: `commit` was ready before the hand was dealt (the controller's `shuffleCode: 'ready'`);
+   * false when it was made after the deal (a tap before the digest answered, or a hand resumed from
+   * a session that did not keep this). Optional (Appendix H rule 2): absent in older records,
+   * which Review reads as not known.
+   */
+  commitBeforeDeal?: boolean;
   engineVersion: string;
   /** As at hand start. */
   table: TableState;
@@ -290,6 +297,11 @@ export interface SessionState {
    * controller computes it again from the hand's seed. Written only with a hand.
    */
   commit?: string | null;
+  /**
+   * With `commit`: it was ready before `hand` was dealt (`HandRecord.commitBeforeDeal`). Optional
+   * (Appendix H rule 2): a session without it resumes its hand with `commitBeforeDeal: false`.
+   */
+  commitBeforeDeal?: boolean;
 }
 
 export type UndoSnapshot = NonNullable<SessionState['undoSnapshot']>;
@@ -763,6 +775,7 @@ const handRecord: Check<HandRecord> = refine(
     at: isoDate,
     seed,
     commit: nullable(text),
+    commitBeforeDeal: optional(bool),
     engineVersion: text,
     table: tableState,
     inputs: array(engineInput),
@@ -983,6 +996,7 @@ const sessionState: Check<SessionState> = refine(
     seatStats: array(nullable(seatStats), 2, MAX_SEATS),
     resumeAfterUpdate: bool,
     commit: optional(nullable(text)),
+    commitBeforeDeal: optional(bool),
   }),
   (s, path) => {
     const n = s.table.config.seatCount;

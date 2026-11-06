@@ -2,11 +2,11 @@
 // drill's `whyWins`, now RB's evaluator plus these words), the trap notes, and the two lines of
 // every answer, in plain short English: no sentence over 15 words (the coach's rule, §8.10).
 import { describe, expect, it } from 'vitest';
-import { parseCards } from '../../src/core/cards.ts';
+import { formatCards, parseCards, type Card } from '../../src/core/cards.ts';
 import { deriveSeed, rngFromSeed, ZERO_SEED } from '../../src/core/rng.ts';
 import { emptyHands } from '../../src/drill/data.ts';
 import { TRAPS_5, TRAPS_7 } from '../../src/drill/deal.ts';
-import { facts5, why, type Why } from '../../src/drill/explain.ts';
+import { facts5, facts7, why, type Why } from '../../src/drill/explain.ts';
 import type { Position } from '../../src/drill/ladder.ts';
 import {
   buildQuestion,
@@ -18,10 +18,16 @@ import {
   rightName,
   rightOption,
   rightPosition,
+  SHOWDOWN_KINDS,
+  VERSUS_KINDS,
+  type BuildContext,
   type Picks,
   type Question,
 } from '../../src/drill/questions.ts';
+import { describe as describeHand } from '../../src/eval/describe.ts';
 import { drillWords } from '../../src/i18n/drill.ts';
+import { HandSource } from '../eval/hands.ts';
+import { testSeed } from '../helpers/seed.ts';
 import {
   answerLines,
   hintOf,
@@ -188,6 +194,32 @@ describe('the drill’s other words', () => {
     },
   );
 
+  it('Easy promises different hand types only for most matchups, as its weights deal them', () => {
+    // §13.5: on Easy, 15% of Which wins and 30% of Showdown are the same type (kickers) or a split.
+    expect(VERSUS_KINDS.easy[0]).toBe(0.85);
+    expect(SHOWDOWN_KINDS.easy[0]).toBe(0.7);
+    const rng = rngFromSeed(deriveSeed(ZERO_SEED, 'test|drill-easy'));
+    const ctx: BuildContext = {
+      difficulty: 'easy',
+      hands: emptyHands(),
+      last: null,
+      lastTrap: { five: null, seven: null },
+    };
+    let sameType = 0;
+    for (let i = 0; i < 200; i++) {
+      for (const game of ['versus', 'showdown'] as const) {
+        const q = buildQuestion(rng, game, ctx).question;
+        if ((q.type === 'versus' || q.type === 'showdown') && q.hands[0].pos === q.hands[1].pos) {
+          sameType++;
+        }
+      }
+    }
+    expect(sameType).toBeGreaterThan(20);
+    expect(drillWords.difficulties.easy.desc).toBe(
+      'Clear textbook hands. Most matchups are different hand types.',
+    );
+  });
+
   it('says what the player said when only one of name and position is right', () => {
     const q = buildQuestion(rngFromSeed(deriveSeed(ZERO_SEED, 'test|drill-said')), 'cards', {
       difficulty: 'easy',
@@ -208,4 +240,70 @@ describe('the drill’s other words', () => {
       `You said ${nameAt(off)}, #${off}.`,
     );
   });
+});
+
+// §13.5: in Hold'em the answer says how many of the player's own cards play: the cards in the best
+// five, kickers too, the Table's own rule (`describe()`'s `holeUsed`, §5.4; pitfall 10: when the
+// board plays, none of them do).
+describe("Hold'em: how many of your cards play", () => {
+  const USES = [0, 1, 2].map((n) => drillWords.answer.uses(n));
+
+  /** The uses lines a right answer to this Hold'em hand says (exactly one is expected). */
+  function usesSaid(hole: readonly Card[], board: readonly Card[]): string[] {
+    const q: Question = { type: 'holdem', board, hole, hand: facts7(hole, board), trap: null };
+    const picks: Picks = { name: q.hand.pos, position: q.hand.pos, option: null };
+    const { second } = answerLines(q, picks, true);
+    return USES.filter((line) => second.includes(line));
+  }
+  const said = (hole: string, board: string): string[] =>
+    usesSaid(parseCards(hole), parseCards(board));
+
+  it('counts the kickers from your hand, as the Table does', () => {
+    // Four Kings on the table: your Ace is the kicker (the Table: "Uses 1 of your cards").
+    expect(said('Ah Qc', 'Ks Kd Kh Kc 2s')).toEqual(['Uses 1 of your cards.']);
+    const quads = parseCards('Ah Qc') as [Card, Card];
+    expect(describeHand(quads, parseCards('Ks Kd Kh Kc 2s')).subLabel).toBe('Uses 1 of your cards');
+    // A pair, two pair or three of a kind on the table, high card: your side cards play.
+    expect(said('Ah Kc', '9s 9d 7h 5c 2s')).toEqual(['Uses both your cards.']);
+    expect(said('Ad 3c', 'Ks Kd 7h 7c 2s')).toEqual(['Uses 1 of your cards.']);
+    expect(said('Ah Qc', '9s 9d 9h 5c 2s')).toEqual(['Uses both your cards.']);
+    expect(said('Ah Qc', 'Ks 9d 7h 5c 2s')).toEqual(['Uses both your cards.']);
+    // The board plays (pitfall 10): a 10 in your hand matches the table's, but none of yours plays.
+    expect(said('Tc 2d', 'As Kd Qc Jh Ts')).toEqual(['Made only from the table.']);
+    expect(said('3c 2d', 'Ks Kd Kh Kc As')).toEqual(['Made only from the table.']);
+  });
+
+  it(
+    'agrees with describe() over random 7-card hands, in every category',
+    { timeout: 30_000 },
+    () => {
+      const src = new HandSource(testSeed(deriveSeed(ZERO_SEED, 'test|drill-uses')));
+      const problems: string[] = [];
+      /** The categories where a side card of yours played (the cards the old count missed). */
+      const kickers = new Set<string>();
+      for (let i = 0; i < 20_000; i++) {
+        const seven = i % 2 === 0 ? src.uniform(7) : src.biased(7);
+        const hole = seven.slice(0, 2) as [Card, Card];
+        const board = seven.slice(2);
+        const info = describeHand(hole, board);
+        const yours = info.best5.filter((c) => hole.includes(c)).length;
+        const table = /^Uses (\d) of your cards$/.exec(info.subLabel ?? '');
+        const lines = usesSaid(hole, board);
+        const why =
+          lines.length !== 1 || lines[0] !== drillWords.answer.uses(yours)
+            ? `says ${JSON.stringify(lines)}, ${yours} of yours in the best five`
+            : (yours === 0) !== info.playsTheBoard
+              ? 'the board plays exactly when none of yours do'
+              : table !== null && Number(table[1]) !== yours
+                ? `the Table says ${info.subLabel}`
+                : null;
+        if (why !== null && problems.length < 10) {
+          problems.push(`${formatCards(hole)} | ${formatCards(board)}: ${why}`);
+        }
+        if (info.kickers.some((c) => hole.includes(c))) kickers.add(info.category);
+      }
+      expect(problems).toEqual([]);
+      expect([...kickers].sort()).toEqual(['highCard', 'pair', 'quads', 'trips', 'twoPair']);
+    },
+  );
 });

@@ -158,6 +158,7 @@ function makeTemplates(): { records: HandRecord[]; middle: SessionState } {
       allIn: null,
       at: new Date(START).toISOString(),
       commit: null,
+      commitBeforeDeal: false,
     });
     if (record === null) throw new Error(`template ${k}: no record`);
     records.push(record);

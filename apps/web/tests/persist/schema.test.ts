@@ -449,6 +449,13 @@ describe('persist/schema hand records (A.7, for Stage 8)', () => {
     const r = handRecord();
     expect(handRecordProblem(r)).toBeNull();
     expect(clone(r)).toStrictEqual(r);
+    // 1.3.82: `commitBeforeDeal` is optional (Appendix H rule 2): with it, or without (older).
+    for (const commitBeforeDeal of [true, false]) {
+      const x = { ...r, commitBeforeDeal };
+      expect(handRecordProblem(x)).toBeNull();
+      expect(clone(x)).toStrictEqual(x);
+    }
+    expect('commitBeforeDeal' in r).toBe(false);
   });
 
   it('rejects broken ones', () => {
@@ -463,6 +470,7 @@ describe('persist/schema hand records (A.7, for Stage 8)', () => {
       ],
       [(x) => (x.allIn = { expected: 10, actual: 0, pot: -1 }), 'record.allIn.pot'],
       [(x) => (x.commit = ''), 'record.commit'],
+      [(x) => (loose(x).commitBeforeDeal = 1), 'record.commitBeforeDeal'],
       [(x) => (x.board = [1, 2, 3, 4, 5, 6]), 'record.board'],
       [(x) => (x.handSeq = 0), 'record.handSeq'],
     ];

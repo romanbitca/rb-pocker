@@ -108,6 +108,7 @@ function recordHand(i: number): Recorded {
     allIn: null,
     at: '2026-11-06T00:00:00.000Z',
     commit: sha256Hex(commitText(seed, table.tableId, table.nextHandSeq)),
+    commitBeforeDeal: true,
   });
   if (record === null) throw new Error(`hand ${i} has no record`);
   // As stored: JSON, and it passes the A.7 guard.
@@ -249,6 +250,38 @@ describe('a changed record fails with ✗', () => {
     }
     expect(tried).toBeGreaterThan(20);
   }, 30_000);
+
+  it('an Undo count the logged reshuffles do not show: the Undo count does not match', async () => {
+    // One Undo more or fewer than the log has (every 5th record; fewer only where there was one).
+    const more = await changedResults((r) => ({ ...r, undoCount: r.undoCount + 1 }));
+    const fewer = await changedResults((r) =>
+      r.undoCount > 0 ? { ...r, undoCount: r.undoCount - 1 } : null,
+    );
+    expect(more).toHaveLength(200);
+    expect(fewer.length).toBeGreaterThan(30);
+    for (const out of [more, fewer]) expect(out.filter((x) => x.status !== 'undo')).toEqual([]);
+    // A reshuffle taken out of the log after which no card came: the cards still match, the
+    // count does not.
+    let tried = 0;
+    for (const { record } of recorded) {
+      const without = record.inputs.filter((input) => input.kind !== 'reshuffle');
+      if (without.length === record.inputs.length) continue;
+      let same: boolean;
+      try {
+        const h = replay({ ...record, inputs: without });
+        same =
+          h.phase === 'complete' &&
+          h.board.join() === record.board.join() &&
+          h.seats[0]?.hole?.join() === record.heroHole.join();
+      } catch {
+        same = false;
+      }
+      if (!same) continue;
+      tried++;
+      expect((await checkShuffle({ ...record, inputs: without }, sha256)).status).toBe('undo');
+    }
+    expect(tried).toBeGreaterThan(10); // 14 of the 1,000 hands: an Undo on the last street
+  }, 30_000);
 });
 
 describe('what the check says when it cannot say ✓ or ✗', () => {
@@ -296,6 +329,8 @@ describe('Review’s hands (app/review.ts) read as the record does', () => {
       },
       heroHole: record.heroHole,
       board: record.board,
+      undoCount: record.undoCount,
+      commitBeforeDeal: true,
       end,
     };
     const input = shuffleInputOf(hand);
@@ -305,6 +340,7 @@ describe('Review’s hands (app/review.ts) read as the record does', () => {
       commit: record.commit,
       heroHole: record.heroHole,
       board: record.board,
+      undoCount: record.undoCount,
     });
     expect((await checkShuffle(input, sha256)).status).toBe('ok');
     const changed = { ...hand, heroHole: [parseCard('As'), parseCard('Ks')] as [Card, Card] };

@@ -641,6 +641,7 @@ export function recordOf(script: Script, handSeq: number): HandRecord {
     allIn,
     at: script.at,
     commit: null,
+    commitBeforeDeal: false,
   });
   if (record === null) throw new Error(`hand ${handSeq}: no record`);
   return record;

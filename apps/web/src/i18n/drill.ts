@@ -75,7 +75,7 @@ export const drillWords = {
     name2pos: { name: 'Hand to position', desc: 'You see a hand name. Pick its position.' },
   },
   difficulties: {
-    easy: { name: 'Easy', desc: 'Clear textbook hands. Matchups are different hand types.' },
+    easy: { name: 'Easy', desc: 'Clear textbook hands. Most matchups are different hand types.' },
     normal: { name: 'Normal', desc: 'About half are traps, kicker battles or split pots.' },
     hard: { name: 'Hard', desc: 'Mostly traps, close kicker battles and split pots.' },
   },
@@ -125,7 +125,7 @@ export const drillWords = {
     youSaid: (name: string, pos: number) => `You said ${name}, #${pos}.`,
     nameWrong: (name: string) => `Position right. You named it ${name}.`,
     positionWrong: (pos: number) => `Name right. You put it at #${pos}.`,
-    /** Hold'em: how many of the player's own cards make the hand. */
+    /** Hold'em: how many of the player's own cards play (in the best five, kickers too). */
     uses: (n: number) =>
       n === 0
         ? 'Made only from the table.'

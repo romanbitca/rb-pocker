@@ -12,15 +12,21 @@ const abortError = (): DOMException => new DOMException('The lock was stolen.', 
  * One origin's lock manager, shared by its tabs, with the Web Locks rules the app uses: one
  * exclusive lock per name; `ifAvailable` answers null when it is held; `steal` takes it (the
  * holder's request fails with AbortError); any other request waits in line (first come, first
- * served) until the lock is free. Callbacks run on a microtask, as in browsers.
+ * served) until the lock is free, or until its `signal` aborts (it leaves the line and fails with
+ * AbortError). Callbacks run on a microtask, as in browsers. `signals: false` ignores signals.
  */
 export class FakeLocks implements LockManagerLike {
   /** The held lock of each name: who to tell when it is stolen. */
   private readonly held = new Map<string, { abort: () => void }>();
   /** Requests waiting for each name, in order. */
   private readonly waiting = new Map<string, (() => void)[]>();
-  /** Every request, for the tests: its options. */
+  /** Every request, for the tests: its options (without the signal). */
   readonly requests: { ifAvailable?: boolean; steal?: boolean }[] = [];
+  private readonly signals: boolean;
+
+  constructor(options: { signals?: boolean } = {}) {
+    this.signals = options.signals !== false;
+  }
 
   isHeld(name: string): boolean {
     return this.held.has(name);
@@ -32,10 +38,12 @@ export class FakeLocks implements LockManagerLike {
 
   request(
     name: string,
-    options: { ifAvailable?: boolean; steal?: boolean },
+    options: { ifAvailable?: boolean; steal?: boolean; signal?: AbortSignal },
     callback: (lock: unknown) => unknown,
   ): Promise<unknown> {
-    this.requests.push(options);
+    const { signal: given, ...shown } = options;
+    const signal = this.signals ? given : undefined;
+    this.requests.push(shown);
     return new Promise((resolve, reject) => {
       const take = (): void => {
         const entry = { abort: () => reject(abortError()) };
@@ -61,10 +69,22 @@ export class FakeLocks implements LockManagerLike {
           take();
         } else if (options.ifAvailable === true) {
           Promise.resolve(callback(null)).then(resolve, reject);
+        } else if (signal?.aborted === true) {
+          reject(abortError());
         } else {
           const line = this.waiting.get(name) ?? [];
           line.push(take);
           this.waiting.set(name, line);
+          signal?.addEventListener(
+            'abort',
+            () => {
+              const at = line.indexOf(take);
+              if (at < 0) return; // granted already
+              line.splice(at, 1);
+              reject(abortError());
+            },
+            { once: true },
+          );
         }
       });
     });
