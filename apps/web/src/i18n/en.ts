@@ -239,6 +239,13 @@ export const en = {
     keep: 'Keep my move',
     /** §11.4 */
     smallPrint: 'Undo lets you try again. The first move still counts in your stats.',
+    /**
+     * In place of the small print when [Undo: try again] is disabled: why (§11.3 r2, Appendix F.5).
+     * `undoUsed` is the one a player meets (a second mistake at a decision taken back once).
+     */
+    undoUsed: 'You used Undo here already. Undo works once per decision.',
+    undoOver: 'Undo stops once cards are shown or the hand is over.',
+    undoNot: 'Undo is not possible now.',
   },
 
   /** Amounts in big blinds (Setting "show amounts as BB"; Appendix F: "2.5 BB"). */
@@ -440,8 +447,12 @@ export const en = {
     /** "Flush draw · 9 outs · 35% by river". */
     chip: (name: string, outs: number, pct: string, when: string) =>
       `${name} · ${outs} ${outs === 1 ? 'out' : 'outs'} · ${pct} ${when}`,
-    /** The chip on a phone, where the full text does not fit: "Flush draw · 35% by river". */
-    chipShort: (name: string, pct: string, when: string) => `${name} · ${pct} ${when}`,
+    /**
+     * The chip on a phone, where the full text does not fit: "Flush draw · 35% by river". A
+     * no-break space before "·": where the chip takes two lines (the landscape column), the dot
+     * ends the first line, never starts the second.
+     */
+    chipShort: (name: string, pct: string, when: string) => `${name}\u00A0· ${pct} ${when}`,
     byRiver: 'by river',
     nextCard: 'next card',
     /** After the chip text when some outs are risky: " (1 risky)". */

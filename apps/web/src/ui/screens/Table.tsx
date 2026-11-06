@@ -471,11 +471,13 @@ const DrawsSlot = memo(function DrawsSlot({
   max,
   placement,
   compact,
+  wrap = false,
   className,
 }: {
   max: number;
   placement: BadgePlacement;
   compact: boolean;
+  wrap?: boolean;
   className?: string | undefined;
 }) {
   const data = useAppStore(selectDrawChips);
@@ -486,6 +488,7 @@ const DrawsSlot = memo(function DrawsSlot({
       max={max}
       placement={placement}
       compact={compact}
+      wrap={wrap}
       className={className}
     />
   );
@@ -543,9 +546,10 @@ const HeroStrip = memo(function HeroStrip({
 });
 
 /**
- * Landscape: the label with the badge beside it, then the chips and the draw chips, heading the
- * right column (§12.5); hidden while the tray is open, and while the Advanced quiz asks (§10.3:
- * the column's 390 px then hold the quiz and Row A; the cards stay on the felt).
+ * Landscape: the label with the badge beside it, then the chips and the draw chip under them,
+ * still beside the badge (it may take two lines there), heading the right column (§12.5); hidden
+ * while the tray is open, and while the Advanced quiz asks (§10.3: the column's 390 px then hold
+ * the quiz and Row A; the cards stay on the felt).
  */
 const SideHero = memo(function SideHero({ onOpenRankings }: { onOpenRankings: () => void }) {
   const hero = useAppStore(selectHeroView);
@@ -563,7 +567,7 @@ const SideHero = memo(function SideHero({ onOpenRankings }: { onOpenRankings: ()
       <HeroLabel hero={hero} nuts={nuts} onOpenRankings={onOpenRankings} />
       <OddsColumn placement="down" canWin={true} className={styles.sideOdds} />
       <HeroChips hero={hero} />
-      <DrawsSlot max={1} placement="down" compact={true} className={styles.sideDraws} />
+      <DrawsSlot max={1} placement="down" compact={true} wrap className={styles.sideDraws} />
     </section>
   );
 });

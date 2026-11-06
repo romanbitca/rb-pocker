@@ -1972,7 +1972,7 @@ export class TableController {
   /** §11.1: the feedback card; nothing moves until Undo or Keep my move. */
   private openFeedback(g: PendingGrade, result: GradeResult): void {
     this.hold = 'feedback';
-    this.feedback = feedbackView(result, g.decision, this.undoBlocked(true) === null);
+    this.feedback = feedbackView(result, g.decision, this.undoBlocked(true));
     this.trace('feedback', { decisionId: result.decisionId, grade: result.grade });
     this.ui({ type: 'open', overlay: 'feedback' });
   }

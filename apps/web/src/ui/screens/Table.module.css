@@ -376,12 +376,17 @@
 }
 
 /* Landscape: the coach row (Undo on its left, the strip's content on its right, §12.5). With
-   nothing to say the strip takes no space, but a shown Undo keeps its 48 px row. */
+   nothing to say the strip takes no space, but a shown Undo keeps its 48 px row. The column sits
+   at the screen's right edge, so the left safe area is not the row's: Undo stays at its left
+   edge (on an iPhone on its side `max(8px, safe-area-inset-left)` put it 47 px in). */
 .sideCoach {
   position: relative;
 }
 .sideCoach:has(> .stripUndo) {
   min-height: 48px;
+}
+.sideCoach > .stripUndo {
+  left: 0;
 }
 
 /* ---- The feedback card (§12.6): over everything above the action bar, a 25% scrim ---- */
@@ -518,16 +523,24 @@
   overscroll-behavior: contain;
 }
 
-/* The label beside the badge (price chip under it), then "You · 2,340" and the draw chips. */
+/* The label beside the badge (price chip under it), then "You · 2,340" and the draw chip, still
+   beside the badge: a draw chip row under the badge took 32 px of the 390 px column, and the coach
+   row under it had 40 px left for its head, the two win numbers and "Why?" (they scrolled out of
+   sight). The chip takes two lines in the 180 px where one is too short. The last row takes what
+   the badge column has over, so the label, the chips and the draw chip stay together at the top.
+   The section is the draw chip's popover's anchor: it opens under the whole head, its right edge
+   on the column's (§12.3 popovers). */
 .sideHero {
+  position: relative;
   display: grid;
   grid-template-areas:
     'label odds'
     'chips odds'
-    'draws draws';
+    'draws odds';
   grid-template-columns: minmax(0, 1fr) 76px;
+  grid-template-rows: auto auto 1fr;
   align-items: start;
-  gap: 2px 8px;
+  gap: 0 8px;
   min-width: 0;
 }
 .sideHero > :first-child {
@@ -542,15 +555,23 @@
   grid-area: odds;
 }
 .sideDraws {
+  position: static;
   grid-area: draws;
-  margin-top: 6px;
+  margin-top: 2px;
 }
 
+/* The coach row and the hand-end banner. When they need more than the column has (Large text, a
+   long reason, a long hand name) they scroll, and a shadow at the bottom edge says there is more:
+   the cover moves with the content (`local`) and hides the shadow once the end is in sight. */
 .sideMiddle {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
+  background:
+    linear-gradient(transparent, var(--surface) 70%) bottom / 100% 24px no-repeat local,
+    radial-gradient(farthest-side at 50% 100%, rgb(0 0 0 / 55%), transparent) bottom / 100% 10px
+      no-repeat;
 }
 
 /* ---- The rankings (§13.1) ---- */

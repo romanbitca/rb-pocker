@@ -315,6 +315,8 @@ describe('Undo (§11.3, §11.5)', () => {
     await flush();
     expect(h.state().game.mode).toBe('feedback');
     expect(h.state().game.feedback?.canUndo).toBe(false);
+    // Why, for the card's words (1.3.86): this decision was taken back once already.
+    expect(h.state().game.feedback?.undoBlock).toBe('used');
     expect(h.state().game.canUndo).toBe(false);
     const inputs = inputsOf(h);
     h.dispatch({ type: 'undo' }); // the button's tap or the U key: ignored

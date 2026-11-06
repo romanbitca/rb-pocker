@@ -34,6 +34,49 @@
   animation: fade var(--duration-sheet) ease-out backwards;
 }
 
+/* On the Table (§12.11 notes, 1.3.86): over the top bar, one at a time, so a toast never covers a
+   seat, the board, the hero's hand, the coach or Row A ("Move taken back…" hid the only opponent
+   for 4 s at 52 px from the top). The bar's 44 px (36 px in landscape, whose buttons reach 44)
+   hold two lines of 15 px words, at every text size, like the Table's other fixed pieces (§12.8
+   notes). Landscape and wide: the bar of the table column only. */
+.toasts[data-place] {
+  top: env(safe-area-inset-top);
+  left: 0;
+  width: 100%;
+  padding: 0 max(8px, env(safe-area-inset-right)) 0 max(8px, env(safe-area-inset-left));
+  transform: none;
+}
+.toasts[data-place='landscape'] {
+  width: calc(100% - 280px - env(safe-area-inset-right));
+  padding-right: 8px;
+}
+.toasts[data-place='wide'] {
+  width: calc(100% - clamp(260px, 24vw, 320px));
+  padding-right: 8px;
+}
+/* Wide with the rankings folded to their 44 px rail. */
+.toasts[data-place='rail'] {
+  width: calc(100% - 44px);
+  padding-right: 8px;
+}
+.toasts[data-place] .toast {
+  position: relative;
+  max-width: min(100%, 560px);
+  padding: 2px 12px;
+  font-size: 15px;
+  line-height: 18px;
+}
+/* Landscape: the 36 px bar itself (one line fits the column's width); the top seat starts 6 px
+   under it. The tap area still reaches 44 px (§12.12), under the bar like its buttons. */
+.toasts[data-place='landscape'] .toast {
+  min-height: 36px;
+}
+.toasts[data-place='landscape'] .toast::after {
+  position: absolute;
+  inset: 0 0 -8px;
+  content: '';
+}
+
 .storage {
   position: fixed;
   top: env(safe-area-inset-top);

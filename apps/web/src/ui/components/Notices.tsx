@@ -4,7 +4,9 @@
  *   after 4 s; a tap removes it at once. A polite live region reads them. The launch's own words
  *   are on the first screen (`enStart.toast`); the others come after a tap, so they load with the
  *   screens' words (`i18n/en.ts`, chunk 9.7): a toast shows once its words are there (at once in
- *   practice: the screens chunk has loaded them by then).
+ *   practice: the screens chunk has loaded them by then). On the Table (`place`) they sit over the
+ *   top bar, one at a time (the newest), so a toast never covers a seat, the board, the hero's
+ *   hand, the coach or Row A (§12.11 notes, 1.3.86); elsewhere they stack under the top edge.
  * - `StorageBanner`: "Stats can't be saved in this browser mode…", once per launch when the
  *   browser storage fails (§14.6); [OK] hides it. The game stays playable in memory.
  */
@@ -80,24 +82,34 @@ function sessionText(words: LaterWords, s: SessionSummary): string {
   return t.session(parts.join(t.separator));
 }
 
+/**
+ * Over the Table's top bar, one at a time: which bar ('portrait' the whole width; 'landscape' the
+ * table column's; 'wide' the play column's, 'rail' when the rankings column is folded to its rail).
+ */
+export type ToastPlace = 'portrait' | 'landscape' | 'wide' | 'rail';
+
 export interface ToastsProps {
   toasts: readonly Toast[];
   onDismiss: (id: number) => void;
+  /** The Table's top bar (see ToastPlace); null or absent: the top of the screen, stacked. */
+  place?: ToastPlace | null | undefined;
 }
 
-export function Toasts({ toasts, onDismiss }: ToastsProps) {
+export function Toasts({ toasts, onDismiss, place = null }: ToastsProps) {
   const words = useSyncExternalStore(subscribe, laterWords, laterWords);
-  const shown = toasts.flatMap((toast) => {
+  const ready = toasts.flatMap((toast) => {
     const text = toastText(toast, words);
     return text === null ? [] : [{ toast, text }];
   });
-  const waiting = shown.length < toasts.length;
+  const waiting = ready.length < toasts.length;
   useEffect(() => {
     if (waiting) loadLaterWords();
   }, [waiting]);
+  // The Table's top bar holds one: the newest (the older ones' 4 s run on unseen).
+  const shown = place === null ? ready : ready.slice(-1);
   // Always mounted: a live region must exist before its text changes.
   return (
-    <div className={styles.toasts} role="status" aria-live="polite">
+    <div className={styles.toasts} role="status" aria-live="polite" data-place={place ?? undefined}>
       {shown.map(({ toast, text }) => (
         <button
           key={toast.id}

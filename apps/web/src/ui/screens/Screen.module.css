@@ -338,6 +338,9 @@
   }
 }
 
+/* Visually hidden, still read by screen readers. Only on a block or an inline element: a table
+   ignores `width: 1px` (it is as wide as its cells), so a hidden table goes in a wrapper with this
+   class (Stats' chart tables: a 300 px table made the page pan sideways on phones, 1.3.86). */
 .srOnly {
   position: absolute;
   width: 1px;

@@ -84,21 +84,22 @@
   -webkit-line-clamp: 2;
   line-clamp: 2;
 }
-/* At the Large text size (§12.1, chunk 9.1b) the portrait strip's words keep their px sizes: its
-   56 px hold the 18 px head and two 16 px lines, and its height never follows the words (§12.8
-   notes). The landscape row and the wide panel have the room and grow with the text. */
-.strip:not(.header):not(.wrap) .head {
+/* At the Large text size (§12.1, chunk 9.1b) the phone's strip and the landscape coach row keep
+   their words' px sizes: the portrait strip's 56 px hold the 18 px head and two 16 px lines, and
+   its height never follows the words (§12.8 notes); the landscape row shares a 390 px column with
+   the hand, the win chance and Row A, where at Large the two win numbers no longer fit beside
+   the badge (1.3.86). The wide panel has the room and grows with the text. */
+.strip:not(.header) .head {
   font-size: 15px;
 }
-.strip:not(.header):not(.wrap) .head strong {
+.strip:not(.header) .head strong {
   font-size: 16px;
 }
-.strip:not(.header):not(.wrap) .line {
+.strip:not(.header) .line {
   font-size: 14px;
 }
 /* In the panels and the landscape column the line takes the lines it needs: there is room. */
-.header .advice,
-.wrap .advice {
+.header .advice {
   gap: 1px;
 }
 .header .head strong,
@@ -117,10 +118,60 @@
 .wrap .muted {
   white-space: normal;
 }
+
+/* The landscape column's coach row (§12.5, §12.6 notes), 264 px: the toolbar Undo's 44 px slot and
+   8 px on the left (the column is at the screen's right edge: the left safe area is not its
+   concern), the words on the rest. The head and the line are blocks, so the words flow around
+   "Why?" (below). */
 .wrap {
+  position: relative;
   height: auto;
   min-height: 48px;
-  padding: 2px 0 2px calc(max(8px, env(safe-area-inset-left)) + 44px + 8px);
+  padding: 2px 0 2px 52px;
+}
+.wrap .advice {
+  display: flow-root;
+}
+.wrap .head {
+  display: block;
+}
+.wrap .line {
+  overflow: visible;
+}
+/* "Why?" (Intermediate and up) at the row's top right, 74×44. Its place is a float at the top of
+   the words: the head and the first line sit beside it (130 px), the lines under its 44 px use
+   the whole 212 px. The labelled pair (§12.6, "Their likely hands: about 10%." is 193 px) thus
+   shows one number a line in two lines; beside "Why?" it took three (77 px), and the 40 px left
+   in the column at 844×390 showed neither the number the coach decides by nor "Why?" (they
+   scrolled). The head's line is 28 px, so the head and one line (17.5 px) pass the 44 px: a line
+   that started even half a pixel above the float's end was cut short beside it in Chromium. */
+.wrap .besideWhy::before {
+  content: '';
+  float: right;
+  width: 82px;
+  height: 44px;
+}
+.wrap .besideWhy .head {
+  line-height: 28px;
+}
+.wrap .why {
+  position: absolute;
+  top: 2px;
+  right: 0;
+  width: 74px;
+  padding: 0;
+  font-size: 15px;
+}
+/* Beginner: the whole row opens the sheet; its "›" sits at the end of the head, so the lines below
+   keep the whole width. */
+.wrap .open {
+  padding-right: 0;
+}
+.wrap .open .head {
+  padding-right: 28px;
+}
+.wrap .open::after {
+  top: 10px;
 }
 
 /* Beginner: the whole strip opens the sheet; the "›" is drawn by CSS (§12.7: never a glyph). */

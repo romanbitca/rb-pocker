@@ -25,6 +25,7 @@ const VIEW: FeedbackView = {
     players: null,
   }),
   canUndo: true,
+  undoBlock: null,
 };
 
 function renderCard(view: FeedbackView = VIEW) {
@@ -87,7 +88,7 @@ describe('the feedback card (§12.6)', () => {
   });
 
   it('when the decision was undone once already: Undo disabled, focus on Keep my move, U ignored', () => {
-    const { onUndo, onKeep } = renderCard({ ...VIEW, canUndo: false });
+    const { onUndo, onKeep } = renderCard({ ...VIEW, canUndo: false, undoBlock: 'used' });
     expect(undoButton().getAttribute('aria-disabled')).toBe('true');
     expect(document.activeElement).toBe(keepButton());
     fireEvent.click(undoButton());
@@ -95,6 +96,19 @@ describe('the feedback card (§12.6)', () => {
     expect(onUndo).not.toHaveBeenCalled();
     fireEvent.keyDown(document, { key: 'Enter' }); // nothing global on Enter
     expect(onKeep).not.toHaveBeenCalled();
+  });
+
+  it('a disabled Undo says why (§11.3 r2), in place of "Undo lets you try again" (1.3.86)', () => {
+    renderCard();
+    const small = () => document.querySelector('[data-feedback-small]') as HTMLElement;
+    expect(small().textContent).toBe(en.feedback.smallPrint);
+    expect(undoButton().getAttribute('aria-describedby')).toBeNull();
+    cleanup();
+    renderCard({ ...VIEW, canUndo: false, undoBlock: 'used' });
+    expect(small().textContent).toBe('You used Undo here already. Undo works once per decision.');
+    expect(screen.queryByText(en.feedback.smallPrint)).toBeNull();
+    // The reason is the disabled button's description, as on Row A (§12.7).
+    expect(undoButton().getAttribute('aria-describedby')).toBe(small().id);
   });
 
   it('Small mistake and Mistake titles (F.4)', () => {

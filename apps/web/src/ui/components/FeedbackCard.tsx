@@ -5,8 +5,9 @@
  * game stays paused until one of the buttons (§11.1), so it never closes by itself.
  *
  * `role="alertdialog"` with focus on Undo (on Keep my move when this decision was undone once
- * already and Undo shows disabled); Tab stays inside. Keys (§12.6): U = Undo, Enter = the focused
- * button, Esc = Keep my move (as Android Back).
+ * already and Undo shows disabled: the small print then says why, and describes the button);
+ * Tab stays inside. Keys (§12.6): U = Undo, Enter = the focused button, Esc = Keep my move (as
+ * Android Back).
  */
 import { memo, useEffect, useId, useMemo, useRef, type KeyboardEvent } from 'react';
 import type { FeedbackView } from '../../app/store.ts';
@@ -32,6 +33,7 @@ export const FeedbackCard = memo(function FeedbackCard({
 }: FeedbackCardProps) {
   const titleId = useId();
   const reasonId = useId();
+  const smallId = useId();
   const undoRef = useRef<HTMLButtonElement>(null);
   const keepRef = useRef<HTMLButtonElement>(null);
   const texts = useMemo(() => feedbackTexts(view, unit), [view, unit]);
@@ -88,6 +90,7 @@ export const FeedbackCard = memo(function FeedbackCard({
           type="button"
           className={styles.undo}
           aria-disabled={canUndo ? undefined : true}
+          aria-describedby={canUndo ? undefined : smallId}
           aria-keyshortcuts="U"
           data-feedback-undo=""
           onClick={() => {
@@ -106,7 +109,9 @@ export const FeedbackCard = memo(function FeedbackCard({
           {en.feedback.keep}
         </button>
       </div>
-      <p className={styles.small}>{en.feedback.smallPrint}</p>
+      <p id={smallId} className={styles.small} data-feedback-small="">
+        {texts.small}
+      </p>
     </div>
   );
 });

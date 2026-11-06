@@ -9,8 +9,12 @@
  *   two lines at most (the labelled pair needs two on a 360–390 px phone; a longer sentence ends
  *   in "…"); the strip's height never follows the words. Beginner's advice is one big button (tap
  *   the strip or "›" opens the sheet); Intermediate's has a "Why?" button.
- * - `header` (the landscape column's coach row and the wide inline panel's head, §12.5): the same
- *   content without opening a sheet: the details sit right under it.
+ * - `header` (the wide inline panel's head, §12.5): the same content without opening a sheet: the
+ *   details sit right under it.
+ * - `strip` with `wrap` (the landscape column's coach row, §12.5): the lines take the lines they
+ *   need. "Why?" sits at the top right and the words flow around it: the head and the first line
+ *   beside it, the rest under it on the row's whole width (the labelled pair, one number a line,
+ *   in two lines, not three).
  * - `pill` (compact portrait, §12.3): a 44 px "Coach" pill in the hero strip; a tap opens the
  *   sheet (at Intermediate it opens the hint first) or tries again after a failure.
  *
@@ -194,7 +198,7 @@ export const CoachStrip = memo(function CoachStrip({
       } else if (view.why) {
         body = (
           <>
-            <p className={styles.advice} data-coach-advice="">
+            <p className={cx(styles.advice, styles.besideWhy)} data-coach-advice="">
               <Advice headline={view.headline} line={view.line} />
             </p>
             <button type="button" className={styles.why} aria-haspopup="dialog" onClick={onOpen}>

@@ -86,6 +86,8 @@ const PLAN_WORDS: Record<string, string> = {
   // The mistake feedback card and Undo (§11, §12.6, Appendix F.4, F.5, F.10; chunk 6.2).
   'toast.undone': `Undo: "${en.toast.undone}"`,
   'feedback buttons': `Buttons: "${en.feedback.undo}" · "${en.feedback.keep}". Small print: "${en.feedback.smallPrint}"`,
+  // Why [Undo: try again] is grey, in place of the small print (§11.3 notes, F.5; 1.3.86).
+  'feedback.undoBlocked': `"${en.feedback.undoUsed}" (the decision was taken back once: §11.3 rule 2) · "${en.feedback.undoOver}" · "${en.feedback.undoNot}"`,
   'feedback.coachMove': `"${en.feedback.coachMove('Call 40')}"`,
   ...Object.fromEntries(
     (['inaccuracy', 'mistake', 'blunder'] as const).map((grade) => [
