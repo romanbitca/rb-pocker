@@ -675,7 +675,7 @@ function useQuizShows(): boolean {
   return quiz !== null && !(quiz.done && opened);
 }
 
-/** The portrait strip (48 px), compact mode's pill, the landscape column's coach rows. */
+/** The portrait strip (56 px), compact mode's pill, the landscape column's coach rows. */
 const CoachSlot = memo(function CoachSlot({
   variant,
   wrap = false,

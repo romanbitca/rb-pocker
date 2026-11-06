@@ -153,10 +153,11 @@ describe('layouts and the table box (PLAN §12.3, §12.5)', () => {
   });
 
   it('keeps the seat area left of the 28 px edge-tab gutter in portrait and landscape', () => {
+    // 667 − top bar 44 − hero strip 112 − coach strip 56 − action bar 64 = 391.
     expect(tableFrame({ w: 375, h: 667 })).toEqual({
       layout: 'portrait',
-      box: { x: 0, y: 44, w: 347, h: 399 },
-      tab: { x: 347, y: 199.5, w: 28, h: 88 },
+      box: { x: 0, y: 44, w: 347, h: 391 },
+      tab: { x: 347, y: 195.5, w: 28, h: 88 },
     });
     const landscape = tableFrame({ w: 844, h: 390 });
     expect(landscape.box).toEqual({ x: 0, y: 36, w: 536, h: 354 });
@@ -227,7 +228,7 @@ describe('pods with the sizing tray open (§12.7: inline, the table row is 104 p
   // 1024×768 table is 216 px tall while sizing, and the top pods reach the pot and the board
   // (R14, open). Acceptance 2 asks that nothing needed for the decision is covered: the board,
   // the pot and the hero's cards. (Side pods of an 8- or 9-player table may touch each other
-  // while sizing at 375×667: the box is 295 px tall for four 72 px pods a side.)
+  // while sizing at 375×667: the box is 287 px tall for four 72 px pods a side.)
   const CASES: { viewport: Size; options?: FrameOptions }[] = [
     { viewport: { w: 375, h: 667 } },
     { viewport: { w: 360, h: 740 } },
