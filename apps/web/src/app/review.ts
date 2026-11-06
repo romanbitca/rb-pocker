@@ -1,7 +1,7 @@
 /**
  * The hands kept for Review (PLAN §12.10, Appendix A.7): the last finished hands of this launch,
  * newest first, in memory. Stage 8 stores them (`pc.v1.hands`, §14.3) and Stats → History feeds the
- * same Review screen from there; until then "Review (from memory)" is all there is.
+ * same Review screen from there (chunk 8.2: the controller adds a stored hand when it is opened).
  *
  * Only the controller adds hands (`app/controller.ts` when a hand is complete). The Review screen
  * reads them through the store, and `app/reviewViews.ts` turns one into the frames it steps through.
@@ -48,6 +48,18 @@ export const initialReview = (): ReviewSlice => ({ hands: [], selected: null });
 export function addHand(slice: ReviewSlice, hand: ReviewHand): ReviewSlice {
   const rest = slice.hands.filter((h) => h.handSeq !== hand.handSeq);
   return { ...slice, hands: [hand, ...rest].slice(0, REVIEW_KEEP) };
+}
+
+/**
+ * The slice with a stored hand (Stats → History, chunk 8.2) in its place by `handSeq` (newest
+ * first), unless the slice has it already.
+ */
+export function addStoredHand(slice: ReviewSlice, hand: ReviewHand): ReviewSlice {
+  if (slice.hands.some((h) => h.handSeq === hand.handSeq)) return slice;
+  const at = slice.hands.findIndex((h) => h.handSeq < hand.handSeq);
+  const hands =
+    at < 0 ? [...slice.hands, hand] : [...slice.hands.slice(0, at), hand, ...slice.hands.slice(at)];
+  return { ...slice, hands };
 }
 
 /** The slice showing `handSeq` (null = the list); a hand that is not kept shows the list. */

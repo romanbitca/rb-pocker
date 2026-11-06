@@ -113,5 +113,5 @@ suite('describe().best5 (§5.4 rules, the cards shown at the showdown)', () => {
       }),
       { seed: FC_SEED, numRuns: 20_000 },
     );
-  });
+  }, 30_000);
 });

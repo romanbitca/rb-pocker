@@ -88,6 +88,7 @@ function App({ firstLaunch, onPlay }: { firstLaunch: boolean; onPlay: () => void
           />
         ),
         review: () => <h1>Review</h1>,
+        stats: () => <h1>Stats</h1>,
       }}
       overlays={{
         menu: () => (
@@ -159,6 +160,7 @@ describe('ScreenSwitcher', () => {
           table: renderer('table'),
           settings: renderer('settings'),
           review: renderer('review'),
+          stats: renderer('stats'),
         }}
         overlays={{
           menu: renderer('menu'),
@@ -221,6 +223,7 @@ describe('ScreenSwitcher', () => {
           table: () => <h1>T</h1>,
           settings: () => <h1>G</h1>,
           review: () => <h1>R</h1>,
+          stats: () => <h1>S</h1>,
         }}
         overlays={{ menu: () => null, outOfChips: () => null, newTable: () => null }}
       />

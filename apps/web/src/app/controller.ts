@@ -92,10 +92,12 @@ import type {
   HandMeta,
   Profile,
   SessionState,
+  SessionSummary,
   Settings,
   UndoSnapshot,
 } from '../persist/schema.ts';
 import { clearSession, loadSession, saveSession } from '../persist/session.ts';
+import { endSession, SESSION_IDLE_MS } from '../persist/stats.ts';
 import type { SafeStorage } from '../persist/storage.ts';
 import { updateSeatStats } from '../brain/opponentStats.ts';
 import { profileFor } from '../brain/profiles.ts';
@@ -104,6 +106,7 @@ import type { BrainReply, BrainRequest } from '../workers/protocol.ts';
 import { levelsOf, nextLevels, sameSeatLevels } from './botLevels.ts';
 import { EquityJobs } from './equityJobs.ts';
 import { countHand, handRecordOf } from './handRecord.ts';
+import { readHistory, readReviewHand } from './history.ts';
 import { coachKeyOf, finalHudEquity, HintJobs, type HintAsk } from './hintJobs.ts';
 import { LEVEL_RULES, summaryShows } from './levels.ts';
 import { quizRolls, quizScore } from './quiz.ts';
@@ -114,7 +117,7 @@ import {
   type Grader,
   type GradeOutcome,
 } from './grading.ts';
-import { addHand, initialReview, type ReviewHand } from './review.ts';
+import { addHand, addStoredHand, initialReview, type ReviewHand } from './review.ts';
 import { handEndViewOf, labelVisible, seatLevelOf } from './tableViews.ts';
 import type { DataCommand, DataCommands, DataHost, ShareEnv } from './dataTools.ts';
 import type { TabLock, TabLockEvent } from './tabLock.ts';
@@ -488,7 +491,8 @@ type NewToast =
   | { kind: 'dataRecovered' }
   | { kind: 'dataRestored' }
   | { kind: 'undone' }
-  | { kind: 'exportCopied' | 'exportFailed' | 'imported' | 'statsReset' | 'dataNotChanged' };
+  | { kind: 'exportCopied' | 'exportFailed' | 'imported' | 'statsReset' | 'dataNotChanged' }
+  | { kind: 'session'; session: SessionSummary };
 
 const RING = { events: 500, errors: 50, brain: 200, voided: 5 } as const;
 
@@ -723,6 +727,18 @@ export class TableController {
     }
     // §14.3 load table: a complete hand is committed now (or was already: step 5 only).
     if (!readOnly && this.hand?.phase === 'complete') this.recoverHand(this.hand);
+    // §14.4: the stats' session ended after 30 minutes without an action (or with its game).
+    const running = this.profile.stats.currentSession;
+    const last =
+      session.status === 'ok' || session.status === 'voided' ? session.session.savedAt : null;
+    if (
+      !readOnly &&
+      running !== null &&
+      (last === null || now.getTime() - Date.parse(last) >= SESSION_IDLE_MS)
+    ) {
+      this.endStatsSession();
+    }
+    this.publishStats(true);
     return loaded.status === 'new' || loaded.status === 'unavailable';
   }
 
@@ -758,7 +774,7 @@ export class TableController {
         this.topUpHero();
         break;
       case 'leaveTable':
-        this.ui({ type: 'go', screen: 'home' });
+        this.leaveTable();
         break;
       case 'changeTable':
         this.changeTable();
@@ -784,6 +800,12 @@ export class TableController {
         break;
       case 'keepMove':
         this.keepMove();
+        break;
+      case 'history':
+        this.loadHistory();
+        break;
+      case 'historyReview':
+        this.reviewStored(cmd.handSeq);
         break;
       default:
         this.trace('unknown command', cmd);
@@ -844,6 +866,7 @@ export class TableController {
       const table = this.buildTable();
       if (table === null) return;
       this.seatStats = heroOnly(this.seatStats); // a new table: its bots have not been seen yet
+      this.endStatsSession(); // §14.4: a new table, a new session (none runs here, normally)
       this.beginSession();
       this.startHandAt(table);
     } else if (this.heroBust()) {
@@ -883,10 +906,11 @@ export class TableController {
       const done = this.hand as HandState | null; // `await` above: no longer the unfinished one
       if (done?.phase === 'complete') this.commitFinished(done, null, false);
     }
-    // A finished hand still waiting for a grade is committed by `closeTable`. The session of
-    // §14.4 (the stats' running totals) ends here too: chunk 8.2.
+    // A finished hand still waiting for a grade is committed by `closeTable`; then the stats'
+    // session ends (§14.4).
     this.closeTable();
     if (this.tab === 'readOnly') return; // a commit found another writer (§14.7)
+    this.endStatsSession();
     this.seatStats = heroOnly(this.seatStats); // a new table: its bots have not been seen yet
     this.beginSession();
     this.startHandAt(table);
@@ -948,6 +972,7 @@ export class TableController {
       return;
     }
     this.trace('reload', { reloads: table.reloads });
+    this.countReload();
     this.startHandAt(table);
     this.ui({ type: 'close', overlay: 'outOfChips' });
   }
@@ -965,6 +990,7 @@ export class TableController {
       return;
     }
     this.trace('top up', { from: stack, reloads: this.next.reloads });
+    this.countReload();
     this.saveSession();
   }
 
@@ -976,6 +1002,7 @@ export class TableController {
     }
     this.closeTable();
     if (this.tab === 'readOnly') return; // the commit found another writer (§14.7)
+    this.endStatsSession();
     this.sessionStart = null;
     // §3.1: the old table's session ends.
     if (this.storage !== null && this.tab === 'writer') clearSession(this.storage);
@@ -1210,14 +1237,18 @@ export class TableController {
     }
     const log = heroModel ? h.log : null;
     const apply = (p: Profile): Profile => countHand(p, record, log);
+    // The protocol's main-thread time (R21: the ring and the profile are rewritten every hand).
+    const started = performance.now();
     const result = commitHand(storage, profile, { record, apply, session }, now);
-    this.trace('commit', { handSeq: h.handSeq, status: result.status });
+    const ms = Math.round((performance.now() - started) * 10) / 10;
+    this.trace('commit', { handSeq: h.handSeq, status: result.status, ms });
     if (result.status === 'conflict') {
       this.anotherWriter(profile.rev, result.storedRev);
       return;
     }
     if (result.status === 'invalid') this.error('hand not committed', result.problem);
     this.profile = result.profile;
+    this.publishStats(true);
     // §9.5: the hero model in memory is the profile's.
     if (heroModel && result.profile.heroModel.hands > 0) {
       this.seatStats = { ...this.seatStats, [HERO_ID]: result.profile.heroModel };
@@ -2012,6 +2043,98 @@ export class TableController {
     this.flushSettings(); // also writes the profile on the first launch, so the next one opens Home
   }
 
+  // -------------------------------------------------------------------------------------------
+  // Stats (chunk 8.2, §14.4)
+
+  /** Menu → Leave table (§3.1, §14.4): Home; the stats' session ends, and a toast says how it went. */
+  private leaveTable(): void {
+    // A finished hand still waiting for its grade belongs to this session: it is counted first.
+    this.flushCommit();
+    const session = this.endStatsSession();
+    this.ui({ type: 'go', screen: 'home' });
+    if (session !== null) this.toast({ kind: 'session', session });
+  }
+
+  /**
+   * §14.4: the stats' running session ends (Leave table, New table, Change table, 30 minutes
+   * without an action): it joins the recent sessions, written at once. Returns it; null when none
+   * was running.
+   */
+  private endStatsSession(): SessionSummary | null {
+    const profile = this.profile;
+    const session = profile?.stats.currentSession ?? null;
+    if (profile === null || session === null) return null;
+    this.changeProfile({ ...profile, stats: endSession(profile.stats) });
+    return session;
+  }
+
+  /** Out of chips → Reload, Menu → Top up (§3.1): one more reload in the stats (§14.4 Results). */
+  private countReload(): void {
+    const profile = this.profile;
+    if (profile === null) return;
+    const stats = { ...profile.stats, reloads: profile.stats.reloads + 1 };
+    this.changeProfile({ ...profile, stats });
+  }
+
+  /**
+   * A profile change between commits, written at once through the same `rev` check and backup as
+   * every profile write (§14.3 steps 2–4). Without storage, or in a tab that is not the writer, it
+   * lives in memory only (§14.6 rule 3, §14.7).
+   */
+  private changeProfile(next: Profile): void {
+    if (this.storage === null || this.tab !== 'writer') {
+      this.profile = next;
+    } else {
+      const saved = saveProfile(this.storage, next, this.now());
+      const result = saved.result;
+      if (!result.ok && result.reason === 'invalid') {
+        this.error('profile not saved', result.problem); // a bug: keep the profile we had
+        return;
+      }
+      // §14.3 step 2: another tab writes now (§14.7): this tab turns read-only.
+      if (!result.ok && result.reason === 'conflict') {
+        this.anotherWriter(next.rev, result.storedRev);
+        return;
+      }
+      this.profile = saved.profile;
+    }
+    this.publishStats();
+  }
+
+  /** The profile's stats to the store (§14.4); a newly counted hand makes the History rows stale. */
+  private publishStats(newHand = false): void {
+    const stats = this.profile?.stats ?? null;
+    this.store.setState((s) => {
+      const stale = newHand && s.history !== null;
+      if (s.stats === stats && !stale) return s;
+      return stale ? { stats, history: null } : { stats };
+    });
+  }
+
+  /** Stats → History (§14.4): the stored hands as rows. */
+  private loadHistory(): void {
+    const { storage, profile } = this;
+    const rows =
+      storage === null || profile === null
+        ? []
+        : readHistory(storage, profile.lastCommittedHandSeq);
+    this.store.setState({ history: rows });
+  }
+
+  /**
+   * A History row (§14.4 → §12.10): Review on that stored hand. A hand of this launch is in the
+   * review slice already; another is read from `pc.v1.hands` and joins it, in its place.
+   */
+  private reviewStored(handSeq: number): void {
+    const { storage, profile } = this;
+    const kept = this.store.getState().review.hands.some((h) => h.handSeq === handSeq);
+    if (!kept && storage !== null && profile !== null) {
+      const hand = readReviewHand(storage, profile.lastCommittedHandSeq, handSeq);
+      if (hand !== null) this.store.setState((s) => ({ review: addStoredHand(s.review, hand) }));
+    }
+    this.store.getState().dispatch({ type: 'review', handSeq });
+  }
+
   /** A saved session back in play (§14.5): exactly its table, hand and inputs. */
   private resume(session: SessionState): void {
     this.sessionStart = session.sessionStart;
@@ -2218,6 +2341,7 @@ export class TableController {
     const loaded = loadProfile(this.storage, { now: this.now(), readOnly: true });
     this.profile = loaded.profile;
     this.store.setState({ settings: sanitize(loaded.profile.settings, {}) });
+    this.publishStats(true); // §14.7: Stats stay readable, with the other tab's numbers
   }
 
   /** The game in this tab stops (read-only, or before the storage is read again): no writes. */
@@ -2371,6 +2495,7 @@ export class TableController {
    */
   private adoptProfile(profile: Profile): void {
     this.profile = profile;
+    this.publishStats(true); // Stats show the new numbers; History reads the new hands
     if (this.settingsTimer !== null) this.timers.clearTimeout(this.settingsTimer);
     this.settingsTimer = null;
     this.settingsDirty = false;

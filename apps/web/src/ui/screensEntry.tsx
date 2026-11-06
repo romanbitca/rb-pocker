@@ -112,6 +112,7 @@ export function MenuOverlay() {
       }}
       onOpenHands={hands > 0 ? () => dispatch({ type: 'review', handSeq: null }) : undefined}
       onOpenSettings={() => dispatch({ type: 'go', screen: 'settings' })}
+      onOpenStats={() => dispatch({ type: 'go', screen: 'stats' })}
       onLeaveTable={() => dispatch({ type: 'leaveTable' })}
       onNewTable={() => dispatch({ type: 'go', screen: 'setup' })}
     />

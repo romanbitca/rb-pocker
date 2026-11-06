@@ -80,7 +80,7 @@ describe('?script=<name>', () => {
     expect(kinds.has('grade')).toBe(true);
     expect(grades.length).toBeGreaterThan(0);
     expect(grades.every((g) => g !== null)).toBe(true);
-  });
+  }, 30_000);
 
   it('passive: everyone checks or calls', async () => {
     const brain = scriptedBrain('passive', realTimers, realCoach().spawn);

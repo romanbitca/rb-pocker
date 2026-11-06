@@ -23,6 +23,7 @@ import {
   type HandState,
   type LogEvent,
   type PlayerAction,
+  type ReplayRecord,
   type Street,
   type TableState,
 } from '../engine/types.ts';
@@ -192,6 +193,21 @@ function frameOf(
     pot: potView(h),
     events: eventsOf(h.log.slice(previous?.log.length ?? 0), table),
   };
+}
+
+/**
+ * The result the hand-end banner showed (§12.9) for a stored hand (Stats → History, chunk 8.2), by
+ * its replay; null when it does not replay to a finished hand. Never throws. Here, not in the lazy
+ * `app/history.ts`: a lazy chunk that imports the engine itself splits it out of the entry chunk
+ * (pitfall 47).
+ */
+export function replayedEnd(record: ReplayRecord): HandEndView | null {
+  try {
+    const states = replayStates(record);
+    return handEndViewOf(states[states.length - 1] as HandState, record.table);
+  } catch {
+    return null;
+  }
 }
 
 /**

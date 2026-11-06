@@ -62,6 +62,8 @@ interface PcState {
     persisted: boolean | null;
     importCheck: { status: string; hands?: number; exportedAt?: string; why?: string } | null;
   };
+  /** Chunk 8.2: the profile's stats (§14.4), null before boot read them. */
+  stats: { results: { clean: { hands: number }; practice: { hands: number } } } | null;
 }
 
 /** `window.__pc.faults` (app/testFaults.ts, chunk 6.5): faults for brain.worker. */
