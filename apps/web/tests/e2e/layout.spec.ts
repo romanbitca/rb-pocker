@@ -321,7 +321,13 @@ test.describe('table layout', () => {
       await heroAct(page, () => 0.5); // check or call
     }
 
-    await right.click();
+    // A tap within 250 ms of the hero's last action is ignored (§12.7): after a check in the big
+    // blind the flop's first decision can come sooner than that on an idle machine (1.3.91 saw the
+    // tray stay shut), so tap again until it opens.
+    await expect(async () => {
+      if ((await right.getAttribute('aria-expanded')) !== 'true') await right.click();
+      await expect(right).toHaveAttribute('aria-expanded', 'true', { timeout: 1_000 });
+    }).toPass({ timeout: 10_000 });
     const trayId = await right.getAttribute('aria-controls');
     expect(trayId, 'the tray is open').not.toBeNull();
     const tray = page.locator(`[id="${trayId ?? ''}"]`);

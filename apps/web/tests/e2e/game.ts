@@ -83,6 +83,8 @@ interface PcState {
   };
   /** Chunk 8.2: the profile's stats (§14.4), null before boot read them. */
   stats: { results: { clean: { hands: number }; practice: { hands: number } } } | null;
+  /** The equity slice (§7.6): the win badge's latest estimate. */
+  equity: { result: { equity: number; final: boolean } | null } & Record<string, unknown>;
 }
 
 /** `window.__pc.faults` (app/testFaults.ts, chunk 6.5): faults for brain.worker. */
@@ -134,6 +136,8 @@ interface PcHooks {
     /** This tab writes the storage (§14.7, chunk 8.3). */
     writer: boolean;
   };
+  /** Writes the equity slice as the equity jobs would (the win badge in a chosen state). */
+  setEquity(slice: PcState['equity']): void;
 }
 
 declare global {

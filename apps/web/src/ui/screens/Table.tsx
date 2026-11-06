@@ -6,7 +6,7 @@
  *   bottom of the table instead of pushing rows (§12.3).
  * - `landscape` (phones on their side): the table column (36 px top bar, the hero's cards inset at
  *   the bottom of the felt) and a 280 px right column with the hand label, then the tray and
- *   Fold / Call / Raise stacked under the right thumb (§12.5).
+ *   Row A under the right thumb: Fold and Call side by side, Raise under them (§12.5).
  * - `wide` (desktop, tablet landscape): the portrait column beside the persistent hand-rankings
  *   column (§12.5, §13.1).
  *
@@ -201,7 +201,10 @@ const TopBar = memo(function TopBar({
       >
         <SpriteIcon id={ICONS.menu} className={styles.icon} />
       </button>
-      <p className={styles.info}>{text}</p>
+      {/* A toast on the Table goes over this box, between the buttons (`BAR_TITLE`, Notices.tsx). */}
+      <p className={styles.info} data-bar-title="">
+        {text}
+      </p>
       {undo ? (
         <UndoSlot />
       ) : (
@@ -546,16 +549,24 @@ const HeroStrip = memo(function HeroStrip({
 });
 
 /**
+ * Landscape below 390 px of height (§12.5 notes of 1.3.91): the column's head takes compact mode's
+ * sizes (the 52 px badge, the smaller name and a one-line sub-label, the draw chip on one line), so
+ * the coach's row keeps its room on a phone on its side with the browser's bars.
+ */
+export const SHORT_COLUMN_QUERY = '(max-height: 389px)';
+
+/**
  * Landscape: the label with the badge beside it, then the chips and the draw chip under them,
  * still beside the badge (it may take two lines there), heading the right column (§12.5); hidden
  * while the tray is open, and while the Advanced quiz asks (§10.3: the column's 390 px then hold
- * the quiz and Row A; the cards stay on the felt).
+ * the quiz and Row A; the cards stay on the felt). Compact below 390 px of height.
  */
 const SideHero = memo(function SideHero({ onOpenRankings }: { onOpenRankings: () => void }) {
   const hero = useAppStore(selectHeroView);
   const nuts = useAppStore(selectNuts);
   const trayOpen = useAppStore(selectOverlayOpen('tray'));
   const quizAsking = useAppStore(selectQuizAsking);
+  const short = useMediaQuery(SHORT_COLUMN_QUERY);
   if (hero === null || trayOpen || quizAsking) return null;
   return (
     <section
@@ -564,10 +575,21 @@ const SideHero = memo(function SideHero({ onOpenRankings }: { onOpenRankings: ()
       data-tip-anchor="heroStrip"
       data-tip-side="left"
     >
-      <HeroLabel hero={hero} nuts={nuts} onOpenRankings={onOpenRankings} />
-      <OddsColumn placement="down" canWin={true} className={styles.sideOdds} />
+      <HeroLabel
+        hero={hero}
+        nuts={nuts}
+        onOpenRankings={onOpenRankings}
+        compact={short ? 'column' : false}
+      />
+      <OddsColumn placement="down" canWin={true} compact={short} className={styles.sideOdds} />
       <HeroChips hero={hero} />
-      <DrawsSlot max={1} placement="down" compact={true} wrap className={styles.sideDraws} />
+      <DrawsSlot
+        max={1}
+        placement="down"
+        compact={true}
+        wrap={!short}
+        className={styles.sideDraws}
+      />
     </section>
   );
 });
