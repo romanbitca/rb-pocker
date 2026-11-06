@@ -189,6 +189,7 @@
   }
 }
 
+/* Reduced motion (§12.8: the setting, else the system's choice): a card is raised at once. */
 @media (prefers-reduced-motion: reduce) {
   :root:not([data-motion='full']) .card {
     transition: opacity 120ms linear;

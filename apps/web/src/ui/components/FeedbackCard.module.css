@@ -125,11 +125,18 @@
   }
 }
 
+@keyframes fade {
+  from {
+    opacity: 0;
+  }
+}
+
+/* Reduced motion (§12.8: the setting, else the system's choice): a short fade, no rise. */
 @media (prefers-reduced-motion: reduce) {
   :root:not([data-motion='full']) .card {
-    animation: none;
+    animation: fade 120ms ease-out;
   }
 }
 :root[data-motion='reduced'] .card {
-  animation: none;
+  animation: fade 120ms ease-out;
 }

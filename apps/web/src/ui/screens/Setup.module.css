@@ -190,6 +190,16 @@
   transform: rotate(180deg);
 }
 
+/* Reduced motion (§12.8: the setting, else the system's choice): the arrow turns at once. */
+@media (prefers-reduced-motion: reduce) {
+  :root:not([data-motion='full']) .moreToggle svg {
+    transition: none;
+  }
+}
+:root[data-motion='reduced'] .moreToggle svg {
+  transition: none;
+}
+
 .moreToggle:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;

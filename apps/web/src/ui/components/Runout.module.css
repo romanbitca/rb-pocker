@@ -45,6 +45,12 @@
   transition: transform var(--duration-flip) ease-out;
 }
 
+/* Reduced motion (§12.8: the setting, else the system's choice): the bar fills at once. */
+@media (prefers-reduced-motion: reduce) {
+  :root:not([data-motion='full']) .bar::after {
+    transition: none;
+  }
+}
 :root[data-motion='reduced'] .bar::after {
   transition: none;
 }

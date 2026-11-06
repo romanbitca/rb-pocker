@@ -76,7 +76,7 @@
   }
 }
 
-/* Movement becomes a short fade (§12.8). */
+/* Movement becomes a short fade (§12.8: the setting, else the system's choice). */
 @media (prefers-reduced-motion: reduce) {
   :root:not([data-motion='full']) .sheet {
     animation: fade 120ms ease-out;
