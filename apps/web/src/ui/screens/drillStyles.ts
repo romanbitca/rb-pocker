@@ -13,7 +13,7 @@ const CARD_W = 'min(72px, calc((100vw - 84px) / 5))';
 const CARD_W_BUTTON = 'min(64px, calc((100vw - 104px) / 5))';
 
 const caps: CSSProperties = {
-  fontSize: 12,
+  fontSize: '0.75rem',
   fontWeight: 700,
   letterSpacing: '0.08em',
   textTransform: 'uppercase',
@@ -192,7 +192,7 @@ export const resultHead: CSSProperties = {
 };
 export const who: CSSProperties = { ...caps, minWidth: 72 };
 export const minis: CSSProperties = { display: 'flex', gap: 3 };
-export const small: CSSProperties = { margin: 0, fontSize: 13 };
+export const small: CSSProperties = { margin: 0, fontSize: '0.8125rem' };
 
 /** The feedback box: the left edge says right or wrong (with the words, never alone). */
 export function feedback(result: boolean | null): CSSProperties {
@@ -223,7 +223,7 @@ export const trapTag: CSSProperties = {
   borderRadius: 'var(--radius-1)',
   background: 'var(--accent)',
   color: 'var(--bg)',
-  fontSize: 11,
+  fontSize: '0.6875rem',
   verticalAlign: 2,
 };
 /** Next (on Screen's `.primary`): not full width, a little lower. */
@@ -327,7 +327,7 @@ export const numbers: CSSProperties = { fontWeight: 600, fontVariantNumeric: 'ta
 export const numbersSmall: CSSProperties = {
   marginLeft: 4,
   color: 'var(--muted)',
-  fontSize: 13,
+  fontSize: '0.8125rem',
   fontWeight: 400,
 };
 export const bar: CSSProperties = {

@@ -26,6 +26,7 @@ import {
 } from 'react';
 import { en } from '../../i18n/en.ts';
 import { shortcutOf } from '../shortcuts.ts';
+import type { HandCategory } from '../../eval/evaluate.ts';
 import type { ByRiverView, HeroHandView } from '../views.ts';
 import styles from './RankingsDrawer.module.css';
 import { RankingsList, type RowMarks } from './RankingsList.tsx';
@@ -45,6 +46,8 @@ export interface RankingsDrawerProps {
   whichWins?: boolean | undefined;
   /** Rows marked with a badge (the hand drill's "This round", §13.5). */
   marked?: RowMarks | undefined;
+  /** The collection moment's category (§12.9): its row is ringed and pulses. */
+  collected?: HandCategory | null | undefined;
 }
 
 /** The sheet stays mounted this long after closing, for the 200 ms slide-out (§12.8). */
@@ -92,6 +95,7 @@ function Sheet({
   byRiver,
   whichWins,
   marked,
+  collected,
 }: RankingsDrawerProps) {
   const titleId = useId();
   const sheetRef = useRef<HTMLDivElement>(null);
@@ -255,6 +259,7 @@ function Sheet({
             currentRowRef={currentRowRef}
             byRiver={byRiver}
             marked={marked}
+            collected={collected}
           />
         </div>
       </div>

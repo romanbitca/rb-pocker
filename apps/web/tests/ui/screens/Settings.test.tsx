@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
-// Settings, Game section (PLAN §12.1, §18 Stages 3 and 5): coach level, bot level, speed, auto next
-// hand, amounts.
+// Settings, Game section (PLAN §12.1, §18 Stages 3 and 5, chunk 9.1b): coach level, bot level,
+// speed, auto next hand, amounts, show win chance.
 import '../../../src/ui/styles/tokens.css';
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -21,6 +21,7 @@ const GAME: GameSettings = {
   speed: 'normal',
   autoNext: true,
   amounts: 'chips',
+  showEquity: true,
 };
 
 function renderSettings(
@@ -80,17 +81,39 @@ describe('Settings', () => {
     expect(onChangeSettings).toHaveBeenCalledWith({ amounts: 'chips' });
   });
 
+  it('show win chance (§7.6, chunk 9.1b): the last Game row, a switch that says what Off is for', () => {
+    const { onChangeSettings } = renderSettings({ ...GAME, showEquity: true });
+    const game = screen.getByRole('region', { name: 'Game' });
+    const switches = within(game).getAllByRole('switch') as HTMLInputElement[];
+    expect(switches.map((s) => s.labels?.[0]?.textContent?.startsWith('Show win chance'))).toEqual([
+      false,
+      true,
+    ]);
+    const toggle = screen.getByRole('switch', { name: 'Show win chance' }) as HTMLInputElement;
+    expect(toggle.checked).toBe(true);
+    const hint = document.getElementById(toggle.getAttribute('aria-describedby') ?? '');
+    expect(hint?.textContent).toBe('Off: practise guessing your chances yourself.');
+    fireEvent.click(toggle);
+    expect(onChangeSettings).toHaveBeenCalledWith({ showEquity: false });
+    cleanup();
+    renderSettings({ ...GAME, showEquity: false });
+    expect(
+      (screen.getByRole('switch', { name: 'Show win chance' }) as HTMLInputElement).checked,
+    ).toBe(false);
+  });
+
   it('shows what the controller passes (a whole Settings object fits)', () => {
     const settings = { ...GAME, speed: 'fast' as const, autoNext: false, showEquity: true };
     renderSettings(settings);
     expect(radios('Speed')[1]?.checked).toBe(true);
-    expect((screen.getByRole('switch') as HTMLInputElement).checked).toBe(false);
+    const autoNext = screen.getByRole('switch', { name: 'Deal the next hand by itself' });
+    expect((autoNext as HTMLInputElement).checked).toBe(false);
   });
 
   it('every control is at least 44×44 px (§12.12)', () => {
     const { container } = renderSettings();
-    // Back, 4 + 4 level cards, 3 speeds, the switch, 2 amounts.
-    expect(controlCount(container)).toBe(15);
+    // Back, 4 + 4 level cards, 3 speeds, the two switches, 2 amounts.
+    expect(controlCount(container)).toBe(16);
     expect(smallTargets(container, () => false)).toEqual([]);
   });
 
@@ -104,7 +127,8 @@ describe('Settings', () => {
     expect(buttons[buttons.length - 1]?.textContent).toBe('About');
     fireEvent.click(screen.getByRole('button', { name: 'About' }));
     expect(onOpenAbout).toHaveBeenCalledTimes(1);
-    expect(controlCount(container)).toBe(16);
+    // The 16 of the Game section (above) and About.
+    expect(controlCount(container)).toBe(17);
     expect(smallTargets(container, () => false)).toEqual([]);
     cleanup();
     renderSettings();
@@ -370,8 +394,8 @@ describe('Settings: Data (§14.8) and Diagnostics (§4.5, §12.14), chunk 8.4', 
 
   it('every control is at least 44×44 px (§12.12), the file picker too', () => {
     const { container } = renderData(false);
-    // 15 Game controls, Export, Import's file input, Reset stats, Export debug report.
-    expect(controlCount(container)).toBe(19);
+    // 16 Game controls, Export, Import's file input, Reset stats, Export debug report.
+    expect(controlCount(container)).toBe(20);
     expect(smallTargets(container, () => false)).toEqual([]);
   });
 });

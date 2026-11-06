@@ -108,7 +108,7 @@
   background: var(--surface);
   color: var(--text);
   font: inherit;
-  font-size: 16px;
+  font-size: 1rem;
   font-variant-numeric: tabular-nums;
 }
 

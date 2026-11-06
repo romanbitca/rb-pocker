@@ -59,7 +59,7 @@
 .title {
   flex: 1;
   margin: 0;
-  font-size: 16px;
+  font-size: 1rem;
   font-weight: 700;
   line-height: 1.25;
 }
@@ -103,12 +103,20 @@
 
 /* Reduced motion: short fades instead of the slide (§12.8). */
 @media (prefers-reduced-motion: reduce) {
-  .sheet {
+  :root:not([data-motion='full']) .sheet {
     animation: fade-in 120ms linear;
     transition: opacity 120ms linear;
   }
-  .closing .sheet {
+  :root:not([data-motion='full']) .closing .sheet {
     transform: none;
     opacity: 0;
   }
+}
+:root[data-motion='reduced'] .sheet {
+  animation: fade-in 120ms linear;
+  transition: opacity 120ms linear;
+}
+:root[data-motion='reduced'] .closing .sheet {
+  transform: none;
+  opacity: 0;
 }

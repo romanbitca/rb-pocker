@@ -164,7 +164,10 @@
   outline-offset: 2px;
 }
 
+/* "Blinds 10/20 · Hand 12": two lines when one is too narrow (Large text, big blinds), never more
+   than the 44 px bar holds. */
 .info {
+  display: -webkit-box;
   flex: 1;
   min-width: 0;
   margin: 0;
@@ -172,9 +175,12 @@
   font-size: 0.9375rem;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
+  line-height: 1.15;
   text-align: center;
   text-overflow: ellipsis;
-  white-space: nowrap;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
 }
 
 /* ---- The table (§12.3, §12.4) ---- */

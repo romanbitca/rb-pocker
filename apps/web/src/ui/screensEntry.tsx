@@ -96,11 +96,16 @@ export function SettingsScreen() {
     speed: s.settings.speed,
     autoNext: s.settings.autoNext,
     amounts: s.settings.amounts,
+    showEquity: s.settings.showEquity,
   }));
   // How many bots have a level of their own (§9.3): the Bot level row says so.
   const ownLevels = useAppStore((s) => ownLevelCount(s.settings.seatLevels));
-  // Display and Sound (chunk 9.1): keep screen on, sound, vibration.
+  // Display and Sound (chunks 9.1, 9.1b): four-colour cards, text size, reduce motion, keep screen
+  // on; sound, vibration.
   const device: DisplayAndSoundSettings = useAppStoreShallow((s) => ({
+    fourColour: s.settings.fourColour,
+    textSize: s.settings.textSize,
+    reduceMotion: s.settings.reduceMotion,
     keepAwake: s.settings.keepAwake,
     sound: s.settings.sound,
     haptics: s.settings.haptics,

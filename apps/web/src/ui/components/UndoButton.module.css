@@ -1,4 +1,6 @@
-/* The toolbar Undo (PLAN §12.3): 44×44 to touch (§12.12), the word drawn small inside. */
+/* The toolbar Undo (PLAN §12.3): 44×44 to touch (§12.12), the word drawn small inside. The word
+   keeps 14 px at the Large text size: the strip's reserved 44 px slot would not hold it (§12.8
+   notes). */
 .undo {
   display: flex;
   flex: none;
@@ -13,7 +15,7 @@
   background: var(--control-bg);
   color: var(--text);
   font: inherit;
-  font-size: 0.875rem;
+  font-size: 14px;
   font-weight: 600;
   cursor: pointer;
 }

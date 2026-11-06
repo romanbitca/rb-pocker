@@ -16,6 +16,14 @@ html {
   text-size-adjust: 100%;
 }
 
+/* Settings → Display → Text size: Large (§12.1, §12.12; App sets `data-text`). Every screen's type
+   is in rem, so it grows ×1.15 with the root; the Table's fixed-size pieces (cards, seat pods, the
+   win badge, the felt's chips and labels) keep px sizes, and its rows keep their heights (§12.8
+   notes). A percentage keeps the reader's own browser text size under it. */
+html[data-text='large'] {
+  font-size: 115%;
+}
+
 body {
   background: var(--bg);
   color: var(--text);

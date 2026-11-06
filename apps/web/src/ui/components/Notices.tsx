@@ -11,10 +11,16 @@ import { formatChips } from '../format.ts';
 import { joinNames } from '../names.ts';
 import styles from './Notices.module.css';
 
-/** A toast's text (§12.11): each kind is a key of `en.toast` (Leave table's line, chunk 8.2, is built). */
+/**
+ * A toast's text (§12.11): each kind is a key of `en.toast` (Leave table's line, chunk 8.2, is
+ * built; the collection moment, §12.9, names the category as the hand-end banner does).
+ */
 export function toastText(toast: Toast): string {
   if (toast.kind === 'botsJoined') {
     return en.toast.botsJoined(joinNames(toast.names), toast.names.length === 1);
+  }
+  if (toast.kind === 'collection') {
+    return en.toast.collection(en.handEnd.category[toast.category]);
   }
   return toast.kind === 'session' ? sessionText(toast.session) : en.toast[toast.kind];
 }

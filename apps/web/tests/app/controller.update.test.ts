@@ -73,7 +73,15 @@ function launch(backend: FakeStorage, options: HarnessOptions = {}): Launch {
 const passive = (legal: LegalActions): PlayerAction =>
   legal.canCheck ? { type: 'check' } : { type: 'call' };
 
-const toasts = (h: Harness): string[] => h.state().ui.toasts.map((t) => t.kind);
+/**
+ * The toasts of these tests. The hands they play bring the collection moment's toasts too (§12.9,
+ * chunk 9.1b), which `controller.collection.test.ts` covers; they are left out here.
+ */
+const toasts = (h: Harness): string[] =>
+  h
+    .state()
+    .ui.toasts.map((t) => t.kind)
+    .filter((kind) => kind !== 'collection');
 const session = (backend: FakeStorage): SessionState =>
   JSON.parse(backend.data.get(K.session) as string) as SessionState;
 const profile = (backend: FakeStorage): Profile =>

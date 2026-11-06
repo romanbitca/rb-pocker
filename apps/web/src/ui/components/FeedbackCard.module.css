@@ -126,7 +126,10 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .card {
+  :root:not([data-motion='full']) .card {
     animation: none;
   }
+}
+:root[data-motion='reduced'] .card {
+  animation: none;
 }

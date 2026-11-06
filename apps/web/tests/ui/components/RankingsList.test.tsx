@@ -161,3 +161,53 @@ suite('RankingsList live highlight (Stage 3 acceptance 4)', () => {
     expect(current(container)[0]?.querySelector('[class*="pulse"]')).not.toBeNull();
   });
 });
+
+suite('the collection moment (§12.9, chunk 9.1b)', () => {
+  const STYLES = Object.values(
+    import.meta.glob<string>('../../../src/ui/components/RankingsList.module.css', {
+      query: '?raw',
+      import: 'default',
+      eager: true,
+    }),
+  )[0] as string;
+  const marked = (root: HTMLElement): string[] =>
+    [...root.querySelectorAll<HTMLElement>('li[data-collected]')].map(
+      (li) => li.dataset.category ?? '',
+    );
+
+  it('rings the row of the new category while the moment lasts, and no other row', () => {
+    const hero = view('Kh Kc', 'Kd 7s 7h 2c 9d');
+    const { container, rerender } = render(<RankingsList hero={hero} cardSize="sm" />);
+    expect(marked(container)).toEqual([]);
+    rerender(<RankingsList hero={hero} cardSize="sm" collected="fullHouse" />);
+    expect(marked(container)).toEqual(['fullHouse']);
+    const row = container.querySelector('li[data-collected]') as HTMLElement;
+    expect(row.className).toMatch(/collected/);
+    // The live highlight stays as it was (the moment is the hero's own row here).
+    expect(row.getAttribute('aria-current')).toBe('true');
+    // No extra node: the pulse is the row's ::after.
+    expect(row.querySelector('[class*="pulse"]')).toBeNull();
+    rerender(<RankingsList hero={null} cardSize="sm" collected="royalFlush" />);
+    expect(marked(container)).toEqual(['royalFlush']);
+    rerender(<RankingsList hero={null} cardSize="sm" collected={null} />);
+    expect(marked(container)).toEqual([]);
+  });
+
+  it('pulses once (the improvement pulse, 400 ms × speed), but not under reduced motion', () => {
+    const rule = (selector: string): string => {
+      const at = STYLES.indexOf(`${selector} {`);
+      return at < 0 ? '' : STYLES.slice(at, STYLES.indexOf('}', at));
+    };
+    expect(rule('.collected')).toMatch(/outline: 2px solid var\(--accent\)/);
+    expect(STYLES).toMatch(
+      /\.pulse,\s*\.collected::after \{[^}]*animation: pulse var\(--duration-pulse\)/,
+    );
+    // The system's choice, unless the setting says Off; and the setting's On (§12.8).
+    expect(STYLES).toMatch(
+      /@media \(prefers-reduced-motion: reduce\) \{[^@]*:root:not\(\[data-motion='full'\]\) \.collected::after \{\s*display: none;/,
+    );
+    expect(STYLES).toMatch(/:root\[data-motion='reduced'\] \.collected::after \{\s*display: none;/);
+    // The ring is not motion: it stays under reduced motion (a static highlight).
+    expect(STYLES).not.toMatch(/data-motion[^{]*\.collected \{/);
+  });
+});

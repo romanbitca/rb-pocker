@@ -90,6 +90,7 @@ import {
 } from '../../app/store.ts';
 import type { Grade } from '../../brain/types.ts';
 import type { PlayerAction } from '../../engine/types.ts';
+import type { HandCategory } from '../../eval/evaluate.ts';
 import { en } from '../../i18n/en.ts';
 import { actionBarView, lockedView, useSizing } from '../actionBar.ts';
 import { coachAdvice } from '../coachAdvice.ts';
@@ -175,13 +176,17 @@ const TopBar = memo(function TopBar({
 }: TopBarProps) {
   const info = useAppStore(selectTableInfo);
   const [, setMenuOpen] = useOverlay('menu');
+  // Two lines when one is too narrow (Large text, big blinds): a line breaks only between the
+  // parts, "Blinds 10/20 ·" over "Hand 12" (no-break spaces inside each part).
   const text =
     info === null
       ? ''
       : [
           en.table.blinds(formatChips(info.sb), formatChips(info.bb)),
           en.table.hand(formatChips(info.handNumber)),
-        ].join(en.table.separator);
+        ]
+          .map((part) => part.replaceAll(' ', ' '))
+          .join(en.table.separator);
   return (
     <header className={styles.top}>
       <button
@@ -969,6 +974,16 @@ const ActionArea = memo(function ActionArea({
 // The hand rankings: a drawer on phones, a column on wide screens (§13.1)
 
 /**
+ * The collection moment (§12.9): the category of the "New in your collection" toast on show, whose
+ * rankings row is ringed and pulses (`RankingsList`); null when none shows.
+ */
+const selectCollected = (s: AppState): HandCategory | null => {
+  let category: HandCategory | null = null;
+  for (const t of s.ui.toasts) if (t.kind === 'collection') category = t.category;
+  return category;
+};
+
+/**
  * Fills the area the drawer and the coach sheet may cover: above the action bar (portrait), the
  * table column (landscape).
  */
@@ -984,6 +999,7 @@ const DrawerHost = memo(function DrawerHost({
   const byRiver = useAppStore(selectByRiver);
   // §10.2: the tips at Beginner (Intermediate collapses them); "Which hand wins?" at Advanced, Exam.
   const rules = LEVEL_RULES[useAppStore(selectCoachLevel)];
+  const collected = useAppStore(selectCollected);
   const onOpenChange = useCallback((next: boolean) => setOpen(next), [setOpen]);
   return (
     <div className={styles.drawerHost}>
@@ -994,6 +1010,7 @@ const DrawerHost = memo(function DrawerHost({
         byRiver={byRiver}
         showTips={rules.tips}
         whichWins={rules.whichWins}
+        collected={collected}
       />
       <CoachSheetHost tall={layout === 'landscape'} coachSize={coachSize} />
     </div>
@@ -1010,6 +1027,7 @@ const RankingsPanel = memo(function RankingsPanel({
   const hero = useAppStore(selectHeroHandView);
   const byRiver = useAppStore(selectByRiver);
   const rules = LEVEL_RULES[useAppStore(selectCoachLevel)];
+  const collected = useAppStore(selectCollected);
   return (
     <div className={styles.rankings}>
       <RankingsColumn
@@ -1019,6 +1037,7 @@ const RankingsPanel = memo(function RankingsPanel({
         byRiver={byRiver}
         showTips={rules.tips}
         whichWins={rules.whichWins}
+        collected={collected}
       />
     </div>
   );

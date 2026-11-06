@@ -515,7 +515,10 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .switch::after {
+  :root:not([data-motion='full']) .switch::after {
     transition: none;
   }
+}
+:root[data-motion='reduced'] .switch::after {
+  transition: none;
 }

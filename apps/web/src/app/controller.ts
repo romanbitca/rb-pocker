@@ -110,6 +110,7 @@ import {
   type TableConfig,
   type TableState,
 } from '../engine/types.ts';
+import type { HandCategory } from '../eval/evaluate.ts';
 import { commitHand } from '../persist/commit.ts';
 import { appendDiag } from '../persist/diag.ts';
 import { loadHands } from '../persist/hands.ts';
@@ -569,7 +570,8 @@ type NewToast =
   | { kind: 'exportCopied' | 'exportFailed' | 'imported' | 'statsReset' | 'dataNotChanged' }
   | { kind: 'session'; session: SessionSummary }
   | { kind: 'debugCopied' }
-  | { kind: 'updateReady' | 'offlineReady' };
+  | { kind: 'updateReady' | 'offlineReady' }
+  | { kind: 'collection'; category: HandCategory };
 
 /**
  * A new version of the game (§15.1): none found; one waits (`ready`); this tab let it in and
@@ -1413,6 +1415,12 @@ export class TableController {
     if (result.status === 'invalid') this.error('hand not committed', result.problem);
     this.profile = result.profile;
     this.publishStats(true);
+    // §12.9 collection moment: this commit gave the hand's category its first date (§14.4). The
+    // date is stored with the hand, so the moment comes once per category, reloads included.
+    const made = record.bestCategory;
+    if (result.status === 'committed' && made !== null && !profile.stats.collection[made].first) {
+      this.toast({ kind: 'collection', category: made });
+    }
     // §10.4: the coach rule's sample follows the counted hands (read once it can matter).
     if (result.status === 'committed') this.suggestionTools?.counted(record);
     // §9.5: the hero model in memory is the profile's.

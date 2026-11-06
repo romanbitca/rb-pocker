@@ -165,6 +165,18 @@ describe('toastText (§12.11)', () => {
     expect(PLAN).toContain(`toast (once) "${toastText({ id: 1, kind: 'offlineReady' })}"`);
   });
 
+  it('the collection moment names the category as the banner does (§12.9, chunk 9.1b)', () => {
+    const line = toastText({ id: 1, kind: 'collection', category: 'fullHouse' });
+    expect(line).toBe('New in your collection: Full House!');
+    expect(PLAN).toContain(`"${line}"`);
+    expect(toastText({ id: 2, kind: 'collection', category: 'trips' })).toBe(
+      'New in your collection: Three of a Kind!',
+    );
+    expect(toastText({ id: 3, kind: 'collection', category: 'royalFlush' })).toBe(
+      'New in your collection: Royal Flush!',
+    );
+  });
+
   it('Leave table: the session`s line (§14.4, chunk 8.2)', () => {
     const session = {
       start: '2026-10-20T09:00:00.000Z',

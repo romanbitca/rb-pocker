@@ -26,6 +26,7 @@ import type { EquityResult, HandAnalysis } from '../analysis/types.ts';
 import type { Explanation } from '../brain/explain.ts';
 import type { Decision } from '../brain/types.ts';
 import type { Card } from '../core/cards.ts';
+import type { HandCategory } from '../eval/evaluate.ts';
 import type {
   BotLevel,
   CoachLevel,
@@ -220,7 +221,13 @@ export type Toast =
    * §15.1 (chunk 9.5): "Update ready. It installs after this hand." (a new version waits for the
    * hand's end) and, once ever, "Ready to play offline." (the first service worker installed).
    */
-  | { id: number; kind: 'updateReady' | 'offlineReady' };
+  | { id: number; kind: 'updateReady' | 'offlineReady' }
+  /**
+   * The collection moment (§12.9, chunk 9.1b): "New in your collection: Full House!", at the commit
+   * that gives `category` its first date in `stats.collection` (§14.4). While it shows, the
+   * rankings row of that category is marked (and pulses once).
+   */
+  | { id: number; kind: 'collection'; category: HandCategory };
 
 /**
  * The first-table tips (§12.11, chunk 9.3), each shown at most once (`profile.flags.tips`): on the

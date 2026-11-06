@@ -56,10 +56,11 @@
   --radius-2: 8px;
   --radius-3: 14px;
 
-  /* Type: system fonts only (no web fonts) */
+  /* Type: system fonts only (no web fonts). Sizes in rem follow the root font size, which the
+     Large text size raises ×1.15 (global.css, §12.12); 1rem is 16 px at Normal. */
   --font-family: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-  --font-size-base: 16px;
-  --font-size-caption: 11px;
+  --font-size-base: 1rem;
+  --font-size-caption: 0.6875rem;
 
   /* Touch targets */
   --tap-primary: 56px;

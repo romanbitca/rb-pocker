@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { act, cleanup, render, screen } from '@testing-library/react';
+import { useLayoutEffect } from 'react';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { appStore, defaultGameSettings, initialData, initialUi } from '../../src/app/store.ts';
 import { en } from '../../src/i18n/en.ts';
@@ -61,6 +62,29 @@ describe('App', () => {
     act(() => appStore.setState({ settings: { ...defaultGameSettings(), speed: 'fast' } }));
     expect(root.style.getPropertyValue('--speed')).toBe('0.5');
     expect(root.dataset.motion).toBeUndefined();
+  });
+
+  it('Large text size puts data-text on the root before the first paint (§12.12, chunk 9.1b)', () => {
+    const root = document.documentElement;
+    appStore.setState({ settings: { ...defaultGameSettings(), textSize: 'large' } });
+    // A layout effect: set in the same commit as the first render, before the browser paints.
+    let atCommit: string | undefined;
+    function Probe() {
+      useLayoutEffect(() => {
+        atCommit = root.dataset.text;
+      });
+      return null;
+    }
+    render(
+      <>
+        <App />
+        <Probe />
+      </>,
+    );
+    expect(atCommit).toBe('large');
+    expect(root.dataset.text).toBe('large');
+    act(() => appStore.setState({ settings: defaultGameSettings() }));
+    expect(root.dataset.text).toBeUndefined();
   });
 });
 

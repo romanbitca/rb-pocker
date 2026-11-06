@@ -15,6 +15,10 @@
  *
  * The hand drill (§13.5) marks the rows of its answered question (`marked`: the "You" row's look,
  * with its own badge, "This round"); the strongest marked row is the one the drawer scrolls to.
+ *
+ * The collection moment (§12.9, chunk 9.1b): while "New in your collection: …" shows, the row of
+ * that category (`collected`) has an accent ring and pulses once as it is drawn (a drawer opened
+ * meanwhile pulses then); under reduced motion only the ring (§12.8).
  */
 import { lazy, memo, Suspense, useId, useState, type Ref } from 'react';
 import { RANKINGS } from '../../data/rankings.ts';
@@ -54,6 +58,8 @@ export interface RankingsListProps {
   whichWins?: boolean | undefined;
   /** Rows to mark with a badge (the hand drill's "This round", §13.5); absent = none. */
   marked?: RowMarks | undefined;
+  /** The collection moment's category (§12.9): its row is ringed and pulses; null = none. */
+  collected?: HandCategory | null | undefined;
 }
 
 /** Rows marked by a caller other than the Table, and the badge they show. */
@@ -96,6 +102,7 @@ export const RankingsList = memo(function RankingsList({
   byRiver = null,
   whichWins = false,
   marked,
+  collected = null,
 }: RankingsListProps) {
   const [openRow, setOpenRow] = useState<number | null>(null);
   const [info, setInfo] = useState(false);
@@ -168,9 +175,11 @@ export const RankingsList = memo(function RankingsList({
                 styles.row,
                 status !== null && STATUS_CLASS[status],
                 status === null && marks !== null && styles.you,
+                row.key === collected && styles.collected,
               )}
               data-category={row.key}
               data-marked={marks !== null ? '' : undefined}
+              data-collected={row.key === collected ? '' : undefined}
               aria-current={mine ? 'true' : undefined}
               ref={mine || (hero === null && firstMark) ? currentRowRef : undefined}
             >
