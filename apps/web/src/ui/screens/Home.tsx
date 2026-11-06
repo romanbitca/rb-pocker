@@ -15,7 +15,7 @@
  */
 import { Fragment, useId } from 'react';
 import type { BotLevel, CoachLevel } from '../../engine/types.ts';
-import { en } from '../../i18n/en.ts';
+import { enStart as en } from '../../i18n/start.ts';
 import { NudgeCard, type NudgeCardProps } from '../components/NudgeCard.tsx';
 import { formatChips } from './numbers.ts';
 import styles from './Screen.module.css';

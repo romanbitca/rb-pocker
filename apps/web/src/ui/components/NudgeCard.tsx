@@ -8,7 +8,7 @@
  */
 import { useId } from 'react';
 import type { Nudge } from '../../app/store.ts';
-import { en } from '../../i18n/en.ts';
+import { enStart as en } from '../../i18n/start.ts';
 import styles from '../screens/Screen.module.css';
 import { FileButton } from './FileButton.tsx';
 

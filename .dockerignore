@@ -4,6 +4,7 @@
 **/dist
 **/coverage
 **/playwright-report
+**/lighthouse-report
 **/test-results
 **/*.log
 **/.DS_Store

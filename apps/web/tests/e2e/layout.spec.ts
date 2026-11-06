@@ -384,4 +384,47 @@ test.describe('table layout', () => {
     }));
     expect(scroll, 'the page does not scroll').toEqual({ x: 0, y: 0 });
   });
+
+  test('R14: at 1024×768 the open sizing tray leaves the table its size', async ({
+    page,
+  }, testInfo) => {
+    test.skip(sizeOf(testInfo) !== '1280x800', 'R14 is the wide layout, measured at 1024×768');
+    test.setTimeout(120_000);
+    await page.setViewportSize({ width: 1024, height: 768 });
+    await page.clock.install();
+    await openApp(page, seedFor(testInfo));
+    await newTable(page, { players: 9 });
+
+    // Play on (check or call) to a decision where Bet/Raise opens the tray.
+    const right = slot(page, 'right');
+    for (let decisions = 0; ; decisions++) {
+      expect(decisions, 'a decision with a bet or raise').toBeLessThan(60);
+      const point = await nextFlowPoint(page, true);
+      if (point === 'end') {
+        await tapNextHand(page);
+        continue;
+      }
+      if (point === 'bust') {
+        await reloadAfterBust(page);
+        continue;
+      }
+      const opensTray =
+        (await right.count()) === 1 &&
+        (await right.getAttribute('aria-disabled')) === null &&
+        (await right.getAttribute('aria-expanded')) !== null;
+      if (opensTray) break;
+      await heroAct(page, () => 0.5); // check or call
+    }
+
+    const closed = await measure(page);
+    await right.click();
+    const trayId = await right.getAttribute('aria-controls');
+    await expect(page.locator(`[id="${trayId ?? ''}"]`)).toBeVisible();
+    const open = await measure(page);
+    // The coach panel's row gives the tray its 104 px; the table keeps 320 px (it was 216 px).
+    expect(fmt(open.table), 'the table box with the tray open').toBe(fmt(closed.table));
+    const frame = tableFrame({ w: 1024, h: 768 }, { trayOpen: true }).box;
+    expect(fmt(open.table), 'as tableFrame() has it').toBe(fmt(frame));
+    expect(podProblems(open, 'tray open')).toEqual([]);
+  });
 });

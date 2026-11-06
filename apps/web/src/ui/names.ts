@@ -4,7 +4,7 @@
  * module of its own, so the toasts do not pull the hand-end lines and the chip formats into the
  * initial bundle (§15.3, pitfall 47).
  */
-import { en } from '../i18n/en.ts';
+import { enStart as en } from '../i18n/start.ts';
 
 /** "you and Ben", "Ben and Anna", "you, Ben and Anna". */
 export function joinNames(names: readonly string[]): string {

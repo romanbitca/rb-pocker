@@ -61,6 +61,8 @@ export const SHELL = {
   /** Portrait: the head and two lines of the coach's line, and 6 px for the action bar's badge. */
   coachStrip: 56,
   actionBar: 64,
+  /** The sizing tray as a row above Row A (portrait and wide, §12.7). */
+  sizingTray: 104,
   /** Portrait and landscape: the Hands edge tab's gutter at the right edge of the table (§12.3). */
   edgeGutter: 28,
   edgeTab: { w: 28, h: 88 },
@@ -141,19 +143,27 @@ export interface TableFrame {
 /**
  * The wide screen's inline coach panel (§12.5): the fixed height of its row for a viewport
  * `height`, as Table.module.css computes it (safe-area insets taken as 0). Whatever the coach
- * says, the table box keeps its size (§15.3).
+ * says, the table box keeps its size (§15.3). With the sizing tray open the row gives the tray its
+ * 104 px, down to the panel's head row, so the table keeps its size while a bet is sized too (R14).
  */
-export function wideCoachPanel(height: number): number {
+export function wideCoachPanel(height: number, trayOpen = false): number {
   const room = height - SHELL.topBar - SHELL.heroStrip - SHELL.actionBar - SHELL.wideTableMin;
-  return Math.round(Math.max(SHELL.wideCoachMin, Math.min(SHELL.wideCoachMax * height, room)));
+  const row = Math.min(SHELL.wideCoachMax * height, room) - (trayOpen ? SHELL.sizingTray : 0);
+  return Math.round(Math.max(SHELL.wideCoachMin, row));
 }
 
-/** Wide-layout options for `tableFrame`. */
+/** Options for `tableFrame`. */
 export interface FrameOptions {
-  /** The inline coach panel's height (default: its row, `wideCoachPanel`). */
+  /** Wide: the inline coach panel's height (default: its row, `wideCoachPanel`). */
   readonly coachPanel?: number;
-  /** The rankings column is collapsed to its 44 px rail (`settings.handsPanel`, §13.1). */
+  /** Wide: the rankings column is collapsed to its 44 px rail (`settings.handsPanel`, §13.1). */
   readonly handsCollapsed?: boolean;
+  /**
+   * The sizing tray is open (§12.7). Portrait: a 104 px row above Row A, taken from the table;
+   * wide: taken from the coach panel's row first (R14); compact and landscape: no change (over
+   * the table, or in the right column).
+   */
+  readonly trayOpen?: boolean;
 }
 
 /** The collapsed rankings rail (§12.5). */
@@ -173,8 +183,10 @@ export function tableFrame(viewport: Size, options: FrameOptions = {}): TableFra
       const { min, vw, max } = SHELL.wideColumn;
       const column =
         options.handsCollapsed === true ? HANDS_RAIL : Math.min(max, Math.max(min, vw * W));
-      const coach = options.coachPanel ?? wideCoachPanel(H);
-      const h = H - SHELL.topBar - SHELL.heroStrip - coach - SHELL.actionBar;
+      const trayOpen = options.trayOpen === true;
+      const coach = options.coachPanel ?? wideCoachPanel(H, trayOpen);
+      const tray = trayOpen ? SHELL.sizingTray : 0;
+      const h = H - SHELL.topBar - SHELL.heroStrip - coach - tray - SHELL.actionBar;
       return { layout, box: { x: 0, y: SHELL.topBar, w: W - column, h }, tab: null };
     }
     case 'landscape': {
@@ -192,7 +204,8 @@ export function tableFrame(viewport: Size, options: FrameOptions = {}): TableFra
         layout === 'compact'
           ? SHELL.heroStripCompact + SHELL.actionBar
           : SHELL.heroStrip + SHELL.coachStrip + SHELL.actionBar;
-      const h = H - SHELL.topBar - strips;
+      const tray = layout === 'portrait' && options.trayOpen === true ? SHELL.sizingTray : 0;
+      const h = H - SHELL.topBar - strips - tray;
       return {
         layout,
         box: { x: 0, y: SHELL.topBar, w: W - SHELL.edgeGutter, h },

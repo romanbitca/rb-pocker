@@ -45,7 +45,7 @@ import {
   type Screen,
   type Speed,
 } from '../app/store.ts';
-import { en } from '../i18n/en.ts';
+import { enStart as en } from '../i18n/start.ts';
 import { LoadBoundary } from './components/LoadBoundary.tsx';
 import type { NudgeCardProps } from './components/NudgeCard.tsx';
 import { StorageBanner, Toasts } from './components/Notices.tsx';
