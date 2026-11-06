@@ -42,13 +42,13 @@ test('no main-thread task over 50 ms during 25 hands with 6 players', async ({
   expect(errors).toEqual([]);
 });
 
-// The first-table tips (§12.11, chunk 9.3) on a first launch: the four of them come and go
+// The first-table tips (§12.11, chunk 9.3) on a first launch: the five of them come and go
 // (`playHands` taps each one; before each hero decision the clock runs half a second, as a reader
 // waits, so the hero turn's tips show too) with no main-thread task over 50 ms.
 test.describe('with the first-table tips', () => {
   test.use({ firstTableTips: true });
 
-  test('no main-thread task over 50 ms while the four tips come and go', async ({
+  test('no main-thread task over 50 ms while the five tips come and go', async ({
     page,
   }, testInfo) => {
     test.setTimeout(120_000);
@@ -62,7 +62,9 @@ test.describe('with the first-table tips', () => {
     const allSeen = () =>
       pcState(page).then((s) => {
         const tips = s.data.tips ?? {};
-        return ['heroStrip', 'coachStrip', 'undo', 'handsTab'].every((t) => tips[t] === true);
+        return ['heroStrip', 'coachStrip', 'undo', 'bestFive', 'handsTab'].every(
+          (t) => tips[t] === true,
+        );
       });
     const random = prng(seed);
     for (let round = 0; round < 6 && !(await allSeen()); round++) {

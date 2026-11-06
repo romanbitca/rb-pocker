@@ -237,10 +237,11 @@ export type Toast =
 
 /**
  * The first-table tips (§12.11, chunk 9.3), each shown at most once (`profile.flags.tips`): on the
- * hero strip and the coach at the first hero turn, on Undo after the first action, on the Hands
- * tab (the wide rankings column) after the first flop.
+ * hero strip and the coach at the first hero turn, on Undo after the first action, and after the
+ * first flop on the board (the gold edge of the hero's best five, 1.3.97) and on the Hands tab
+ * (the wide rankings column).
  */
-export type TipId = 'heroStrip' | 'coachStrip' | 'undo' | 'handsTab';
+export type TipId = 'heroStrip' | 'coachStrip' | 'undo' | 'bestFive' | 'handsTab';
 
 /** An explicit gate close by `owner` (e.g. a first-table tip); the gate stays closed while any hold exists. */
 export interface GateHold {

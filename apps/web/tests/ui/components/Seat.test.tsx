@@ -108,7 +108,7 @@ describe('Seat (PLAN §12.4, §12.12)', () => {
       winner: true,
       cards: {
         kind: 'revealed',
-        cards: [{ card: card('Kh'), highlight: 'core' }, { card: card('Tc') }],
+        cards: [{ card: card('Kh'), highlight: 'core', winning: true }, { card: card('Tc') }],
       },
     });
     const { container } = render(<Seat view={view} place={PLACE} />);
@@ -118,8 +118,11 @@ describe('Seat (PLAN §12.4, §12.12)', () => {
       'Ten of clubs',
     ]);
     expect(faces[0]?.className).toMatch(/core/);
+    // The card out of its best five looks like any card: no fade (1.3.97).
+    expect(faces[1]?.className).not.toMatch(/core|kicker|off|dim/);
+    // The drawing is hidden from screen readers; the seat's label says which card is in the five.
     expect(screen.getByRole('group').getAttribute('aria-label')).toBe(
-      'Anna, bot, Careful, stack 1,250, bet 50, King of hearts, Ten of clubs, wins',
+      'Anna, bot, Careful, stack 1,250, bet 50, King of hearts, part of the winning hand, Ten of clubs, wins',
     );
   });
 
@@ -148,15 +151,24 @@ describe('Seat memo (PLAN §15.3, pitfall 37)', () => {
     expect(seatViewEqual(a, seatView())).toBe(true);
     expect(seatViewEqual(a, seatView({ stack: 1249 }))).toBe(false);
     expect(seatViewEqual(a, seatView({ cards: { kind: 'none' } }))).toBe(false);
-    const shown = (highlight?: 'core') =>
+    const shown = (highlight?: 'core', winning?: true) =>
       seatView({
         cards: {
           kind: 'revealed',
-          cards: [highlight ? { card: 1, highlight } : { card: 1 }, { card: 2 }],
+          cards: [
+            highlight === undefined
+              ? { card: 1 }
+              : winning === undefined
+                ? { card: 1, highlight }
+                : { card: 1, highlight, winning },
+            { card: 2 },
+          ],
         },
       });
     expect(seatViewEqual(shown(), shown())).toBe(true);
     expect(seatViewEqual(shown(), shown('core'))).toBe(false);
+    expect(seatViewEqual(shown('core', true), shown('core', true))).toBe(true);
+    expect(seatViewEqual(shown('core'), shown('core', true))).toBe(false);
     expect(
       seatPropsEqual({ view: a, place: PLACE }, { view: seatView(), place: { ...PLACE } }),
     ).toBe(true);

@@ -268,6 +268,10 @@ export const en = {
   /** Cards (PLAN §12.12). Card names ("King of hearts") come from `core/cards.ts`. */
   cards: {
     hidden: 'Hidden card',
+    /** A Table card with the gold edge (§6.1): one of the hero's best five while the hand runs. */
+    yourHand: (card: string) => `${card}, part of your hand`,
+    /** A Table card with the gold edge after a showdown: one of a winner's five (§12.9). */
+    winningHand: (card: string) => `${card}, part of the winning hand`,
   },
 
   /** Bot personalities (PLAN Appendix F.6), keyed like `PersonalityId` (Appendix A.3). */

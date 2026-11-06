@@ -396,7 +396,7 @@ export function tableGeometry(layout: TableLayout, size: Size, opponents: number
     w: boardW,
     h: boardCard.h,
   };
-  // Right above the board, clear of a raised core card (6 px up, 3 px outline, §6.1).
+  // Right above the board, clear of a raised core card (6 px up, its gold edge 1 px beyond, §6.1).
   let pot: Rect = {
     x: Math.round((size.w - POT.w) / 2),
     y: board.y - POT_GAP - POT.h,
@@ -425,4 +425,19 @@ export function tableGeometry(layout: TableLayout, size: Size, opponents: number
     pot,
     hero,
   };
+}
+
+/**
+ * The room the gold edge's first-table tip needs under the board (§12.11, 1.3.97): its bubble on
+ * two lines at Large text (about 67 px) and the 10 px gap its arrow sits in, rounded up.
+ */
+export const BOARD_TIP_ROOM = 100;
+
+/**
+ * Where the gold edge's tip goes: under the board, between it and the hero's cards (the two
+ * places the edge is), when the bubble fits there; else above the board. A phone on its side has
+ * about 45 px there, and a bubble below the board would cover the hero's cards it explains.
+ */
+export function boardTipSide(g: TableGeometry): 'above' | 'below' {
+  return g.hero.y - (g.board.y + g.board.h) >= BOARD_TIP_ROOM ? 'below' : 'above';
 }

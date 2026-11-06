@@ -1,7 +1,7 @@
 /**
  * Where a first-table tip's bubble goes (PLAN §12.11, chunk 9.3): beside what it explains, inside
  * the window, never over the tray and Row A. Pure. It loads with the bubble's lazy chunk
- * (`components/TipBubble.tsx`), only while a tip is due: a player who has seen the four tips never
+ * (`components/TipBubble.tsx`), only while a tip is due: a player who has seen the five tips never
  * downloads it.
  */
 
