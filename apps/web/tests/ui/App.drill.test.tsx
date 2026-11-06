@@ -12,14 +12,6 @@ import { en } from '../../src/i18n/en.ts';
 import { learnWords } from '../../src/i18n/learn.ts';
 import { App } from '../../src/ui/App.tsx';
 
-vi.mock('virtual:pwa-register/react', () => ({
-  useRegisterSW: () => ({
-    needRefresh: [false, () => {}],
-    offlineReady: [false, () => {}],
-    updateServiceWorker: async () => {},
-  }),
-}));
-
 /** Lets every pending dynamic import (and the renders after them) finish. */
 async function settle(): Promise<void> {
   for (let i = 0; i < 4; i++) {

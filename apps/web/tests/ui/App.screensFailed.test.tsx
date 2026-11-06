@@ -12,13 +12,6 @@ import { appStore, initialGame, initialUi } from '../../src/app/store.ts';
 import { en } from '../../src/i18n/en.ts';
 import { App } from '../../src/ui/App.tsx';
 
-vi.mock('virtual:pwa-register/react', () => ({
-  useRegisterSW: () => ({
-    needRefresh: [false, () => {}],
-    offlineReady: [false, () => {}],
-    updateServiceWorker: async () => {},
-  }),
-}));
 // The chunk fails to load, as it does when the network is down.
 vi.mock('../../src/ui/screensEntry.tsx', () => {
   throw new Error('the chunk did not load');

@@ -19,7 +19,6 @@
  *   otherwise), and `data-deck="two"` the two-colour deck.
  */
 import { lazy, Suspense, useCallback, useEffect, useRef, type ComponentType } from 'react';
-import { useRegisterSW } from 'virtual:pwa-register/react';
 import {
   selectBotCard,
   selectInstall,
@@ -448,10 +447,9 @@ function useDocumentMotion(): void {
 }
 
 export function App() {
-  // Registers the service worker (PLAN §15.1). Always called: React's rules of hooks forbid an
-  // `if`, and it already does nothing where service workers are unavailable (insecure origins,
-  // §12.14, app/secure.ts). The update and offline-ready toasts come later (chunk 9.5).
-  useRegisterSW();
+  // The service worker is the app side's (PLAN §15.1, chunk 9.5: `app/swUpdate.ts`, started by
+  // `app/boot.ts`): the controller decides when a new version may reload the page, and its
+  // "Update ready" and "Ready to play offline." toasts come through the store like the others.
   useDocumentMotion();
   usePreloadScreens();
   const nav = useAppStore(selectNav);

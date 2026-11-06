@@ -16,14 +16,6 @@ import { App } from '../../src/ui/App.tsx';
 import { loadScreens } from '../../src/ui/screensModule.ts';
 import { FakeStorage, securityError } from '../persist/fakeStorage.ts';
 
-vi.mock('virtual:pwa-register/react', () => ({
-  useRegisterSW: () => ({
-    needRefresh: [false, () => {}],
-    offlineReady: [false, () => {}],
-    updateServiceWorker: async () => {},
-  }),
-}));
-
 beforeAll(async () => {
   await loadScreens(); // the screens lazy chunk, as App asks for it after the first paint
 });

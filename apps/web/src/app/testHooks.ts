@@ -5,7 +5,8 @@
  * - `window.__pc` exposes the store state, `dispatch` and the controller's logs;
  * - `window.__pc.faults` (Stage 6, chunk 6.5): a slow or failing grade, long-thinking bots, a
  *   worker that dies (`app/testFaults.ts`);
- * - `window.__pcNoTips` (chunk 9.3), set before the app loads: no first-table tips (§12.11).
+ * - `window.__pcNoTips` (chunk 9.3), set before the app loads: no first-table tips (§12.11);
+ * - `window.__pcNoOfflineToast` (chunk 9.5), likewise: no "Ready to play offline." toast.
  *
  * ⚠️ Never in a production build. main.tsx loads this module only behind the build constant
  * `__PC_TEST_HOOKS__` (vite.config.ts: true for `vite` dev, Vitest and `vite build --mode e2e`,
@@ -75,6 +76,19 @@ export function tipsWanted(win: Window): boolean {
   return !(NO_TIPS_GLOBAL in win);
 }
 
+/**
+ * The page global the E2E fixture sets to turn the "Ready to play offline." toast off (§12.11,
+ * §15.1): every spec starts in a fresh browser profile, so the first service worker installs
+ * during the spec, and the toast would cover the top of the screen at a moment the spec does not
+ * control (for good on a paused clock, where its 4 s never pass).
+ */
+export const NO_OFFLINE_TOAST_GLOBAL = '__pcNoOfflineToast';
+
+/** The "Ready to play offline." toast is on unless the page carries `NO_OFFLINE_TOAST_GLOBAL`. */
+export function offlineToastWanted(win: Window): boolean {
+  return !(NO_OFFLINE_TOAST_GLOBAL in win);
+}
+
 /** The brain client of a test build and the faults layer in front of its worker. */
 export interface TestBrain {
   brain: BrainClient;
@@ -102,6 +116,13 @@ export interface PcHooks {
   script: string | null;
   /** Faults for brain.worker (a slow or failing grade, long-thinking bots, a killed worker). */
   faults: BrainFaults | null;
+  /**
+   * The build's version marker: `VITE_PC_BUILD` when the build ran, else null. The update spec
+   * (tests/e2e/update.spec.ts, chunk 9.5) builds a second version with `VITE_PC_BUILD=v2`: this
+   * one value changes this chunk, so the entry chunk, `index.html`, the precache list and `sw.js`
+   * change too, as they do with a real push (§15.1).
+   */
+  build: string | null;
   /** The whole store state (it holds the full hand state: test builds only). */
   state(): AppState;
   dispatch(cmd: Command): void;
@@ -125,11 +146,13 @@ export function installTestHooks(
   script: string | null = null,
   faults: BrainFaults | null = null,
 ): PcHooks {
+  const build: unknown = import.meta.env.VITE_PC_BUILD;
   const hooks: PcHooks = {
     marker: TEST_HOOKS_MARKER,
     seed,
     script,
     faults,
+    build: typeof build === 'string' && build !== '' ? build : null,
     state: () => store.getState(),
     dispatch: (cmd) => store.getState().dispatch(cmd),
     logs: () => controller.logs(),

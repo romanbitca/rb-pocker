@@ -11,13 +11,6 @@ import { en } from '../../src/i18n/en.ts';
 import { App } from '../../src/ui/App.tsx';
 import { loadScreens } from '../../src/ui/screensModule.ts';
 
-vi.mock('virtual:pwa-register/react', () => ({
-  useRegisterSW: () => ({
-    needRefresh: [false, () => {}],
-    offlineReady: [false, () => {}],
-    updateServiceWorker: async () => {},
-  }),
-}));
 // The screen's module fails to load, as a chunk does when the network is down.
 vi.mock('../../src/ui/screens/Learn.tsx', () => {
   throw new Error('the chunk did not load');

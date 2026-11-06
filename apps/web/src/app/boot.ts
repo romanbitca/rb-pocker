@@ -1,6 +1,7 @@
 /**
  * Starts the app side (PLAN §12.14 "Boot"): the controller on the app's store, the page lifecycle
- * (visibility, Back, layout) and, in development and E2E builds, the test hooks. main.tsx calls it
+ * (visibility, Back, layout), the service worker (§15.1, `app/swUpdate.ts`: production builds on
+ * pages that have one) and, in development and E2E builds, the test hooks. main.tsx calls it
  * before the first render.
  */
 import {
@@ -11,9 +12,16 @@ import {
 } from './controller.ts';
 import { launchStorage } from '../persist/storage.ts';
 import { brainGrader } from './grading.ts';
-import { installEnv, installLifecycle, isStandalone, storageManagerOf } from './lifecycle.ts';
+import {
+  installEnv,
+  installLifecycle,
+  isStandalone,
+  serviceWorkerOf,
+  storageManagerOf,
+} from './lifecycle.ts';
 import { pageSha256 } from './shuffleCode.ts';
 import { appStore, setDrillLoader } from './store.ts';
+import type { UpdatePort } from './swUpdate.ts';
 import { browserTabLockEnv, createTabLock } from './tabLock.ts';
 import { startBrainWorker, startEquityWorker } from './workerClient.ts';
 import type { SafeStorage } from '../persist/storage.ts';
@@ -27,6 +35,40 @@ export interface StartOptions {
   win?: Window;
   /** The storage (tests pass one over a fake `localStorage`). */
   storage?: SafeStorage;
+  /**
+   * The service worker (§15.1). Default: the page's, in a production build (`vite build`, the E2E
+   * build too) on a page that has service workers; none on the dev server (it serves no `sw.js`)
+   * or an insecure page (§12.14). Tests pass a fake, or null.
+   */
+  updates?: UpdatePort | null;
+}
+
+/**
+ * The page's service worker port (see `StartOptions.updates`). Its code is a lazy chunk
+ * (`app/swUpdate.ts`, kept out of the initial JS, §15.3), loaded when the controller starts it at
+ * boot; the registration waits for the page's `load` anyway. Not loaded (a first visit that went
+ * offline): no new versions this launch.
+ */
+function pageUpdates(win: Window): UpdatePort | null {
+  const serviceWorker = import.meta.env.PROD ? serviceWorkerOf(win) : null;
+  if (serviceWorker === null) return null;
+  let port: UpdatePort | null = null;
+  return {
+    start(listener) {
+      void import('./swUpdate.ts').then(
+        ({ browserUpdateEnv, createUpdatePort }) => {
+          port = createUpdatePort(browserUpdateEnv(win, serviceWorker));
+          port.start(listener);
+        },
+        () => {
+          // See above.
+        },
+      );
+    },
+    check: () => port?.check(),
+    apply: () => port?.apply(),
+    reload: () => win.location.reload(),
+  };
 }
 
 export function startApp(options: StartOptions): TableController {
@@ -70,6 +112,10 @@ export function startApp(options: StartOptions): TableController {
     // The provable shuffle (§16.3): `crypto.subtle` hashes each hand's shuffle code before the
     // deal; on a plain-http page there is none and the codes are null (§12.14).
     sha256: pageSha256(win),
+    // New versions between hands, the offline-ready toast (§15.1). The E2E specs turn that
+    // toast off unless a spec is about it (`tests/e2e/fixtures.ts`), as with the tips.
+    updates: options.updates === undefined ? pageUpdates(win) : options.updates,
+    offlineToast: hooks?.offlineToastWanted(win) ?? true,
   });
   installLifecycle(win, appStore);
   // The hand drill's logic, loaded when its page opens (§13.5).

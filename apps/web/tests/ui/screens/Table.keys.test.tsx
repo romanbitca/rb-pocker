@@ -18,14 +18,6 @@ import { loadCoach } from '../../../src/ui/coachModule.ts';
 import { loadScreens } from '../../../src/ui/screensModule.ts';
 import { playUntil, startTableHarness, type TableHarness } from '../tableHarness.ts';
 
-vi.mock('virtual:pwa-register/react', () => ({
-  useRegisterSW: () => ({
-    needRefresh: [false, () => {}],
-    offlineReady: [false, () => {}],
-    updateServiceWorker: async () => {},
-  }),
-}));
-
 beforeAll(async () => {
   await loadScreens(); // the screens lazy chunk, as App asks for it after the first paint
   await loadCoach(); // the coach's chunk, as the Table asks for it when it mounts

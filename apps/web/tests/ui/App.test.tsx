@@ -6,15 +6,6 @@ import { en } from '../../src/i18n/en.ts';
 import { App } from '../../src/ui/App.tsx';
 import { loadScreens } from '../../src/ui/screensModule.ts';
 
-const { useRegisterSW } = vi.hoisted(() => ({
-  useRegisterSW: vi.fn(() => ({
-    needRefresh: [false, () => {}],
-    offlineReady: [false, () => {}],
-    updateServiceWorker: async () => {},
-  })),
-}));
-vi.mock('virtual:pwa-register/react', () => ({ useRegisterSW }));
-
 beforeAll(async () => {
   await loadScreens(); // the screens lazy chunk, as App asks for it after the first paint
 });
@@ -36,11 +27,15 @@ describe('App', () => {
     expect(screen.getByText(en.app.tagline)).toBeTruthy();
   });
 
-  it('registers the service worker through useRegisterSW (PLAN §15.1)', () => {
-    useRegisterSW.mockClear();
-    render(<App />);
-
-    expect(useRegisterSW).toHaveBeenCalled();
+  it('leaves the service worker to the app side (PLAN §15.1, chunk 9.5: app/swUpdate.ts)', () => {
+    const register = vi.fn(() => new Promise<never>(() => {}));
+    Object.defineProperty(navigator, 'serviceWorker', { value: { register }, configurable: true });
+    try {
+      render(<App />);
+      expect(register).not.toHaveBeenCalled();
+    } finally {
+      Reflect.deleteProperty(navigator, 'serviceWorker');
+    }
   });
 
   it('the speed, reduce-motion and deck settings reach the root element (PLAN §12.8)', () => {

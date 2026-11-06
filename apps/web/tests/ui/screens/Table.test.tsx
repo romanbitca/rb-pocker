@@ -6,7 +6,7 @@
  * then leaves the table, and the hand-end banner says who won and starts the next hand on a tap.
  */
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
-import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { selectHandEnd } from '../../../src/app/store.ts';
 import { cardAriaLabel } from '../../../src/core/cards.ts';
 import { describe as describeHand } from '../../../src/eval/describe.ts';
@@ -18,14 +18,6 @@ import { handEndLines } from '../../../src/ui/handEnd.ts';
 import { loadScreens } from '../../../src/ui/screensModule.ts';
 import { heroPolicy } from '../../app/harness.ts';
 import { elapse, playUntil, startTableHarness, type TableHarness } from '../tableHarness.ts';
-
-vi.mock('virtual:pwa-register/react', () => ({
-  useRegisterSW: () => ({
-    needRefresh: [false, () => {}],
-    offlineReady: [false, () => {}],
-    updateServiceWorker: async () => {},
-  }),
-}));
 
 beforeAll(async () => {
   await loadScreens(); // the screens lazy chunk, as App asks for it after the first paint

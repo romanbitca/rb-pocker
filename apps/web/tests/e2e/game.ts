@@ -46,6 +46,8 @@ interface PcState {
     layout: string;
     /** Chunk 9.3 (§12.11): the first-table tip on show. */
     tip: string | null;
+    /** The toasts on show (§12.11), by kind. */
+    toasts: readonly { kind: string }[];
   };
   settings: { players: number; speed: string; autoNext: boolean } & Record<string, unknown>;
   /**
@@ -104,6 +106,8 @@ export interface WorkerLogLine {
 
 interface PcHooks {
   seed: string | null;
+  /** The build's version marker (`VITE_PC_BUILD`, chunk 9.5: the update spec's "v2"), else null. */
+  build: string | null;
   /** Faults for brain.worker (chunk 6.5). */
   faults: PcFaults | null;
   state(): PcState;

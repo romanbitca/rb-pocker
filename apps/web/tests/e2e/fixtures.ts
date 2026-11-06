@@ -28,13 +28,33 @@ export function forbiddenReason(url: string, appOrigin: string): string | null {
  * them, so they are off in every spec (an init script sets `window.__pcNoTips` before the app
  * loads, `app/testHooks.ts`) unless a spec turns them on: `test.use({ firstTableTips: true })`.
  * The E2E build reads it; a production build has no hooks and always shows the tips.
+ *
+ * PLAN §12.11, §15.1 (chunk 9.5): "Ready to play offline." is off the same way
+ * (`window.__pcNoOfflineToast`) unless a spec asks for it: `test.use({ offlineReadyToast: true })`.
+ * Every spec starts in a fresh browser profile, so the first service worker installs during the
+ * spec and the toast would show at the top of the screen at a moment the spec does not control,
+ * over what it taps next (and for good on a paused clock).
  */
 export const test = base.extend<{
   forbiddenRequests: string[];
   firstTableTips: boolean;
   tipsSwitch: void;
+  offlineReadyToast: boolean;
+  offlineToastSwitch: void;
 }>({
   firstTableTips: [false, { option: true }],
+  offlineReadyToast: [false, { option: true }],
+  offlineToastSwitch: [
+    async ({ context, offlineReadyToast }, use) => {
+      if (!offlineReadyToast) {
+        await context.addInitScript(() => {
+          Object.defineProperty(window, '__pcNoOfflineToast', { value: true });
+        });
+      }
+      await use();
+    },
+    { auto: true },
+  ],
   tipsSwitch: [
     async ({ context, firstTableTips }, use) => {
       if (!firstTableTips) {

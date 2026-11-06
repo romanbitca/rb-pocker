@@ -8,7 +8,7 @@
  */
 import { cleanup, render } from '@testing-library/react';
 import { act } from 'react';
-import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { cardAriaLabel } from '../../../src/core/cards.ts';
 import type { HandState } from '../../../src/engine/types.ts';
 import { en } from '../../../src/i18n/en.ts';
@@ -17,14 +17,6 @@ import { loadScreens } from '../../../src/ui/screensModule.ts';
 import { heroPolicy } from '../../app/harness.ts';
 import { SUIT_CODE_POINTS } from '../dom.ts';
 import { playUntil, startTableHarness, type TableHarness } from '../tableHarness.ts';
-
-vi.mock('virtual:pwa-register/react', () => ({
-  useRegisterSW: () => ({
-    needRefresh: [false, () => {}],
-    offlineReady: [false, () => {}],
-    updateServiceWorker: async () => {},
-  }),
-}));
 
 beforeAll(async () => {
   await loadScreens(); // the screens lazy chunk, as App asks for it after the first paint
