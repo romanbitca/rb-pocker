@@ -12,6 +12,9 @@
  * (§14.3 step 2) is the guard, plus the `storage` event: the tab starts as the writer, and when
  * another tab writes the game (the profile or the session) it becomes read-only. "Play here" makes
  * it the writer again; the controller then writes the profile once, so the other tab hears it.
+ * From then on this tab gives way to a profile write only: the other tab may still save a step of
+ * its hand before it hears that write, and that session write must not take the game back (both
+ * tabs would end read-only).
  *
  * Either way a read-only tab hears every profile write of the writer (`changed`), so the stats it
  * shows stay current. The lock name, like the storage keys, is an internal identifier (§0.3).
@@ -105,6 +108,8 @@ export function createTabLock(env: TabLockEnv): TabLock {
   let listener: ((event: TabLockEvent) => void) | null = null;
   /** This tab writes (holds the lock, or the fallback's claim). */
   let holding = false;
+  /** Without Web Locks: this tab took the game with "Play here" (it gives way to profile writes only). */
+  let claimed = false;
   /** Each request's number: a request that a newer one replaced is not listened to any more. */
   let generation = 0;
   let letGo: (() => void) | null = null;
@@ -172,8 +177,10 @@ export function createTabLock(env: TabLockEnv): TabLock {
     // `key` null: another tab cleared the whole storage.
     const profile = key === STORAGE_KEYS.profile || key === null;
     if (!profile && key !== STORAGE_KEYS.session) return;
-    if (locks === null && holding) lose();
-    else if (profile) emit('changed');
+    if (locks === null && holding) {
+      // A session write after "Play here" can be the other tab's last step before it heard us.
+      if (profile || !claimed) lose();
+    } else if (profile) emit('changed');
   };
 
   return {
@@ -187,6 +194,7 @@ export function createTabLock(env: TabLockEnv): TabLock {
       else ask({ ifAvailable: true });
     },
     takeOver() {
+      if (locks === null) claimed = true;
       if (locks === null || holding) grant();
       else ask({ steal: true });
     },

@@ -2341,6 +2341,12 @@ export class TableController {
     this.loadStorage(false);
     if (this.tabLock?.mode !== 'locks' && this.profile !== null) {
       const saved = saveProfile(this.storage, this.profile, this.now());
+      const result = saved.result;
+      // The other tab committed between our read and this write: it keeps the game.
+      if (!result.ok && result.reason === 'conflict') {
+        this.anotherWriter(this.profile.rev, result.storedRev);
+        return;
+      }
       this.profile = saved.profile;
     }
     void this.keepData();
