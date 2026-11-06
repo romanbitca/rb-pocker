@@ -471,8 +471,58 @@ export const en = {
   },
 
   /** The hand-end banner (PLAN §12.9, §12.11). `x` is an amount already formatted. */
+  /**
+   * Short messages (PLAN §12.11): the launch's own are `enStart.toast`; these come after a tap, so
+   * their words load with the screens (chunk 9.7). `Notices.tsx` loads this file for them.
+   */
+  toast: {
+    ...enStart.toast,
+    /** "Nora sits down." / "Nora and Ben sit down." / "Nora, Ben and Sam sit down." */
+    botsJoined: (names: string, one: boolean) =>
+      one ? `${names} sits down.` : `${names} sit down.`,
+    handVoided: 'This hand was cancelled because of an internal error. Your chips were returned.',
+    /** After an Undo (§11.3 r3, Appendix F.10). */
+    undone: 'Move taken back. The unseen cards were shuffled again.',
+    /** Export's last resort (§14.8): the file's text is on the clipboard. */
+    exportCopied: 'Your stats were copied. Paste them into a file to keep them.',
+    exportFailed: 'Export did not work. Please try again.',
+    imported: 'Your stats were imported.',
+    statsReset: 'Your stats were deleted.',
+    /** Import or Reset changed nothing: another tab has the game, or this browser keeps nothing. */
+    dataNotChanged: 'Nothing was changed. Your stats could not be saved.',
+    /**
+     * Leave table (§14.4): "This session: 45 hands · +640 chips · Decision score 82 · 4 mistakes."
+     * The parts arrive joined by `separator`; the score is left out without graded decisions.
+     */
+    session: (parts: string) => `This session: ${parts}.`,
+    sessionHands: (n: number, x: string) => (n === 1 ? '1 hand' : `${x} hands`),
+    sessionChips: (x: string) => `${x} chips`,
+    sessionScore: (score: number) => `Decision score ${score}`,
+    sessionMistakes: (n: number) => (n === 1 ? '1 mistake' : `${n} mistakes`),
+    separator: ' · ',
+    /** "Export debug report" could only copy the report (Settings → Diagnostics, §4.5). */
+    debugCopied: 'The report was copied. Paste it into a message to send it.',
+    /** A new version waits for the end of the hand in play (§15.1). */
+    updateReady: 'Update ready. It installs after this hand.',
+    /** The collection moment (§12.9): the first time ever with a category, "Full House". */
+    collection: (name: string) => `New in your collection: ${name}!`,
+  },
+
   handEnd: {
     ...enStart.handEnd,
+    /** Category names for the loser line and the collection moment's toast (Appendix F.2 words). */
+    category: {
+      highCard: 'High Card',
+      pair: 'Pair',
+      twoPair: 'Two Pair',
+      trips: 'Three of a Kind',
+      straight: 'Straight',
+      flush: 'Flush',
+      fullHouse: 'Full House',
+      quads: 'Four of a Kind',
+      straightFlush: 'Straight Flush',
+      royalFlush: 'Royal Flush',
+    },
     youWin: (x: string) => `You win ${x}!`,
     wins: (name: string, x: string, hand: string) => `${name} wins ${x} with ${hand}.`,
     winsNoHand: (name: string, x: string) => `${name} wins ${x}.`,

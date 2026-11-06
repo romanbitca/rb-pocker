@@ -610,6 +610,7 @@ function deniedLock() {
     mode: 'locks' as const,
     start: (listener: (event: 'denied') => void) => queueMicrotask(() => listener('denied')),
     takeOver: () => {},
+    standAside: () => {},
     release: () => {},
   };
 }

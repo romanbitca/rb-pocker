@@ -142,8 +142,8 @@ describe('handEndLines', () => {
 
 describe('toastText (§12.11)', () => {
   it('bots joining', () => {
-    expect(toastText({ id: 1, kind: 'botsJoined', names: ['Nora'] })).toBe('Nora sits down.');
-    expect(toastText({ id: 1, kind: 'botsJoined', names: ['Nora', 'Ben', 'Sam'] })).toBe(
+    expect(toastText({ id: 1, kind: 'botsJoined', names: ['Nora'] }, en)).toBe('Nora sits down.');
+    expect(toastText({ id: 1, kind: 'botsJoined', names: ['Nora', 'Ben', 'Sam'] }, en)).toBe(
       'Nora, Ben and Sam sit down.',
     );
     expect(PLAN).toContain('toast "Nora sits down."');
@@ -151,28 +151,28 @@ describe('toastText (§12.11)', () => {
 
   it('the other toasts are the PLAN words', () => {
     for (const kind of ['handVoided', 'handNotRestored', 'dataRecovered'] as const) {
-      expect(PLAN).toContain(toastText({ id: 1, kind }));
+      expect(PLAN).toContain(toastText({ id: 1, kind }, en));
     }
     expect(PLAN).toContain(en.storage.banner);
     // Chunk 8.3: the Data commands' toasts and the read-only banner (§12.11, §14.7, §14.8).
     const data = ['exportCopied', 'exportFailed', 'imported', 'statsReset', 'dataNotChanged'];
     for (const kind of data as ('exportCopied' | 'imported')[]) {
-      expect(PLAN).toContain(`toast "${toastText({ id: 1, kind })}"`);
+      expect(PLAN).toContain(`toast "${toastText({ id: 1, kind }, en)}"`);
     }
     expect(PLAN).toContain(`banner "${en.otherTab.text}" | [${en.otherTab.playHere}]`);
     // Chunk 9.5 (§15.1): a new version waits for the hand's end; the first offline install.
-    expect(PLAN).toContain(`toast "${toastText({ id: 1, kind: 'updateReady' })}"`);
-    expect(PLAN).toContain(`toast (once) "${toastText({ id: 1, kind: 'offlineReady' })}"`);
+    expect(PLAN).toContain(`toast "${toastText({ id: 1, kind: 'updateReady' }, en)}"`);
+    expect(PLAN).toContain(`toast (once) "${toastText({ id: 1, kind: 'offlineReady' }, en)}"`);
   });
 
   it('the collection moment names the category as the banner does (§12.9, chunk 9.1b)', () => {
-    const line = toastText({ id: 1, kind: 'collection', category: 'fullHouse' });
+    const line = toastText({ id: 1, kind: 'collection', category: 'fullHouse' }, en);
     expect(line).toBe('New in your collection: Full House!');
     expect(PLAN).toContain(`"${line}"`);
-    expect(toastText({ id: 2, kind: 'collection', category: 'trips' })).toBe(
+    expect(toastText({ id: 2, kind: 'collection', category: 'trips' }, en)).toBe(
       'New in your collection: Three of a Kind!',
     );
-    expect(toastText({ id: 3, kind: 'collection', category: 'royalFlush' })).toBe(
+    expect(toastText({ id: 3, kind: 'collection', category: 'royalFlush' }, en)).toBe(
       'New in your collection: Royal Flush!',
     );
   });
@@ -192,16 +192,19 @@ describe('toastText (§12.11)', () => {
       players: 6,
       bb: 20,
     } as const;
-    const line = toastText({ id: 1, kind: 'session', session });
+    const line = toastText({ id: 1, kind: 'session', session }, en);
     expect(line).toBe('This session: 45 hands · +640 chips · Decision score 82 · 4 mistakes.');
     expect(PLAN).toContain(line);
     // No graded decision: no score and no mistakes; a loss has a real minus sign.
     expect(
-      toastText({
-        id: 1,
-        kind: 'session',
-        session: { ...session, hands: 1, netChips: -40, decisionScore: null, decisions: 0 },
-      }),
+      toastText(
+        {
+          id: 1,
+          kind: 'session',
+          session: { ...session, hands: 1, netChips: -40, decisionScore: null, decisions: 0 },
+        },
+        en,
+      ),
     ).toBe('This session: 1 hand · −40 chips.');
   });
 });

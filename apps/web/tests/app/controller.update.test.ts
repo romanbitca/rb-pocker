@@ -240,7 +240,7 @@ describe('found with no hand unfinished (an update found at launch)', () => {
     expect(backend.data.size).toBe(0); // still a first launch
   });
 
-  it('Home after a finished hand: reloads at once; the new version opens Home, Play deals', async () => {
+  it('Home after a finished hand: reloads once the session line closed; the new version opens Home, Play deals', async () => {
     const backend = new FakeStorage();
     const { h, port } = launch(backend);
     setUp(h);
@@ -249,7 +249,11 @@ describe('found with no hand unfinished (an update found at launch)', () => {
     const handSeq = h.state().game.hand?.handSeq as number;
     h.dispatch({ type: 'leaveTable' });
     expect(h.state().ui.screen).toBe('home');
+    expect(toasts(h)).toEqual(['session']); // how the session went (§14.4)
     port.emit('updateReady');
+    expect(port.applies + port.reloads).toBe(0); // not while the player reads it
+    await vi.advanceTimersByTimeAsync(TIMING.toastMs);
+    expect(toasts(h)).toEqual([]);
     expect([port.applies, port.reloads]).toEqual([1, 1]);
     expect(toasts(h)).not.toContain('updateReady');
     expect(session(backend).resumeAfterUpdate).toBe(false);
@@ -286,6 +290,76 @@ describe('found with no hand unfinished (an update found at launch)', () => {
     expect(session(backend).resumeAfterUpdate).toBe(true);
   });
 
+  it('Leave table with a version waiting: the session line shows its 4 s, then the reload', async () => {
+    const backend = new FakeStorage();
+    const { h, port } = launch(backend);
+    setUp(h);
+    h.dispatch({ type: 'play' });
+    await playUntil(h, heroTurn(h));
+    port.emit('updateReady'); // mid-hand: it waits for the next hand
+    await playUntil(h, handEnd(h));
+    await vi.advanceTimersByTimeAsync(TIMING.toastMs); // "Update ready…" has gone
+    h.dispatch({ type: 'leaveTable' }); // between hands: Home, with nothing open
+    expect(h.state().ui.screen).toBe('home');
+    expect(toasts(h)).toEqual(['session']);
+    expect(port.applies + port.reloads).toBe(0);
+    await vi.advanceTimersByTimeAsync(TIMING.toastMs - 1);
+    expect(port.applies + port.reloads).toBe(0);
+    await vi.advanceTimersByTimeAsync(1); // the line closes: nothing is on show any more
+    expect([port.applies, port.reloads]).toEqual([1, 1]);
+    expect(session(backend).resumeAfterUpdate).toBe(false); // the new version opens Home
+  });
+
+  it('a Play tapped while the new version comes in: nothing dealt; the new version deals it at the Table', async () => {
+    const backend = new FakeStorage();
+    const first = launch(backend).h;
+    setUp(first);
+    first.dispatch({ type: 'play' });
+    await playUntil(first, handEnd(first));
+    const handSeq = first.state().game.hand?.handSeq as number;
+    first.controller.dispose(); // closed between hands
+
+    const { h, port } = launch(backend);
+    port.answerApply = false; // the new worker takes its time to take over (up to 5 s)
+    expect(h.state().ui.screen).toBe('home');
+    port.emit('updateReady'); // found at launch, on Home: in at once
+    expect([port.applies, port.reloads]).toEqual([1, 0]);
+    expect(session(backend).resumeAfterUpdate).toBe(false);
+    h.dispatch({ type: 'play' });
+    expect(h.state().game.hand).toBeNull(); // nothing dealt in the old page
+    expect(session(backend).resumeAfterUpdate).toBe(true); // the new version goes to the Table
+    expect(session(backend).table.nextHandSeq).toBe(handSeq + 1);
+    h.dispatch({ type: 'play' }); // a second tap changes nothing
+    expect(port.applies).toBe(1);
+    port.emit('activated');
+    expect(port.reloads).toBe(1);
+    h.controller.dispose();
+
+    const v2 = launch(backend).h;
+    expect(v2.state().ui.screen).toBe('table');
+    expect(v2.state().game.hand?.handSeq).toBe(handSeq + 1);
+    expect(session(backend).resumeAfterUpdate).toBe(false);
+  });
+
+  it('a Play on the first launch while the new version comes in: the new version deals that table', () => {
+    const backend = new FakeStorage();
+    const { h, port } = launch(backend);
+    port.answerApply = false;
+    expect(h.state().ui.screen).toBe('welcome');
+    port.emit('updateReady'); // Welcome: in at once
+    expect([port.applies, port.reloads]).toEqual([1, 0]);
+    setUp(h); // 3 players
+    h.dispatch({ type: 'play' });
+    expect(h.state().game.hand).toBeNull();
+    expect(session(backend).resumeAfterUpdate).toBe(true);
+    port.emit('activated');
+    expect(port.reloads).toBe(1);
+    h.controller.dispose();
+    const v2 = launch(backend).h;
+    expect(v2.state().ui.screen).toBe('table');
+    expect(v2.state().game.hand?.seats).toHaveLength(3);
+  });
+
   it('other screens wait (no toast without a hand); back on Home it goes in', () => {
     const backend = new FakeStorage();
     const { h, port } = launch(backend);
@@ -314,6 +388,32 @@ describe('when it never reloads', () => {
     h.dispatch({ type: 'leaveTable' });
     expect(port.applies + port.reloads).toBe(0);
     expect(toasts(h)).not.toContain('updateReady');
+  });
+
+  it('the settings write before the reload finds another tab’s game (§14.7): nothing written, nothing dealt', async () => {
+    const backend = new FakeStorage();
+    const { h, port } = launch(backend);
+    setUp(h);
+    h.dispatch({ type: 'play' });
+    await playUntil(h, handEnd(h));
+    port.emit('updateReady');
+    // A setting changed (written 250 ms later), and meanwhile another tab wrote the profile.
+    h.dispatch({ type: 'settings', patch: { showEquity: false } });
+    const stored = profile(backend);
+    backend.data.set(K.profile, JSON.stringify({ ...stored, rev: stored.rev + 1 }));
+    const before = backend.data.get(K.session);
+    const deals = (): number =>
+      h.controller.logs().events.filter((e) => e.what === 'hand start').length;
+    const dealtBefore = deals();
+
+    h.dispatch({ type: 'nextHand' }); // the update would go in here: the settings are flushed first
+    expect(h.state().data.tab).toBe('readOnly');
+    expect(backend.data.get(K.session)).toBe(before); // the session is not written
+    expect(deals()).toBe(dealtBefore); // and no hand is dealt
+    expect(port.applies + port.reloads).toBe(0);
+    await flush();
+    expect(h.state().ui.screen).toBe('home'); // read-only: the §12.11 banner
+    expect(deals()).toBe(dealtBefore);
   });
 
   it('no service worker (a plain-http LAN address, §12.14): no port, no timers of its own', async () => {
@@ -384,6 +484,45 @@ describe('several tabs (§14.7): only the tab with the game lets a new version i
     a.h.dispatch({ type: 'nextHand' });
     expect([a.port.applies, a.port.reloads]).toEqual([0, 1]); // in already: only the reload
     expect(session(origin.backend as FakeStorage).resumeAfterUpdate).toBe(true);
+  });
+
+  it('a read-only tab in the background waits until it is in front; the game stays with the tab that reloaded', async () => {
+    const origin = new FakeOrigin(new FakeStorage());
+    const a = tabOf(origin);
+    await settle();
+    setUp(a.h);
+    a.h.dispatch({ type: 'play' });
+    await playUntil(a.h, handEnd(a.h));
+    const handSeq = a.h.state().game.hand?.handSeq as number;
+    const b = tabOf(origin);
+    await settle();
+    expect(b.h.state().data.tab).toBe('readOnly');
+    b.h.dispatch({ type: 'visibility', hidden: true }); // the player is in tab A
+
+    a.port.emit('updateReady');
+    a.h.dispatch({ type: 'nextHand' }); // A lets the new version in and reloads into it...
+    expect([a.port.applies, a.port.reloads]).toEqual([1, 1]);
+    b.port.emit('activated'); // ...and it controls B's page too
+    expect(b.port.reloads).toBe(0); // not now: B's new page would race A's for the game
+    a.h.controller.dispose(); // A's old page goes, and its lock with it
+    await settle();
+    expect(b.h.state().data.tab).toBe('readOnly'); // B's old page does not take the game
+
+    const a2 = tabOf(origin); // A's new page has the game, at the Table
+    await settle();
+    expect(a2.h.state().data.tab).toBe('writer');
+    expect(a2.h.state().ui.screen).toBe('table');
+    expect(a2.h.state().game.hand?.handSeq).toBe(handSeq + 1);
+
+    // B comes to the front: it reloads now, and its new page waits for the game in line.
+    b.h.dispatch({ type: 'visibility', hidden: false });
+    await vi.advanceTimersByTimeAsync(TIMING.resumeAfterVisibleMs);
+    expect(b.port.reloads).toBe(1);
+    b.h.controller.dispose();
+    const b2 = tabOf(origin);
+    await settle();
+    expect(b2.h.state().data.tab).toBe('readOnly');
+    expect(a2.h.state().data.tab).toBe('writer');
   });
 
   it('after the reload, the way back to the Table waits for the lock (it writes first)', async () => {

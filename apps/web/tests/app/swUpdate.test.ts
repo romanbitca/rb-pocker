@@ -317,6 +317,8 @@ describe('updateMayReload: when a new version may reload the page (§15.1)', () 
       busy: false,
       screen: 'home',
       overlays: [],
+      toasts: 0,
+      hidden: false,
       update: 'ready',
       ...moment,
     });
@@ -338,10 +340,23 @@ describe('updateMayReload: when a new version may reload the page (§15.1)', () 
     expect(at({ overlays: ['menu'] })).toBe(false);
   });
 
+  it('not while a toast is on show (Leave table’s session line): once it has closed', () => {
+    expect(at({ toasts: 1 })).toBe(false);
+    expect(at({ toasts: 2, update: 'activated' })).toBe(false);
+    expect(at({ tab: 'readOnly', update: 'activated', toasts: 1 })).toBe(false);
+  });
+
   it('only the tab with the game lets a waiting version in; any tab reloads once it is in', () => {
     expect(at({ tab: 'readOnly' })).toBe(false);
     expect(at({ tab: 'pending' })).toBe(false);
     expect(at({ tab: 'readOnly', update: 'activated' })).toBe(true);
     expect(at({ tab: 'pending', update: 'activated' })).toBe(false);
+  });
+
+  it('a tab without the game reloads only while in front (§14.7: no race for the game)', () => {
+    expect(at({ tab: 'readOnly', update: 'activated', hidden: true })).toBe(false);
+    // The tab with the game loses nothing on Home, in front or not.
+    expect(at({ hidden: true })).toBe(true);
+    expect(at({ hidden: true, update: 'activated' })).toBe(true);
   });
 });

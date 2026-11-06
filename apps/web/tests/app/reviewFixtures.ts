@@ -66,7 +66,7 @@ export function playToEnd(
   };
 }
 
-/** What the controller keeps of a finished hand. */
+/** What the controller keeps of a finished hand (one Undo for each logged reshuffle, §11.3). */
 export function keep(final: HandState, record: ReplayRecord, handSeq = final.handSeq): ReviewHand {
   const end = handEndViewOf(final, record.table);
   if (end === null) throw new Error('the hand is not complete');
@@ -76,6 +76,8 @@ export function keep(final: HandState, record: ReplayRecord, handSeq = final.han
     record,
     heroHole: final.seats[0]?.hole ?? null,
     board: [...final.board],
+    undoCount: record.inputs.filter((input) => input.kind === 'reshuffle').length,
+    commitBeforeDeal: false,
     end,
   };
 }

@@ -166,6 +166,7 @@ interface ShuffleProps {
 const SHUFFLE_SAYS: Record<Exclude<ShuffleCheck['status'], 'ok'>, string> = {
   code: enReview.shuffle.badCode,
   cards: enReview.shuffle.badCards,
+  undo: enReview.shuffle.badUndo,
   broken: enReview.shuffle.broken,
   none: enReview.shuffle.none,
   insecure: enReview.shuffle.insecure,
@@ -207,7 +208,7 @@ function Shuffle({ row, check }: ShuffleProps) {
           <dd className={styles.hex}>{row.seed}</dd>
         </div>
       </dl>
-      <p className={styles.hint}>{T.saved}</p>
+      <p className={styles.hint}>{row.beforeDeal ? T.saved : T.savedWithHand}</p>
       <button type="button" className={styles.check} onClick={run}>
         {T.check}
       </button>

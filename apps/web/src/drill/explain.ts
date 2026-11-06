@@ -24,6 +24,12 @@ export interface HandFacts {
   readonly best5: readonly Card[];
   /** The cards that make the hand (the old drill's `keyIdx`); the rest of `best5` are kickers. */
   readonly core: readonly Card[];
+  /**
+   * How many of the hand's own two cards play: those in `best5`, kickers too, and 0 when the
+   * board plays (`describe().holeUsed`, §5.4, pitfall 10), the Table's "Uses n of your cards".
+   * Hold'em and Showdown hands (`facts7`); five cards (`facts5`) all play, so it is 2 there.
+   */
+  readonly holeUsed: 0 | 1 | 2;
 }
 
 function factsOf(hole: [Card, Card], board: Card[]): HandFacts {
@@ -34,6 +40,7 @@ function factsOf(hole: [Card, Card], board: Card[]): HandFacts {
     name: info.name,
     best5: info.best5,
     core: info.core,
+    holeUsed: info.holeUsed,
   };
 }
 

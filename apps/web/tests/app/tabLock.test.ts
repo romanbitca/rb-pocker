@@ -56,6 +56,66 @@ describe('with Web Locks', () => {
     expect(origin.locks?.isHeld(WRITER_LOCK)).toBe(true);
   });
 
+  it('a read-only tab that stands aside (a new version controls it) leaves the line (§15.1)', async () => {
+    const origin = new FakeOrigin(new FakeStorage());
+    const a = tab(origin.page());
+    const b = tab(origin.page());
+    a.start();
+    await settle();
+    b.start();
+    await settle();
+    expect(origin.locks?.queued(WRITER_LOCK)).toBe(1);
+    b.lock.standAside();
+    await settle();
+    expect(origin.locks?.queued(WRITER_LOCK)).toBe(0);
+    a.lock.release(); // A's old page goes: it reloads into the new version
+    await settle();
+    expect(b.events).toEqual(['denied']); // B's old page is not handed the game
+    expect(origin.locks?.isHeld(WRITER_LOCK)).toBe(false);
+    const again = tab(origin.page()); // A's new page asks: the lock is free
+    again.start();
+    await settle();
+    expect(again.events).toEqual(['granted']);
+    // "Play here" still takes it, and the tab that lost it waits in line as before.
+    b.lock.takeOver();
+    await settle();
+    expect(b.events).toEqual(['denied', 'granted']);
+    expect(again.events).toEqual(['granted', 'lost']);
+    expect(origin.locks?.queued(WRITER_LOCK)).toBe(1);
+  });
+
+  it('standing aside: the tab with the lock keeps it; a tab still asking does not queue when denied', async () => {
+    const origin = new FakeOrigin(new FakeStorage());
+    const a = tab(origin.page());
+    a.start();
+    await settle();
+    a.lock.standAside();
+    await settle();
+    expect(a.events).toEqual(['granted']);
+    expect(origin.locks?.isHeld(WRITER_LOCK)).toBe(true);
+    const b = tab(origin.page());
+    b.start();
+    b.lock.standAside(); // before the answer
+    await settle();
+    expect(b.events).toEqual(['denied']);
+    expect(origin.locks?.queued(WRITER_LOCK)).toBe(0);
+  });
+
+  it('a lock manager that cannot drop a waiting request: a late grant is let go at once', async () => {
+    const origin = new FakeOrigin(new FakeStorage(), new FakeLocks({ signals: false }));
+    const a = tab(origin.page());
+    const b = tab(origin.page());
+    a.start();
+    await settle();
+    b.start();
+    await settle();
+    b.lock.standAside();
+    a.lock.release();
+    await settle();
+    expect(b.events).toEqual(['denied']);
+    expect(origin.locks?.isHeld(WRITER_LOCK)).toBe(false);
+  });
+
   it('"Play here" steals the lock: the old tab loses it, the new one writes', async () => {
     const origin = new FakeOrigin(new FakeStorage());
     const a = tab(origin.page());

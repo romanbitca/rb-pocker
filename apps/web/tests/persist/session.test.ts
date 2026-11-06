@@ -103,6 +103,12 @@ describe('persist/session save and resume (§14.5)', () => {
     const old = midHandSession();
     expect('commit' in old).toBe(false);
     expect(reload(old).load).toStrictEqual({ status: 'ok', session: old });
+    // 1.3.82: whether the code was ready before the deal, optional too (9.4's sessions lack it).
+    for (const commitBeforeDeal of [true, false]) {
+      const original: SessionState = { ...midHandSession(), commit: code, commitBeforeDeal };
+      expect(isSessionState(original)).toBe(true);
+      expect(reload(original).load).toStrictEqual({ status: 'ok', session: original });
+    }
   });
 
   it('saving is one setItem and nothing else (it runs after every engine step)', () => {
@@ -208,6 +214,11 @@ describe('persist/session voiding a hand that cannot be restored (§14.3, §14.6
       'a shuffle code that is not text',
       (c: SessionState) => ((c as { commit?: unknown }).commit = 7),
       'session.commit',
+    ],
+    [
+      'a "code before the deal" flag that is not true or false',
+      (c: SessionState) => ((c as { commitBeforeDeal?: unknown }).commitBeforeDeal = 'yes'),
+      'session.commitBeforeDeal',
     ],
     [
       'an input for a missing seat',

@@ -90,6 +90,10 @@ describe('the toolbar Undo (§11.3 r2, r5)', () => {
     });
     expect(harness.state().game.mode).toBe('heroTurn');
     expect(harness.controller.snapshot().inputs).toHaveLength(inputs); // the act out, the reshuffle in
+    // The toast's words come after a tap: they load with the screens' words (chunk 9.7).
+    await act(async () => {
+      await vi.dynamicImportSettled();
+    });
     expect(screen.getByText('Move taken back. The unseen cards were shuffled again.')).toBeTruthy();
     expect(toolbarUndo()?.getAttribute('aria-disabled')).toBe('true');
     // The keyboard shortcut does nothing now.

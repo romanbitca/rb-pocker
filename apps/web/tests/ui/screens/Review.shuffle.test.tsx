@@ -54,6 +54,7 @@ function withCode(hand: ReviewHand): ReviewHand {
   return {
     ...hand,
     record: { ...hand.record, commit: sha256Hex(commitText(seed, table.tableId, hand.handSeq)) },
+    commitBeforeDeal: true,
   };
 }
 
@@ -128,6 +129,15 @@ describe('before the check', () => {
     expect(r.queryByRole('list')).toBeNull();
   });
 
+  it('a code made after the deal (a late digest, an older session) does not say it came before', () => {
+    open({ ...fold, commitBeforeDeal: false });
+    const r = within(row());
+    expect(r.getByText(fold.record.commit as string)).toBeTruthy();
+    expect(r.queryByText(T.saved)).toBeNull();
+    expect(r.getByText(T.savedWithHand)).toBeTruthy();
+    expect(checkButton()).toBeTruthy();
+  });
+
   it('no hidden card is on the page yet: the deck comes only with the check', () => {
     open(fold);
     const final = replay(fold.record);
@@ -183,6 +193,14 @@ describe('the check (§16.3)', () => {
     open({ ...fold, record: { ...fold.record, seed } });
     const verdict = await check();
     expect(verdict.textContent).toBe(T.badCode);
+    expect(verdict.getAttribute('data-good')).toBe('false');
+    expect(within(row()).queryByRole('list')).toBeNull();
+  });
+
+  it('✗ an Undo count the log does not show: the Undo count does not match this shuffle', async () => {
+    open({ ...fold, undoCount: 1 });
+    const verdict = await check();
+    expect(verdict.textContent).toBe(T.badUndo);
     expect(verdict.getAttribute('data-good')).toBe('false');
     expect(within(row()).queryByRole('list')).toBeNull();
   });

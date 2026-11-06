@@ -98,8 +98,8 @@ function cardLines(
       : !nameOk
         ? A.nameWrong(nameAt(said))
         : A.positionWrong(at);
-  const uses =
-    q.type === 'holdem' ? A.uses(q.hand.core.filter((c) => q.hole.includes(c)).length) : null;
+  // Hold'em: your cards in the best five, kickers too (the Table's rule, §5.4 `holeUsed`).
+  const uses = q.type === 'holdem' ? A.uses(q.hand.holeUsed) : null;
   return {
     first: ok ? A.right(nameAt(pos), pos) : A.itIs(nameAt(pos), pos),
     second: join(detail, `${name}.`, uses, q.trap !== null ? trapText(q.trap) : tipAt(pos)),

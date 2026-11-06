@@ -668,6 +668,8 @@ export class TableController {
   private updateReloadTimer: unknown = null;
   /** The page reloads into a new version: nothing more is dealt. */
   private reloading = false;
+  /** The session saved for that reload says `resumeAfterUpdate`: the new version deals at the Table. */
+  private updateResumes = false;
   /** The session says the page reloaded for a new version at the Table: Play once this tab writes. */
   private resumeTable = false;
   /** When this table's session began (§14.4); stored in the session. */
@@ -755,6 +757,8 @@ export class TableController {
   private tableAhead: { seed: Seed128; id: string } | null = null;
   /** The current hand's shuffle code (also the finished hand's until the next deal). */
   private code: ShuffleCode | null = null;
+  /** `code` was ready before its hand was dealt ('ready' in the 'hand start' line; §16.3). */
+  private codeBeforeDeal = false;
   private readonly events: ControllerEvent[] = [];
   private readonly errors: ControllerEvent[] = [];
   private readonly brainEvents: ControllerEvent[] = [];
@@ -790,6 +794,13 @@ export class TableController {
     this.offlineToast = options.offlineToast !== false;
     this.unsubscribe = this.store.subscribe((s, prev) => {
       if (s.ui.nav !== prev.ui.nav) this.onNav(s.ui, prev.ui);
+      // §15.1: a toast closed, or the page came to the front: a waiting version may go in now.
+      if (
+        (s.ui.toasts.length < prev.ui.toasts.length || (prev.ui.hidden && !s.ui.hidden)) &&
+        s.ui.nav === prev.ui.nav
+      ) {
+        this.updateWhenSafe();
+      }
       if (s.ui.gates !== prev.ui.gates) this.onGates();
       if (s.coach.opened !== prev.coach.opened) this.onHintOpened();
       if (prev.ui.tip !== null && s.ui.tip !== prev.ui.tip) this.tipSeen(prev.ui.tip);
@@ -1278,6 +1289,9 @@ export class TableController {
     this.flushCommit();
     if (this.tab === 'readOnly') return; // the commit found another writer (§14.7)
     if (this.updateBeforeHand(table, toTable)) return;
+    // Its settings write may have found another writer too (the cast: `this.tab` may have changed
+    // since the check above): a read-only tab never deals.
+    if ((this.tab as TabMode) === 'readOnly') return;
     this.bumpEpoch();
     const levelled = this.withSettingsLevels(table);
     // §14.3 handSeq rule: global across tables, and above every hand the profile has counted.
@@ -1296,6 +1310,7 @@ export class TableController {
     }
     this.codes.clear();
     this.code = code;
+    this.codeBeforeDeal = code !== null && code.commit !== null;
     this.table = t;
     this.hand = hand;
     this.next = null;
@@ -1396,6 +1411,7 @@ export class TableController {
       allIn: this.store.getState().equity.allIn,
       at: now.toISOString(),
       commit: this.commitOf(h),
+      commitBeforeDeal: this.commitBeforeDealOf(h),
     });
     if (record === null) {
       if (session !== null) saveSession(storage, session);
@@ -1460,6 +1476,8 @@ export class TableController {
       record: this.record(h),
       heroHole: h.seats[HERO]?.hole ?? null,
       board: [...h.board],
+      undoCount: this.meta.undoCount,
+      commitBeforeDeal: this.commitBeforeDealOf(h),
       end,
     };
     this.store.setState((s) => ({ review: addHand(s.review, hand) }));
@@ -2243,8 +2261,9 @@ export class TableController {
     // A finished hand still waiting for its grade belongs to this session: it is counted first.
     this.flushCommit();
     const session = this.endStatsSession();
-    this.ui({ type: 'go', screen: 'home' });
+    // The line first: Home with a toast on show is not yet a moment for a new version (§15.1).
     if (session !== null) this.toast({ kind: 'session', session });
+    this.ui({ type: 'go', screen: 'home' });
   }
 
   /**
@@ -2359,6 +2378,8 @@ export class TableController {
       this.meta = session.meta;
       this.undoSnapshot = session.undoSnapshot;
       this.code = this.resumedCode(t.tableId, h, session.commit ?? null);
+      // Only a session that says so: a code computed again now came after the deal.
+      this.codeBeforeDeal = (session.commit ?? null) !== null && session.commitBeforeDeal === true;
       this.resumeDecision();
       // A hint opened before the page went is open again on that decision (§14.5).
       if (isHeroTurn(h) && this.meta.hintShown[heroDecisionsTaken(h)] === true) {
@@ -2397,7 +2418,11 @@ export class TableController {
       undoSnapshot: withHand ? this.undoSnapshot : null,
       seatStats: statsBySeat(this.seatStats, table),
       resumeAfterUpdate: false,
-      ...(withHand && this.hand !== null && { commit: this.commitOf(this.hand) }),
+      ...(withHand &&
+        this.hand !== null && {
+          commit: this.commitOf(this.hand),
+          commitBeforeDeal: this.commitBeforeDealOf(this.hand),
+        }),
     };
   }
 
@@ -2708,8 +2733,11 @@ export class TableController {
           this.reloadForUpdate();
           return;
         }
-        // Another tab let it in: this page still runs the old code; it reloads when safe.
+        // Another tab let it in: this page still runs the old code; it reloads when safe. A tab
+        // without the game leaves the line for it (§14.7): when the tab that let it in reloads,
+        // the game must go to that tab's new page, not to this old one.
         this.update = 'activated';
+        if (this.tab !== 'writer') this.tabLock?.standAside();
         this.updateWhenSafe();
         break;
     }
@@ -2724,14 +2752,25 @@ export class TableController {
    */
   private updateWhenSafe(): void {
     if (this.update === 'none' || this.update === 'applying' || this.reloading) return;
-    const { screen, overlays } = this.store.getState().ui;
+    const { screen, overlays, toasts, hidden } = this.store.getState().ui;
     const unfinished = this.hand !== null && this.hand.phase !== 'complete';
     const busy = this.mode === 'booting' || this.headless || this.commitPending || unfinished;
-    const moment = { tab: this.tab, busy, screen, overlays, update: this.update };
+    const moment = {
+      tab: this.tab,
+      busy,
+      screen,
+      overlays,
+      toasts: toasts.length,
+      hidden,
+      update: this.update,
+    };
     if (updateMayReload(moment) && this.takeUpdate(false)) return;
+    // "…installs after this hand": with a hand unfinished, or finished with its banner on show
+    // (not on Home after Leave table, where it goes in once the session line has closed).
+    const handOnShow = unfinished || (this.hand !== null && screen === 'table');
     if (
       this.tab === 'writer' &&
-      this.hand !== null &&
+      handOnShow &&
       !this.updateToastShown &&
       this.storage?.failure === null
     ) {
@@ -2745,12 +2784,32 @@ export class TableController {
    * session is saved as between hands at `table` (with `resumeAfterUpdate` when the player goes on
    * at the Table, so the new version deals this hand at once) and the page reloads. Returns false
    * to deal as usual: no new version, another tab has the game, or nothing could be saved.
+   *
+   * When the reload is on its way already (Home let the new version in, and it takes up to 5 s to
+   * take over), nothing is dealt either; a Play tapped meanwhile saves the session once more, at
+   * `table` and with `resumeAfterUpdate`, so the new version comes back at the Table and deals.
    */
   private updateBeforeHand(table: TableState, toTable: boolean): boolean {
-    if (this.reloading || this.update === 'applying') return true; // the reload is on its way
+    if (this.reloading || this.update === 'applying') {
+      if (toTable && !this.updateResumes) this.resumeAtTableAfterUpdate(table);
+      return true;
+    }
     if (this.update === 'none' || this.tab !== 'writer') return false;
     this.next = table; // the session's table; the finished hand stays on show until the reload
     return this.takeUpdate(toTable);
+  }
+
+  /** The reload saved the session for Home; the player went on to the Table: save it for there. */
+  private resumeAtTableAfterUpdate(table: TableState): void {
+    const storage = this.storage;
+    if (storage === null || storage.failure !== null || this.tab !== 'writer') return;
+    this.next = table;
+    const session = this.sessionState();
+    if (session === null || !saveSession(storage, { ...session, resumeAfterUpdate: true }).ok) {
+      return;
+    }
+    this.updateResumes = true;
+    this.trace('update: back to the table after the reload');
   }
 
   /**
@@ -2767,12 +2826,15 @@ export class TableController {
     }
     if (this.tab === 'writer') {
       this.flushSettings();
+      // The settings could not be written, or the write found another tab's game (§14.7): a
+      // read-only tab writes nothing more, not even this session.
+      if (storage.failure !== null || this.tab !== 'writer') return false;
       const session = this.sessionState();
       if (session !== null && !saveSession(storage, { ...session, resumeAfterUpdate }).ok) {
         return false;
       }
-      // The settings could not be written, or a write found another tab's game (§14.7).
-      if (storage.failure !== null || this.tab !== 'writer') return false;
+      if (storage.failure !== null) return false;
+      this.updateResumes = resumeAfterUpdate;
     }
     this.trace('update: reload', { resumeAfterUpdate });
     if (this.update === 'activated') {
@@ -3200,6 +3262,11 @@ export class TableController {
   private commitOf(h: HandState): string | null {
     const code = this.code;
     return code !== null && code.handSeq === h.handSeq && code.seed === h.seed ? code.commit : null;
+  }
+
+  /** `h` has a shuffle code, and it was ready before `h` was dealt (Review may say so, §16.3). */
+  private commitBeforeDealOf(h: HandState): boolean {
+    return this.codeBeforeDeal && this.commitOf(h) !== null;
   }
 
   private legalOf(h: HandState): LegalActions | null {

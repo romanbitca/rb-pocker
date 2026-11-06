@@ -68,11 +68,16 @@ export const enReview = {
     title: 'Fair shuffle',
     code: 'Shuffle code',
     seed: 'Seed',
+    /** Only when the code was ready before the deal (`HandRecord.commitBeforeDeal`). */
     saved: 'The shuffle code was saved before the cards were dealt.',
+    /** Otherwise (made just after the deal, or computed again after a reload): neutral. */
+    savedWithHand: 'The shuffle code was saved with this hand.',
     check: 'Check the shuffle',
     ok: 'The cards came from this shuffle. Nobody changed them.',
     badCode: 'The shuffle code does not match this hand.',
     badCards: 'The cards do not match this shuffle.',
+    /** The logged reshuffles are not the hand's Undo count (one each). */
+    badUndo: 'The Undo count does not match this shuffle.',
     broken: 'This hand cannot be checked.',
     deck: 'Deck order, top card first',
     reshuffled: 'After Undo, the unseen cards were shuffled again from the same seed.',

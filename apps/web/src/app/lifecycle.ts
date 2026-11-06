@@ -266,19 +266,26 @@ export interface UpdateMoment {
   busy: boolean;
   screen: Screen;
   overlays: readonly Overlay[];
+  /** Toasts on show (Leave table's session line, …): a reload would take them away unread. */
+  toasts: number;
+  /** The page is in the background (`ui.hidden`). */
+  hidden: boolean;
   /** `ready`: a new version waits; `activated`: it controls the page already (another tab let it in). */
   update: 'ready' | 'activated';
 }
 
 /**
  * §15.1: may a new version reload the page right now? Only where nothing is lost and nobody is
- * interrupted: no hand unfinished, Welcome or Home on show with nothing open over it. (Before the
- * next hand is dealt is the other moment: the controller's `startHandAt`.) A tab without the game
- * never lets a waiting version in: the tab that has the game may be mid-hand.
+ * interrupted: no hand unfinished, Welcome or Home on show with nothing open over it and no toast
+ * (the toasts close by themselves within 4 s). (Before the next hand is dealt is the other moment:
+ * the controller's `startHandAt`.) A tab without the game never lets a waiting version in: the tab
+ * that has the game may be mid-hand. And it reloads only while it is in front: a background tab
+ * reloading together with the tab that has the game would race it for the game (§14.7), and the
+ * lock goes to whichever new page asks first.
  */
 export function updateMayReload(m: UpdateMoment): boolean {
-  if (m.busy || m.tab === 'pending') return false;
-  if (m.update === 'ready' && m.tab !== 'writer') return false;
+  if (m.busy || m.tab === 'pending' || m.toasts > 0) return false;
+  if (m.tab !== 'writer' && (m.update === 'ready' || m.hidden)) return false;
   return (m.screen === 'welcome' || m.screen === 'home') && m.overlays.length === 0;
 }
 

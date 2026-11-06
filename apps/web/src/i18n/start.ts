@@ -101,62 +101,21 @@ export const enStart = {
   handEnd: {
     and: ' and ',
     comma: ', ',
-    /**
-     * Category names for the loser line (Appendix F.2 words). Here, not in `en.ts`: the collection
-     * moment's toast (§12.9, chunk 9.1b) names the category over any screen.
-     */
-    category: {
-      highCard: 'High Card',
-      pair: 'Pair',
-      twoPair: 'Two Pair',
-      trips: 'Three of a Kind',
-      straight: 'Straight',
-      flush: 'Flush',
-      fullHouse: 'Full House',
-      quads: 'Four of a Kind',
-      straightFlush: 'Straight Flush',
-      royalFlush: 'Royal Flush',
-    },
   },
 
-  /** Short messages (PLAN §12.11). */
+  /**
+   * Short messages (PLAN §12.11) that can show at launch, before the first tap: the saved data's
+   * repairs and the first offline-ready. The others come after a tap, with the screens' words
+   * (`en.toast`, `i18n/en.ts`).
+   */
   toast: {
-    /** "Nora sits down." / "Nora and Ben sit down." / "Nora, Ben and Sam sit down." */
-    botsJoined: (names: string, one: boolean) =>
-      one ? `${names} sits down.` : `${names} sit down.`,
-    handVoided: 'This hand was cancelled because of an internal error. Your chips were returned.',
     handNotRestored: 'Your last hand could not be restored. Chips were returned.',
     dataRecovered: 'Your saved data was damaged. We started fresh and kept a copy.',
     /** The profile was damaged and its backup was good (§14.6 rule 2). */
     dataRestored:
       'Your saved data was damaged. We restored a backup. Your last hand may be missing.',
-    /** After an Undo (§11.3 r3, Appendix F.10). */
-    undone: 'Move taken back. The unseen cards were shuffled again.',
-    /** Export's last resort (§14.8): the file's text is on the clipboard. */
-    exportCopied: 'Your stats were copied. Paste them into a file to keep them.',
-    exportFailed: 'Export did not work. Please try again.',
-    imported: 'Your stats were imported.',
-    statsReset: 'Your stats were deleted.',
-    /** Import or Reset changed nothing: another tab has the game, or this browser keeps nothing. */
-    dataNotChanged: 'Nothing was changed. Your stats could not be saved.',
-    /**
-     * Leave table (§14.4): "This session: 45 hands · +640 chips · Decision score 82 · 4 mistakes."
-     * The parts arrive joined by `separator`; the score is left out without graded decisions.
-     */
-    session: (parts: string) => `This session: ${parts}.`,
-    sessionHands: (n: number, x: string) => (n === 1 ? '1 hand' : `${x} hands`),
-    sessionChips: (x: string) => `${x} chips`,
-    sessionScore: (score: number) => `Decision score ${score}`,
-    sessionMistakes: (n: number) => (n === 1 ? '1 mistake' : `${n} mistakes`),
-    separator: ' · ',
-    /** "Export debug report" could only copy the report (Settings → Diagnostics, §4.5). */
-    debugCopied: 'The report was copied. Paste it into a message to send it.',
-    /** A new version waits for the end of the hand in play (§15.1). */
-    updateReady: 'Update ready. It installs after this hand.',
     /** Once ever: the first service worker is installed (§15.1). */
     offlineReady: 'Ready to play offline.',
-    /** The collection moment (§12.9): the first time ever with a category, "Full House". */
-    collection: (name: string) => `New in your collection: ${name}!`,
   },
 
   /** Another tab has the game (PLAN §12.11, §14.7): the game screens show this instead. */

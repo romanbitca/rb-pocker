@@ -78,10 +78,22 @@ export type ShuffleRow =
   | { readonly kind: 'insecure' }
   /** The hand has no shuffle code (dealt on a plain-http page, or before chunk 9.4). */
   | { readonly kind: 'none' }
-  | { readonly kind: 'code'; readonly commit: string; readonly seed: Seed128 };
+  /**
+   * The code and the seed. `beforeDeal`: the code was ready before the cards were dealt, so Review
+   * may say so (a code made just after the deal, or computed again after a reload, gets a neutral
+   * line instead).
+   */
+  | {
+      readonly kind: 'code';
+      readonly commit: string;
+      readonly seed: Seed128;
+      readonly beforeDeal: boolean;
+    };
 
 export function shuffleRowOf(hand: ReviewHand, sha256: Sha256 | null = pageSha256()): ShuffleRow {
   if (sha256 === null) return { kind: 'insecure' };
   const { commit, seed } = hand.record;
-  return commit === null ? { kind: 'none' } : { kind: 'code', commit, seed };
+  return commit === null
+    ? { kind: 'none' }
+    : { kind: 'code', commit, seed, beforeDeal: hand.commitBeforeDeal };
 }

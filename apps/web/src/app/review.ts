@@ -28,6 +28,10 @@ export interface ReviewHand {
   heroHole: [Card, Card] | null;
   /** The board as the hand ended (A.7 `HandRecord.board`): "Check the shuffle" compares it (§16.3). */
   board: Card[];
+  /** The hand's Undos (A.7 `HandRecord.undoCount`): "Check the shuffle" compares the reshuffles. */
+  undoCount: number;
+  /** The shuffle code was ready before the deal (`HandRecord.commitBeforeDeal`; false: not known). */
+  commitBeforeDeal: boolean;
   /** The result as the hand-end banner shows it (§12.9); `shown` holds only hands that were shown. */
   end: HandEndView;
 }
