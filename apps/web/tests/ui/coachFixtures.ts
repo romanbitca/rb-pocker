@@ -160,3 +160,26 @@ export function rangeAdjusted(): Decision {
     ],
   });
 }
+
+/**
+ * Two numbers that count different players (§8.10, the owner's report of 3 Nov 2026): before the
+ * flop, facing an early raise with players still to act. The HUD's 26% counts all 5 opponents;
+ * CALL_PREFLOP's 44% (§8.3's E) counts the raiser and `callers` callers already in. Call 40 of
+ * `FACING` (need 25%). The decision and `explain()` of it, as the worker sends them.
+ */
+export function raiserOnly(callers = 0, players = 5): Pick<CoachData, 'decision' | 'explanation'> {
+  const d = decision({
+    eRandom: 0.26,
+    eRange: 0.17,
+    need: 0.25,
+    trace: [r('CALL_PREFLOP', { E: 0.44, need: 0.25, callers }), r('WHY_NOT_RAISE')],
+  });
+  const explanation = explanationOf(d, {
+    street: 'preflop',
+    facing: 'open',
+    nOpp: players,
+    k: players - 1 - callers,
+    villain: 'raises',
+  });
+  return { decision: d, explanation };
+}

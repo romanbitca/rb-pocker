@@ -5,12 +5,13 @@
  *   it in their head row), "Clear choice" or "Close call: Fold is also fine", the strength meter
  *   at Beginner; (2) **Why**: RANGE_ADJUST first when it applies, then the reason (Intermediate:
  *   its first sentence and "More"); (3) **The numbers**: the HUD's win chance, the labelled range
- *   number (RANGE_ADJUST only), need, pot, to call, the price bar with its verdict, "How is this
- *   calculated?"; (4) **Your hand**: the label, each draw with its out cards (risky ones marked
- *   "!"), next card and by-river chances, the hands that beat you, the Rule of 2 and 4; (5) **Why
- *   not…**; (6) "Use coach size" when the coach bets or raises. Glossary terms are dotted
- *   buttons with a one-line definition (`GlossaryText`). The wide screen's inline panel and the
- *   landscape column show the same sections (§12.5).
+ *   number (RANGE_ADJUST only), need, pot, to call, the price bar with its verdict (and a caption
+ *   when its number is none of those lines; no bar when the coach did not decide on the price),
+ *   "How is this calculated?"; (4) **Your hand**: the label, each draw with its out cards (risky
+ *   ones marked "!"), next card and by-river chances, the hands that beat you, the Rule of 2 and
+ *   4; (5) **Why not…**; (6) "Use coach size" when the coach bets or raises. Glossary terms are
+ *   dotted buttons with a one-line definition (`GlossaryText`). The wide screen's inline panel
+ *   and the landscape column show the same sections (§12.5).
  * - `CoachSheet`: the bottom sheet a tap on the strip (or "Why?", or the compact pill) opens. It
  *   fills the host the Table gives it (everything above the action bar; the table column in
  *   landscape) and rises from its bottom, at most 45% of the screen's height, so it never covers
@@ -173,6 +174,7 @@ export const CoachDetails = memo(function CoachDetails({
         </ul>
         {n.bar !== null && (
           <>
+            {n.bar.caption !== null && <p className={styles.text}>{n.bar.caption}</p>}
             <div
               className={styles.bar}
               role="img"

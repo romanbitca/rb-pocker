@@ -28,6 +28,7 @@ import {
   input,
   NARRATION,
   r,
+  raiserOnly,
   rangeAdjusted,
 } from './coachFixtures.ts';
 
@@ -398,22 +399,171 @@ describe('coachView (§10.2, §12.6)', () => {
       headline: 'Fold',
       line: 'Any cards: 62%. Their likely hands: about 20%.',
     });
-    expect(v.hint?.shown).toEqual({ eRandom: 0.62, eRange: 0.2, win: 0.2, need: 0.25 });
+    expect(v.hint?.shown).toEqual({
+      eRandom: 0.62,
+      eRange: 0.2,
+      win: 0.2,
+      need: 0.25,
+      players: 1,
+      callers: null,
+      bar: { win: 0.2, need: 0.25, good: false, basis: 'plain' },
+    });
     expect(v.hint?.numbers.win).toBe('Win chance 62% (any cards)');
     expect(v.hint?.numbers.likely).toBe('Against their likely hands: about 20%');
     expect(v.hint?.numbers.bar).toMatchObject({
       win: 0.2,
       good: false,
+      caption: null,
       label: 'Against their likely hands: about 20%. Need 25%.',
       verdict: 'You win less often than you need.',
     });
+  });
+
+  it('the price bar follows the coach (§12.6): no ✓ beside a fold, no ✗ beside a call', () => {
+    // A fold that 37% against a 25% price would pay: out of position 0.6 of it is realised.
+    const fold = decision({
+      action: { type: 'fold' },
+      kind: 'fold',
+      eRandom: 0.37,
+      eRange: 0.37,
+      trace: [r('FOLD_PRICE', { E: 0.37, need: 0.25, R: 0.6 })],
+    });
+    const realised = coachView(
+      coachData({ decision: fold, explanation: explanationOf(fold, { position: 'OOP' }) }),
+      null,
+      input(FACING),
+    );
+    expect(realised.hint?.numbers.bar).toEqual({
+      win: 0.37 * 0.6,
+      need: 0.25,
+      good: false,
+      caption: 'Counting later bets: about 22%',
+      label: 'Counting later bets: about 22%. Need 25%.',
+      verdict: 'You win less often than you need.',
+    });
+    // Beginner's strip: not "You win about 37%. You need 25%." beside "Fold".
+    expect(realised.strip).toMatchObject({ headline: 'Fold', line: 'You need 25% to call.' });
+    // A call that 20% against 25% would not pay, but hitting the draw wins more later.
+    const call = decision({
+      eRandom: 0.2,
+      eRange: 0.2,
+      trace: [r('IMPLIED', { E: 0.2, need: 0.25, needImplied: 0.18, draw: 'flush' })],
+    });
+    const implied = coachView(coachData({ decision: call }), null, input(FACING));
+    expect(implied.hint?.numbers.bar).toEqual({
+      win: 0.2,
+      need: 0.18,
+      good: true,
+      caption: 'Counting what you can win later: need about 18%',
+      label: 'Win chance 20% (any cards). Counting what you can win later: need about 18%.',
+      verdict: 'You win more often than you need.',
+    });
+    expect(implied.strip).toMatchObject({ line: 'The price alone needs 25%.' });
+    // No price decision (a committed call under the price): no bar, and the reason in the strip.
+    const committed = decision({
+      eRandom: 0.2,
+      eRange: 0.2,
+      trace: [r('COMMITTED', { handName: 'Pair of Kings' })],
+    });
+    const none = coachView(coachData({ decision: committed }), null, input(FACING));
+    expect(none.hint?.numbers.bar).toBeNull();
+    expect(none.hint?.numbers.need).toBe('Need 25%');
+    expect(none.strip).toMatchObject({ line: 'The pot is big compared to your chips.' });
+    // The plain bar keeps the two numbers in Beginner's strip.
+    const plain = coachView(coachData(), null, input(FACING));
+    expect(plain.strip).toMatchObject({ line: 'You win about 45%. You need 25%.' });
+  });
+
+  it('two numbers for different players (§8.10): the strip and the sheet say whom each counts', () => {
+    // The owner's report: "Any cards: 26%. Their likely hands: about 44%." looked contradictory.
+    const v = coachView(coachData(raiserOnly()), null, input(FACING));
+    expect(v.strip).toMatchObject({
+      kind: 'advice',
+      headline: 'Call 40',
+      line: 'All 5 players: 26%. Raiser alone: about 44%.',
+    });
+    expect(v.hint?.shown).toMatchObject({ eRandom: 0.26, eRange: 0.44, players: 5, callers: 0 });
+    expect(v.hint?.rangeAdjust).toBe(
+      "Against all 5 players with any cards, you win 26%. Against the raiser's likely hands alone, you win about 44%.",
+    );
+    expect(v.hint?.numbers.win).toBe('Against all 5 players with any cards: 26%');
+    expect(v.hint?.numbers.likely).toBe("Against the raiser's likely hands alone: about 44%");
+    expect(v.hint?.numbers.bar).toMatchObject({
+      win: 0.44,
+      good: true,
+      label: "Against the raiser's likely hands alone: about 44%. Need 25%.",
+    });
+    // The HUD's own number ("How is this calculated?") is unchanged.
+    expect(v.hint?.numbers.winValue).toBe(0.26);
+  });
+
+  it('with callers already in, the raiser and the callers; the same players keep the old words', () => {
+    const one = coachView(coachData(raiserOnly(1)), null, input(FACING));
+    expect(one.strip).toMatchObject({ line: 'All 5 players: 26%. Raiser + 1 caller: about 44%.' });
+    expect(one.hint?.numbers.likely).toBe(
+      'Against the likely hands of the raiser and 1 caller: about 44%',
+    );
+    const two = coachView(coachData(raiserOnly(2)), null, input(FACING));
+    expect(two.strip).toMatchObject({ line: 'All 5 players: 26%. Raiser + 2 callers: about 44%.' });
+    expect(two.hint?.numbers.likely).toBe(
+      'Against the likely hands of the raiser and 2 callers: about 44%',
+    );
+    // Heads-up against the raiser: one opponent for both numbers, today's shorter words.
+    const headsUp = coachView(coachData(raiserOnly(0, 1)), null, input(FACING));
+    expect(headsUp.strip).toMatchObject({ line: 'Any cards: 26%. Their likely hands: about 44%.' });
+    expect(headsUp.hint?.numbers).toMatchObject({
+      win: 'Win chance 26% (any cards)',
+      likely: 'Against their likely hands: about 44%',
+    });
+  });
+
+  it('two numbers for different players each say whom, at any level and table size', () => {
+    fc.assert(
+      fc.property(
+        fc.integer({ min: 2, max: 8 }),
+        fc.integer({ min: 0, max: 6 }),
+        fc.integer({ min: 1, max: 99 }),
+        fc.integer({ min: 1, max: 99 }),
+        fc.constantFrom('beginner', 'intermediate'),
+        (players, callers, eRandom, E, level) => {
+          fc.pre(callers + 1 < players && Math.abs(E - eRandom) >= 5);
+          const d = decision({
+            action: { type: 'fold' },
+            kind: 'fold',
+            eRandom: eRandom / 100,
+            eRange: eRandom / 100,
+            trace: [r('FOLD_VS_RAISE', { E: E / 100, callers })],
+          });
+          const explanation = explanationOf(d, {
+            street: 'preflop',
+            facing: 'open',
+            nOpp: players,
+            villain: 'raises',
+          });
+          const data = coachData({ level, decision: d, explanation, opened: true });
+          const v = coachView(data, null, input(FACING));
+          const any = `${pctText(eRandom / 100)}%`;
+          const who = callers === 0 ? 'Raiser alone' : `Raiser + ${callers} caller`;
+          expect(v.strip.kind === 'advice' && v.strip.line).toContain(
+            `All ${players} players: ${any}.`,
+          );
+          expect(v.strip.kind === 'advice' && v.strip.line).toContain(who);
+          expect(v.hint?.numbers.win).toBe(`Against all ${players} players with any cards: ${any}`);
+          expect(v.hint?.numbers.likely).toMatch(
+            callers === 0 ? /raiser's .* alone/ : /raiser and/,
+          );
+          expect(v.hint?.rangeAdjust).toContain(`Against all ${players} players with any cards`);
+        },
+      ),
+      { numRuns: 500 },
+    );
   });
 });
 
 // ---------------------------------------------------------------------------------------------
 // Pitfall 35: never a bare range number
 
-/** Phrases that name what a number is against (F.1, §12.6). */
+/** Phrases that name what a number is against (F.1, §12.6, §8.10's whom). */
 const LABELS = [
   'any cards',
   'Any cards',
@@ -423,6 +573,8 @@ const LABELS = [
   'hands that go all-in here',
   'against it',
   'If called',
+  'Raiser alone',
+  'Raiser +',
 ];
 
 const reasonCodes: ReasonCode[] = ALL_CODES.filter(

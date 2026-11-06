@@ -23,7 +23,16 @@ import { playSpot } from '../../brain/fixtures.ts';
 import { tableWith } from '../../engine/helpers.ts';
 import { bet, call, check } from '../../engine/play.ts';
 import { card } from '../../helpers/cards.ts';
-import { coachData, decision, FACING, input, r, rangeAdjusted } from '../coachFixtures.ts';
+import {
+  coachData,
+  decision,
+  explanationOf,
+  FACING,
+  input,
+  r,
+  raiserOnly,
+  rangeAdjusted,
+} from '../coachFixtures.ts';
 import { smallTapTargets } from '../dom.ts';
 
 afterEach(() => {
@@ -131,6 +140,70 @@ describe('CoachDetails (§12.6)', () => {
       screen.getByRole('img', { name: 'Against their likely hands: about 20%. Need 25%.' }),
     ).toBeTruthy();
     expect(screen.getByText(coachWords.barBad)).toBeTruthy();
+  });
+
+  it('two numbers for different players (§8.10): every label says whom it counts', () => {
+    // The owner's spot: the HUD's 26% counts all 5 players, the coach's 44% the raiser alone.
+    const { container } = render(
+      <CoachDetails view={view(raiserOnly())} place="sheet" onUseSize={null} />,
+    );
+    const why = container.querySelectorAll('section')[1] as HTMLElement;
+    const lines = [...why.querySelectorAll('p')].map((p) => p.textContent);
+    expect(lines).toEqual([
+      "Against all 5 players with any cards, you win 26%. Against the raiser's likely hands alone, you win about 44%.",
+      'You win about 44% against their likely hands. You need 25%. Calling is fine.',
+    ]);
+    const numbers = [...container.querySelectorAll('li')].map((li) => li.textContent);
+    expect(numbers.slice(0, 3)).toEqual([
+      'Against all 5 players with any cards: 26%',
+      "Against the raiser's likely hands alone: about 44%",
+      'Need 25%',
+    ]);
+    expect(
+      screen.getByRole('img', {
+        name: "Against the raiser's likely hands alone: about 44%. Need 25%.",
+      }),
+    ).toBeTruthy();
+    cleanup();
+    // With a caller already in: "the raiser and 1 caller".
+    const one = render(
+      <CoachDetails view={view(raiserOnly(1))} place="sheet" onUseSize={null} />,
+    ).container;
+    expect([...one.querySelectorAll('li')].map((li) => li.textContent).slice(0, 2)).toEqual([
+      'Against all 5 players with any cards: 26%',
+      'Against the likely hands of the raiser and 1 caller: about 44%',
+    ]);
+  });
+
+  it('the price bar follows the coach (§12.6): a realised fold is ✗, with its own caption', () => {
+    // 37% beats the 25% price, but later bets leave 22% of it: the coach folds.
+    const fold = decision({
+      action: { type: 'fold' },
+      kind: 'fold',
+      eRandom: 0.37,
+      eRange: 0.37,
+      trace: [r('FOLD_PRICE', { E: 0.37, need: 0.25, R: 0.6 })],
+    });
+    const explanation = explanationOf(fold, { position: 'OOP' });
+    const { container } = render(
+      <CoachDetails view={view({ decision: fold, explanation })} place="sheet" onUseSize={null} />,
+    );
+    const numbers = container.querySelectorAll('section')[2] as HTMLElement;
+    expect(within(numbers).getByText('Counting later bets: about 22%')).toBeTruthy();
+    const bar = within(numbers).getByRole('img', {
+      name: 'Counting later bets: about 22%. Need 25%.',
+    });
+    expect(bar.getAttribute('data-good')).toBe('false');
+    expect(within(numbers).getByText(coachWords.barBad)).toBeTruthy();
+    expect(within(numbers).queryByText(coachWords.barGood)).toBeNull();
+    cleanup();
+    // No price decision (a committed call under the price): the numbers, but no bar.
+    const committed = decision({ eRandom: 0.2, eRange: 0.2, trace: [r('COMMITTED')] });
+    const none = render(
+      <CoachDetails view={view({ decision: committed })} place="sheet" onUseSize={null} />,
+    ).container;
+    expect(none.querySelector('[role="img"][aria-label*="Need"]')).toBeNull();
+    expect(screen.getByText('Need 25%')).toBeTruthy();
   });
 
   it('glossary terms are dotted buttons with a one-line definition (F.9)', () => {

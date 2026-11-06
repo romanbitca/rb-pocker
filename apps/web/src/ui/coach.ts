@@ -18,13 +18,16 @@
  * ⚠️ Pitfall 35 (§8.10): a range number never shows bare. When the hint shows RANGE_ADJUST the
  * strip's line is the labelled pair ("Any cards: 62%. Their likely hands: about 35%."), never a
  * sentence of the main reason (whose `{E}` is then `eRange`, labelled only by RANGE_ADJUST); the
- * sheet shows the reason right after RANGE_ADJUST.
+ * sheet shows the reason right after RANGE_ADJUST. When the range number counts only the raiser
+ * (and the callers already in) while the HUD's counts every player, each label says whom ("All 5
+ * players: 26%. Raiser alone: about 44%."; the sheet "Against all 5 players with any cards: 26%"),
+ * so a beginner never reads two win chances that look contradictory.
  *
  * This module (with `coachText.ts`, `glossary.ts` and `i18n/coachUi.ts`) is part of the coach's lazy
  * chunk (`ui/coachEntry.ts`, §15.3); the ring and the tray's amount come from `coachAdvice.ts`.
  */
 import { LEVEL_RULES, type CoachData, type CoachState, type NarrationData } from '../app/store.ts';
-import type { Explanation } from '../brain/explain.ts';
+import type { Explanation, PriceBar } from '../brain/explain.ts';
 import type { Decision } from '../brain/types.ts';
 import { coachWords } from '../i18n/coachUi.ts';
 import {
@@ -65,10 +68,18 @@ export type StripView =
 
 /** The price bar of the sheet's numbers (§12.6): 0–100%, the marker at Need, the fill at the win number. */
 export interface PriceBarView {
-  /** 0..1: the coach's win number (`eRange` when the hint shows RANGE_ADJUST, else `eRandom`). */
+  /**
+   * 0..1: the number the coach compared with the price (`explain`'s `shown.bar`): the words' win
+   * chance (`eRange` when the hint shows RANGE_ADJUST, else `eRandom`), or for a fold that it
+   * would pay, what later bets leave of it.
+   */
   readonly win: number;
+  /** 0..1: the price, or the price with what a hit can win later (a call it would not pay). */
   readonly need: number;
+  /** ✓: never next to a fold; ✗: never next to a call or a raise. */
   readonly good: boolean;
+  /** A line in plain words when its number is none of the lines above, else null. */
+  readonly caption: string | null;
   /** Its name for screen readers. */
   readonly label: string;
   readonly verdict: string;
@@ -76,11 +87,17 @@ export interface PriceBarView {
 
 /** §12.6 (3) "The numbers". */
 export interface NumbersView {
-  /** "Win chance 45% (any cards)": always the HUD's number. */
+  /**
+   * "Win chance 45% (any cards)": always the HUD's number; "Against all 5 players with any
+   * cards: 26%" when the words show a range number of the raiser alone (§8.10).
+   */
   readonly win: string;
   /** The HUD's number, 0..1 ("How is this calculated?": "You won in 45% of them"). */
   readonly winValue: number;
-  /** "Against their likely hands: about 38%": only when the hint shows RANGE_ADJUST. */
+  /**
+   * "Against their likely hands: about 38%" ("Against the raiser's likely hands alone: about
+   * 44%" when it counts fewer players than `win`): only when the hint shows RANGE_ADJUST.
+   */
   readonly likely: string | null;
   /** "Need 25%" when facing a bet (the price chip's number, §0.3). */
   readonly need: string | null;
@@ -159,6 +176,13 @@ export function narrationText(n: NarrationData, bb: number, amounts: AmountUnit)
   return n.allIn ? text + t.allIn : text;
 }
 
+/** The range number's label: whom it counts when that is not every player (§8.10). */
+function likelyText(shown: Explanation['shown'], x: string): string {
+  const c = coachWords;
+  if (shown.callers === null) return c.winLikely(x);
+  return shown.callers === 0 ? c.winRaiser(x) : c.winCallers(shown.callers, x);
+}
+
 /** §12.6 (3): the HUD's number, the labelled range number (RANGE_ADJUST only), the price. */
 export function numbersView(
   decision: Decision,
@@ -170,11 +194,10 @@ export function numbersView(
   const money = (chips: number) => formatAmount(chips, ctx.bb, ctx.amounts);
   const c = coachWords;
   const facing = price !== null && price.toCall > 0;
-  const win = c.winAny(pctText(decision.eRandom));
-  const likely = shown.eRange !== null ? c.winLikely(pctText(shown.eRange)) : null;
-  // The bar fills to the number the reasons compare with the price (`explain`'s `win`), and
-  // its name says which one it is (pitfall 35).
-  const winNumber = shown.win;
+  const any = pctText(decision.eRandom);
+  // With a range number of the raiser alone in the words, the HUD's says whom it counts too.
+  const win = shown.callers === null ? c.winAny(any) : c.winAll(shown.players, any);
+  const likely = shown.eRange !== null ? likelyText(shown, pctText(shown.eRange)) : null;
   return {
     win,
     winValue: decision.eRandom,
@@ -183,16 +206,31 @@ export function numbersView(
     needValue: facing ? price.need : null,
     pot: c.pot(money(facing ? price.winPot : pot)),
     toCall: facing ? c.toCall(money(price.toCall)) : null,
-    bar: facing
-      ? {
-          win: winNumber,
-          need: price.need,
-          good: winNumber >= price.need,
-          label: c.barLabel(likely ?? win, pctText(price.need)),
-          verdict: winNumber >= price.need ? c.barGood : c.barBad,
-        }
-      : null,
+    bar: facing && shown.bar !== null ? priceBarView(shown.bar, likely ?? win) : null,
   };
+}
+
+/**
+ * The price bar (§12.6): the comparison the coach made (`explain`'s `shown.bar`), so its ✓/✗
+ * never argues against the advice. Its name says which number it is (pitfall 35): the labelled
+ * line above it fills to, or a caption in plain words when it is none of them.
+ */
+function priceBarView(bar: PriceBar, line: string): PriceBarView {
+  const c = coachWords;
+  const common = { win: bar.win, need: bar.need, good: bar.good };
+  const verdict = bar.good ? c.barGood : c.barBad;
+  switch (bar.basis) {
+    case 'plain':
+      return { ...common, caption: null, label: c.barLabel(line, pctText(bar.need)), verdict };
+    case 'realised': {
+      const caption = c.barRealised(pctText(bar.win));
+      return { ...common, caption, label: c.barLabel(caption, pctText(bar.need)), verdict };
+    }
+    case 'implied': {
+      const caption = c.barImplied(pctText(bar.need));
+      return { ...common, caption, label: c.barLabelWith(line, caption), verdict };
+    }
+  }
 }
 
 /** The advice for the sheet and the inline panels. */
@@ -230,15 +268,25 @@ export function hintView(
 
 /** The strip's one line under the headline (§12.6). */
 function adviceLine(decision: Decision, hint: HintView, level: CoachUiLevel): string {
-  // Pitfall 35: with RANGE_ADJUST, only the labelled pair.
+  // Pitfall 35: with RANGE_ADJUST, only the labelled pair; each says whom it counts when the
+  // range number leaves out players the HUD's counts (§8.10).
   if (hint.rangeAdjust !== null) {
-    return coachWords.pair(
-      pctText(decision.eRandom),
-      pctText(hint.shown.eRange ?? decision.eRange),
-    );
+    const any = pctText(decision.eRandom);
+    const likely = pctText(hint.shown.eRange ?? decision.eRange);
+    const { players, callers } = hint.shown;
+    if (callers === null) return coachWords.pair(any, likely);
+    return callers === 0
+      ? coachWords.pairRaiser(players, any, likely)
+      : coachWords.pairCallers(players, any, callers, likely);
   }
-  // Beginner facing a bet: the two numbers that decide it ("You win about 45%. You need 25%.").
-  if (level === 'beginner' && hint.numbers.needValue !== null) {
+  // Beginner facing a bet: the two numbers that decide it ("You win about 45%. You need 25%."),
+  // when they do: the price bar's plain comparison agrees with the advice (§12.6). Else (a fold
+  // the price alone would pay, a call it would not, an open) the reason says why.
+  if (
+    level === 'beginner' &&
+    hint.numbers.needValue !== null &&
+    hint.shown.bar?.basis === 'plain'
+  ) {
     return coachWords.winNeed(pctText(decision.eRandom), pctText(hint.numbers.needValue));
   }
   return plainText(hint.reasonFirst);

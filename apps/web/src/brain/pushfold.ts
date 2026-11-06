@@ -19,7 +19,8 @@
  * beat its price against the pushing range; it explains the table, it does not decide.
  *
  * Units in `Reason.data`: equities, `need` and `Pfold` are fractions in [0, 1]; `rankPct`,
- * `pushPct` and `V` are percents of the 1,326 combos; `S` is big blinds; `behind` is `k`.
+ * `pushPct` and `V` are percents of the 1,326 combos; `S` is big blinds; `behind` is `k`;
+ * `callers` (facing an all-in) is how many callers already in `E` counts besides the shover.
  */
 import { className } from '../core/cards.ts';
 import { COMBOS_TOTAL, comboCount, RANGE_CLASSES } from '../data/rangesLayout.ts';
@@ -187,6 +188,8 @@ export interface CallVsAllInInput {
   need: number;
   /** The shover's range in percent, for the explanation (null when E is a multiway estimate). */
   V: number | null;
+  /** The callers already in whose ranges `E` counts besides the shover's (§8.3; words §8.10). */
+  callers: number;
   equityNoise: number;
 }
 
@@ -198,6 +201,7 @@ export function callVsAllIn(input: CallVsAllInInput): PushFoldVerdict {
     hand: className(input.cls),
     E,
     need: input.need,
+    callers: input.callers,
   };
   if (input.V !== null) data.V = input.V;
   return {

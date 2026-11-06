@@ -13,11 +13,15 @@
  * 3. **Hints** (`checkHint`): every line renders with exactly its template's values and glossary
  *    keys, no "{" left and sentences of at most 15 words; the numbers line shows the HUD's
  *    `eRandom` as a whole number (C9); RANGE_ADJUST comes first whenever the two equities differ
- *    by 5 points or more, and shows both; no sentence that compares the win chance with the price
- *    contradicts the numbers it shows ("It is close" only for whole numbers at most 2 apart, "if
- *    you see every card" only at or above the price); a code that does not name a range shows
- *    `eRandom` unless RANGE_ADJUST labelled the range number (pitfall 35); "Why not fold?" only
- *    when the win chance beats the price; the headline is the action.
+ *    by 5 points or more, and shows both; when they count different players (a range code's own
+ *    number counts only the raiser and its `data.callers` callers, fewer than the live opponents
+ *    `eRandom` counts), both its labels say whom ("all 5 players", "the raiser"), and neither
+ *    does when they count the same players (§8.10); no sentence that compares the win chance with
+ *    the price contradicts the numbers it shows ("It is close" only for whole numbers at most 2
+ *    apart, "if you see every card" only at or above the price); a code that does not name a range
+ *    shows `eRandom` unless RANGE_ADJUST labelled the range number (pitfall 35); "Why not fold?"
+ *    only when the win chance beats the price; the headline is the action; the price bar (§12.6)
+ *    only facing a bet, never ✓ next to a fold nor ✗ next to a call or a raise.
  */
 import {
   CLOSE_POINTS,
@@ -112,6 +116,7 @@ function sampleParam(name: string, n: number): Param {
     case 'S':
     case 'n':
     case 'outs':
+    case 'callers':
       return { kind: 'count', value: n };
     case 'draw':
       return { kind: 'draw', draw: 'oesd' };
@@ -276,6 +281,56 @@ const RANGE_SENTENCES: ReadonlySet<string> = new Set([
   'PUSH_FOLD',
 ]);
 
+/** Codes whose own `data.E` is a range number; before the flop it may leave players out (§8.3). */
+const RANGE_CODES: ReadonlySet<string> = new Set([
+  'CALL_PREFLOP',
+  'FOLD_VS_RAISE',
+  'THREE_BET_VALUE',
+  'FOUR_BET_VALUE',
+  'CALL_ALLIN',
+  'FOLD_ALLIN',
+]);
+
+/**
+ * Whom a hint's range number counts when that is fewer players than `eRandom` counts: the
+ * callers besides the raiser of the range code whose own number it is (`data.callers`, §8.3);
+ * null when it counts every live opponent.
+ */
+function rangeCallers(input: ExplainInput, rangeE: number | null): number | null {
+  for (const r of input.trace) {
+    const callers = r.data.callers;
+    if (RANGE_CODES.has(r.code) && r.data.E === rangeE && typeof callers === 'number') {
+      return callers + 1 < input.nOpp ? callers : null;
+    }
+  }
+  return null;
+}
+
+/**
+ * §8.10: when the two numbers count different players, RANGE_ADJUST's first sentence (the HUD's
+ * number) says "all N players" and its last (the range number) names the raiser and its callers;
+ * when they count the same players, neither says whom (today's shorter words).
+ */
+function whomProblems(text: string, input: ExplainInput, rangeE: number | null): string[] {
+  const callers = rangeCallers(input, rangeE);
+  if (callers === null) {
+    return /\braiser\b|\ball \d+ players\b/.test(text)
+      ? [`RANGE_ADJUST "${text}" says whom it counts, but both numbers count every opponent`]
+      : [];
+  }
+  const sentences = text.split(/(?<=[.?!])\s+/);
+  const all = `all ${input.nOpp} players`;
+  const who = callers === 0 ? 'raiser' : `raiser and ${callers} caller`;
+  const problems: string[] = [];
+  if (!(sentences[0] ?? '').includes(all)) {
+    problems.push(`RANGE_ADJUST "${text}": the HUD's number counts ${all}, unsaid`);
+  }
+  if (!(sentences.at(-1) ?? '').includes(who)) {
+    problems.push(`RANGE_ADJUST "${text}": the range number counts only the ${who}, unsaid`);
+  }
+  return problems;
+}
+
 /** How each comparing sentence (the F.1 wording, not its variants) relates `{E}` to `{need}`. */
 const COMPARES: Readonly<Partial<Record<TemplateKey, 'more' | 'atLeast' | 'less'>>> = {
   CALL_PROFITABLE: 'more',
@@ -321,6 +376,7 @@ export function checkHint(
     if (!text.includes(hud) || !text.includes(range)) {
       problems.push(`RANGE_ADJUST "${text}" does not show both ${hud} and ${range}`);
     }
+    problems.push(...whomProblems(text, input, e.shown.eRange));
   }
 
   const head = e.headline;
@@ -369,6 +425,27 @@ export function checkHint(
     if (!(shownPct(e.shown.win) > shownPct(input.need))) {
       problems.push('WHY_NOT_FOLD is shown but the win chance does not beat the price');
     }
+  }
+  problems.push(...barProblems(e, input));
+  return problems;
+}
+
+/**
+ * §12.6: the price bar shows only facing a bet, its ✓ is `win ≥ need`, and its verdict never
+ * argues against the advice: no ✓ next to a fold, no ✗ next to a call or a raise.
+ */
+function barProblems(e: Explanation, input: ExplainInput): string[] {
+  const bar = e.shown.bar;
+  if (bar === null) return [];
+  if (input.toCall <= 0) return ['a price bar with nothing to call'];
+  const problems: string[] = [];
+  const enough = bar.win >= bar.need;
+  if (bar.good !== enough) {
+    problems.push(`the price bar's verdict does not match its numbers (${bar.win}, ${bar.need})`);
+  }
+  if (bar.good === (input.action.type === 'fold')) {
+    const mark = bar.good ? '✓' : '✗';
+    problems.push(`the price bar shows ${mark} next to ${input.action.type} (${bar.basis})`);
   }
   return problems;
 }

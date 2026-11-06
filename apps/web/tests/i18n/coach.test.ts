@@ -209,7 +209,15 @@ describe('hint lines in reading order', () => {
       close: l('CLOSE_SPOT', { alt: { kind: 'line', line: l('alt.check') } }),
       trick: [l('RULE_2_4_BIG')],
       trace: [],
-      shown: { eRandom: 0.12, eRange: null, win: 0.12, need: 0 },
+      shown: {
+        eRandom: 0.12,
+        eRange: null,
+        win: 0.12,
+        need: 0,
+        players: 1,
+        callers: null,
+        bar: null,
+      },
     };
     expect(hintLines(e).map((x) => x.key)).toEqual([
       'headline.fold',

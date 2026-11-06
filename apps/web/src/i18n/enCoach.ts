@@ -118,6 +118,16 @@ export const enCoach = {
         'Against any cards you win {eRandom}%. How they played makes strong hands less likely. Against their likely hands, you win about {eRange}%.',
       'RANGE_ADJUST.plain':
         'Against any cards you win {eRandom}%. Against their likely hands, you win about {eRange}%.',
+      // §8.10: the range number counts only the raiser (and the callers already in), fewer
+      // players than the HUD's number, so each number says whom it counts.
+      'RANGE_ADJUST.raiser':
+        "Against all {n} players with any cards, you win {eRandom}%. Against the raiser's likely hands alone, you win about {eRange}%.",
+      'RANGE_ADJUST.callers': {
+        count: 'callers',
+        one: 'Against all {n} players with any cards, you win {eRandom}%. Against the likely hands of the raiser and {callers} caller, you win about {eRange}%.',
+        other:
+          'Against all {n} players with any cards, you win {eRandom}%. Against the likely hands of the raiser and {callers} callers, you win about {eRange}%.',
+      },
       FALLBACK: 'This move wins the most chips over time.',
 
       // The hint's own lines (§8.10 hint structure 1 and 3) and `{alt}` (F.1: chips only).
@@ -162,10 +172,14 @@ export const enCoach = {
       'feedback.foldedPrice': 'You folded with a {E}% win chance. You needed only {need}% to call.',
       'feedback.foldedPriceRange':
         'You folded with a {E}% win chance against their likely hands. You needed only {need}% to call.',
+      'feedback.foldedPriceAll':
+        'You folded with a {E}% win chance against the likely hands of all {n} players. You needed only {need}% to call.',
       'feedback.calledPrice':
         'You called with a {E}% win chance. You needed {need}%. Calling loses chips over time.',
       'feedback.calledPriceRange':
         'You called with a {E}% win chance against their likely hands. You needed {need}%. Calling loses chips over time.',
+      'feedback.calledPriceAll':
+        'You called with a {E}% win chance against the likely hands of all {n} players. You needed {need}%. Calling loses chips over time.',
       'feedback.checkedStrong':
         'You checked a very strong hand. Betting wins more from worse hands.',
       'feedback.airMultiway':

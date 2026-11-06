@@ -31,6 +31,8 @@
  * Units in `Reason.data`: equities, `need` and `Pfold` are fractions in [0, 1]; `rankPct`,
  * `openPct`, `V` and `pushPct` are percents of the 1,326 combos; `to` and `bb` are chips (the text
  * shows `{size}` as "{to} ({to ÷ bb} BB)"); `hand` is the class name ("AKs", "66"); `behind` is `k`.
+ * Facing a raise or an all-in, `callers` is how many callers already in `E` counts besides the
+ * raiser (the players still to act never count, so the words say whom `E` is against, §8.10).
  */
 import { classOf, className, rankOf, suitOf } from '../core/cards.ts';
 import { deriveSeed, ZERO_SEED, type Seed128 } from '../core/rng.ts';
@@ -293,8 +295,7 @@ function villainRange(spot: Spot, raise: PreflopRaise): number {
 }
 
 /** Live opponents other than the raiser who are in for the current bet or all-in (callers). */
-function callersIn(spot: Spot, raiser: number): number[] {
-  const { obs } = spot;
+function callersIn(obs: Observation, f: Features, raiser: number): number[] {
   const currentBet = (obs.streetBets[obs.seat] as number) + obs.legal.toCall;
   const voluntary = new Set(
     obs.history
@@ -304,7 +305,7 @@ function callersIn(spot: Spot, raiser: number): number[] {
       )
       .map((a) => a.seat),
   );
-  return spot.f.ranges
+  return f.ranges
     .map((r) => r.seat)
     .filter(
       (s) =>
@@ -315,12 +316,31 @@ function callersIn(spot: Spot, raiser: number): number[] {
 }
 
 /**
- * The hero's equity against the raiser: `eqVsRange` at `V`, or with callers in a weighted Monte
- * Carlo against the raiser's and the callers' ranges (§8.6) with 1,500 trials.
+ * The callers already in against the last preflop raise (0 with no raise): the number the range
+ * codes write as `data.callers` (§8.3 notes). For `scripts/check-copy.ts`, whose made-up reasons
+ * carry the policy's data.
  */
-function equityVs(spot: Spot, raiser: number, V: number): { E: number; multiway: boolean } {
-  const callers = callersIn(spot, raiser);
-  if (callers.length === 0) return { E: equityVsTopOfClass(spot.cls, V), multiway: false };
+export function preflopCallers(obs: Observation, f: Features): number {
+  const raises = preflopRaises(obs);
+  const last = raises[raises.length - 1];
+  return last === undefined ? 0 : callersIn(obs, f, last.seat).length;
+}
+
+/**
+ * The hero's equity against the raiser: `eqVsRange` at `V`, or with callers in a weighted Monte
+ * Carlo against the raiser's and the callers' ranges (§8.6) with 1,500 trials. `callers` is how
+ * many callers it counts besides the raiser: the players still to act are never in it, which the
+ * words must say when the HUD's number counts them (§8.10).
+ */
+function equityVs(
+  spot: Spot,
+  raiser: number,
+  V: number,
+): { E: number; multiway: boolean; callers: number } {
+  const callers = callersIn(spot.obs, spot.f, raiser);
+  if (callers.length === 0) {
+    return { E: equityVsTopOfClass(spot.cls, V), multiway: false, callers: 0 };
+  }
   const seats = new Set([raiser, ...callers]);
   const ranges = spot.f.ranges.filter((r) => seats.has(r.seat)).map((r) => r.weights);
   const E = rangeEquity({
@@ -330,7 +350,7 @@ function equityVs(spot: Spot, raiser: number, V: number): { E: number; multiway:
     trials: PREFLOP_MULTIWAY_TRIALS,
     seed: spot.seed,
   });
-  return { E, multiway: true };
+  return { E, multiway: true, callers: callers.length };
 }
 
 /** §8.3 step 3: 0.95 in position, 0.80 out of position, × 0.9 for offsuit hands gapped ≥ 3. */
@@ -429,12 +449,12 @@ function facingRaise(spot: Spot): PreflopDecision {
   const { f, obs } = spot;
   const last = spot.raises[spot.raises.length - 1] as PreflopRaise;
   const V = villainRange(spot, last);
-  const { E: e0 } = equityVs(spot, last.seat, V);
+  const { E: e0, callers } = equityVs(spot, last.seat, V);
   const E = clamp01(e0 + spot.style.equityNoise);
   const R = realisation(f.position, obs.hole);
   const implied = preflopImplied(obs, f);
   const evCall = E * R * (f.winPot + f.toCall) - f.toCall + implied;
-  const numbers = { hand: spot.hand, E, need: f.need, V, R, evCall };
+  const numbers = { hand: spot.hand, E, need: f.need, V, R, evCall, callers };
 
   let valueRaise: Built | null = null;
   let valueCode: ReasonCode = 'THREE_BET_VALUE';
@@ -442,7 +462,6 @@ function facingRaise(spot: Spot): PreflopDecision {
   if (last.level === 1) {
     if (E >= RERAISE_VALUE_EQUITY) {
       const currentBet = (obs.streetBets[obs.seat] as number) + obs.legal.toCall;
-      const callers = callersIn(spot, last.seat).length;
       const mult =
         (f.position === 'IP' ? THREE_BET_SIZE_IP : THREE_BET_SIZE_OOP) +
         THREE_BET_SIZE_PER_CALLER * callers;
@@ -479,12 +498,13 @@ function facingRaise(spot: Spot): PreflopDecision {
 function facingAllIn(spot: Spot): PreflopDecision {
   const last = spot.raises[spot.raises.length - 1] as PreflopRaise;
   const V = villainRange(spot, last);
-  const { E, multiway } = equityVs(spot, last.seat, V);
+  const { E, multiway, callers } = equityVs(spot, last.seat, V);
   const verdict = callVsAllIn({
     cls: spot.cls,
     E,
     need: spot.f.need,
     V: multiway ? null : V,
+    callers,
     equityNoise: spot.style.equityNoise,
   });
   return fromVerdict(spot, verdict);
@@ -562,7 +582,7 @@ export function preflopRaiseSize(
     const last = spot.raises[spot.raises.length - 1] as PreflopRaise;
     const mult =
       (f.position === 'IP' ? THREE_BET_SIZE_IP : THREE_BET_SIZE_OOP) +
-      THREE_BET_SIZE_PER_CALLER * callersIn(spot, last.seat).length;
+      THREE_BET_SIZE_PER_CALLER * callersIn(spot.obs, spot.f, last.seat).length;
     b = raiseTo(spot, mult * currentBet);
   } else if (f.facing === '3bet') b = raiseTo(spot, FOUR_BET_SIZE * currentBet);
   else b = allIn(obs.legal);

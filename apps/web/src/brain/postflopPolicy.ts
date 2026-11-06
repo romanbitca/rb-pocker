@@ -433,7 +433,9 @@ function traceOf(
   switch (action.type) {
     case 'fold':
       if (f.handInfo.playsTheBoard) return [reason('BOARD_PLAYS')];
-      return [reason(f.facing === 'allin' ? 'FOLD_ALLIN' : 'FOLD_PRICE', { E, need })];
+      if (f.facing === 'allin') return [reason('FOLD_ALLIN', { E, need })];
+      // `R`: the price bar shows the realised E·R the fold compared (§12.6).
+      return [reason('FOLD_PRICE', { E, need, R: read.r })];
     case 'call': {
       if (read.committed) return [reason('COMMITTED', { handName, E, need })];
       if (f.facing === 'allin') return [reason('CALL_ALLIN', { E, need })];
