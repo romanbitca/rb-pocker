@@ -15,8 +15,9 @@ Last checked: 28 September 2026.
 - **All art is drawn in code.** The app icons in `apps/web/public/icons/` are drawn by
   `apps/web/scripts/gen-icons.ts` (a light spade on felt). No third-party image is used.
 - **Fonts:** the device's system fonts. No font files are shipped.
-- **Sounds:** none yet. They will be synthesised with the Web Audio API (no audio files, PLAN
-  §12.8).
+- **Sounds:** synthesised in code with the Web Audio API (`apps/web/src/sound/synth.ts`, PLAN
+  §12.8). No audio files are shipped. The top bar's speaker icon is drawn in code too
+  (`apps/web/src/ui/components/SoundButton.tsx`).
 - **Planned:** a handful of [Lucide](https://lucide.dev) icons (`lucide-static`, ISC), copied
   inline as SVG. Add a row here when the first one is copied. If face-card art is ever wanted,
   use only public-domain or CC0 decks (PLAN §16.4), never LGPL ones.

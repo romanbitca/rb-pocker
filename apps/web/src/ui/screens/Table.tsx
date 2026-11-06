@@ -100,6 +100,7 @@ import { RankingsDrawer } from '../components/RankingsDrawer.tsx';
 import { RunoutBars, useLuckLine } from '../components/Runout.tsx';
 import { Seat } from '../components/Seat.tsx';
 import { SizingTray } from '../components/SizingTray.tsx';
+import { SoundButton } from '../components/SoundButton.tsx';
 import { ICONS, SpriteIcon } from '../components/SvgSprite.tsx';
 import { UndoButton, useUndoKey } from '../components/UndoButton.tsx';
 import { BigMoveLine, PriceChip, WinBadge, type BadgePlacement } from '../components/WinBadge.tsx';
@@ -152,7 +153,10 @@ interface TopBarProps {
   undo?: boolean;
 }
 
-/** ☰ · "Blinds 10/20 · Hand 12" · Hands (§12.3). The mute button arrives with sound (Stage 9). */
+/**
+ * ☰ · "Blinds 10/20 · Hand 12" · mute · Hands (§12.3). In compact mode Undo takes the mute
+ * button's place and the Menu has the sound toggle instead (chunk 9.1).
+ */
 const TopBar = memo(function TopBar({
   handsExpanded,
   handsColumn,
@@ -183,7 +187,11 @@ const TopBar = memo(function TopBar({
         <SpriteIcon id={ICONS.menu} className={styles.icon} />
       </button>
       <p className={styles.info}>{text}</p>
-      {undo && <UndoSlot />}
+      {undo ? (
+        <UndoSlot />
+      ) : (
+        <SoundButton className={styles.iconButton} iconClassName={styles.icon} />
+      )}
       <button
         type="button"
         className={styles.handsButton}

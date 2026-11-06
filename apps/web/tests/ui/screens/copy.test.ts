@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { en } from '../../../src/i18n/en.ts';
 import { coachWords } from '../../../src/i18n/coachUi.ts';
 import { dataWords as D } from '../../../src/i18n/data.ts';
+import { deviceWords } from '../../../src/i18n/device.ts';
 import { suggestionWords } from '../../../src/i18n/suggestions.ts';
 import { quizWords } from '../../../src/i18n/quiz.ts';
 import { summaryWords } from '../../../src/i18n/summary.ts';
@@ -68,6 +69,11 @@ const PLAN_WORDS: Record<string, string> = {
   'settings.speed': `"${en.settings.speed.label}" (${en.settings.speed.normal} · ${en.settings.speed.fast} · ${en.settings.speed.instant}; "${en.settings.speed.hint}")`,
   'settings.autoNext': `"${en.settings.autoNext.label}" ("${en.settings.autoNext.hint}")`,
   'settings.amounts': `"${en.settings.amounts.label}" (${en.settings.amounts.chips} · ${en.settings.amounts.bb}; "${en.settings.amounts.hint}")`,
+  // Chunk 9.1: sounds, vibration and keeping the screen on (§12.1, §12.3, F.10).
+  'device.display': `Settings "${deviceWords.display}" with "${deviceWords.keepAwake.label}" ("${deviceWords.keepAwake.hint}"; where the page cannot keep it on, "${deviceWords.keepAwake.insecure}" or "${deviceWords.keepAwake.missing}" after it)`,
+  'device.sound': `"${deviceWords.soundSection}" with "${deviceWords.sound.label}" ("${deviceWords.sound.hint}") and "${deviceWords.vibration.label}" ("${deviceWords.vibration.hint}")`,
+  'device.mute': `the top bar's mute button is named "${deviceWords.muteButton}" (pressed while sound is on)`,
+  'device.menu': `"${deviceWords.menu.soundOff}" · "${deviceWords.menu.soundOn}"`,
   'dialog.newTable buttons': `"${en.dialog.newTable.confirm}" · "${en.dialog.newTable.cancel}"`,
   'menu.resume': en.menu.resume,
   'menu.newTable': en.menu.newTable,

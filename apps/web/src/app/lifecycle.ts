@@ -13,6 +13,8 @@
  *   The URL never changes. Closing an overlay from the UI (✕, scrim, Esc) does not touch history:
  *   the guard stays, and a later Back with nothing left to close does nothing once.
  * - Layout (§12.3): the three media queries → `{ type: 'layout' }` (`ui.layout` mirrors the CSS).
+ * - Sounds, vibration and the screen wake lock (§12.8, §12.13): `app/device.ts`, a lazy chunk
+ *   asked for at boot (`loadDevice`), so the initial bundle does not carry them (§15.3).
  */
 import { historyDepth, type Nav } from './navigation.ts';
 import type { AppStore, Layout } from './store.ts';
@@ -67,6 +69,28 @@ export function installBackHandler(win: Window, store: AppStore): () => void {
   return () => {
     win.removeEventListener('popstate', onPopState);
     unsubscribe();
+  };
+}
+
+/**
+ * Sounds, vibration and the screen wake lock (§12.8, §12.13, chunk 9.1): `app/device.ts` is a
+ * lazy chunk, asked for here at boot. It arrives in a few milliseconds, long before a person can
+ * tap Play, and none of it is needed before the Table. If it cannot load (the network went away
+ * before the service worker cached it), the game plays on without them. Returns an uninstall.
+ */
+export function loadDevice(win: Window, store: AppStore): () => void {
+  let off: (() => void) | null = null;
+  let live = true;
+  import('./device.ts').then(
+    (device) => {
+      if (live) off = device.installDevice(win, store);
+    },
+    () => {},
+  );
+  return () => {
+    live = false;
+    off?.();
+    off = null;
   };
 }
 
@@ -219,6 +243,7 @@ export function installLifecycle(win: Window, store: AppStore): () => void {
     installVisibility(win, store),
     installBackHandler(win, store),
     installLayout(win, store),
+    loadDevice(win, store),
   ];
   return () => {
     for (const f of off) f();

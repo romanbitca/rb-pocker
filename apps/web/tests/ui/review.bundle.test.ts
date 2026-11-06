@@ -173,3 +173,39 @@ describe('the screens after the first tap in the production build', () => {
     expect(css.status).not.toBe('fail');
   });
 });
+
+describe('sounds, vibration and the wake lock in the production build (chunk 9.1)', () => {
+  it('app/device.ts is a lazy chunk with the cues and the wake lock: not initial, by import(), precached', () => {
+    const initial = rowOf('Initial JS');
+    const device = chunk('src/app/device.ts');
+    expect(device).toMatch(/^assets\/device-[\w-]+\.js$/);
+    expect(chunk('src/app/cues.ts')).toBe(device);
+    expect(chunk('src/app/wakeLock.ts')).toBe(device);
+    expect(initial.files).not.toContain(device);
+    expectOnlyDynamicImports(device);
+    expect(rowOf('Total precache').files).toContain(device);
+  });
+
+  it('the synth is a chunk of its own that only the device chunk loads, by import(), never initial', () => {
+    const initial = rowOf('Initial JS');
+    const synth = chunk('src/sound/synth.ts');
+    const device = chunk('src/app/device.ts');
+    expect(synth).toMatch(/^assets\/synth-[\w-]+\.js$/);
+    expect(synth).not.toBe(device);
+    expect(initial.files).not.toContain(synth);
+    const name = synth.slice('assets/'.length);
+    for (const file of initial.files) expect(text(file), file).not.toContain(name);
+    expect(text(device)).toMatch(new RegExp(`import\\(\\s*["'\`]\\./${name.replace('.', '\\.')}`));
+    expect(text(device)).not.toMatch(new RegExp(`from\\s*["']\\./${name.replace('.', '\\.')}`));
+    expect(rowOf('Total precache').files).toContain(synth);
+  });
+
+  it('their words load with the screens after the first tap, not with the first screen', () => {
+    const initial = rowOf('Initial JS');
+    expect(initial.files).not.toContain(chunk('src/i18n/device.ts'));
+    for (const file of initial.files) {
+      expect(text(file), file).not.toContain('Turn sound off');
+      expect(text(file), file).not.toContain('Keep screen on');
+    }
+  });
+});
