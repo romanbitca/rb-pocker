@@ -41,6 +41,7 @@ const DEFAULTS: SetupValues & GameSettings = {
   fourColour: true,
   autoNext: true,
   amounts: 'chips',
+  showEquity: true,
 };
 
 const SESSION: SessionLine = {

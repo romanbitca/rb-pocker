@@ -1,19 +1,25 @@
 /**
- * Settings' Display and Sound sections (PLAN §12.1; chunk 9.1): "Keep screen on" (the wake lock,
- * §12.13) and "Sound" and "Vibration" (§12.8). A change applies at once through `onChange`, like
- * the Game rows; the controller saves it (Appendix A.7).
+ * Settings' Display and Sound sections (PLAN §12.1; chunks 9.1 and 9.1b). Display: "Four-colour
+ * cards", "Text size" (Normal / Large), "Reduce motion" (Follow system / On / Off) and "Keep screen
+ * on" (the wake lock, §12.13); Sound: "Sound" and "Vibration" (§12.8). A change applies at once
+ * through `onChange`, like the Game rows; the controller saves it (Appendix A.7) and App puts it on
+ * the root element (`data-deck`, `data-text`, `data-motion`).
  *
  * Where the page cannot keep the screen on (§12.14: the Screen Wake Lock needs https, and older
  * browsers lack it), the row says why after its hint: the switch is kept, so the choice is still
- * there on a page that can. The other Display rows of §12.1 come with later chunks.
+ * there on a page that can.
  */
 import { useId } from 'react';
+import { en } from '../../i18n/en.ts';
 import { deviceWords as w } from '../../i18n/device.ts';
-import { SwitchRow } from './Controls.tsx';
+import { Choice, SwitchRow } from './Controls.tsx';
 import styles from './Screen.module.css';
 
 /** The rows' settings, named as in `Settings` (Appendix A.7). */
 export interface DisplayAndSoundSettings {
+  fourColour: boolean;
+  textSize: 'normal' | 'large';
+  reduceMotion: 'system' | 'on' | 'off';
   keepAwake: boolean;
   sound: boolean;
   haptics: boolean;
@@ -44,6 +50,9 @@ export interface DisplayAndSoundProps {
   onChange: (patch: Partial<DisplayAndSoundSettings>) => void;
 }
 
+const TEXT_SIZES = ['normal', 'large'] as const;
+const MOTION = ['system', 'on', 'off'] as const;
+
 export function DisplayAndSound({ settings, wakeLock, onChange }: DisplayAndSoundProps) {
   const id = useId();
   const why =
@@ -52,12 +61,36 @@ export function DisplayAndSound({ settings, wakeLock, onChange }: DisplayAndSoun
       : wakeLock === 'missing'
         ? w.keepAwake.missing
         : null;
+  const four = en.setup.more.fourColour;
   return (
     <>
       <section className={styles.rows} aria-labelledby={`${id}-display`}>
         <h2 id={`${id}-display`} className={styles.sectionTitle}>
           {w.display}
         </h2>
+        <SwitchRow
+          id={`${id}-four`}
+          label={four.label}
+          hint={four.hint}
+          checked={settings.fourColour}
+          onChange={(fourColour) => onChange({ fourColour })}
+        />
+        <Choice
+          name={`${id}-text`}
+          label={w.textSize.label}
+          hint={w.textSize.hint}
+          options={TEXT_SIZES.map((v) => ({ value: v, label: w.textSize[v] }))}
+          value={settings.textSize}
+          onChange={(textSize) => onChange({ textSize })}
+        />
+        <Choice
+          name={`${id}-motion`}
+          label={w.reduceMotion.label}
+          hint={w.reduceMotion.hint}
+          options={MOTION.map((v) => ({ value: v, label: w.reduceMotion[v] }))}
+          value={settings.reduceMotion}
+          onChange={(reduceMotion) => onChange({ reduceMotion })}
+        />
         <SwitchRow
           id={`${id}-awake`}
           label={w.keepAwake.label}

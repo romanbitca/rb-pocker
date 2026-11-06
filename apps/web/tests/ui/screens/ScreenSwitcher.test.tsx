@@ -81,6 +81,7 @@ function App({ firstLaunch, onPlay }: { firstLaunch: boolean; onPlay: () => void
               speed: 'normal',
               autoNext: true,
               amounts: 'chips',
+              showEquity: true,
             }}
             available={AVAILABLE_LEVELS}
             onChangeSettings={() => {}}

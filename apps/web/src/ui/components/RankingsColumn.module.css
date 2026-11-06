@@ -21,7 +21,7 @@
 .title {
   flex: 1;
   margin: 0;
-  font-size: 16px;
+  font-size: 1rem;
   font-weight: 700;
   line-height: 1.25;
 }
@@ -73,7 +73,7 @@
   cursor: pointer;
 }
 .railLabel {
-  font-size: 13px;
+  font-size: 0.8125rem;
   font-weight: 700;
   letter-spacing: 0.5px;
   writing-mode: vertical-rl;

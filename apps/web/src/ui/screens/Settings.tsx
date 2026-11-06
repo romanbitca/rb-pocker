@@ -1,10 +1,10 @@
 /**
- * Settings (PLAN §12.1). The Game section: coach level, bot level, speed, auto next hand and
- * amounts; then Display and Sound (chunk 9.1, `DisplayAndSound.tsx`: keep screen on, sound,
- * vibration); later stages add rows (win chance). The way to About comes last (chunk 9.2c). A
- * change applies at once through `onChangeSettings(patch)`; the controller saves it (Appendix
- * A.7). The controller starts a new bot level with the next hand and a new coach level with the
- * next decision (§10); the hints under the level cards say so.
+ * Settings (PLAN §12.1). The Game section: coach level, bot level, speed, auto next hand, amounts
+ * and "Show win chance" (§7.6, chunk 9.1b); then Display and Sound (`DisplayAndSound.tsx`:
+ * four-colour cards, text size, reduce motion, keep screen on; sound, vibration). The way to
+ * About comes last (chunk 9.2c). A change applies at once through `onChangeSettings(patch)`; the
+ * controller saves it (Appendix A.7). The controller starts a new bot level with the next hand and
+ * a new coach level with the next decision (§10); the hints under the level cards say so.
  *
  * The level rows are the Setup cards. Levels that are not available yet are disabled with
  * "Coming soon" (`available`, §18).
@@ -19,6 +19,7 @@ import { useId, type ReactNode } from 'react';
 import type { Diagnostics, SecureFeatures } from '../../app/store.ts';
 import type { BotLevel, CoachLevel } from '../../engine/types.ts';
 import { dataWords as D } from '../../i18n/data.ts';
+import { deviceWords } from '../../i18n/device.ts';
 import { en } from '../../i18n/en.ts';
 import { FileButton } from '../components/FileButton.tsx';
 import { Choice, SwitchRow } from './Controls.tsx';
@@ -36,6 +37,8 @@ export interface GameSettings {
   speed: 'normal' | 'fast' | 'instant';
   autoNext: boolean;
   amounts: 'chips' | 'bb';
+  /** "Show win chance" (§7.6): the win chance badge; off, the player practises estimating. */
+  showEquity: boolean;
 }
 
 /** The Data section (§14.8). */
@@ -73,8 +76,9 @@ export interface SettingsProps {
   onChangeSettings: (patch: Partial<GameSettings>) => void;
   onBack: () => void;
   /**
-   * The Display and Sound sections after Game (chunk 9.1, `DisplayAndSound.tsx`): keep screen
-   * on, sound, vibration. The app always passes them; absent, they are not drawn.
+   * The Display and Sound sections after Game (chunks 9.1 and 9.1b, `DisplayAndSound.tsx`):
+   * four-colour cards, text size, reduce motion, keep screen on; sound, vibration. The app always
+   * passes them; absent, they are not drawn.
    */
   device?: DisplayAndSoundProps | undefined;
   data?: DataSection | undefined;
@@ -161,6 +165,14 @@ export function Settings({
             options={AMOUNTS.map((v) => ({ value: v, label: en.settings.amounts[v] }))}
             value={settings.amounts}
             onChange={(amounts) => onChangeSettings({ amounts })}
+          />
+
+          <SwitchRow
+            id={`${id}-equity`}
+            label={deviceWords.winChance.label}
+            hint={deviceWords.winChance.hint}
+            checked={settings.showEquity}
+            onChange={(showEquity) => onChangeSettings({ showEquity })}
           />
         </section>
         {device !== undefined && <DisplayAndSound {...device} />}

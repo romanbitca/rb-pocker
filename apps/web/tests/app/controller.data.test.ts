@@ -42,7 +42,21 @@ const ringOf = (backend: FakeStorage): HandRecord[] =>
   backend.data.has(K.hands) ? read<HandRing>(backend, K.hands).hands : [];
 const counted = (p: Profile): number =>
   p.stats.results.clean.hands + p.stats.results.practice.hands;
-const toasts = (h: Harness): string[] => h.state().ui.toasts.map((t) => t.kind);
+/**
+ * The Data commands' toasts. The hands these tests play bring the collection moment's toasts too
+ * (§12.9, chunk 9.1b: a category's first counted hand), which `controller.collection.test.ts`
+ * covers; they are left out here.
+ */
+const toasts = (h: Harness): string[] =>
+  h
+    .state()
+    .ui.toasts.map((t) => t.kind)
+    .filter((kind) => kind !== 'collection');
+/** The categories with a first date: the collection (§14.4, §12.9). */
+const collected = (p: Profile): string[] =>
+  Object.entries(p.stats.collection)
+    .filter(([, c]) => c.first !== null)
+    .map(([category]) => category);
 
 /** Fake pages so far: each makes Blob URLs of its own, as browsers do. */
 let pages = 0;
@@ -519,6 +533,8 @@ describe('Reset stats (§14.8)', () => {
     expect(reset.heroModel.hands).toBe(0);
     expect(reset.settings).toEqual(before.settings);
     expect(reset.lastCommittedHandSeq).toBe(3); // §14.3: never lowered
+    expect(collected(before).length).toBeGreaterThan(0);
+    expect(collected(reset)).toEqual([]); // the collection starts again (§12.9)
     expect(ringOf(backend)).toEqual([]);
     expect(read<Profile>(backend, K.preimport)).toEqual(before);
     expect(h.state().game.seatStats.hero).toBeUndefined();

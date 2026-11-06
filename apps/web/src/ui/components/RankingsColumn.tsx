@@ -6,6 +6,7 @@
  */
 import { memo, useEffect, useId, useRef } from 'react';
 import { en } from '../../i18n/en.ts';
+import type { HandCategory } from '../../eval/evaluate.ts';
 import type { ByRiverView, HeroHandView } from '../views.ts';
 import styles from './RankingsColumn.module.css';
 import { RankingsList } from './RankingsList.tsx';
@@ -20,6 +21,8 @@ export interface RankingsColumnProps {
   byRiver?: ByRiverView | null | undefined;
   /** The "Which hand wins?" button (Advanced and Exam, §10.2). */
   whichWins?: boolean | undefined;
+  /** The collection moment's category (§12.9): its row is ringed and pulses. */
+  collected?: HandCategory | null | undefined;
 }
 
 export const RankingsColumn = memo(function RankingsColumn({
@@ -29,6 +32,7 @@ export const RankingsColumn = memo(function RankingsColumn({
   showTips,
   byRiver,
   whichWins,
+  collected,
 }: RankingsColumnProps) {
   const titleId = useId();
   const currentRowRef = useRef<HTMLLIElement>(null);
@@ -86,6 +90,7 @@ export const RankingsColumn = memo(function RankingsColumn({
           whichWins={whichWins}
           currentRowRef={currentRowRef}
           byRiver={byRiver}
+          collected={collected}
         />
       </div>
     </aside>

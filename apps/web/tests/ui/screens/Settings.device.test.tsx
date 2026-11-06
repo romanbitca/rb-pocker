@@ -1,9 +1,10 @@
 // @vitest-environment jsdom
 /**
- * Settings' Display and Sound sections (PLAN §12.1, §12.8, §12.13; chunk 9.1): "Keep screen on",
- * "Sound" and "Vibration" are switches after the Game section; a change is sent at once; where the
- * page cannot keep the screen on, the row says why; every control is 44×44 px or more. Also the
- * wake lock support the Settings wrapper reads, and the store wiring (a switch changes the
+ * Settings' Display and Sound sections (PLAN §12.1, §12.8, §12.13; chunks 9.1 and 9.1b): Display
+ * holds "Four-colour cards", "Text size" (Normal / Large), "Reduce motion" (Follow system / On /
+ * Off) and "Keep screen on"; Sound holds "Sound" and "Vibration"; a change is sent at once; where
+ * the page cannot keep the screen on, the row says why; every control is 44×44 px or more. Also
+ * the wake lock support the Settings wrapper reads, and the store wiring (a row changes the
  * settings the controller saves).
  */
 import '../../../src/ui/styles/tokens.css';
@@ -28,9 +29,17 @@ const GAME: GameSettings = {
   speed: 'normal',
   autoNext: true,
   amounts: 'chips',
+  showEquity: true,
 };
 
-const ON: DisplayAndSoundSettings = { keepAwake: true, sound: true, haptics: true };
+const ON: DisplayAndSoundSettings = {
+  fourColour: true,
+  textSize: 'normal',
+  reduceMotion: 'system',
+  keepAwake: true,
+  sound: true,
+  haptics: true,
+};
 
 function renderSettings(device: Partial<DisplayAndSoundProps> = {}) {
   const onChange = vi.fn();
@@ -47,8 +56,13 @@ function renderSettings(device: Partial<DisplayAndSoundProps> = {}) {
 const hintOf = (el: HTMLElement): string | null =>
   document.getElementById(el.getAttribute('aria-describedby') ?? '')?.textContent ?? null;
 
+const radios = (group: string) =>
+  within(screen.getByRole('group', { name: group })).getAllByRole('radio') as HTMLInputElement[];
+const choices = (group: string) =>
+  radios(group).map((r) => [r.labels?.[0]?.textContent, r.checked]);
+
 describe('Settings: Display and Sound (§12.1)', () => {
-  it('come after Game: "Keep screen on" under Display; "Sound" and "Vibration" under Sound', () => {
+  it('come after Game: Display in the §12.1 order, then "Sound" and "Vibration" under Sound', () => {
     renderSettings();
     expect(screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent)).toEqual([
       'Game',
@@ -56,7 +70,18 @@ describe('Settings: Display and Sound (§12.1)', () => {
       'Sound',
     ]);
     const display = screen.getByRole('region', { name: 'Display' });
-    expect(within(display).getAllByRole('switch')).toHaveLength(1);
+    // Four-colour cards (on), text size, reduce motion, keep screen on (§12.1).
+    const rows = [...display.querySelectorAll('label, fieldset')].filter(
+      (el) => el.tagName === 'FIELDSET' || el.querySelector('[role="switch"]') !== null,
+    );
+    expect(
+      rows.map((el) =>
+        el.tagName === 'FIELDSET'
+          ? el.querySelector('legend')?.textContent
+          : el.querySelector('[id$="-label"]')?.textContent,
+      ),
+    ).toEqual(['Four-colour cards', 'Text size', 'Reduce motion', 'Keep screen on']);
+    expect(within(display).getAllByRole('switch')).toHaveLength(2);
     within(display).getByRole('switch', { name: 'Keep screen on' });
     const sound = screen.getByRole('region', { name: 'Sound' });
     expect(within(sound).getAllByRole('switch')).toHaveLength(2);
@@ -64,9 +89,57 @@ describe('Settings: Display and Sound (§12.1)', () => {
     within(sound).getByRole('switch', { name: 'Vibration' });
   });
 
+  it('four-colour cards: a switch with Setup`s words; a change is sent at once', () => {
+    const { onChange } = renderSettings();
+    const four = screen.getByRole('switch', { name: 'Four-colour cards' }) as HTMLInputElement;
+    expect(four.checked).toBe(true);
+    expect(hintOf(four)).toBe('Each suit has its own colour.');
+    fireEvent.click(four);
+    expect(onChange.mock.calls).toEqual([[{ fourColour: false }]]);
+    cleanup();
+    renderSettings({ settings: { ...ON, fourColour: false } });
+    expect(
+      (screen.getByRole('switch', { name: 'Four-colour cards' }) as HTMLInputElement).checked,
+    ).toBe(false);
+  });
+
+  it('text size: Normal or Large (§12.12), as chips; a change is sent at once', () => {
+    const { onChange } = renderSettings();
+    expect(choices('Text size')).toEqual([
+      ['Normal', true],
+      ['Large', false],
+    ]);
+    expect(screen.getByRole('group', { name: 'Text size' }).getAttribute('aria-describedby')).toBe(
+      screen.getByText('Large makes the words bigger.').id,
+    );
+    fireEvent.click(radios('Text size')[1] as HTMLInputElement);
+    expect(onChange.mock.calls).toEqual([[{ textSize: 'large' }]]);
+    cleanup();
+    renderSettings({ settings: { ...ON, textSize: 'large' } });
+    expect(choices('Text size')).toEqual([
+      ['Normal', false],
+      ['Large', true],
+    ]);
+  });
+
+  it('reduce motion: Follow system, On or Off (§12.8); a change is sent at once', () => {
+    const { onChange } = renderSettings({ settings: { ...ON, reduceMotion: 'on' } });
+    expect(choices('Reduce motion')).toEqual([
+      ['Follow system', false],
+      ['On', true],
+      ['Off', false],
+    ]);
+    expect(hintOf(screen.getByRole('group', { name: 'Reduce motion' }))).toBe(
+      'On: less movement. Follow system: as your phone or computer is set.',
+    );
+    fireEvent.click(radios('Reduce motion')[2] as HTMLInputElement);
+    fireEvent.click(radios('Reduce motion')[0] as HTMLInputElement);
+    expect(onChange.mock.calls).toEqual([[{ reduceMotion: 'off' }], [{ reduceMotion: 'system' }]]);
+  });
+
   it('each switch shows its setting and sends only its own change', () => {
     const { onChange } = renderSettings({
-      settings: { keepAwake: true, sound: false, haptics: true },
+      settings: { ...ON, keepAwake: true, sound: false, haptics: true },
     });
     const keep = screen.getByRole('switch', { name: 'Keep screen on' }) as HTMLInputElement;
     const sound = screen.getByRole('switch', { name: 'Sound' }) as HTMLInputElement;
@@ -111,15 +184,16 @@ describe('Settings: Display and Sound (§12.1)', () => {
 
   it('every control is at least 44×44 px (§12.12)', () => {
     const { container } = renderSettings();
-    // Back, 4 + 4 level cards, 3 speeds, 2 amounts, 4 switches.
-    expect(controlCount(container)).toBe(18);
+    // Back, 4 + 4 level cards, 3 speeds, 2 amounts, 2 text sizes, 3 motion choices, 6 switches.
+    expect(controlCount(container)).toBe(25);
     expect(smallTargets(container, () => false)).toEqual([]);
   });
 
   it('the sections alone render with no Settings around them', () => {
     const onChange = vi.fn();
     render(<DisplayAndSound settings={ON} wakeLock="yes" onChange={onChange} />);
-    expect(screen.getAllByRole('switch')).toHaveLength(3);
+    expect(screen.getAllByRole('switch')).toHaveLength(4);
+    expect(screen.getAllByRole('radio')).toHaveLength(5);
   });
 });
 
@@ -149,7 +223,7 @@ describe('wakeLockSupport (§12.14)', () => {
 });
 
 describe('the Settings screen in the app (store wiring)', () => {
-  it('a switch changes the settings the controller saves; the words are the chunk 9.1 words', async () => {
+  it('a row changes the settings the controller saves; the words are chunk 9.1`s and 9.1b`s', async () => {
     const [{ appStore, defaultGameSettings }, { loadScreens }] = await Promise.all([
       import('../../../src/app/store.ts'),
       import('../../../src/ui/screensModule.ts'),
@@ -166,8 +240,21 @@ describe('the Settings screen in the app (store wiring)', () => {
         fireEvent.click(screen.getByRole('switch', { name: deviceWords.keepAwake.label }));
         fireEvent.click(screen.getByRole('switch', { name: deviceWords.sound.label }));
         fireEvent.click(screen.getByRole('switch', { name: deviceWords.vibration.label }));
+        // Chunk 9.1b: the rows §12.1 lists that had none.
+        fireEvent.click(screen.getByRole('switch', { name: deviceWords.winChance.label }));
+        fireEvent.click(screen.getByRole('switch', { name: 'Four-colour cards' }));
+        fireEvent.click(radios(deviceWords.textSize.label)[1] as HTMLInputElement);
+        fireEvent.click(radios(deviceWords.reduceMotion.label)[1] as HTMLInputElement);
       });
-      expect(patches).toEqual([{ keepAwake: false }, { sound: false }, { haptics: false }]);
+      expect(patches).toEqual([
+        { keepAwake: false },
+        { sound: false },
+        { haptics: false },
+        { showEquity: false },
+        { fourColour: false },
+        { textSize: 'large' },
+        { reduceMotion: 'on' },
+      ]);
     } finally {
       appStore.setGameHandler(null);
     }

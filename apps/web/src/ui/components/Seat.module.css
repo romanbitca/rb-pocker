@@ -312,8 +312,12 @@ button.pod {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .dot {
+  :root:not([data-motion='full']) .dot {
     animation: none;
     opacity: 0.8;
   }
+}
+:root[data-motion='reduced'] .dot {
+  animation: none;
+  opacity: 0.8;
 }

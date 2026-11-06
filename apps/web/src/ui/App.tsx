@@ -14,11 +14,21 @@
  *   props.
  * - The level cards (Setup, Settings) offer `AVAILABLE_LEVELS`; a choice is saved with the settings
  *   (`pc.v1.profile`) and starts with the next table, hand or decision (§10).
- * - Motion (§12.8): `--speed` on the root element follows the speed setting (Normal 1, Fast 0.5,
- *   Instant 0); `data-motion` follows "reduce motion" (the system's choice unless the setting says
- *   otherwise), and `data-deck="two"` the two-colour deck.
+ * - Motion and look (§12.8): `--speed` on the root element follows the speed setting (Normal 1,
+ *   Fast 0.5, Instant 0); `data-motion` follows "reduce motion" (the system's choice unless the
+ *   setting says otherwise), `data-deck="two"` the two-colour deck, and `data-text="large"` the
+ *   Large text size (§12.12: the root font size ×1.15, which every screen's rem sizes follow;
+ *   global.css). Set before the first paint, so a saved Large never shows a frame at Normal.
  */
-import { lazy, Suspense, useCallback, useEffect, useRef, type ComponentType } from 'react';
+import {
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  type ComponentType,
+} from 'react';
 import {
   selectBotCard,
   selectInstall,
@@ -441,26 +451,29 @@ function NoticeLayer() {
   );
 }
 
-/** `--speed`, `data-motion` and `data-deck` on the root element (see the module comment). */
-function useDocumentMotion(): void {
+/** `--speed`, `data-motion`, `data-deck` and `data-text` on the root element (the module comment). */
+function useDocumentLook(): void {
   const speed = useAppStore((s) => s.settings.speed);
   const reduceMotion = useAppStore((s) => s.settings.reduceMotion);
   const fourColour = useAppStore((s) => s.settings.fourColour);
-  useEffect(() => {
+  const large = useAppStore((s) => s.settings.textSize === 'large');
+  useLayoutEffect(() => {
     const root = document.documentElement;
     root.style.setProperty('--speed', String(SPEED[speed]));
     if (reduceMotion === 'system') delete root.dataset.motion;
     else root.dataset.motion = reduceMotion === 'on' ? 'reduced' : 'full';
     if (fourColour) delete root.dataset.deck;
     else root.dataset.deck = 'two';
-  }, [speed, reduceMotion, fourColour]);
+    if (large) root.dataset.text = 'large';
+    else delete root.dataset.text;
+  }, [speed, reduceMotion, fourColour, large]);
 }
 
 export function App() {
   // The service worker is the app side's (PLAN §15.1, chunk 9.5: `app/swUpdate.ts`, started by
   // `app/boot.ts`): the controller decides when a new version may reload the page, and its
   // "Update ready" and "Ready to play offline." toasts come through the store like the others.
-  useDocumentMotion();
+  useDocumentLook();
   usePreloadScreens();
   const nav = useAppStore(selectNav);
   const readOnly = useAppStore(selectReadOnly);

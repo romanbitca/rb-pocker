@@ -84,6 +84,18 @@
   -webkit-line-clamp: 2;
   line-clamp: 2;
 }
+/* At the Large text size (§12.1, chunk 9.1b) the portrait strip's words keep their px sizes: its
+   56 px hold the 18 px head and two 16 px lines, and its height never follows the words (§12.8
+   notes). The landscape row and the wide panel have the room and grow with the text. */
+.strip:not(.header):not(.wrap) .head {
+  font-size: 15px;
+}
+.strip:not(.header):not(.wrap) .head strong {
+  font-size: 16px;
+}
+.strip:not(.header):not(.wrap) .line {
+  font-size: 14px;
+}
 /* In the panels and the landscape column the line takes the lines it needs: there is room. */
 .header .advice,
 .wrap .advice {

@@ -617,6 +617,8 @@ export const en = {
     updateReady: 'Update ready. It installs after this hand.',
     /** Once ever: the first service worker is installed (§15.1). */
     offlineReady: 'Ready to play offline.',
+    /** The collection moment (§12.9): the first time ever with a category, "Full House". */
+    collection: (name: string) => `New in your collection: ${name}!`,
   },
 
   /** Another tab has the game (PLAN §12.11, §14.7): the game screens show this instead. */

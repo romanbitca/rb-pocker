@@ -99,9 +99,12 @@
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  .sheet {
+  :root:not([data-motion='full']) .sheet {
     animation: fade 120ms ease-out;
   }
+}
+:root[data-motion='reduced'] .sheet {
+  animation: fade 120ms ease-out;
 }
 
 /* ---- The sections (the sheet, the wide panel, the landscape column) ---- */

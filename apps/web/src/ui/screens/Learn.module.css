@@ -243,7 +243,7 @@
   background: var(--surface);
   color: var(--text);
   font: inherit;
-  font-size: 16px;
+  font-size: 1rem;
 }
 
 .searchInput:focus-visible {

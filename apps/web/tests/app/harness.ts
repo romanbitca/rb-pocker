@@ -289,17 +289,22 @@ export interface DriveOptions {
   onComplete?: (hand: HandState, inputs: ReturnType<TableController['snapshot']>['inputs']) => void;
 }
 
-/** Plays until `hands` more hands are complete. Returns them in order. */
+/**
+ * Plays until `hands` more hands are complete. Returns them in order: the hands that complete
+ * during the call. A hand that was complete before it (still on show between hands) is not one of
+ * them, whatever the store does meanwhile (a toast going away, the collection moment's included).
+ */
 export async function drive(h: Harness, options: DriveOptions): Promise<HandState[]> {
   const done: HandState[] = [];
   const seen = new Set<number>();
-  const unsubscribe = h.store.subscribe((s) => {
+  const unsubscribe = h.store.subscribe((s, prev) => {
     const hand = s.game.hand;
-    if (hand !== null && hand.phase === 'complete' && !seen.has(hand.handSeq)) {
-      seen.add(hand.handSeq);
-      done.push(hand);
-      options.onComplete?.(hand, h.controller.snapshot().inputs);
-    }
+    if (hand === null || hand.phase !== 'complete' || seen.has(hand.handSeq)) return;
+    const before = prev.game.hand;
+    if (before !== null && before.handSeq === hand.handSeq && before.phase === 'complete') return;
+    seen.add(hand.handSeq);
+    done.push(hand);
+    options.onComplete?.(hand, h.controller.snapshot().inputs);
   });
   try {
     for (let i = 0; done.length < options.hands; i++) {
