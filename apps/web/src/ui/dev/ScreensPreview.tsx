@@ -39,7 +39,7 @@ const DEFAULTS: SetupValues & GameSettings = {
   seatLevels: [null, null, null, null, null, null],
   speed: 'normal',
   fourColour: true,
-  autoNext: true,
+  autoNext: false,
   amounts: 'chips',
   showEquity: true,
 };

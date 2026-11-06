@@ -7,7 +7,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { HANDS_KEEP, loadHands } from '../../src/persist/hands.ts';
-import { PROFILE_VERSION } from '../../src/persist/migrations.ts';
+import { DEFAULTS_REV, PROFILE_VERSION } from '../../src/persist/migrations.ts';
 import { loadProfile } from '../../src/persist/profile.ts';
 import {
   defaultProfile,
@@ -222,6 +222,29 @@ describe('import: reading the file (§14.8: parse, type-guard, migrate)', () => 
     expect(readImport(kit, fileText(overrides))).toMatchObject({ ok: false, why: 'damaged' });
   });
 
+  it('a file from before 1.3.94: "Deal the next hand by itself" off, as boot does (H.2 rule 6)', () => {
+    const old = theirs();
+    delete old.settings.defaultsRev;
+    const read = readImport(
+      kit,
+      fileText({ profile: { ...old, settings: { ...old.settings, autoNext: true } } }),
+    );
+    if (!read.ok) throw new Error(read.problem);
+    expect(read.file.profile).toEqual({
+      ...old,
+      settings: { ...old.settings, autoNext: false, defaultsRev: DEFAULTS_REV },
+    });
+  });
+
+  it("a newer file keeps the player's choice: turned on, it is imported on", () => {
+    const on = theirs();
+    on.settings = { ...on.settings, autoNext: true };
+    const read = readImport(kit, JSON.stringify(buildExport(on, theirHands(), NOW)));
+    if (!read.ok) throw new Error(read.problem);
+    expect(read.file.profile).toEqual(on);
+    expect(read.file.profile.settings).toMatchObject({ autoNext: true, defaultsRev: 1 });
+  });
+
   it('an older profile is migrated on the way (H.2 rule 5: the same migrations as boot)', () => {
     const text = fileText({ schemaVersion: 0, profile: v0Profile(), hands: [] });
     expect(readImport(kit, text)).toMatchObject({ ok: false, why: 'damaged' }); // no 0 → 1 step today
@@ -403,6 +426,18 @@ describe('Export → Reset → Import (§14.9)', () => {
     expect({ ...back, rev: original.rev, updatedAt: original.updatedAt }).toEqual(original);
     expect(back.rev).toBe(original.rev + 2);
     expect(loadHands(store, back.lastCommittedHandSeq).hands).toEqual(myHands());
+  });
+
+  it('"Deal the next hand by itself" turned on comes back on (1.3.94: off only by default)', () => {
+    const fake = device();
+    const store = storeOver(fake);
+    const original = { ...mine(), settings: { ...mine().settings, autoNext: true } };
+    const { text } = exportData(kit, store, original, NOW);
+    const imported = importProfile(kit, store, original, fileOf(text), LATER);
+    if (imported.status !== 'done') throw new Error(imported.status);
+    const back = loadProfile(store, { now: LATER }).profile;
+    expect(back.settings).toEqual(original.settings);
+    expect(back.settings).toMatchObject({ autoNext: true, defaultsRev: DEFAULTS_REV });
   });
 });
 

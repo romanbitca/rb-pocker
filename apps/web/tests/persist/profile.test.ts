@@ -205,6 +205,72 @@ describe('persist/profile migrations on load (H.2)', () => {
   });
 });
 
+describe('persist/profile defaults revision on load (H.2 rule 6, 1.3.94)', () => {
+  /** A profile as saved before 1.3.94: no `defaultsRev`, "Deal the next hand by itself" on. */
+  const before194 = (): Profile => {
+    const p = { ...defaultProfile(NOW), rev: 7 };
+    const settings: Settings = { ...custom(), autoNext: true };
+    delete settings.defaultsRev;
+    return { ...p, settings };
+  };
+
+  it('an older profile: the switch goes off once, is written back, and the next load keeps it', () => {
+    const { fake, launch } = setup({ [KEY]: JSON.stringify(before194()) });
+    const load = loadProfile(launch(), { now: NOW });
+    expect(load.status).toBe('ok');
+    if (load.status !== 'ok') return;
+    expect(load.migratedFrom).toBeNull(); // no schema change
+    expect(load.profile.settings).toEqual({ ...custom(), autoNext: false, defaultsRev: 1 });
+    expect(load.profile.rev).toBe(7); // the same profile, as a migration writes it back
+    expect(fake.writeLog).toEqual([KEY]);
+    expect(JSON.parse(fake.data.get(KEY) as string)).toEqual(load.profile);
+    // Once: the next launch reads it as it is and writes nothing.
+    expect(loadProfile(launch(), { now: LATER })).toEqual(load);
+    expect(fake.writeLog).toEqual([KEY]);
+  });
+
+  it('a player who turns it on again keeps it on, launch after launch', () => {
+    const { fake, launch } = setup({ [KEY]: JSON.stringify(before194()) });
+    const first = loadProfile(launch(), { now: NOW });
+    const on = { ...first.profile.settings, autoNext: true };
+    const saved = saveSettings(launch(), first.profile, on, LATER);
+    expect(saved.result).toEqual({ ok: true });
+    const writes = fake.writes;
+    for (let i = 0; i < 2; i++) {
+      const again = loadProfile(launch(), { now: LATER });
+      expect(again).toEqual({ status: 'ok', profile: saved.profile, migratedFrom: null });
+      expect(again.profile.settings).toMatchObject({ autoNext: true, defaultsRev: 1 });
+    }
+    expect(fake.writes).toBe(writes);
+  });
+
+  it('a backup from before 1.3.94 is brought up the same way when it is restored', () => {
+    const { fake, launch } = setup({
+      [KEY]: '{broken',
+      [STORAGE_KEYS.profileBackup]: JSON.stringify(before194()),
+    });
+    const load = loadProfile(launch(), { now: NOW });
+    expect(load.status).toBe('restored');
+    expect(load.profile.settings).toMatchObject({ autoNext: false, defaultsRev: 1 });
+    expect(JSON.parse(fake.data.get(KEY) as string)).toEqual(load.profile);
+  });
+
+  it('readOnly (§14.7): the same settings in memory, nothing written', () => {
+    const { fake, launch } = setup({ [KEY]: JSON.stringify(before194()) });
+    const load = loadProfile(launch(), { now: NOW, readOnly: true });
+    expect(load.profile.settings).toMatchObject({ autoNext: false, defaultsRev: 1 });
+    expect(fake.writeLog).toEqual([]);
+  });
+
+  it('a defaults revision that is not a whole number is damage, like any bad field', () => {
+    const bad = { ...defaultProfile(NOW), settings: { ...defaultSettings(), defaultsRev: 'one' } };
+    const { launch } = setup({ [KEY]: JSON.stringify(bad) });
+    const load = loadProfile(launch(), { now: NOW });
+    expect(load.status).toBe('reset');
+    if (load.status === 'reset') expect(load.problem).toContain('profile.settings.defaultsRev');
+  });
+});
+
 describe('persist/profile when storage fails (§14.6 rule 3, §14.9)', () => {
   it('missing localStorage: the defaults in memory, no exception, the banner once', () => {
     const store = createSafeStorage(() => undefined);

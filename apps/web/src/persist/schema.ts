@@ -19,6 +19,7 @@ import { InvariantError } from '../core/assert.ts';
 import { isCard, type Card } from '../core/cards.ts';
 import { isSeed128, type Seed128 } from '../core/rng.ts';
 import { checkInvariants } from '../engine/invariants.ts';
+import { DEFAULTS_REV } from './migrations.ts';
 import type {
   BotLevel,
   CoachLevel,
@@ -62,6 +63,12 @@ export interface Settings {
   haptics: boolean;
   /** Wide-screen rankings column (§13.1); default 'open'. */
   handsPanel: 'open' | 'collapsed';
+  /**
+   * 1.3.94: the revision of the defaults these settings were brought up to (`DEFAULTS_REV`,
+   * `upgradeDefaults` in migrations.ts, Appendix H.2 rule 6). Optional (rule 2): absent in profiles
+   * saved before 1.3.94, which loading and Import bring up to date once. Not a player's setting.
+   */
+  defaultsRev?: number;
 }
 
 export interface DecisionRecord {
@@ -956,6 +963,7 @@ const settings: Check<Settings> = refine(
     sound: bool,
     haptics: bool,
     handsPanel: oneOf<Settings['handsPanel']>({ open: true, collapsed: true }),
+    defaultsRev: optional(count),
   }),
   (s, path) =>
     stakesProblem(s.sb, s.bb, s.startingStack, path) ??
@@ -1082,7 +1090,10 @@ export const sessionStateProblem = (x: unknown): string | null => sessionState(x
 // ---------------------------------------------------------------------------------------------
 // Schema defaults. Each call returns fresh objects (callers may change them).
 
-/** The first-launch settings (§12.1 Welcome, §3.2): you + 5 bots, 2,000 chips, 10/20, Easy, Beginner. */
+/**
+ * The first-launch settings (§12.1 Welcome, §3.2): you + 5 bots, 2,000 chips, 10/20, Easy, Beginner;
+ * the next hand on the player's tap (1.3.94), at the current defaults revision (H.2 rule 6).
+ */
 export function defaultSettings(): Settings {
   return {
     schema: 1,
@@ -1094,7 +1105,7 @@ export function defaultSettings(): Settings {
     bb: 20,
     seatLevels: [null, null, null, null, null, null],
     speed: 'normal',
-    autoNext: true,
+    autoNext: false,
     amounts: 'chips',
     showEquity: true,
     fourColour: true,
@@ -1104,6 +1115,7 @@ export function defaultSettings(): Settings {
     sound: true,
     haptics: true,
     handsPanel: 'open',
+    defaultsRev: DEFAULTS_REV,
   };
 }
 
