@@ -7,7 +7,8 @@
  *   as help)" (Exam); the win badge (not at Exam); the price chip (Beginner and Intermediate);
  *   the toolbar Undo (Beginner and Intermediate); "Which hand wins?" (Advanced and Exam);
  * - after you act: the grade chip from the level's grade on (none at Exam);
- * - at the hand end: the summary when the level shows one (Exam: the "Exam result").
+ * - at the hand end: the summary when the level shows one (Exam: the "Exam result"), offered on
+ *   the banner and opened only by its tap (1.3.92).
  * The wide layout: the coach is the inline panel and the rankings are the column, all on screen.
  */
 import { act, cleanup, render } from '@testing-library/react';
@@ -80,12 +81,15 @@ interface Seen {
   undo: number;
   whichWins: number;
   chips: Set<string>;
+  /** The banner's button at each hand end ('hand', 'exam'), and the sheet its tap opened. */
+  button: Set<string>;
   summary: Set<string>;
 }
 
 /**
  * Plays `hands` hands at `level` on a wide screen (grades from `grade`), recording what shows at
- * each hero turn, right after each act (the grade chip) and at each hand end (the summary).
+ * each hero turn, right after each act (the grade chip) and at each hand end (the banner's
+ * summary button, never an open sheet; then the sheet its tap opens).
  */
 async function playAt(level: CoachLevel, grade: Grade, hands = 3): Promise<Seen> {
   h = startTableHarness({
@@ -107,8 +111,10 @@ async function playAt(level: CoachLevel, grade: Grade, hands = 3): Promise<Seen>
     undo: 0,
     whichWins: 0,
     chips: new Set(),
+    button: new Set(),
     summary: new Set(),
   };
+  let ended: number | null = null;
   const start = (h.state().game.hand as HandState).handSeq;
   for (let i = 0; i < 5000; i++) {
     const s = appStore.getState();
@@ -138,7 +144,19 @@ async function playAt(level: CoachLevel, grade: Grade, hands = 3): Promise<Seen>
       act(() => s.dispatch({ type: 'keepMove' }));
     } else if (s.ui.overlays.includes('outOfChips')) {
       act(() => s.dispatch({ type: 'reload' }));
-    } else if (s.game.mode === 'handEnd' && s.ui.overlays.includes('summary')) {
+    } else if (s.game.mode === 'handEnd' && s.game.hand !== null && ended !== s.game.hand.handSeq) {
+      // The hand end: never a sheet by itself; the banner's button opens it (1.3.92).
+      ended = s.game.hand.handSeq;
+      await settle();
+      expect(appStore.getState().ui.overlays).not.toContain('summary');
+      expect($('[data-summary]')).toBeNull();
+      const button = $('[data-hand-summary]');
+      if (button === null) {
+        act(() => s.dispatch({ type: 'nextHand' })); // the banner's tap
+        continue;
+      }
+      seen.button.add(button.getAttribute('data-hand-summary') ?? '');
+      act(() => (button as HTMLElement).click());
       await settle();
       const sheet = $('[data-summary]');
       if (sheet !== null) seen.summary.add(sheet.getAttribute('data-summary') ?? '');
@@ -162,6 +180,7 @@ describe('each coach level shows exactly its §10.2 elements', () => {
     expect(seen.undo).toBeGreaterThan(0);
     expect(seen.whichWins).toBe(0);
     expect([...seen.chips]).toEqual(['good']);
+    expect([...seen.button]).toEqual(['hand']);
     expect([...seen.summary]).toEqual(['hand']);
   }, 60_000);
 
@@ -174,11 +193,13 @@ describe('each coach level shows exactly its §10.2 elements', () => {
     expect(good.undo).toBeGreaterThan(0);
     expect(good.whichWins).toBe(0);
     expect(good.chips.size).toBe(0);
+    expect(good.button.size).toBe(0);
     expect(good.summary.size).toBe(0);
     cleanup();
     h?.dispose();
     const off = await playAt('intermediate', 'inaccuracy');
     expect([...off.chips]).toEqual(['inaccuracy']);
+    expect([...off.button]).toEqual(['hand']);
     expect([...off.summary]).toEqual(['hand']);
   }, 60_000);
 
@@ -191,11 +212,13 @@ describe('each coach level shows exactly its §10.2 elements', () => {
     expect(seen.undo).toBe(0);
     expect(seen.whichWins).toBeGreaterThan(0);
     expect(seen.chips.size).toBe(0);
+    expect(seen.button.size).toBe(0);
     expect(seen.summary.size).toBe(0);
     cleanup();
     h?.dispose();
     const mistake = await playAt('advanced', 'mistake');
     expect([...mistake.chips]).toEqual(['mistake']);
+    expect([...mistake.button]).toEqual(['hand']);
     expect([...mistake.summary]).toEqual(['hand']);
     expect(mistake.undo).toBe(0);
   }, 60_000);
@@ -209,6 +232,7 @@ describe('each coach level shows exactly its §10.2 elements', () => {
     expect(seen.undo).toBe(0);
     expect(seen.whichWins).toBeGreaterThan(0);
     expect(seen.chips.size).toBe(0);
+    expect([...seen.button]).toEqual(['exam']);
     expect([...seen.summary]).toEqual(['exam']);
   }, 60_000);
 });

@@ -6,9 +6,10 @@ import { inputCount, nextPoint } from './scripted.ts';
 // PLAN §18 Stage 9, acceptance 2, its last sentence: "A full hand is playable by keyboard only"
 // (the §12.5 shortcuts, §12.12; chunk 9.3), with the script of its first sentence done by keys
 // (chunk 9.6): start a table (Tab to Welcome's Play, Enter), play a hand, open the hint (H), undo
-// (U), open the hands drawer (K). At the desktop size (K hides and shows the hands column) and at
-// the tablet size (portrait: K opens the drawer, a dialog that has the keyboard, and K or Esc
-// closes it), in both browsers. The bots check and call (`?script=passive`, a test-build hook), so
+// (U), open the hands drawer (K), and after the hand S (the hand summary, when the banner offers
+// one; 1.3.92). At the desktop size (K hides and shows the hands column) and at the tablet size
+// (portrait: K opens the drawer, a dialog that has the keyboard, and K or Esc closes it), in both
+// browsers. The bots check and call (`?script=passive`, a test-build hook), so
 // the hand always reaches its end; the coach is at Intermediate, so H has a hint to show. The
 // settings Play uses are set through `window.__pc` (as Setup would leave them); from then on the
 // page gets keys only: a pointer watch proves no tap or click reached it.
@@ -113,7 +114,8 @@ test('a full hand by keyboard only, from Play, with every §12.5 shortcut', asyn
   await page.keyboard.press('?');
   const list = page.getByRole('dialog', { name: 'Keyboard shortcuts' });
   await expect(list).toBeVisible();
-  await expect(list.locator('kbd')).toHaveCount(11);
+  await expect(list.locator('kbd')).toHaveCount(12);
+  await expect(list).toContainText('Hand summary or exam result');
   await page.keyboard.press('Escape');
   await expect(list).toHaveCount(0);
 
@@ -192,11 +194,21 @@ test('a full hand by keyboard only, from Play, with every §12.5 shortcut', asyn
   expect(end.game.hand?.handSeq).toBe(handSeq);
   expect(foldTried, 'F was tried with checking free').toBe(true);
 
-  // The next hand by keyboard as well: Esc closes the summary when it is open; the next hand comes
-  // by itself (auto-next).
-  if (end.ui.overlays.includes('summary')) {
+  // The hand summary never opens by itself (1.3.92). S opens it when the banner offers one
+  // (Intermediate: after an Inaccuracy or worse; pressed at once, before the 1.5 s wait ends), the
+  // next hand waits while it is open, and Esc closes it; then the next hand comes by itself.
+  expect(end.ui.overlays).not.toContain('summary');
+  await page.keyboard.press('s');
+  const pressed = await pcState(page);
+  if (pressed.ui.overlays.includes('summary')) {
+    expect(pressed.game.summary).not.toBeNull();
     await expect(page.locator('[data-summary-next]')).toBeVisible();
+    expect((await pcState(page)).game.hand?.handSeq).toBe(handSeq);
     await page.keyboard.press('Escape');
+    await expect(page.locator('[data-summary]')).toHaveCount(0);
+  } else {
+    // No summary to open (or the next hand had already come): S did nothing.
+    expect(pressed.game.summary === null || pressed.game.hand?.handSeq !== handSeq).toBe(true);
   }
   await expect
     .poll(() => pcState(page).then((s) => s.game.hand?.handSeq), { timeout: 20_000 })

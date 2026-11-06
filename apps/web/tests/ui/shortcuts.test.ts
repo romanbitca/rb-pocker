@@ -57,6 +57,8 @@ describe('shortcutOf (§12.5)', () => {
       ['u', 'undo'],
       ['h', 'hint'],
       ['K', 'hands'],
+      ['s', 'summary'], // 1.3.92: the hand-end banner's "Hand summary" / "Exam result"
+      ['S', 'summary'],
       ['?', 'help'],
     ];
     for (const [k, s] of map) expect(shortcutOf(key(k)), k).toBe(s);
@@ -82,6 +84,7 @@ describe('shortcutOf (§12.5)', () => {
     expect(shortcutOf(key('а', { code: 'KeyF' }))).toBe('fold'); // Cyrillic layout
     expect(shortcutOf(key('с', { code: 'KeyC' }))).toBe('call');
     expect(shortcutOf(key('к', { code: 'KeyR' }))).toBe('raise');
+    expect(shortcutOf(key('ы', { code: 'KeyS' }))).toBe('summary');
     expect(shortcutOf(key('&', { code: 'Digit1' }))).toBe('preset1'); // AZERTY
     expect(shortcutOf(key('3', { code: 'Numpad3' }))).toBe('preset3');
     // ASCII punctuation never moves onto a letter's shortcut (AZERTY's ";" sits on KeyM, etc.).
@@ -237,8 +240,8 @@ describe('rowMove: Row A and the tray, only what the view offers (§12.7, pitfal
     expect(rowMove('confirm', v, true, 100, false)).toBeNull();
   });
 
-  it('U, H, K and ? are not Row A keys', () => {
-    for (const k of ['undo', 'hint', 'hands', 'help'] as const) {
+  it('U, H, K, S and ? are not Row A keys', () => {
+    for (const k of ['undo', 'hint', 'hands', 'summary', 'help'] as const) {
       expect(rowMove(k, viewOf('facing'), true, 240, false)).toBeNull();
     }
   });

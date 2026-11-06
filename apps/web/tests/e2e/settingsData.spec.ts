@@ -1,6 +1,15 @@
 import type { Page } from '@playwright/test';
 import { expect, test } from './fixtures.ts';
-import { newTable, openApp, pcState, playHands, prng, seedFor, sizeOf } from './game.ts';
+import {
+  newTable,
+  openApp,
+  openSummary,
+  pcState,
+  playHands,
+  prng,
+  seedFor,
+  sizeOf,
+} from './game.ts';
 
 // Chunk 8.4 in real browsers (PLAN §14.8, §10.4, Stage 8): Settings → Data with its real buttons
 // (Export as a download, Reset stats with its "Delete my stats" dialog, Import through the file
@@ -161,15 +170,16 @@ test.describe('Settings → Data and the level suggestion card', () => {
       .poll(async () => (await pcState(page)).data.suggestion)
       .toEqual({ rule: 'botsUp', from: 'easy', to: 'medium' });
 
-    // On the hand summary (Beginner shows one after every hand with a decision).
+    // On the hand summary (Beginner has one after every hand with a decision; the banner's "Hand
+    // summary" opens it, 1.3.92).
     let shown = false;
     await playHands(page, {
       hands: 4,
       random: prng(seed),
       onHandEnd: async () => {
         if (shown) return;
-        const summary = page.locator('[data-summary]');
-        if ((await summary.count()) === 0) return;
+        if ((await page.locator('[data-hand-summary]').count()) === 0) return;
+        await openSummary(page);
         const card = page.getByRole('region', { name: 'You beat Easy bots. Try Medium?' });
         await expect(card).toBeVisible();
         await expect(card.getByRole('button', { name: 'Not now' })).toBeVisible();

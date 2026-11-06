@@ -1,7 +1,6 @@
 import type { Locator, Page } from '@playwright/test';
 import { expect, test } from './fixtures.ts';
 import {
-  closeSummary,
   collectErrors,
   newTable,
   nextFlowPoint,
@@ -20,7 +19,6 @@ import {
   gameMode,
   pauseClock,
   playTo,
-  REVEAL_STEP_MS,
   runUntil,
   scriptedTable,
   tapAct,
@@ -477,22 +475,9 @@ test.describe('toasts on the Table; a grey Undo says why (items 3 and 4)', () =>
     await expect
       .poll(() => pcState(page).then((s) => s.ui.toasts.map((t) => t.kind)))
       .toEqual(['collection']);
-    // Beginner's hand summary opens over the Table (and over the toasts); its sheet is a lazy chunk
-    // whose Suspense reveal is a timer on the paused clock (see `feedbackCard`): let it show, then
-    // close it.
-    if ((await pcState(page)).ui.overlays.includes('summary')) {
-      const next = page.locator('[data-summary-next]');
-      await expect
-        .poll(
-          async () => {
-            if ((await next.count()) === 0) await page.clock.runFor(REVEAL_STEP_MS);
-            return next.count();
-          },
-          { timeout: 15_000, intervals: [20, 50, 100] },
-        )
-        .toBe(1);
-      await closeSummary(page);
-    }
+    // Beginner's hand summary no longer opens over the Table and its toasts (1.3.92: the
+    // banner's "Hand summary" opens it).
+    expect((await pcState(page)).ui.overlays).not.toContain('summary');
     const moment = button(page, 'New in your collection: Flush!');
     await expect(moment).toBeVisible();
     await overTheTitle(page, 'New in your collection');

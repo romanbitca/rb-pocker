@@ -80,7 +80,7 @@ export interface HarnessOptions {
   hints?: boolean;
   /** Chunk 6.2: the grade port (default none: decisions are recorded ungraded at once). */
   grader?: Grader;
-  /** Chunk 6.4: open the end-of-hand summary when the coach level shows one. */
+  /** Chunk 6.4: offer the hand summary when the level shows one (1.3.92: never opened). */
   summaries?: boolean;
   /** Chunk 9.3: the first-table tips (§12.11): `data.tips`, seen when the `tip` overlay closes. */
   tips?: boolean;

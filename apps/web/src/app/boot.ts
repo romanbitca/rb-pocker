@@ -106,7 +106,8 @@ export function startApp(options: StartOptions): TableController {
     equity: startEquityWorker(realTimers),
     // The coach's hint at every hero decision, from brain.worker (§8.2, chunk 5.7).
     hints: true,
-    // The end-of-hand summary when the coach level shows one (§10.2, §12.9, chunk 6.4).
+    // The end-of-hand summary when the coach level shows one (§10.2, §12.9, chunk 6.4): offered on
+    // the hand-end banner, opened only by the player (1.3.92).
     summaries: true,
     // The first-table tips (§12.11, chunk 9.3). The E2E specs turn them off unless a spec is
     // about them (`tests/e2e/fixtures.ts`): a tip waits for a tap, and their flows do not tap it.

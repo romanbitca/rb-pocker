@@ -294,7 +294,18 @@ export interface GameSlice {
    * (`selectCoachLevel`).
    */
   coachLevel: CoachLevel | null;
+  /**
+   * The end-of-hand summary the hand-end banner offers (§10.2, §12.9; 1.3.92): 'hand' ("Hand
+   * summary") or 'exam' (Exam's "Exam result"), once the hand has ended and the level of its
+   * latest decision shows one (a late grade can still bring it); null otherwise, and always
+   * without `ControllerOptions.summaries`. The sheet never opens by itself: the player's tap (or
+   * S) opens the `summary` overlay.
+   */
+  summary: SummaryOffer;
 }
+
+/** What the hand-end banner offers to open (`GameSlice.summary`, §12.9). */
+export type SummaryOffer = 'hand' | 'exam' | null;
 
 export interface Diagnostics {
   /** Illegal inputs the engine refused (a UI or bot bug). */
@@ -798,8 +809,12 @@ export function initialGame(): GameSlice {
     feedback: null,
     decisions: [],
     coachLevel: null,
+    summary: null,
   };
 }
+
+/** The end-of-hand summary the banner offers (§12.9): 'hand', 'exam' or null. */
+export const selectSummaryOffer = (s: AppState): SummaryOffer => s.game.summary;
 
 /** No player seen yet (`GameSlice.seatStats`). */
 export const NO_SEAT_STATS: Readonly<Record<string, SeatStats>> = Object.freeze({});

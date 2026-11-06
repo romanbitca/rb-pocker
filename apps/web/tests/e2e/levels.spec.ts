@@ -5,6 +5,7 @@ import {
   collectErrors,
   newTable,
   openApp,
+  openSummary,
   pcState,
   playHands,
   sizeOf,
@@ -33,7 +34,8 @@ import {
 // decision the expected page is written out below, level by level, from the §10.2 table (not read
 // from `LEVEL_RULES`, which the unit test holds against the same table). A grade's own value is the
 // coach's (the unit tests fix it); what the matrix checks is what each level makes of it: the
-// chip from which grade, the card (the pause) from which grade, the toolbar Undo, the summary.
+// chip from which grade, the card (the pause) from which grade, the toolbar Undo, the summary
+// (since 1.3.92 offered on the hand-end banner and opened only by its button).
 // One phone and one desktop size per browser (the rankings are a drawer and a column).
 
 const GRADES = ['best', 'good', 'inaccuracy', 'mistake', 'blunder'] as const;
@@ -349,11 +351,24 @@ test.describe('Stage 6 acceptance 5: the level matrix (§10.2)', () => {
         level === 'beginner' ? [true, true, true, true] : [false, false, true, false],
       );
 
-      // The hand ends: the summary (§10.2 "End-of-hand summary"): every level shows one here (the
+      // The hand ends: the summary (§10.2 "End-of-hand summary"): every level has one here (the
       // river fold is a Mistake), Exam's is the "Exam result" with the score and the win chance.
+      // Since 1.3.92 it never opens by itself: the banner offers it ("Hand summary", Exam's "Exam
+      // result"), and only its tap opens the sheet; the next hand waits while it is open.
       await page.clock.resume();
       await expect.poll(() => gameMode(page), { timeout: 30_000 }).toBe('handEnd');
-      const summary = page.locator('[data-summary]');
+      await pauseClock(page);
+      const offer = page.locator('[data-hand-summary]');
+      await expect(offer).toHaveText(level === 'exam' ? 'Exam result' : 'Hand summary');
+      await expect(offer).toHaveAttribute('data-hand-summary', level === 'exam' ? 'exam' : 'hand');
+      await expect(offer).toHaveAttribute('aria-keyshortcuts', 'S');
+      expect((await pcState(page)).ui.overlays).not.toContain('summary');
+      await expect(page.locator('[data-summary]')).toHaveCount(0);
+      // Exam's numbers: not on the page until the player opens the sheet.
+      if (level === 'exam') await expect(page.getByText(/You had \d+%/)).toHaveCount(0);
+      const handSeq = (await pcState(page)).game.hand?.handSeq;
+      const summary = await openSummary(page, { pausedClock: true });
+      expect((await pcState(page)).ui.gates).toContain('sheet');
       await expect(summary).toHaveAttribute('data-summary', level === 'exam' ? 'exam' : 'hand');
       const rows = summary.locator('[data-summary-row]');
       await expect(rows).toHaveCount(4);
@@ -374,7 +389,14 @@ test.describe('Stage 6 acceptance 5: the level matrix (§10.2)', () => {
         await expect(summary).toContainText(/You had \d+%, needed \d+%/); // the river
       }
       await expect(summary.getByRole('button', { name: 'Review hand' })).toBeVisible();
+      // It holds the game: the hand end stays while it is open, whatever the clock does.
+      await page.clock.runFor(10_000);
+      expect((await pcState(page)).game).toMatchObject({ mode: 'handEnd', hand: { handSeq } });
+      // Its "Next hand ›" deals the next hand and closes it.
       await tapNextHand(page);
+      await page.clock.runFor(2_000);
+      await expect.poll(() => pcState(page).then((s) => s.game.hand?.handSeq)).not.toBe(handSeq);
+      expect((await pcState(page)).ui.overlays).not.toContain('summary');
       expect(errors).toEqual([]);
     });
   }

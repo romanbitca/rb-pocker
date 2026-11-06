@@ -1,7 +1,7 @@
 /**
  * Keyboard shortcuts (PLAN §12.5, §12.12; chunk 9.3): F fold · C check/call · B or R bet/raise ·
  * 1–5 presets · ↑/↓ one step · Enter confirm · Esc close · U undo · H hint · K toggle hands panel ·
- * ? list shortcuts.
+ * S hand summary (1.3.92: the hand-end banner's "Hand summary" or "Exam result") · ? list shortcuts.
  *
  * - A key is read as typed (`e.key`), with the physical key (`e.code`) as the fallback when the
  *   keyboard types another alphabet (Cyrillic, Greek…) or needs Shift for digits (AZERTY): F is F
@@ -35,6 +35,7 @@ export type Shortcut =
   | 'undo'
   | 'hint'
   | 'hands'
+  | 'summary'
   | 'help';
 
 /** The letters (lower case). */
@@ -46,6 +47,7 @@ const LETTERS: Readonly<Record<string, Shortcut>> = {
   u: 'undo',
   h: 'hint',
   k: 'hands',
+  s: 'summary',
 };
 
 const PRESETS: readonly Shortcut[] = ['preset1', 'preset2', 'preset3', 'preset4', 'preset5'];
@@ -260,8 +262,8 @@ export function useRowKeys(input: RowKeysInput): void {
 }
 
 /**
- * One table shortcut (H, K, ?): `run` on `key`, outside text fields, dialogs and sheets. Null: off
- * (its listener is gone).
+ * One table shortcut (H, K, S, ?): `run` on `key`, outside text fields, dialogs and sheets. Null:
+ * off (its listener is gone).
  */
 export function useShortcut(key: Shortcut, run: (() => void) | null): void {
   const latest = useRef(run);

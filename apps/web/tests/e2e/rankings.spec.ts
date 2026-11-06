@@ -6,6 +6,7 @@ import {
   newTable,
   nextFlowPoint,
   openApp,
+  openSummary,
   pageMetrics,
   pcState,
   seedFor,
@@ -275,9 +276,10 @@ test.describe('the rankings drawer', () => {
       if (point === 'hero') await page.locator('[data-slot="middle"]').click();
       point = await nextFlowPoint(page, true);
     }
-    // At Beginner the hand summary is open over the table (§12.9): the DOM budget holds with it,
-    // then it is closed and the drawer opened over the result.
-    await expect(page.locator('[data-summary]')).toBeVisible();
+    // At Beginner the hand summary, opened with the banner's "Hand summary" (§12.9, 1.3.92), is
+    // over the table: the DOM budget holds with it, then it is closed and the drawer opened over
+    // the result.
+    await openSummary(page);
     expect((await pageMetrics(page)).nodes, '§15.3: ≤ 600 DOM nodes').toBeLessThanOrEqual(600);
     await closeSummary(page);
     await edgeTab(page).click();

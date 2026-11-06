@@ -18,6 +18,8 @@ export const shortcutWords = {
     ['U', 'Undo'],
     ['H', 'Coach hint'],
     ['K', 'Show or hide the hand rankings'],
+    /** After the hand, when it has one (1.3.92): the banner's "Hand summary" or "Exam result". */
+    ['S', 'Hand summary or exam result'],
     ['?', 'This list'],
   ],
   /** Under the list. */

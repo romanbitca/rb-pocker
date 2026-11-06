@@ -1,8 +1,8 @@
 /**
  * The end-of-hand summary's view (PLAN §10.2, §12.9, §14.4; chunk 6.4): from the hand that just
  * ended and its decision records (A.7), the rows the sheet lists and, at Exam, the score. Pure,
- * and part of the summary's lazy chunk (`ui/summaryEntry.ts`): the main bundle only decides when
- * the sheet opens (the controller, `summaryShows`).
+ * and part of the summary's lazy chunk (`ui/summaryEntry.ts`): the main bundle only decides
+ * whether the hand has one (the controller, `summaryShows`: the banner's button, 1.3.92).
  */
 import { decisionScore, LEVEL_RULES, summaryShows, type AppState } from '../app/store.ts';
 import type { Grade } from '../brain/types.ts';

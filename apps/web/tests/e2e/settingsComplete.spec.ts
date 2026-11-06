@@ -1,7 +1,7 @@
 import type { Page } from '@playwright/test';
 import { tableFrame } from '../../src/ui/layout/seats.ts';
 import { expect, test } from './fixtures.ts';
-import { closeSummary, pageMetrics, pcState, sizeOf, slot } from './game.ts';
+import { pageMetrics, pcState, sizeOf, slot } from './game.ts';
 import { inputCount, nextPoint, pauseClock, playTo, scriptedTable, tapAct } from './scripted.ts';
 
 // Chunk 9.1b (PLAN §12.1, §12.8 notes, §12.9, §12.12): Settings → Display → Text size "Large" on
@@ -218,7 +218,6 @@ test.describe('Settings complete (chunk 9.1b)', () => {
     await expect(toast).toBeVisible({ timeout: 15_000 });
     // Stop the clock: the toast (4 s) and the moment stay while the rows are checked.
     await pauseClock(page);
-    await closeSummary(page);
 
     // The rankings drawer: the Flush row is ringed and pulses once.
     await page.getByRole('button', { name: 'Show all poker hands' }).first().click();

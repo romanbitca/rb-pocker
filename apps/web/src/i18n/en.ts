@@ -563,6 +563,13 @@ export const en = {
     nextHand: 'Next hand',
     /** Under the banner: opens Review on this hand (§12.9, §12.10). */
     review: 'Review this hand',
+    /**
+     * Beside "Review this hand" when the hand has a summary (§10.2, §12.9; 1.3.92): opens the
+     * summary sheet, which never opens by itself; at Exam it is the "Exam result" (the sheet's
+     * heading too, `i18n/summary.ts`). Here, with the banner, not in the summary's lazy chunk.
+     */
+    summary: 'Hand summary',
+    examResult: 'Exam result',
   },
 
   /** The hand-rankings panel and drawer (PLAN §13). The ten rows are in `data/rankings.ts`. */
