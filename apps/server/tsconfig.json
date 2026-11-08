@@ -9,6 +9,7 @@
     "emitDecoratorMetadata": true,
     "isolatedModules": true,
     "verbatimModuleSyntax": true,
+    "rewriteRelativeImportExtensions": true,
 
     "strict": true,
     "noUncheckedIndexedAccess": true,

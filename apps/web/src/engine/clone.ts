@@ -64,7 +64,7 @@ function cloneSeat(s: SeatState): SeatState {
   };
 }
 
-function cloneEvent(ev: LogEvent): LogEvent {
+export function cloneEvent(ev: LogEvent): LogEvent {
   switch (ev.e) {
     case 'act':
       return { ...ev, action: { ...ev.action } };
@@ -80,7 +80,7 @@ function cloneEvent(ev: LogEvent): LogEvent {
   }
 }
 
-function cloneResult(r: HandResult): HandResult {
+export function cloneResult(r: HandResult): HandResult {
   return {
     endedBy: r.endedBy,
     pots: r.pots.map((p) => ({ amount: p.amount, eligible: p.eligible.slice() })),

@@ -5,11 +5,15 @@
   "description": "RB Poker Coach: the small NestJS server that serves the built game.",
   "type": "module",
   "scripts": {
+    "sync:game": "node ../../scripts/sync-game.mjs",
+    "predev": "npm run sync:game",
     "dev": "nest start --watch",
+    "prebuild": "npm run sync:game",
     "build": "nest build",
     "start": "node dist/main.js",
     "test": "vitest run --project unit",
     "test:slow": "vitest run --project slow",
+    "pretypecheck": "npm run sync:game",
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
