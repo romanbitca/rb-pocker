@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import type { Page } from '@playwright/test';
 import { expect, test } from './fixtures.ts';
-import { newTable, openApp, playHands, prng, seedFor, sizeOf } from './game.ts';
+import { foldOrCheck, newTable, openApp, playHands, prng, seedFor, sizeOf } from './game.ts';
 
 // PLAN §14.8, §14.9 and Stage 8 acceptance 4b (chunk 8.3), in real browsers: Export through the
 // share sheet (stubbed: a test cannot tap a native sheet) and through a download, Reset, Import of
@@ -81,15 +81,16 @@ test.describe('Export, Import, Reset', () => {
   }, testInfo) => {
     test.setTimeout(60_000);
     const seed = seedFor(testInfo);
-    const random = prng(seed);
     await openApp(page, seed);
     await newTable(page, { players: 3 });
     // At the second hand's end (before its banner is tapped): a file from another device, whose
-    // profile has counted hands up to 500, replaces the stats.
+    // profile has counted hands up to 500, replaces the stats. The hero folds or checks
+    // (`foldOrCheck`), so the banner's tap always deals the next hand: a hero who had busted in
+    // hand 2 got the out-of-chips dialog there instead, and hand 2 stayed on the table.
     let fileHands = -1;
     await playHands(page, {
       hands: 2,
-      random,
+      random: foldOrCheck,
       onHandEnd: async (record) => {
         if (record.handSeq !== 2) return;
         const text = await page.evaluate(() => {
@@ -108,9 +109,8 @@ test.describe('Export, Import, Reset', () => {
       },
     });
     // The next hand (dealt by the banner's tap) is numbered above the file's, and counts.
-    const next = await page.evaluate(() => window.__pc?.state().game.hand?.handSeq);
-    expect(next).toBe(501);
-    await playHands(page, { hands: 1, random });
+    await expect.poll(() => page.evaluate(() => window.__pc?.state().game.hand?.handSeq)).toBe(501);
+    await playHands(page, { hands: 1, random: foldOrCheck });
     const after = await stored(page);
     expect(after.profile.lastCommittedHandSeq).toBe(501);
     expect(counted(after)).toBe(fileHands + 1);
