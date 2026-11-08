@@ -2768,7 +2768,7 @@ Telegram servers ──webhook──► NestJS ◄──WebSocket── Mini App
 | A second `tsc` project emitting into `dist/` | Works, but needs `.d.ts` files before the server's typecheck, an alias for Vitest, and care around `deleteOutDir` |
 | **`scripts/sync-game.mjs` copies the folders to `apps/server/src/game/`** | **Yes.** The folder is gitignored and lint-ignored, the copy compiles with the server's own `tsc`, and nothing else in the build moves: Docker needs no change |
 
-**How it works (chunk 10.1).** `scripts/sync-game.mjs` copies `apps/web/src/{core,eval,engine,net}` to `apps/server/src/game/` (idempotent; `--check` compares and exits 1 on a difference). It runs from `apps/server/package.json` (`prebuild`, `predev`, `pretypecheck`, via `npm run sync:game`) and from `apps/server/test/global-setup.ts`, because agents run single Vitest files. `apps/server/tsconfig.json` gains `"rewriteRelativeImportExtensions": true`; `apps/server/src/import-meta-env.d.ts` declares `interface ImportMeta { readonly env?: { readonly DEV?: boolean } }` so `step.ts` (`import.meta.env?.DEV`) type-checks. Server code imports `./game/engine/step.js`, like its own files. `.gitignore` and ESLint's `globalIgnores` get `apps/server/src/game/`; Prettier follows `.gitignore`. On a fresh checkout run `npm run sync:game -w @rb/server` before a bare `tsc`. ⚠️ Never edit a file under `apps/server/src/game/`: edit the source in `apps/web/src`.
+**How it works (chunk 10.1).** `scripts/sync-game.mjs` copies `apps/web/src/{core,eval,engine,net}` to `apps/server/src/game/` (idempotent; `--check` compares and exits 1 on a difference). It touches only what differs, removes what has no source, writes each file by renaming a temporary one (a test run and a typecheck can sync at the same moment), and a copied file keeps its source's modification time, so `scripts/build-if-needed.mjs` never takes a sync for a change. It runs from `apps/server/package.json` (`prebuild`, `predev`, `pretypecheck`, via `npm run sync:game`) and from `apps/server/test/global-setup.ts`, because agents run single Vitest files. `apps/server/tsconfig.json` gains `"rewriteRelativeImportExtensions": true`; `apps/server/src/import-meta-env.d.ts` declares `interface ImportMeta { readonly env?: { readonly DEV?: boolean } }` so `step.ts` (`import.meta.env?.DEV`) type-checks. Server code imports `./game/engine/step.js`, like its own files. `.gitignore` and ESLint's `globalIgnores` get `apps/server/src/game/`; Prettier follows `.gitignore`. On a fresh checkout run `npm run sync:game -w @rb/server` before a bare `tsc`. ⚠️ Never edit a file under `apps/server/src/game/`: edit the source in `apps/web/src`.
 
 **Verified 9 Nov 2026 on this repository, TS 6.0.3, Node 24.21.0:** with the copy of `core`, `eval`, `engine` in place, `tsc -p` and the build configuration pass with no change to the engine; the emitted `dist/game/engine/step.js` imports `"../core/assert.js"`, and a full 4-player hand ran under plain Node (`startHand`, `legalActions`, `step` to `complete`, net sum 0); a Vitest file (SWC, the server's config) imported the copy and passed.
 
@@ -3890,9 +3890,9 @@ export interface TableConfig {
   seatLevels: (BotLevel | null)[];         // per-seat override, index = seat; null = table level; [0] always null
 }
 export interface PlayerSlot {
-  playerId: string;                        // "hero" or "bot-7" ('bot-' + nameCursor: unique for the table's life)
-  name: string; kind: 'hero' | 'bot';
-  personality: PersonalityId | null;       // null for hero
+  playerId: string;                        // "hero" or "bot-7" ('bot-' + nameCursor: unique for the table's life); 's' + seat at a table of the server's (§19.3)
+  name: string; kind: 'hero' | 'bot' | 'remote';   // remote: a person at a table of the server's (§19.3), where every slot is remote; never saved
+  personality: PersonalityId | null;       // null for hero and remote
   stack: number;                           // chips between hands
 }
 export interface TableState {
@@ -3986,6 +3986,10 @@ export interface Observation {
 }
 export function observationKey(o: Observation): string;   // canonical JSON, fixed key order
 ```
+
+### A.4b Public view of a hand (`src/engine/types.ts`, built only by `project.ts`)
+
+`PublicSeat` and `PublicHand`: a hand as one player may see it, with no deck, no seed and no other seat's hidden cards. The definitions are in §19.4, with `publicHand(h, viewer)`.
 
 ### A.5 Analysis and brain (`src/analysis/types.ts`, `src/brain/types.ts`)
 

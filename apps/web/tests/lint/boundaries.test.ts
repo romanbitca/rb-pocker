@@ -243,7 +243,21 @@ describe('module boundaries (PLAN §2.1)', () => {
       'apps/web/src/ui/screens/Drill.tsx',
       valueImport('../../app/drill.ts'),
     ],
-  ])('%s fails', (_, file, code) => expectError(file, code, BOUNDARIES));
+    // The wire protocol (§19.4): only types, because the server reads a copy of it.
+    ['net → a value of engine/types', 'apps/web/src/net/protocol.ts', valueImport('../engine/types.ts')],
+    ['net → an inline type import', 'apps/web/src/net/protocol.ts', "import { type PublicHand } from '../engine/types.ts';\nexport type Hand = PublicHand;\n"],
+    ['net → the engine reducer', 'apps/web/src/net/protocol.ts', valueImport('../engine/step.ts')],
+    ['net → types of another engine file', 'apps/web/src/net/protocol.ts', typeImport('../engine/step.ts')],
+    ['net → a core value', 'apps/web/src/net/protocol.ts', valueImport('../core/cards.ts')],
+    ['net → types of app', 'apps/web/src/net/protocol.ts', typeImport('../app/store.ts')],
+    ['net → types of the brain', 'apps/web/src/net/protocol.ts', typeImport('../brain/types.ts')],
+    ['engine → net', 'apps/web/src/engine/project.ts', valueImport('../net/protocol.ts')],
+    ['core → net', 'apps/web/src/core/cards.ts', valueImport('../net/protocol.ts')],
+    ['brain → net', 'apps/web/src/brain/decide.ts', valueImport('../net/protocol.ts')],
+    ['workers → net', 'apps/web/src/workers/brain.worker.ts', valueImport('../net/protocol.ts')],
+    ['persist → net values', 'apps/web/src/persist/session.ts', valueImport('../net/protocol.ts')],
+    ['sound → net', 'apps/web/src/sound/synth.ts', valueImport('../net/protocol.ts')],
+  ])('%s fails', (_, file, code) => expectError(file, code, BOUNDARIES)); // prettier-ignore
 
   it.each([
     [
@@ -357,6 +371,34 @@ describe('module boundaries (PLAN §2.1)', () => {
         'export type Keys = [ReasonCode, DrawKind];\n',
     ],
     [
+      'net: only types, from core and engine/types',
+      'apps/web/src/net/protocol.ts',
+      "import type { Card } from '../core/cards.ts';\nimport type { PublicHand } from '../engine/types.ts';\n" +
+        'export type Parts = [Card, PublicHand];\nexport const MP_PROTOCOL_VERSION = 1;\n',
+    ],
+    [
+      'app: the protocol',
+      'apps/web/src/app/mp/socket.ts',
+      "import { decodeClientMsg, MP_WS_PATH } from '../../net/protocol.ts';\n" +
+        'export const deps = [decodeClientMsg, MP_WS_PATH];\n',
+    ],
+    [
+      'ui: the protocol',
+      'apps/web/src/ui/screens/mp/Create.tsx',
+      "import { STAKES } from '../../../net/protocol.ts';\nexport const games = STAKES;\n",
+    ],
+    [
+      'persist: types of the protocol',
+      'apps/web/src/persist/session.ts',
+      "import type { TableView } from '../net/protocol.ts';\nexport type View = TableView;\n",
+    ],
+    [
+      'engine/project: its own files',
+      'apps/web/src/engine/project.ts',
+      "import { cloneEvent } from './clone.ts';\nimport type { PublicHand } from './types.ts';\n" +
+        'export const deps = [cloneEvent];\nexport type Hand = PublicHand;\n',
+    ],
+    [
       'main.tsx: app, ui, i18n',
       'apps/web/src/main.tsx',
       "import './ui/styles/tokens.css';\nimport { createRoot } from 'react-dom/client';\n" +
@@ -455,4 +497,20 @@ describe('the server must not import the web app (PLAN §2.1)', () => {
         "export const webDist = join(import.meta.dirname, '..', '..', 'web', 'dist');\n" +
         'export const parts = [Module, HealthModule];\n',
     ));
+
+  it('passes: server code imports the generated copy of the game (§19.3)', () =>
+    expectClean(
+      'apps/server/src/mp/room.ts',
+      "import { step } from '../game/engine/step.js';\nexport const run = step;\n",
+    ));
+
+  it('the generated copy is not linted (§19.3)', async () => {
+    const messages = await lint(
+      'apps/server/src/game/engine/step.ts',
+      valueImport('../../../../web/src/core/rng.ts'),
+    );
+    expect(messages).toEqual([
+      expect.objectContaining({ severity: 1, message: expect.stringMatching(/ignored/i) }),
+    ]);
+  });
 });

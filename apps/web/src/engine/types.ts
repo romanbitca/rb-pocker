@@ -64,7 +64,7 @@ export interface TableConfig {
 }
 
 export interface PlayerSlot {
-  playerId: string; // "hero" or "bot-7" (unique for the table's life: 'bot-' + nameCursor, §9.3)
+  playerId: string; // "hero", "bot-7" ('bot-' + nameCursor, unique for the table's life, §9.3), or 's' + seat
   name: string;
   kind: 'hero' | 'bot' | 'remote'; // remote: a person at a table of the server's (§19.3), never saved
   personality: PersonalityId | null; // null for the hero and a remote player
