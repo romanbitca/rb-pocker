@@ -4,7 +4,7 @@
 # `local-ci`. The owner decided on 13 Oct 2026 that CI runs on the dev Mac: the private
 # repository's free GitHub Actions minutes ran out, and the workflows now run only by hand.
 #
-#   scripts/ci-local.sh [<ref>] [--post] [--only check,e2e,docker] [--slow] [--keep]
+#   scripts/ci-local.sh [<ref>] [--post] [--only check,e2e,docker] [--slow] [--keep] [--no-docker]
 #
 #   <ref>    the commit to test: a SHA, a branch, origin/<branch> or pr/<number> (default HEAD;
 #            uncommitted changes are never tested)
@@ -15,6 +15,10 @@
 #            self-play gates, the enforced speed checks and Lighthouse (status `local-slow`)
 #   --keep   keep the worktree after a passing run (a failing run always keeps it, with the
 #            Playwright report)
+#   --no-docker  for when Docker Desktop is off: instead of the `docker` job, start the production
+#            server directly and run the same header, cache and health checks against it. The image
+#            itself is then first built by Coolify at deploy (a failed build keeps the old version).
+#            The posted status says so.
 #
 # The first failing step ends the run. Logs go to $CI_DIR/logs. One run at a time: a second run
 # waits for the first. Environment: GH, the GitHub CLI used to post (default: .loop/gh of the main
@@ -34,6 +38,7 @@ POST=0
 ONLY=check,e2e,docker
 SLOW=0
 KEEP=0
+NO_DOCKER=0
 while [ $# -gt 0 ]; do
   case $1 in
     --post) POST=1 ;;
@@ -44,6 +49,7 @@ while [ $# -gt 0 ]; do
       ;;
     --slow) SLOW=1 ;;
     --keep) KEEP=1 ;;
+    --no-docker) NO_DOCKER=1 ;;
     -h | --help)
       sed -n '2,/^set -euo/p' "$0" | sed '$d' | sed 's/^# \{0,1\}//'
       exit 0
@@ -210,6 +216,36 @@ job_docker() {
   DOCKER_UP=0
 }
 
+# --no-docker: the `docker` job's checks against the real server, started without a container.
+native_check() { # runs in the worktree, from `step`
+  local dir pid code=0
+  # Not under $CI_DIR: Express's sendFile refuses a path with a dot folder such as ~/.cache, so the
+  # SPA fallback would answer 404 there (the container's /app has no dot folder).
+  dir=$(mktemp -d)
+  mkdir -p "$dir/apps/server" "$dir/apps/web"
+  cp -R apps/server/dist apps/server/package.json "$dir/apps/server/"
+  cp -R apps/web/dist "$dir/apps/web/"
+  ln -s "$WT/node_modules" "$dir/node_modules"
+  if [ -d apps/server/node_modules ]; then ln -s "$WT/apps/server/node_modules" "$dir/apps/server/node_modules"; fi
+  (cd "$dir" && exec env SOURCE_COMMIT="$SHA" NODE_ENV=production PORT="$CI_DOCKER_PORT" node apps/server/dist/main.js) &
+  pid=$!
+  for _ in $(seq 1 60); do
+    curl -sf -m 2 "http://localhost:$CI_DOCKER_PORT/api/health" > /dev/null && break
+    sleep 1
+  done
+  node scripts/check-deploy.mjs "http://localhost:$CI_DOCKER_PORT" --commit "$SHA" || code=$?
+  kill "$pid" 2> /dev/null || true
+  wait "$pid" 2> /dev/null || true
+  rm -rf "$dir"
+  return "$code"
+}
+
+job_native() {
+  port_free "$CI_DOCKER_PORT" || return 1
+  step docker "production build (no image: --no-docker)" npm run build || return 1
+  step docker "headers, cache rules, health, no cookies (the server started directly)" native_check
+}
+
 # The self-play runs of .github/workflows/slow.yml (keep the two lists in step). The runs with a
 # decision-time gate go first, one at a time (a p95 is wall time); the rest run side by side.
 SELFPLAY_TIMED=(
@@ -291,7 +327,10 @@ run_all() {
   fi
   case ",$ONLY," in *,check,*) job_check || return 1 ;; esac
   case ",$ONLY," in *,e2e,*) job_e2e || return 1 ;; esac
-  case ",$ONLY," in *,docker,*) job_docker || return 1 ;; esac
+  case ",$ONLY," in *,docker,*)
+    if [ "$NO_DOCKER" = 1 ]; then job_native || return 1; else job_docker || return 1; fi
+    ;;
+  esac
 }
 run_all || true
 
@@ -310,6 +349,7 @@ if [ -z "$FAILED" ]; then
   [ "$UNIT" != 0 ] && DESC="$DESC · unit $UNIT"
   [ -n "$E2E" ] && DESC="$DESC · e2e $E2E"
   [ -n "$FLAKY" ] && DESC="$DESC ($FLAKY flaky)"
+  [ "$NO_DOCKER" = 1 ] && [ "$SLOW" = 0 ] && DESC="$DESC · no image built (Docker off)"
   echo "✓ $CONTEXT $SHORT: $DESC"
   post success "$DESC"
   POSTED=1
