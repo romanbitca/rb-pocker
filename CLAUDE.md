@@ -71,6 +71,7 @@ fixed slice of the Claude plan.
   work up to the **95%** hard ceiling (no new agents above ~88%), with more agents in parallel. After that
   reset the 80% / don't-stop rule above applies again. Same message: **Coolify is connected; deploy the app
   to https://poker.romanbitca.com** (Coolify token and GitHub App in the global notes; Cloudflare DNS).
+- **Telegram + multiplayer, overnight (owner, 2026-11-08 ~22:50Z, "now do a set of improvements, and create a telegram bot web app, i want to post this game there. and be able to play with other telegram users. go ahead with impelmentation, work all night, in the morning i will check. if you have any blocker, try to bypass them, and i will come back to you later"):** Stage 10 in PLAN.md. The weekly cap stays 80%. "Bypass" means: finish everything that does not need the owner, and leave them short steps. It does not mean finding or using credentials the owner did not give: the bot token comes from the owner (@BotFather), and until then the Telegram code runs with a test token in tests and is off in production.
 - **Testing on this Mac, not GitHub Actions (owner, 2026-10-13):** the owner won't pay for GitHub and the
   repo stays private, so the 2,000 free Actions minutes a month are not enough (they ran out on 9 Oct).
   CI runs locally: before a merge, run the full local suite (the same steps as the `check`, `e2e` and
