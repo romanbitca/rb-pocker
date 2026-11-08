@@ -6,7 +6,7 @@ This is the working checklist for building [PLAN.md](PLAN.md). PLAN.md is the so
 
 Legend: `[ ]` todo · `[~]` in progress (branch exists) · `[x]` merged to `main` · `[H]` waiting on the human
 
-**Current position:** ▶ **Overnight run (owner, 8 Nov ~22:50Z): "a set of improvements" + Telegram Mini App + multiplayer with other Telegram users; work all night, bypass blockers.** Weekly cap 80% (resets 13 Nov 18:00Z). **Stages 0–9 ✅ (all automated criteria).** Live: https://poker.romanbitca.com. In progress: Stage 10 design (agent, branch `docs/stage-10-telegram-multiplayer`), a product review for the improvements (agent). Docker Desktop is off since 6 Nov, so CI runs with `--no-docker` (#94); not started, to leave the owner's other projects' containers alone. **Waiting on the owner:** the 9.8 phone checks and the "all OK" for [#86](https://github.com/romanbitca/rb-pocker/pull/86) (v1.0.0); the Telegram bot token from @BotFather; gates 3.9, 4.8, 5.12, 8.5.
+**Current position:** ▶ **Overnight run (owner, 8 Nov ~22:50Z): "a set of improvements" + Telegram Mini App + multiplayer with other Telegram users; work all night, bypass blockers.** Weekly cap 80% (resets 13 Nov 18:00Z). **Stages 0–9 ✅ (all automated criteria).** Live: https://poker.romanbitca.com. In progress: three improvement chunks (from a product review), and Stage 10 (design merged, PLAN §19; chunks below). Docker Desktop is off since 6 Nov, so CI runs with `--no-docker` (#94); not started, to leave the owner's other projects' containers alone. **Waiting on the owner:** the 9.8 phone checks and the "all OK" for [#86](https://github.com/romanbitca/rb-pocker/pull/86) (v1.0.0); the Telegram bot token from @BotFather; gates 3.9, 4.8, 5.12, 8.5.
 
 ---
 
@@ -146,6 +146,25 @@ Legend: `[ ]` todo · `[~]` in progress (branch exists) · `[x]` merged to `main
 - [~] `feature/no-cut-words-one-gold-rule` - no text cut with "…", one gold rule everywhere (Lesson 1, Hands drawer, Drill), one word per grade, "Both players", "Why?". Agent. PLAN 1.3.100.
 - [~] `feature/review-decisions-stats-leaks-drill-fit` - Review shows your decisions (grade, numbers, coach; Next decision; opens at the first mistake), leaks first in Stats and "Work on: …" on Home, the Drill fits one screen. Agent. PLAN 1.3.101.
 - [H] 9.8 [H] **Human gate:** Coolify ✅ (5 Nov, https://poker.romanbitca.com), device matrix, VoiceOver/TalkBack → release v1.0.
+
+---
+
+## Stage 10 - Telegram Mini App and playing with friends (PLAN §18 Stage 10, §19; owner request 8 Nov 2026)
+
+- [~] 10.1 `feature/mp-engine-copy-and-protocol` - the engine copied for the server, the wire protocol, `PublicHand`. Agent.
+- [~] 10.2 `feature/telegram-initdata` - `initData` validation. Agent.
+- [ ] 10.3 `feature/mp-table-machine` - rooms, seats, hands, timers (needs 10.1).
+- [ ] 10.4 `feature/mp-websocket` - the gateway, limits, reconnect, leak tests (needs 10.2, 10.3).
+- [~] 10.5 `feature/telegram-bot` - webhook, `/start` `/new` `/help` `/post`, inline (needs 10.2). Agent.
+- [~] 10.6 `chore/headers-for-telegram` - `frame-ancestors` for Telegram Web, check-deploy. Agent.
+- [~] 10.7 `feature/telegram-shell` - launch params, bridge, theme, BackButton, safe area, haptics. Agent.
+- [ ] 10.8 `feature/mp-client-driver` - the Table driven by the server (needs 10.1).
+- [ ] 10.9 `feature/mp-screens` - Create, Share, Join, Waiting, Playing, Busted, Ended (needs 10.7, 10.8).
+- [ ] 10.10 `test/mp-end-to-end` - 2–3 browser contexts with signed `initData`, leak, connection (needs 10.4, 10.6, 10.7, 10.9).
+- [~] 10.11 `docs/telegram-privacy-and-owner-steps` - privacy text, owner's steps, cover image. Agent.
+- [ ] 10.12 `feature/mp-quick-match` - public tables for strangers (after the core).
+- [ ] 10.13 `feature/mp-bots-fill-seats` - the app's bots fill empty seats (after the core).
+- [ ] 10.14 [H] **Human gate:** create the bot at @BotFather (PLAN §19.13), give the token; play a hand with a friend on a real phone.
 
 ---
 
