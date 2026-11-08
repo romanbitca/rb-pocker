@@ -123,6 +123,7 @@ import { handEndLines } from '../handEnd.ts';
 import { useElementSize, useMediaQuery } from '../hooks.ts';
 import {
   BET,
+  boardTipSide,
   tableFrame,
   tableGeometry,
   type Rect,
@@ -264,9 +265,17 @@ const SeatsLayer = memo(function SeatsLayer({ geometry }: { geometry: TableGeome
   );
 });
 
+/** The board; the gold edge's first-table tip points at it (§12.11), under it when there is room. */
 const BoardLayer = memo(function BoardLayer({ geometry }: { geometry: TableGeometry }) {
   const cards = useAppStore(selectBoardView);
-  return <Board cards={cards} card={geometry.boardCard} place={geometry.board} />;
+  return (
+    <Board
+      cards={cards}
+      card={geometry.boardCard}
+      place={geometry.board}
+      tipSide={boardTipSide(geometry)}
+    />
+  );
 });
 
 const PotLayer = memo(function PotLayer({ place }: { place: Rect }) {
@@ -1217,7 +1226,7 @@ const selectDueTip = (s: AppState): TipId | null =>
 
 /**
  * The tip's bubble, words and placement: a lazy chunk (§15.3), asked for while a tip is due (its
- * moment lasts `TIP_DELAY_MS`, time enough to load it), so a player who has seen the four tips
+ * moment lasts `TIP_DELAY_MS`, time enough to load it), so a player who has seen the five tips
  * never downloads it. Precached for offline play like every chunk.
  */
 type TipModule = typeof import('../components/TipBubble.tsx');

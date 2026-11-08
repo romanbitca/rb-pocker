@@ -4,7 +4,7 @@
  * showdown (pitfall 13, Stage 3 acceptance 7): checked at every state of many hands.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { parseCard, parseCards } from '../../src/core/cards.ts';
+import { parseCard, parseCards, type Card } from '../../src/core/cards.ts';
 import { describe as describeHand } from '../../src/eval/describe.ts';
 import {
   boardViewOf,
@@ -17,6 +17,7 @@ import {
   selectActionBarInput,
   selectBoardView,
   selectHeroHandView,
+  selectHeroView,
   selectPotView,
   selectSeatViews,
   selectSessionLine,
@@ -27,10 +28,10 @@ import {
   type SeatViewData,
 } from '../../src/app/store.ts';
 import { legalActions } from '../../src/engine/legal.ts';
-import type { HandState } from '../../src/engine/types.ts';
+import type { HandState, TableState } from '../../src/engine/types.ts';
 import type { CardView, HeroHandView, PotView, SeatView } from '../../src/ui/views.ts';
 import { deal, rigDeck, tableWith } from '../engine/helpers.ts';
-import { ADVANCE, call, check, play, raise } from '../engine/play.ts';
+import { ADVANCE, call, check, legalOf, play, raise } from '../engine/play.ts';
 import { drive, heroPolicy, makeHarness, SEED } from './harness.ts';
 
 beforeEach(() => {
@@ -45,6 +46,39 @@ const fitsSeat = (v: SeatViewData): SeatView => v;
 const fitsCard = (v: CardViewData): CardView => v;
 const fitsPot = (v: PotViewData): PotView => v;
 const fitsHero = (v: HeroHandViewData): HeroHandView => v;
+
+const sorted = (cards: readonly (Card | null)[]): (Card | null)[] =>
+  [...cards].sort((a, b) => (a ?? -1) - (b ?? -1));
+
+/** The cards with the gold edge (a §6.1 highlight), sorted. */
+const goldOf = (cards: readonly CardViewData[]): (Card | null)[] =>
+  sorted(cards.filter((c) => c.highlight !== undefined).map((c) => c.card));
+
+/**
+ * The owner's hand of 6 Nov 2026, heads-up (the hero on the button): the board runs 6♥ 8♥ 4♠ J♠,
+ * then A♦.
+ */
+function ownersHand(hero: string, bot: string): { h: HandState; table: TableState } {
+  const table = tableWith([10000, 10000], { button: 0 });
+  return {
+    h: rigDeck(deal(table), { holes: { 0: hero, 1: bot }, board: '6h 8h 4s Js Ad' }),
+    table,
+  };
+}
+
+/** Checks or calls for whoever acts, and deals on, until `done` holds or the hand is over. */
+function playOn(h: HandState, done: (s: HandState) => boolean): HandState {
+  let s = h;
+  for (let i = 0; i < 60 && !done(s) && s.phase !== 'complete'; i++) {
+    if (s.phase === 'betting') {
+      const seat = s.toAct as number;
+      s = play(s, legalOf(s).canCheck ? check(seat) : call(seat));
+    } else {
+      s = play(s, ADVANCE);
+    }
+  }
+  return s;
+}
 
 describe('hidden cards never become face-up views (pitfall 13, acceptance 7)', () => {
   it('at every state of 60 hands over 2–9 seats, only revealed seats show cards', async () => {
@@ -79,6 +113,51 @@ describe('hidden cards never become face-up views (pitfall 13, acceptance 7)', (
     }
     expect(states).toBeGreaterThan(300);
     expect(revealedSeen).toBeGreaterThan(0);
+  }, 60_000);
+});
+
+describe('the gold edge (§6.1, 1.3.97): the best five, and no other card marked', () => {
+  it('at every state of 30 hands: the hero’s five while it plays, the winners’ after a showdown', async () => {
+    let running = 0;
+    let showdowns = 0;
+    for (const players of [3, 6]) {
+      const h = makeHarness({ seed: SEED, settings: { players } });
+      h.store.subscribe((s) => {
+        const hand = s.game.hand;
+        const me = hand?.seats[0];
+        if (hand === null || me === undefined || !me.dealtIn || me.hole === null) return;
+        const shown = selectSeatViews(s).flatMap((v) =>
+          v.cards.kind === 'revealed' ? v.cards.cards : [],
+        );
+        const all = [...selectBoardView(s), ...(selectHeroView(s)?.hole ?? []), ...shown];
+        const marked = all.filter((c) => c.highlight !== undefined);
+        const result = hand.result;
+        if (result === null || result.endedBy === 'fold') {
+          // While the hand runs (and after a fold win): the hero's five from the flop on, if the
+          // hero is still in; else nothing.
+          const live = !me.folded && hand.board.length >= 3;
+          expect(goldOf(all)).toEqual(live ? sorted(describeHand(me.hole, hand.board).best5) : []);
+          expect(marked.some((c) => c.winning === true)).toBe(false);
+          if (live && result === null) running++;
+        } else {
+          // After a showdown: each winner's five (with one winner exactly its five), "winning".
+          const winners = [...new Set(result.potWinners.flat())];
+          const fives = winners.flatMap(
+            (w) => describeHand(hand.seats[w]?.hole as [Card, Card], hand.board).best5,
+          );
+          const gold = goldOf(all);
+          expect(gold.every((c) => fives.includes(c as Card))).toBe(true);
+          if (winners.length === 1) expect(gold).toEqual(sorted(fives));
+          expect(marked.every((c) => c.winning === true)).toBe(true);
+          showdowns++;
+        }
+      });
+      h.dispatch({ type: 'play' });
+      await drive(h, { hands: 15, hero: heroPolicy(SEED) });
+      h.controller.dispose();
+    }
+    expect(running).toBeGreaterThan(20);
+    expect(showdowns).toBeGreaterThan(0);
   }, 60_000);
 });
 
@@ -155,6 +234,108 @@ describe('pot, board, hero (§6.1, §12.3, §13.3)', () => {
     // Trips with two kickers: all three flop cards are in the best five.
     expect(board.map((c) => c.highlight)).toEqual(['core', 'kicker', 'kicker']);
     expect(board.map((c) => c.card)).toEqual(parseCards('Ks 7c 2h'));
+  });
+
+  it('the owner’s hand at the turn: the five with the gold edge, the sixth card plain', () => {
+    // 6 Nov 2026, the owner's screenshot: 7♣ K♦ on 6♥ 8♥ 4♠ J♠ is King-high, and the 4♠ was
+    // faded to 60% ("like they are not active"). Now the five carry the gold edge (K♦ raised,
+    // the category's card) and the 4♠ carries nothing at all.
+    const { h } = ownersHand('7c Kd', '6d Kh');
+    const turn = playOn(h, (s) => s.street === 'turn' && s.phase === 'betting');
+    expect(turn.board).toEqual(parseCards('6h 8h 4s Js'));
+    const board = boardViewOf(turn);
+    expect(board.map((c) => c.highlight)).toEqual(['kicker', 'kicker', undefined, 'kicker']);
+    expect(board[2]).toEqual({ card: parseCard('4s') });
+    const hero = heroViewOf(turn, null);
+    expect(hero?.hole.map((c) => c.highlight)).toEqual(['kicker', 'core']);
+    const gold = goldOf([...board, ...(hero?.hole ?? [])]);
+    expect(gold).toEqual(
+      sorted(describeHand(parseCards('7c Kd') as [Card, Card], turn.board).best5),
+    );
+    expect([...board, ...(hero?.hole ?? [])].some((c) => c.winning !== undefined)).toBe(false);
+  });
+
+  it('at the hand end a bot won: its five have the gold edge, the hero’s cards are plain', () => {
+    // The owner's second screenshot: Emeka wins with 6♥ 6♦ + A♦ K♥ + J♠, and the 8♥ and 4♠ were
+    // faded. Now the winner's five (board and hole cards) carry the gold edge, the pair raised.
+    const { h, table } = ownersHand('7c Kd', '6d Kh');
+    const end = playOn(h, () => false);
+    expect(end.result).toMatchObject({ endedBy: 'showdown', potWinners: [[1]] });
+    const board = boardViewOf(end);
+    expect(board.map((c) => c.highlight)).toEqual([
+      'core',
+      undefined,
+      undefined,
+      'kicker',
+      'kicker',
+    ]);
+    expect(board[1]).toEqual({ card: parseCard('8h') });
+    expect(board[2]).toEqual({ card: parseCard('4s') });
+    const bot = seatView(end, table, 1);
+    expect(bot.cards).toEqual({
+      kind: 'revealed',
+      cards: [
+        { card: parseCard('6d'), highlight: 'core', winning: true },
+        { card: parseCard('Kh'), highlight: 'kicker', winning: true },
+      ],
+    });
+    // The hero lost the showdown: plain cards, so exactly the winner's five are gold.
+    const hero = heroViewOf(end, null);
+    expect(hero?.hole).toEqual([{ card: parseCard('7c') }, { card: parseCard('Kd') }]);
+    const shown = bot.cards.kind === 'revealed' ? bot.cards.cards : [];
+    const all = [...board, ...(hero?.hole ?? []), ...shown];
+    expect(goldOf(all)).toEqual(sorted(parseCards('6h 6d Ad Kh Js')));
+    expect(all.filter((c) => c.highlight !== undefined).every((c) => c.winning === true)).toBe(
+      true,
+    );
+  });
+
+  it('at the hand end the hero won: the hero’s five, the loser’s cards plain', () => {
+    const { h, table } = ownersHand('6d Kh', '7c Kd');
+    const end = playOn(h, () => false);
+    expect(end.result).toMatchObject({ endedBy: 'showdown', potWinners: [[0]] });
+    const board = boardViewOf(end);
+    expect(board.map((c) => c.highlight)).toEqual([
+      'core',
+      undefined,
+      undefined,
+      'kicker',
+      'kicker',
+    ]);
+    expect(heroViewOf(end, null)?.hole).toEqual([
+      { card: parseCard('6d'), highlight: 'core', winning: true },
+      { card: parseCard('Kh'), highlight: 'kicker', winning: true },
+    ]);
+    expect(seatView(end, table, 1).cards).toEqual({
+      kind: 'revealed',
+      cards: [{ card: parseCard('7c') }, { card: parseCard('Kd') }],
+    });
+  });
+
+  it('a split pot: each winner’s cards in its five; the board shows the first winner’s', () => {
+    const table = tableWith([10000, 10000], { button: 0 });
+    const h = rigDeck(deal(table), { holes: { 0: 'Ah 2c', 1: 'Ad 3c' }, board: 'Ks Qs Jd 8c 7h' });
+    const end = playOn(h, () => false);
+    // Ace-King-Queen-Jack-Eight each: the odd-chip order puts the seat left of the button first.
+    expect(end.result?.potWinners).toEqual([[1, 0]]);
+    expect(boardViewOf(end).map((c) => c.highlight)).toEqual([
+      'kicker',
+      'kicker',
+      'kicker',
+      'kicker',
+      undefined,
+    ]);
+    expect(heroViewOf(end, null)?.hole).toEqual([
+      { card: parseCard('Ah'), highlight: 'core', winning: true },
+      { card: parseCard('2c') },
+    ]);
+    expect(seatView(end, table, 1).cards).toEqual({
+      kind: 'revealed',
+      cards: [
+        { card: parseCard('Ad'), highlight: 'core', winning: true },
+        { card: parseCard('3c') },
+      ],
+    });
   });
 
   it('no highlights once the hero folded; the rankings view says folded', () => {

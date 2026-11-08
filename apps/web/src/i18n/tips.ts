@@ -8,5 +8,6 @@ export const tipWords: Readonly<Record<TipId, string>> = {
   heroStrip: 'This is your hand. We show what you have and your chance to win.',
   coachStrip: 'Your coach. It tells you what to do, and why.',
   undo: 'Changed your mind? Undo takes back your last move.',
+  bestFive: 'Gold edge: the five cards that make your hand.',
   handsTab: 'All poker hands, best to worst. Yours is highlighted.',
 };
