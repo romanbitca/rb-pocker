@@ -38,18 +38,24 @@ describe('dueTip (§12.11: once each, one at a time)', () => {
     expect(dueTip(input({ seen, mode: 'botTurn', undo: 'hidden' }))).toBeNull();
   });
 
-  it('after a flop the hero still plays: the Hands tab', () => {
+  it('after a flop the hero still plays: the gold edge on the board, then the Hands tab', () => {
     const seen = { heroStrip: true, coachStrip: true, undo: true };
     const flop = headsUpFlop();
-    expect(dueTip(input({ seen, mode: 'botTurn', hand: flop }))).toBe('handsTab');
-    expect(dueTip(input({ seen, mode: 'botTurn' }))).toBeNull(); // no flop yet
-    const folded = headsUpFlop();
-    foldBy(folded, 0);
-    expect(dueTip(input({ seen, mode: 'botTurn', hand: folded }))).toBeNull();
+    // The first time the hero has a best five (1.3.97): its gold edge is explained first.
+    expect(dueTip(input({ seen, mode: 'botTurn', hand: flop }))).toBe('bestFive');
+    expect(dueTip(input({ seen, mode: 'heroTurn', hand: flop }))).toBe('bestFive');
+    const after = { ...seen, bestFive: true };
+    expect(dueTip(input({ seen: after, mode: 'botTurn', hand: flop }))).toBe('handsTab');
+    for (const s of [seen, after]) {
+      expect(dueTip(input({ seen: s, mode: 'botTurn' }))).toBeNull(); // no flop yet: no best five
+      const folded = headsUpFlop();
+      foldBy(folded, 0);
+      expect(dueTip(input({ seen: s, mode: 'botTurn', hand: folded }))).toBeNull();
+    }
   });
 
-  it('the order when two are due together: hero strip, coach, Undo, Hands tab', () => {
-    expect(TIP_ORDER).toEqual(['heroStrip', 'coachStrip', 'undo', 'handsTab']);
+  it('the order when two are due together: hero strip, coach, Undo, gold edge, Hands tab', () => {
+    expect(TIP_ORDER).toEqual(['heroStrip', 'coachStrip', 'undo', 'bestFive', 'handsTab']);
     expect(dueTip(input({ hand: headsUpFlop(), undo: 'enabled' }))).toBe('heroStrip');
     expect(
       dueTip(
@@ -79,6 +85,11 @@ describe('dueTip (§12.11: once each, one at a time)', () => {
     const over = preflop();
     over.phase = 'complete';
     expect(dueTip(input({ hand: over, mode: 'handEnd' }))).toBeNull();
+    // At the hand end the gold edge marks the winner's five, not "your hand": no tip about it.
+    const ended = headsUpFlop();
+    ended.phase = 'complete';
+    const seen = { heroStrip: true, coachStrip: true, undo: true };
+    expect(dueTip(input({ seen, hand: ended, mode: 'handEnd' }))).toBeNull();
   });
 });
 
@@ -122,6 +133,16 @@ describe('placeTip (beside its anchor, inside the window, never over the action 
     expect(p.top).toBe(54);
     expect(p.left).toBe(390 - 8 - 240);
     expect(p.arrow).toBe(322 - (390 - 8 - 240));
+  });
+
+  it('below the board (the gold edge tip), its arrow at the board’s middle', () => {
+    const board: Box = { left: 72, top: 260, width: 230, height: 52 };
+    const p = place(board, { prefer: 'below' });
+    expect(p.side).toBe('below');
+    expect(p.top).toBe(board.top + board.height + 10);
+    expect(p.left).toBe(67); // centred on the board: 187 − 120
+    expect(p.arrow).toBe(120);
+    expect(clearOf(box(p), bar)).toBe(true);
   });
 
   it('left of the Hands tab, its arrow at the tab’s middle', () => {

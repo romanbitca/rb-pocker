@@ -15,7 +15,8 @@ import { inputCount, tapAct } from './scripted.ts';
 // PLAN §12.11 (chunk 9.3): the first-table tips in a real browser, at one size per layout
 // (compact, portrait, landscape, wide), in both browsers. A first launch: Play reaches a dealt
 // hand with no tip in between; then the hero strip's tip, the coach's (both at the first hero
-// turn), Undo's (after the first action) and the Hands tab's (after the first flop), each once,
+// turn), Undo's (after the first action), the board's gold edge and the Hands tab's (after the
+// first flop; the gold edge since 1.3.97), each once,
 // one at a time, beside what it explains, inside the window, never over the tray and Row A; the
 // Table stays within its 600 DOM nodes; while a tip shows nothing moves; after a reload none comes
 // back. The bots check and call (`?script=passive`), so every hand sees a flop.
@@ -29,6 +30,7 @@ const WORDS: Readonly<Record<string, string>> = {
   heroStrip: 'This is your hand. We show what you have and your chance to win.',
   coachStrip: 'Your coach. It tells you what to do, and why.',
   undo: 'Changed your mind? Undo takes back your last move.',
+  bestFive: 'Gold edge: the five cards that make your hand.',
   handsTab: 'All poker hands, best to worst. Yours is highlighted.',
 };
 
@@ -124,7 +126,7 @@ async function nextTipPoint(page: Page): Promise<Point> {
   return (await handle.jsonValue()) as Point;
 }
 
-test('four tips, once each: never before the deal, beside their places, never over Row A', async ({
+test('five tips, once each: never before the deal, beside their places, never over Row A', async ({
   page,
 }, testInfo) => {
   test.skip(!SIZES.includes(sizeOf(testInfo)), 'one size per layout, in both browsers');
@@ -165,7 +167,7 @@ test('four tips, once each: never before the deal, beside their places, never ov
 
   const shots: TipShot[] = [];
   let waited = false;
-  for (let steps = 0; shots.length < 4 && steps < 300; steps++) {
+  for (let steps = 0; shots.length < 5 && steps < 300; steps++) {
     const point = await nextTipPoint(page);
     if (point === 'tip') {
       const shot = await shoot(page);
@@ -195,7 +197,16 @@ test('four tips, once each: never before the deal, beside their places, never ov
   }
 
   expect(shots.map((s) => s.tip).slice(0, 2)).toEqual(['heroStrip', 'coachStrip']);
-  expect(shots.map((s) => s.tip).sort()).toEqual(['coachStrip', 'handsTab', 'heroStrip', 'undo']);
+  expect(shots.map((s) => s.tip).sort()).toEqual([
+    'bestFive',
+    'coachStrip',
+    'handsTab',
+    'heroStrip',
+    'undo',
+  ]);
+  // The gold edge's tip comes right before the Hands tab's, at the first flop (§12.11).
+  const at = shots.findIndex((s) => s.tip === 'bestFive');
+  expect(shots[at + 1]?.tip).toBe('handsTab');
   for (const shot of shots) {
     const what = `${shot.tip} at ${sizeOf(testInfo)}`;
     expect(shot.text, what).toBe(WORDS[shot.tip ?? '']);
@@ -224,6 +235,7 @@ test('four tips, once each: never before the deal, beside their places, never ov
     heroStrip: true,
     coachStrip: true,
     undo: true,
+    bestFive: true,
     handsTab: true,
   });
 
@@ -234,6 +246,7 @@ test('four tips, once each: never before the deal, beside their places, never ov
     heroStrip: true,
     coachStrip: true,
     undo: true,
+    bestFive: true,
     handsTab: true,
   });
   await page.evaluate(() => {

@@ -134,16 +134,41 @@ describe('the first-table tips (§12.11)', () => {
     tap(document.querySelector('[data-tip]') as Element);
     expect(state().data.tips).toEqual({ heroStrip: true, coachStrip: true, undo: true });
 
-    // After the first flop the hero still plays: the Hands tab.
-    expect(await untilTip(3000)).toBe('handsTab');
+    // After the first flop the hero still plays: the gold edge of the hero's best five (1.3.97),
+    // pointing at the board from below, then the Hands tab.
+    expect(await untilTip(3000)).toBe('bestFive');
     expect(state().game.hand?.board.length).toBeGreaterThanOrEqual(3);
     expect(state().game.hand?.seats[0]?.folded).toBe(false);
+    expectTip('bestFive');
+    const board = document.querySelector('[data-tip-anchor~="bestFive"]');
+    expect(board?.getAttribute('role')).toBe('group');
+    // Under the board where there is room above the hero's cards, else above it (`boardTipSide`).
+    expect(['above', 'below']).toContain(board?.getAttribute('data-tip-side'));
+    // The five it explains are on show: board and hole cards with the gold edge, none faded.
+    const marked = [
+      ...document.querySelectorAll(
+        '[role="group"][aria-label="Board"] [role="img"], [data-hero-cards] [role="img"]',
+      ),
+    ].filter((el) => /core|kicker/.test(el.className));
+    expect(marked).toHaveLength(5);
+    expect(
+      marked.every((el) => el.getAttribute('aria-label')?.endsWith(', part of your hand')),
+    ).toBe(true);
+    tap();
+    expect(state().data.tips).toEqual({
+      heroStrip: true,
+      coachStrip: true,
+      undo: true,
+      bestFive: true,
+    });
+    expect(await untilTip(3000)).toBe('handsTab');
     expectTip('handsTab');
     tap();
     expect(state().data.tips).toEqual({
       heroStrip: true,
       coachStrip: true,
       undo: true,
+      bestFive: true,
       handsTab: true,
     });
 
@@ -242,7 +267,7 @@ describe('the first-table tips (§12.11)', () => {
     let most = 0;
     const shown = new Set<TipId>();
     const hand = state().game.hand?.handSeq ?? 0;
-    for (let i = 0; i < 4000 && shown.size < 4; i++) {
+    for (let i = 0; i < 4000 && shown.size < 5; i++) {
       const tip = state().ui.tip;
       if (tip !== null) {
         most = Math.max(most, document.querySelectorAll('*').length);
@@ -270,7 +295,7 @@ describe('the first-table tips (§12.11)', () => {
       }
       if ((state().game.hand?.handSeq ?? 0) > hand + 20) break;
     }
-    expect([...shown].sort()).toEqual(['coachStrip', 'handsTab', 'heroStrip', 'undo']);
+    expect([...shown].sort()).toEqual(['bestFive', 'coachStrip', 'handsTab', 'heroStrip', 'undo']);
     expect(most).toBeGreaterThan(0);
     expect(most).toBeLessThanOrEqual(600);
   }, 60_000);

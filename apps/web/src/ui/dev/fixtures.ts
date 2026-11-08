@@ -43,18 +43,21 @@ export const SAMPLE = {
 const NAMES = ['Anna', 'Ben', 'Carla', 'Dev', 'Emeka', 'Fatima', 'Goran', 'Hana'] as const;
 const PERSONALITIES = ['rock', 'tag', 'lag', 'station', 'maniac', null, 'tag', 'rock'] as const;
 
-/** Board cards for a state, with the §6.1 highlight of the hero's best five. */
+/**
+ * Board cards for a state, with the §6.1 highlight of the hero's best five: the gold edge, core
+ * raised too; a card outside the five has none.
+ */
 export function previewBoard(state: PreviewState): CardView[] {
   if (state === 'between' || state === 'preflop') return [];
   if (state === 'folded') return SAMPLE.board.slice(0, 3).map((card) => ({ card }));
   const facts = state === 'flop' ? SAMPLE.flop : SAMPLE.river;
-  return SAMPLE.board.slice(0, state === 'flop' ? 3 : 5).map((card) => {
-    const highlight: CardHighlight = (facts.core as readonly Card[]).includes(card)
+  return SAMPLE.board.slice(0, state === 'flop' ? 3 : 5).map((card): CardView => {
+    const highlight: CardHighlight | null = (facts.core as readonly Card[]).includes(card)
       ? 'core'
       : (facts.kickers as readonly Card[]).includes(card)
         ? 'kicker'
-        : 'off';
-    return { card, highlight };
+        : null;
+    return highlight === null ? { card } : { card, highlight };
   });
 }
 
@@ -138,8 +141,8 @@ export function previewSeats(opponents: number, state: PreviewState): SeatView[]
               cards: {
                 kind: 'revealed',
                 cards: [
-                  { card: parseCard('Ah'), highlight: 'core' },
-                  { card: parseCard('9h'), highlight: 'core' },
+                  { card: parseCard('Ah'), highlight: 'core', winning: true },
+                  { card: parseCard('9h'), highlight: 'core', winning: true },
                 ],
               },
             }

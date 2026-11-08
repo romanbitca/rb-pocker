@@ -53,6 +53,10 @@ function forbidden(
   return out;
 }
 
+/** A card's name, without what the gold edge adds to it (", part of your hand", §6.1). */
+const cardName = (el: Element): string | null =>
+  el.getAttribute('aria-label')?.replace(/, part of (your|the winning) hand$/, '') ?? null;
+
 /** Renders Review on `hand`, steps through every frame and checks the DOM at each one. */
 function walk(hand: ReviewHand, tally: Tally): void {
   appStore.setState({ review: addHand(initialReview(), hand) });
@@ -70,7 +74,7 @@ function walk(hand: ReviewHand, tally: Tally): void {
     const heroHole = h.seats[0]?.hole ?? [];
     const mine = within(screen.getByRole('region', { name: 'Your hand' }));
     expect(
-      mine.getAllByRole('img').map((el) => el.getAttribute('aria-label')),
+      mine.getAllByRole('img').map(cardName),
       `hand ${hand.handSeq} frame ${i}: your hand`,
     ).toEqual(heroHole.map(cardAriaLabel));
 
@@ -95,9 +99,7 @@ function walk(hand: ReviewHand, tally: Tally): void {
       if (seat === 0 || !s.dealtIn || s.folded || s.hole === null) return;
       if (!h.revealed.includes(seat)) return;
       const pod = document.querySelector(`[data-seat="${seat}"]`) as HTMLElement;
-      const faces = [...pod.querySelectorAll('[role="img"]')].map((el) =>
-        el.getAttribute('aria-label'),
-      );
+      const faces = [...pod.querySelectorAll('[role="img"]')].map(cardName);
       expect(faces, `hand ${hand.handSeq} frame ${i} seat ${seat} face up`).toEqual(
         s.hole.map(cardAriaLabel),
       );

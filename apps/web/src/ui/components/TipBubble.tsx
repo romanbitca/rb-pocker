@@ -9,7 +9,7 @@
  * politely. One element: the arrow is CSS (§15.3 DOM budget).
  *
  * A lazy chunk with its words and its placement (the Table loads it while a tip is due): a player
- * who has seen the four tips never downloads it.
+ * who has seen the five tips never downloads it.
  */
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react';
 import type { TipId } from '../../app/store.ts';

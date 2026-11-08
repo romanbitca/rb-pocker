@@ -19,7 +19,7 @@ import { en } from '../../i18n/en.ts';
 import { betChips, compactChips, formatChips } from '../format.ts';
 import type { Rect } from '../layout/seats.ts';
 import type { CardView, SeatCards, SeatView } from '../views.ts';
-import { Card } from './Card.tsx';
+import { Card, cardViewLabel } from './Card.tsx';
 import styles from './Seat.module.css';
 import { ICONS, SpriteIcon } from './SvgSprite.tsx';
 
@@ -70,7 +70,10 @@ export function seatLabel(v: SeatView): string {
   const status = statusWord(v);
   if (status !== null) parts.push(status);
   if (v.cards.kind === 'revealed') {
-    const shown = v.cards.cards.flatMap((c) => (c.card === null ? [] : [cardAriaLabel(c.card)]));
+    // A winner's cards in its best five are named so ("…, part of the winning hand", §6.1).
+    const shown = v.cards.cards.flatMap((c) =>
+      c.card === null ? [] : [cardViewLabel(c) ?? cardAriaLabel(c.card)],
+    );
     parts.push(...shown);
   }
   if (v.winner) parts.push(L.winner);
@@ -205,7 +208,7 @@ const sameRect = (a: Rect, b: Rect): boolean =>
   a.x === b.x && a.y === b.y && a.w === b.w && a.h === b.h;
 
 const sameCard = (a: CardView, b: CardView): boolean =>
-  a.card === b.card && a.highlight === b.highlight;
+  a.card === b.card && a.highlight === b.highlight && a.winning === b.winning;
 
 function sameCards(a: SeatCards, b: SeatCards): boolean {
   if (a.kind !== b.kind) return false;
