@@ -27,7 +27,8 @@
 | 15 | Offline PWA and performance | Service worker, no-network rule, budgets, `#bench` |
 | 16 | Privacy, legal and fairness | No consent banner, play-money rules, provable shuffle |
 | 17 | Local run, Docker and Coolify deployment | Run it locally first (dev server, `npm start`, Docker), then deploy to the owner's Coolify server; headers; secure context; CI |
-| 18 | Staged build plan | Stages 0–9, each shippable, each with acceptance criteria |
+| 18 | Staged build plan | Stages 0–10, each shippable, each with acceptance criteria |
+| 19 | Telegram Mini App and playing with friends | Stage 10: the same engine on the server, private tables, the wire protocol, the bot, the Telegram shell, the owner's steps |
 | — | Known pitfalls | Mistakes that are easy to make here. Check each one |
 | — | Testing strategy | Oracles, property tests, statistical tests, self-play, E2E, devices |
 | — | Open questions and risk register | The few questions for the human (with defaults), risks, unverified items |
@@ -176,6 +177,7 @@ rb-poker-coach/
 │   │   │   │   │                 # the Menu and the §3.1 dialogs (one lazy chunk, §15.3)
 │   │   │   │   ├── screensModule.ts # loads it right after the first paint; useScreens() for App's wrappers (§15.3)
 │   │   │   │   └── styles/       # tokens.css, global.css, *.module.css
+│   │   │   ├── net/protocol.ts   # Stage 10: the wire protocol, shared with the server (§19.4); app/tg/ and app/mp/ are its client (§19.3)
 │   │   │   ├── sound/synth.ts    # Web Audio synthesised sounds (no audio files); a lazy chunk, loaded only while sound is on
 │   │   │   ├── data/
 │   │   │   │   ├── rankings.ts   # the 10 hand-ranking rows (§13.2)
@@ -207,7 +209,9 @@ rb-poker-coach/
 │       │   ├── security.ts       # helmet options, CSP string, expected header values, static cache rule (single source, §17.2)
 │       │   ├── health.module.ts  # HealthController + HealthService
 │       │   ├── health.service.ts # version from package.json, commit from SOURCE_COMMIT (unset or empty → 'dev')
-│       │   └── health.controller.ts # GET /api/health → { status, version, commit }
+│       │   ├── health.controller.ts # GET /api/health → { status, version, commit }
+│       │   ├── game/             # Stage 10: GENERATED, gitignored: a copy of core, eval, engine, net (scripts/sync-game.mjs, §19.3)
+│       │   └── telegram/, mp/, bot/ # Stage 10: initData and config; the tables and the WebSocket; the bot (§19.3)
 │       └── test/                 # Vitest unit + HTTP e2e (supertest) against fixtures/web-dist, a small apps/web/dist
 ├── .github/workflows/            # check, e2e, docker, slow (§17.5); no deploy job: Coolify deploys on push
 ├── docs/PLAN.md                  # this document
@@ -244,7 +248,7 @@ rb-poker-coach/
 |---|---|---|
 | Game | No-Limit Texas Hold'em cash table, 2–9 seats (you + 1–8 bots), fixed blinds, play chips. Busted bots are replaced | Matches "I select the number of players and the money on the table" |
 | Front end | React 19 + Zustand 5 (one store, sliced) + TypeScript + Vite 8 + CSS Modules, in `apps/web` | The human chose React; the most familiar stack for agents |
-| Server | NestJS 12 in `apps/server`: serves the built game with security and cache headers, plus `/api/health`. No database, accounts, cookies or game endpoints (§2.6) | The human chose Nest.js; the game itself never needs it after the first load |
+| Server | NestJS 12 in `apps/server`: serves the built game with security and cache headers, plus `/api/health`. No database, accounts, cookies or game endpoints (§2.6); Stage 10 adds Telegram tables in memory, only when a bot token is set (§19) | The human chose Nest.js; the game itself never needs it after the first load |
 | Engine | Pure, seeded, JSON-serialisable reducer on the main thread; new cards appear only on an explicit `advance` input | Undo, replay, resume and "pause before any new card" become simple |
 | Heavy maths | Two module workers: `equity.worker` (HUD numbers) and `brain.worker` (bots, hints, grades) | A bot decision never queues behind a long equity job |
 | Evaluator | Own bitmask 7-card evaluator; libraries only as test oracles | The UI needs best five, kickers and masks; prototype ran 15.8M evals/s |
@@ -318,6 +322,8 @@ A beginner who wants to learn Texas Hold'em has poor options. Real-money apps br
 | H7 | Correct | The engine never breaks the rules in §3; chips are never created or lost (§4.4) |
 | H8 | ⚠️ Honest | Bots, coach and HUD never see hidden cards (§4.8, §9.6) |
 
+**Stage 10 (§19) adds one exception, only inside Telegram:** "Play with friends" connects to our server and uses the Telegram identity of the player who tapped it. H2–H5 stay exactly as written for everything else: Play, Learn, Drill and Stats send nothing and work offline. No Telegram bot token on the server means no exception at all.
+
 ### 1.5 Assumptions (how we read the brief)
 
 The brief arrived as three short messages from a non-native English speaker. These readings are deliberate. The About screen repeats them in plain words ("How this app works", Appendix G.5), and the human SHOULD confirm them after Stage 3. On 23 Sep 2026 the human re-confirmed the no-account reading in their own words: open the game, click Play, play (§12.1).
@@ -336,7 +342,7 @@ The brief arrived as three short messages from a non-native English speaker. The
 ### 1.6 Non-goals (explicitly out of scope for v1)
 
 - Real money, purchasable chips, prizes, leaderboards with rewards, chip gifting.
-- Playing against other humans, chat, accounts, cloud sync or backup, push notifications, any game or data endpoint on the server (§2.6).
+- Playing against other humans (Stage 10, §19, adds private tables inside Telegram; nothing else changes), chat, accounts, cloud sync or backup, push notifications, any game or data endpoint on the server (§2.6, §19).
 - Tournaments (rising blinds, payouts), antes, straddles, run-it-twice, rabbit hunting; other games (Omaha, Stud, Short Deck, Limit).
 - Solver-grade (GTO) advice, range editors, hand-history import from poker sites. The coach is a rules-plus-maths teacher and says so.
 - Languages other than English (structure ready, translations not).
@@ -378,12 +384,13 @@ core ◄── eval ◄── engine ◄──────────── app
 | `workers` | `brain`, `analysis`, `eval`, `core`, `data`, `workers/protocol`, `import type` from `engine/types`, and `observationKey` | `engine` runtime, `app`, `ui` | Workers receive observations and hero cards only |
 | `workers/protocol` | only `import type`, from `core`, `engine/types`, `analysis`, `brain` | any run-time import | Message types only (Appendix A.6) |
 | `persist` | `core`, `engine/invariants`, types | `ui`, `app` | Storage testable without a DOM |
-| `app` | all of the above, `drill`, `sound`; types from any module | `ui` (even its types); `i18n` and `data` at run time | Orchestration |
-| `ui` | `app/store`, `core`, `i18n`, `data`, `sound`, types | `engine` reducer, `brain` | The UI dispatches through the controller |
+| `app` | all of the above, `drill`, `sound`, `net`; types from any module | `ui` (even its types); `i18n` and `data` at run time | Orchestration |
+| `ui` | `app/store`, `core`, `i18n`, `data`, `sound`, `net`, types | `engine` reducer, `brain` | The UI dispatches through the controller |
 | `data` | only `import type`, from `core` and `eval` | everything else | Static rows and generated tables (§7.5, F.7, F.8) |
 | `drill` | `core`, `eval` | everything else | The hand drill's question logic (§13.5): pure, seeded; no game, no storage |
 | `i18n` | only `import type` | any run-time import | Strings only (§0.3) |
 | `sound` | nothing | anything | Web Audio only (§12.8) |
+| `net` | only `import type`, from `core` and `engine/types` | any run-time import | Stage 10's wire protocol: message types, constants and one decoder, shared with the server (§19.4). The server reads a generated copy (§19.3) |
 | `main.tsx` | `app`, `ui`, `i18n` | everything else | Entry point: boot and render |
 
 How to read the table (the lint rule reads it the same way):
@@ -393,7 +400,7 @@ How to read the table (the lint rule reads it the same way):
 - Anything not in a module's row is forbidden, including files outside `apps/web/src` and folders missing from this table (a new folder needs its row here and in `eslint.config.js` first). npm packages are outside this table.
 - `drill` (§13.5) is reached at run time only through `app/drill.ts`, a lazy chunk that wires its storage and seed; the UI gets that module through `app/store.ts` (`loadDrill`) and takes only types from `drill`.
 
-A small local ESLint rule, `rb/web-module-boundaries` in `eslint.config.js` (its table `WEB_MODULES` mirrors this one), enforces this and MUST fail CI on a violation. It resolves every import to a path (static imports, `export … from`, dynamic `import()`, `import('…')` types), so relative imports at any depth and aliases (`@/`, `~/`, `#`, `src/`, `/src/`, `@rb/web/…`) are all caught; `import()` needs a string literal. The table covers `apps/web/src` and is unchanged by the monorepo. `apps/server` MUST NOT import anything from `apps/web` (it only serves the built files in `apps/web/dist`); the rule `rb/server-no-web-imports` enforces this. `apps/web/tests/lint/boundaries.test.ts` checks both rules and the `Math.random` ban through ESLint's API (Stage 0, acceptance 5). If the server ever needs game code, move `core`, `eval` and `engine` into `packages/game`: the boundary rules already make that a move, not a rewrite (future, not v1).
+A small local ESLint rule, `rb/web-module-boundaries` in `eslint.config.js` (its table `WEB_MODULES` mirrors this one), enforces this and MUST fail CI on a violation. It resolves every import to a path (static imports, `export … from`, dynamic `import()`, `import('…')` types), so relative imports at any depth and aliases (`@/`, `~/`, `#`, `src/`, `/src/`, `@rb/web/…`) are all caught; `import()` needs a string literal. The table covers `apps/web/src` and is unchanged by the monorepo. `apps/server` MUST NOT import anything from `apps/web` (it only serves the built files in `apps/web/dist`); the rule `rb/server-no-web-imports` enforces this. `apps/web/tests/lint/boundaries.test.ts` checks both rules and the `Math.random` ban through ESLint's API (Stage 0, acceptance 5). **Stage 10 (§19.3):** the server needs game code, and it gets a generated copy of `core`, `eval`, `engine` and `net` in `apps/server/src/game/` (made by `scripts/sync-game.mjs`, gitignored, lint-ignored), so `rb/server-no-web-imports` stays exactly as it is. Moving those folders into `packages/game` remains the clean end state; it is not done now because 324 files import them (§19.3).
 
 ### 2.2 Threads
 
@@ -488,7 +495,9 @@ The server's whole v1 job is to hand the built game to the browser, safely. It l
 
 **It has none of:** a database, accounts or sessions, game or stats endpoints, cookies (`Set-Cookie` never appears; tested), request logging (so no IP addresses are written anywhere), CORS (everything is same-origin), rate limiting or CSRF middleware (nothing to protect; revisit if an endpoint that changes state is ever added).
 
-⚠️ **Offline rule:** the game MUST work with the server unreachable after the first load (§15), and the client MUST NOT call `/api` during play: `/api/health` is for the orchestrator only (an E2E test fails on any request to `/api`, §15.2). Future server features (optional cloud backup, multiplayer, accounts) are v1 non-goals (§1.6) and may never become required for play.
+**Stage 10 (§19) adds, only when `TELEGRAM_BOT_TOKEN` is set:** the WebSocket `/api/mp/ws` with tables in memory, and the Telegram webhook `POST /api/telegram/webhook`. Still no database, cookies, request logging or CORS; the rate limits it needs are its own (§19.4). Without the token both are off and this section is the whole server.
+
+⚠️ **Offline rule:** the game MUST work with the server unreachable after the first load (§15), and the client MUST NOT call `/api` during play: `/api/health` is for the orchestrator only (an E2E test fails on any request to `/api`, §15.2). Future server features (optional cloud backup, multiplayer, accounts) are v1 non-goals (§1.6) and may never become required for play. Stage 10's "Play with friends" (§19) is the one exception, and only for that feature, only inside Telegram: everything else still needs no server.
 
 ---
 
@@ -2251,6 +2260,7 @@ On start, `navigator.locks.request('pc-writer', { ifAvailable: true }, …)` and
 
 - The app makes **no** fetches at runtime, not even to our own server: it MUST NOT call `/api` (§2.6). (One exception since chunk 9.5: the service worker's update check, a GET of `sw.js` when the page comes back to the front and hourly, §15.1 notes; nothing waits for it, and offline it simply fails.) The CSP (§17.2) has `connect-src 'self'` and no third-party origins, both as a response header from the Nest server and as a `<meta http-equiv>` in `index.html`. The meta copy is defence in depth: a page served from the service-worker cache (offline, or while the server is down) still carries it. Do not apply the CSP on the Vite dev server (HMR needs inline scripts and websockets): the source `index.html` has **no** CSP meta; a ~10-line Vite plugin with `apply: 'build'` and `transformIndexHtml` injects it into the built file only. CI asserts the built `index.html` contains it (`scripts/check-html.ts`, `npm run check:html -w @rb/web`, after the build).
 - CI checks that built `index.html` has no inline `<script>` without `src` (the same script; it also rejects inline event handlers and a meta CSP placed after a script, which would not cover it).
+- Stage 10 exception (§19): inside Telegram, and only there, the app may open one same-origin WebSocket to `/api/mp/ws`. Outside Telegram it opens none, and the guard below stays on in every spec that is not about multiplayer (§19.10, chunk 10.10).
 - Playwright: load once, wait until the service worker controls the page, go offline, reload, play a full 6-player hand to showdown, open the rankings drawer, Stats and Learn. "Go offline" kills the test's own server (`tests/e2e/own-server.ts`) and, in Chromium, also calls `context.setOffline(true)`; WebKit cannot use `setOffline` here (pitfall 46). A request listener on the browser context (`tests/e2e/fixtures.ts`: every page and the service worker) fails any test in the suite if a request leaves the origin **or goes to `/api`**, or a WebSocket opens.
 
 ### 15.3 Budgets (CI-enforced where possible)
@@ -2324,10 +2334,11 @@ Implementation (chunk 4.7):
 - ePrivacy Art. 5(3) covers localStorage as well as cookies (EDPB Guidelines 2/2023), but exempts storage **strictly necessary** for a service the user explicitly asked for (WP29 Opinion 04/2012; the UK ICO applies the same test). Saving the user's own stats, settings and resumable hand fits this exemption.
 - ⚠️ This stays true only while: no analytics (including server or proxy analytics), no ads, no third-party requests, no identifiers, no cookies, nothing sent from the device. The CSP enforces the network part; server tests and the post-deploy `curl -I` enforce "no `Set-Cookie`" (§17).
 - Ship a short **Privacy** screen anyway (Appendix G.2). Whether GDPR applies when the operator never receives data is a legal reading we could not confirm (UNVERIFIED). It says that the files come from the owner's own server (Coolify): like any web server it sees the visitor's IP address to send the files, and it does not store it (the Nest server has no request logging, §2.6; the Coolify proxy's access log stays off, §17.6).
+- Stage 10 (§19.12): "Play with friends" is the one thing that sends data: the Telegram id and first name that Telegram gives the server, kept in memory only for as long as the table lives. Everything in this section still holds for the rest of the app.
 
 ### 16.2 Play-money rules (MUST)
 
-- Never sell chips or anything else; never award prizes; no chip transfers; no leaderboards with rewards. Reload is free and unlimited. The collection and level suggestions unlock nothing.
+- Never sell chips or anything else; never award prizes; no chip transfers; no leaderboards with rewards. Reload is free and unlimited. The collection and level suggestions unlock nothing. Chips at a Telegram table follow the same rules (§19.12): they exist only at that table and are gone when you leave it.
 - Reason: in the UK, social gaming with no prize of money or money's worth is unregulated; in Washington State, *Kater v. Churchill Downs* (9th Cir. 2018) held that **purchasable** virtual chips are a "thing of value". We sell nothing.
 - Disclaimer on Welcome, Home and Setup (short; one-tap Play skips Setup, so Welcome and Home carry it too) and About (full) (Appendix G.1); responsible-gambling note in About (G.3). ⚠️ Do not hard-code 1-800-GAMBLER (NCPG stopped using it after 29 September 2025; use 1-800-MY-RESET) or BeGambleAware (GambleAware closed by 31 March 2026; use GamCare's National Gambling Helpline 0808 8020 133); re-check help lines at every release. No real poker-room brand names or logos.
 
@@ -2655,6 +2666,828 @@ Build in order. Every stage ends running locally via `npm start` and `docker com
 6. Device matrix (manual script, §Testing strategy, on the Coolify HTTPS URL): iPhone SE-size and a recent iPhone (Safari + home screen), Galaxy A5x-class and A1x-class Android (Chrome + installed), iPad portrait/landscape, desktop Chrome/Firefox/Safari. `#bench` meets §15.4 on the A5x-class phone (or the documented fallbacks are applied and re-measured); animations ≥ 55 fps there and ≥ 45 fps on A1x.
 7. **Coolify is connected** (Q6) and production on Coolify carries the §17.2 headers (`check-deploy` passes, no `Set-Cookie`); on that HTTPS URL the app loads on one iPhone and one Android phone, installs, and reloads and plays in flight mode; every UNVERIFIED item in the risk register has a final status. The release requires the Coolify deployment. → Release **v1.0**.
 
+### Stage 10 - Telegram Mini App and playing with friends
+
+The owner, 8 Nov 2026: "create a telegram bot web app, i want to post this game there. and be able to play with other telegram users. go ahead with impelmentation, work all night, in the morning i will check. if you have any blocker, try to bypass them, and i will come back to you later." The design is §19. Everything here is additive: with no `TELEGRAM_BOT_TOKEN` the app is exactly the app of Stages 0–9. The owner's BotFather steps (§19.13) come last and block nothing.
+
+**Acceptance criteria.** Test kinds: **U** unit, on a fake clock where time matters; **I** server integration with real WebSockets (`app.listen(0)`, Node's `WebSocket`, the fake clock through Nest's test module); **E** Playwright with 2–3 browser contexts that sign real `initData` with a test token (Chromium and WebKit at 390×844 only); **H** the owner on a real phone.
+
+1. **The engine runs on the server** (U, build). `npm run build`, `npm start` and `docker compose up --build` work with the generated copy of §19.3. `apps/server/test/game-copy.test.ts`: `scripts/sync-game.mjs --check` passes, no file under `apps/server/src/game/` is tracked by git, and no file of `apps/server/src` outside it imports from `apps/web`; `rb/server-no-web-imports` still passes.
+2. **`initData`** (U, `apps/server/test/telegram/init-data.test.ts`). A correctly signed string, with a `signature` field in it, passes and gives the user's id and first name. A wrong hash, a wrong token, a changed field, a duplicate key, no `user`, an `auth_date` older than 24 hours or more than 5 minutes ahead are refused. The token never appears in an error or log line.
+3. **Off without a token** (I, E). `test/mp/off-without-token.test.ts`: the upgrade on `/api/mp/ws` is refused with 404, `POST /api/telegram/webhook` is a 404, the bot API is never called. `tests/e2e/mp.off.spec.ts`: outside Telegram there is no "Play with friends" and no WebSocket.
+4. **The table machine** (U, `test/mp/room.*.test.ts`). Every row of the §19.5 tables is a named test, including: empty seats and 2 to 9 players; a joiner mid-hand is dealt from the next hand; check-if-free-else-fold on a timeout; two timeouts in a row sit the player out; "I'm back"; a disconnect takes the same path with the shorter clock; leaving mid-hand folds and frees the seat at hand end; the host passes to the next seat clockwise; a bust offers a free reload, and only a bust; waiting and going on by itself; the idle closes. **Property (1,000 random sessions):** with random joins, leaves, timeouts, reloads and disconnects, every action the machine sends the engine is legal, no call throws, and each hand's chips add up (engine I1).
+5. **The protocol** (U, I). `apps/web/tests/net/protocol.test.ts`: every message of §19.4 decodes; anything else is null and the decoder never throws. `test/mp/gateway.test.ts`: `hello` must come first; a wrong version closes 4003; a stale or doubled `act` changes nothing (same `rev`, same hand, error `stale_action`). `test/mp/gateway.limits.test.ts`: every limit of §19.4.
+6. **⚠️ Leak rules** (U, I, E). `apps/web/tests/engine/project.test.ts` (fast-check): for random hands and viewers, permuting every other seat's unrevealed cards and the undealt stub leaves `publicHand` deep-equal (the §9.6 proof, for this function). `apps/server/test/mp/room.leak.test.ts` and `test/mp/leak.integration.test.ts`: every frame to every socket over scripted hands (fold, showdown, all-in run-out, reload, reconnect) passes checks L1–L6 of §19.9. `tests/e2e/mp.leak.spec.ts`: the same checks on the real frames of three browsers.
+7. **Reconnect and one seat** (I, `test/mp/gateway.test.ts`). A socket dropped mid-hand and back before the deadline gets its seat, the current `decision` and can act; `welcome.code` names the table after a reconnect and is null after a server restart. A second `hello` of the same user closes the first socket with 4002.
+8. **Server restart** (I). `SIGTERM` (through `app.close()`) sends every socket `ended` with `server_restart`, then closes with 1012.
+9. **The bot** (U, I, `test/bot/*.test.ts`). A webhook without the right secret header is a 401. `/start`, `/start <code>`, `/new`, `/help`, `/post` and an inline query give exactly the §19.8 replies (a fake `BotApi` records them), in groups too (`/new@our_bot`); a repeated `update_id` is answered once; registration runs at boot in production, and not otherwise; a failing Telegram API never takes the server down.
+10. **Headers** (I, E). `test/http.test.ts`, `test/check-deploy.test.ts`: §19.11's values and no `X-Frame-Options`. `tests/e2e/mp.iframe.spec.ts` (Chromium): a page routed as `https://web.telegram.org` shows the app in an iframe; a page on another origin cannot. Both browsers open the same-origin WebSocket under the real CSP (acceptance 13).
+11. **The seam** (U). `tests/app/mp.localView.test.ts`: every §19.6 mapping, with 2–9 seats, empty seats, a viewer who is not dealt in. `tests/app/mp.driver.test.ts`: commands, `rev` order, the parked controller, the back trap. `tests/app/controller.park.test.ts`: a local hand in progress stands still and comes back unchanged.
+12. **Telegram shell** (U, `tests/app/tg.*.test.ts`). Launch parameters from the fragment; the three transports and the three ways in of events; version gates; BackButton follows the navigation.
+13. **The flows on phones** (E, `tests/e2e/mp.flow.spec.ts`, `tests/e2e/mp.connection.spec.ts`). Three contexts: create a table, the invite link's code, join, wait, start; a hand to showdown, each sees its own cards and face-down backs for the others; a fold and the next hand; a joiner mid-hand; a timeout (15-second table); bust and reload; leave; a dropped connection and back; "Table ended". `axe` has no serious violation on the new screens.
+14. **Single-player unchanged** (all existing suites). Every existing unit and E2E test passes, `network-guard.spec.ts` included. Size budgets hold: the §19.3 modules are in no initial chunk (`tests/ui/review.bundle.test.ts` extended) except `app/tg/launch.ts`.
+15. **Words and privacy** (U). `tests/ui/mpCopy.test.ts`: every string of `i18n/mp.ts` appears in §19.10. `About.copy.test.ts` holds the new Appendix G text (§19.12).
+16. **[H] The owner's check.** Real Telegram on a phone, after §19.13: open the bot, tap Play, Play with friends, create a table, invite a friend from Telegram, play a hand, and the channel post opens the game. Telegram Web on a desktop opens the game. Human gates do not block the merges.
+
+**Chunks.** Every chunk is one branch and one PR with its own change-log row; rows are in merge order and may be renumbered at merge. Files marked ⚠ are touched by more than one chunk.
+
+| Chunk | Row | Branch | Scope | Needs | Tests it adds |
+|---|---|---|---|---|---|
+| 10.1 | 1.4.0 | `feature/mp-engine-copy-and-protocol` | `scripts/sync-game.mjs`; server `tsconfig.json` flag, `src/import-meta-env.d.ts`, `.gitignore`, ESLint ignore, npm hooks, `test/global-setup.ts` (§19.3); `apps/web/src/net/protocol.ts` exactly as §19.4; `PublicHand` + `engine/project.ts`; `PlayerSlot.kind` gets `'remote'` (`engine/table.ts`, Appendix A.3); `net` in `eslint.config.js` `WEB_MODULES` | none | `apps/server/test/game-copy.test.ts`, `apps/web/tests/net/protocol.test.ts`, `apps/web/tests/engine/project.test.ts`, `apps/web/tests/engine/table.remote.test.ts`, cases in `tests/lint/boundaries.test.ts` |
+| 10.2 | 1.4.1 | `feature/telegram-initdata` | `apps/server/src/telegram/{config,init-data,telegram.module}.ts`; `TelegramModule` in ⚠ `app.module.ts` | none | `test/telegram/init-data.test.ts`, `test/telegram/config.test.ts`, helper `test/helpers/sign-init-data.ts` |
+| 10.3 | 1.4.2 | `feature/mp-table-machine` | `apps/server/src/mp/{room,seating,registry,clock,timing}.ts` (§19.5); no sockets | 10.1 | `test/mp/room.flow.test.ts`, `room.seats.test.ts`, `room.timers.test.ts`, `room.leak.test.ts`, `room.property.test.ts`, `registry.test.ts`, helper `test/helpers/fake-clock.ts` |
+| 10.4 | 1.4.3 | `feature/mp-websocket` | `ws` 8.22.2 and `@types/ws` 8.18.2 in ⚠ `apps/server/package.json`, §2.5; `apps/server/src/mp/{gateway,mp.module}.ts`; `MpModule` in ⚠ `app.module.ts`; shutdown | 10.2, 10.3 | `test/mp/gateway.test.ts`, `gateway.limits.test.ts`, `leak.integration.test.ts`, `off-without-token.test.ts` |
+| 10.5 | 1.4.4 | `feature/telegram-bot` | `apps/server/src/bot/*` (§19.8), `TABLE_LOOKUP`; `BotModule` in ⚠ `app.module.ts` | 10.2 | `test/bot/bot.service.test.ts`, `webhook.test.ts`, `registration.test.ts` |
+| 10.6 | 1.4.5 | `chore/headers-for-telegram` | `apps/server/src/security.ts`, `scripts/check-deploy.mjs` (§19.11); rewrites §17.2 and §17.6 | none | changes in `test/http.test.ts`, `test/check-deploy.test.ts`; `apps/web/tests/e2e/mp.iframe.spec.ts` |
+| 10.7 | 1.4.6 | `feature/telegram-shell` | `app/tg/{launch,bridge,shell,start}.ts` (§19.7), `boot.ts`, haptics port in `app/device.ts`, the two CSS rules of the §19.7 safe area, ⚠ `app/store.ts` (`tg`) | none | `tests/app/tg.launch.test.ts`, `tg.bridge.test.ts`, `tg.shell.test.ts` |
+| 10.8 | 1.4.7 | `feature/mp-client-driver` | `app/mp/{socket,localView,driver}.ts` (§19.6); ⚠ `app/store.ts` (`mp`, remote handler, back trap), `app/navigation.ts`, `controller.park()`, `tableViews.ts`; placeholders for the new screens | 10.1 | `tests/app/mp.socket.test.ts`, `mp.localView.test.ts`, `mp.driver.test.ts`, `controller.park.test.ts`, `store.backTrap.test.ts` |
+| 10.9 | 1.4.8 | `feature/mp-screens` | `ui/mpEntry.tsx`, `ui/mpModule.ts`, `ui/screens/mp/*`, `ui/components/TurnStrip.tsx`, `i18n/mp.ts`; the §19.6 branches in `Table.tsx`, `Seat.tsx`, `HandEndBanner.tsx`, `screensEntry.tsx`, `App.tsx`, Home, Welcome; F.10 pointer | 10.7, 10.8 | `tests/ui/mp.create.test.tsx`, `mp.waiting.test.tsx`, `mp.table.test.tsx`, `mpCopy.test.ts`, cases in `review.bundle.test.ts` |
+| 10.10 | 1.4.9 | `test/mp-end-to-end` | Playwright: signing helper, fixture option, the server's test env (§19.10), full flows | 10.4, 10.6, 10.7, 10.9 | `tests/e2e/telegram.ts` (helper), `mp.flow.spec.ts`, `mp.connection.spec.ts`, `mp.leak.spec.ts`, `mp.off.spec.ts`, `axe` cases |
+| 10.11 | 1.4.10 | `docs/telegram-privacy-and-owner-steps` | Appendix G.1, G.2, G.5 with `i18n/about.ts` and its test (§19.12); §19.13 in `README.md` and §17.6; the 640×360 cover image | none | changes in `About.copy.test.ts` |
+| 10.12 | 1.4.11 | `feature/mp-quick-match` | Later (§19.14): public tables for strangers | 10.10 | named in §19.14 |
+| 10.13 | 1.4.12 | `feature/mp-bots-fill-seats` | Later (§19.14): the app's bots fill empty seats | 10.10 | named in §19.14 |
+
+**Order.** 10.1 and 10.2 first, side by side; they unblock the rest. Then in parallel: 10.3, 10.5, 10.6, 10.7, 10.8, 10.11. 10.4 after 10.2 and 10.3; 10.9 after 10.7 and 10.8; 10.10 last. 10.12 and 10.13 only after the core and the owner's check. `app.module.ts`, `package.json` and `store.ts` conflicts are one-line each. Merges go in this order.
+
+---
+
+## 19. Telegram Mini App and playing with friends
+
+Stage 10 builds this section. It changes nothing for a player who is not inside Telegram, and nothing at all when the server has no bot token.
+
+### 19.1 What is decided
+
+| # | Decision |
+|---|---|
+| 1 | The whole existing app runs inside Telegram as a Mini App at the same origin, `https://poker.romanbitca.com` (no DNS or Cloudflare change). Single-player, Learn, Drill and Stats work as today. New: **Play with friends**, shown only inside Telegram |
+| 2 | A server-authoritative game on the existing NestJS server: one process, tables in memory, the same pure engine, no database. A redeploy ends the tables and clients are told plainly |
+| 3 | WebSocket at `/api/mp/ws` with a versioned JSON protocol (§19.4). A client only ever receives its own hole cards and public information. Actions carry a sequence number. Deadlines are server time |
+| 4 | Identity comes only from validated Telegram `initData`. **No test backdoor:** tests sign real `initData` with a test token. Without `TELEGRAM_BOT_TOKEN` the Telegram and multiplayer endpoints are off |
+| 5 | A host creates a private table (players, game, time to act) and shares an invite link; there is a waiting room, the host starts, hands go on by themselves, joining and leaving take effect between hands. A timeout checks if that is free and folds otherwise; repeated timeouts sit the player out with an "I'm back" button; a disconnect goes the same way. A busted player gets a free reload. Chips have no value and cannot be moved. No chat and no learning aids at these tables (no coach, no win chance); the hand-rankings drawer stays. Quick match and the app's bots are later chunks (§19.14) |
+| 6 | The bot: webhook with a secret header; `/start` (with or without a table code), `/new`, `/help`, `/post`, inline mode; on boot it registers the webhook, the commands and the menu button. Config comes from the environment |
+| 7 | No external script. A small bridge of our own in a lazy chunk (§19.7): the CSP stays `script-src 'self'` |
+| 8 | The owner creates the bot and gives the token in the morning (§19.13). Everything else is finished and tested without it |
+
+### 19.2 What Telegram and the network do (checked 8–9 Nov 2026)
+
+Read on those dates: the Bot API page (its newest "Recent changes" entry is **Bot API 10.3, 24 Aug 2026**), the Mini Apps page (its newest changelog entry is 10.1, 11 Jun 2026), `core.telegram.org/api/web-events`, `core.telegram.org/api/links`, and the official script `telegram.org/js/telegram-web-app.js`. The facts below were verified there or by the command named.
+
+| Fact | Consequence here |
+|---|---|
+| `initData`: the data-check-string is every received field except `hash`, sorted by key, `key=value`, joined with `\n`; `secret_key = HMAC_SHA256(bot_token, key "WebAppData")`; the expected `hash` is the hex HMAC-SHA-256 of the string under `secret_key`. Docs: "you can additionally check the auth_date field"; they give no window | `telegram/init-data.ts` (§19.9). `signature` (Ed25519, for third parties) is a received field, so it stays in the string; tma.js's validator does the same, and Telegram publishes no vector for it |
+| Direct links: `https://t.me/<bot>/<app>`, with `?startapp=<value>` and `&mode=compact`. "If a non-empty startapp parameter is included" it reaches the app as `start_param` (in `initData`) and `tgWebAppStartParam`. The docs give no length or alphabet for it (`/api/links`); bot deep links allow 64 of `A-Z a-z 0-9 _ -` | Table codes are 8 characters from that set (§19.4); the client reads `start_param` from `initData` |
+| Launch parameters come in the URL fragment: `tgWebAppData` (the raw `initData`, decoded once), `tgWebAppVersion`, `tgWebAppPlatform`, `tgWebAppThemeParams` (JSON). `telegram-web-app.js` also keeps them in `sessionStorage`, because a reload may lose the fragment | `app/tg/launch.ts` does both |
+| `initData` is empty for a keyboard button and for inline mode; a menu button, an inline button and a direct link carry it | We use the menu button and URL buttons to the direct link only |
+| Events to the client, tried in this order: `window.TelegramWebviewProxy.postEvent(type, JSON.stringify(data))`, `window.external.notify(JSON.stringify({eventType, eventData}))`, and in an iframe `window.parent.postMessage(JSON.stringify({eventType, eventData}), '*')`. Events from the client: `window.Telegram.WebView.receiveEvent(type, data)`, also `window.TelegramGameProxy.receiveEvent` and `window.TelegramGameProxy_receiveEvent`; in an iframe `message` events with `event.source === window.parent`, JSON `{eventType, eventData}` | `app/tg/bridge.ts` (§19.7) |
+| Web iframe: the script posts `iframe_ready {reload_supported: true}`, on `reload_iframe` posts `iframe_will_reload` and reloads. Its `trustedTarget` is `https://web.telegram.org` | The same in the bridge. `curl -I` on 8 Nov 2026: `web.telegram.org` (`/a/` and `/k/`), `webk.telegram.org`, `weba.telegram.org` answer 200, `webz.telegram.org` redirects to `weba`; none sends `Cross-Origin-Embedder-Policy`, so our `Cross-Origin-Resource-Policy: same-origin` does not stop the iframe |
+| Bridge events and versions (the script): `web_app_ready`, `web_app_expand`; `web_app_setup_back_button {is_visible}` with `back_button_pressed` (6.1); `web_app_set_header_color {color}` (6.1, any colour from 6.9), `web_app_set_background_color {color}` (6.1), `web_app_set_bottom_bar_color {color}` (7.10); `web_app_trigger_haptic_feedback` (6.1); `web_app_open_tg_link {path_full}` (6.1); `web_app_setup_closing_behavior {need_confirmation}` (6.2); `web_app_setup_swipe_behavior {allow_vertical_swipe}` (7.7); `web_app_request_theme`, `_viewport`, `_safe_area`, `_content_safe_area` with `theme_changed`, `viewport_changed {height, is_expanded, is_state_stable}`, `safe_area_changed`, `content_safe_area_changed` `{top, bottom, left, right}` (8.0) | §19.7 |
+| Buttons: `InlineKeyboardButton.web_app` is "Available only in private chats between a user and the bot"; `url` ("HTTP or tg:// URL") works anywhere | Every button of the bot is a URL button to the direct link. A channel post must be one |
+| `setWebhook`: `secret_token` is 1–256 of `A-Z a-z 0-9 _ -`, sent back in `X-Telegram-Bot-Api-Secret-Token`. Ports 443, 80, 88, 8443. A reply outside 2xx is retried; `update_id` identifies repeats | §19.8 |
+| `setChatMenuButton`, `MenuButtonWebApp {type: 'web_app', text, web_app: {url}}` (WebAppInfo: "An HTTPS URL"); `setMyCommands` (`BotCommand`: `command` 1–32 of lower-case letters, digits, underscore; `description` 1–256); `answerInlineQuery` (`inline_query_id`, `results`, `cache_time`, `is_personal`, `button`), `InlineQueryResultArticle` (`id`, `title`, `input_message_content`, `reply_markup`, `description`) | §19.8 |
+| WebKit bug 201591, "connect-src 'self' does not match web socket scheme", was fixed by r292266 (249164@main, 2 Apr 2022), a year before Safari 16.4 | `connect-src 'self'` allows the same-origin `wss:` on every supported Safari (H6), §19.11 |
+| Cloudflare zone settings read through its API, 9 Nov 2026: WebSockets `on`, Bot Fight Mode off, security level medium. Its docs: an idle WebSocket is closed, keep a heartbeat | The client pings every 20 s (§19.4); no Cloudflare change |
+| `telegram.org/tos/mini-apps` (no date on the page) says nothing on gambling, play money or age, and that Telegram shares "your Telegram user id, public Telegram name, username and profile picture" with the app | §19.12 |
+
+### 19.3 Architecture and module layout
+
+```
+Telegram servers ──webhook──► NestJS ◄──WebSocket── Mini App (the whole PWA)
+                                 │                        │
+                     /api/telegram/webhook     /api/mp/ws │
+                                 │                        │
+                     rooms in memory · the same pure engine (a copy made at build time)
+```
+
+**The engine on the server: a generated copy.** The server needs `core`, `eval`, `engine` and the protocol. They run anywhere: their only platform touches are `globalThis.crypto.getRandomValues` (`core/rng.ts`, also in Node) and `import.meta.env?.DEV` (`engine/step.ts`, safe when undefined). `apps/server` builds with `tsc` (`rootDir: src`), so it cannot include files outside `src` without moving `dist/main.js` (Docker, `npm start`, `import.meta.dirname` paths). Options weighed:
+
+| Option | Verdict |
+|---|---|
+| Move the three folders to `packages/game` (the old §2.1 plan) | Not now. 324 files import them (107 in `src`, 203 tests, 14 scripts; 869 import lines); `rb/web-module-boundaries` and its tests assume they live in `apps/web/src`; every branch in flight would conflict. It stays the clean end state, on a day with nothing in flight |
+| Path mapping and one `tsc` program | No: TS6059, the files are outside `rootDir` |
+| Node 24 type stripping of `apps/web/src` at run time | No: `tsc` still refuses the imports, and the image would need the sources |
+| A second `tsc` project emitting into `dist/` | Works, but needs `.d.ts` files before the server's typecheck, an alias for Vitest, and care around `deleteOutDir` |
+| **`scripts/sync-game.mjs` copies the folders to `apps/server/src/game/`** | **Yes.** The folder is gitignored and lint-ignored, the copy compiles with the server's own `tsc`, and nothing else in the build moves: Docker needs no change |
+
+**How it works (chunk 10.1).** `scripts/sync-game.mjs` copies `apps/web/src/{core,eval,engine,net}` to `apps/server/src/game/` (idempotent; `--check` compares and exits 1 on a difference). It runs from `apps/server/package.json` (`prebuild`, `predev`, `pretypecheck`, via `npm run sync:game`) and from `apps/server/test/global-setup.ts`, because agents run single Vitest files. `apps/server/tsconfig.json` gains `"rewriteRelativeImportExtensions": true`; `apps/server/src/import-meta-env.d.ts` declares `interface ImportMeta { readonly env?: { readonly DEV?: boolean } }` so `step.ts` (`import.meta.env?.DEV`) type-checks. Server code imports `./game/engine/step.js`, like its own files. `.gitignore` and ESLint's `globalIgnores` get `apps/server/src/game/`; Prettier follows `.gitignore`. On a fresh checkout run `npm run sync:game -w @rb/server` before a bare `tsc`. ⚠️ Never edit a file under `apps/server/src/game/`: edit the source in `apps/web/src`.
+
+**Verified 9 Nov 2026 on this repository, TS 6.0.3, Node 24.21.0:** with the copy of `core`, `eval`, `engine` in place, `tsc -p` and the build configuration pass with no change to the engine; the emitted `dist/game/engine/step.js` imports `"../core/assert.js"`, and a full 4-player hand ran under plain Node (`startHand`, `legalActions`, `step` to `complete`, net sum 0); a Vitest file (SWC, the server's config) imported the copy and passed.
+
+**The engine change (10.1).** `PlayerSlot.kind` becomes `'hero' | 'bot' | 'remote'`. `checkSlots` also accepts a table where every slot is `remote` with `personality: null`; the rule "hero at 0, bots after" is unchanged for every other table. `nextTable` keeps a `remote` slot like a hero (`slot.kind !== 'bot' || stack > 0`). `persist` never sees a remote slot. Nothing else in the engine changes; `step`, `legalActions`, `checkInvariants` read no slot.
+
+**The server's engine table.** A room always hands the engine `seatCount = settings.seats` slots, `playerId` and `name` `'s' + seat` (unique, never shown), `kind: 'remote'`, `stack` the seat's chips when it is dealt in and 0 otherwise. So an empty seat or a sitting-out seat is simply not dealt in (§3.1), and `buttonForHand` moves the button past it (§3.3). `TableConfig.botLevel` is `'easy'` and `seatLevels` all null, which `checkConfig` needs and nothing reads.
+
+**Layout.**
+
+```
+scripts/sync-game.mjs            # copies the four folders (--check compares)
+apps/web/src/
+  net/protocol.ts                # §19.4: the wire contract. Types, constants, decodeClientMsg
+  engine/project.ts              # publicHand(h, viewer): what one player may see of a hand (§19.9)
+  app/tg/launch.ts               # parseLaunch(): the fragment; entry chunk, imports nothing
+  app/tg/bridge.ts               # post/receive Telegram events (§19.7)
+  app/tg/shell.ts                # ready, expand, colours, Back, viewport, safe area, haptics
+  app/tg/start.ts                # lazy entry: makes the bridge, the shell and the MpDriver
+  app/mp/socket.ts               # MpSocket: connect, hello, heartbeat, backoff (injected WebSocket and Timers)
+  app/mp/localView.ts            # localView(view): TableView → the game slice's fields (§19.6). Pure
+  app/mp/driver.ts               # MpDriver: owns `game` and `mp` while a table is on (§19.6)
+  i18n/mp.ts                     # the words of §19.10 (lazy chunk)
+  ui/mpEntry.tsx, ui/mpModule.ts # the screens' lazy chunk and its loader (the §15.3 pattern)
+  ui/screens/mp/                 # Create, WaitingRoom, the dialogs
+  ui/components/TurnStrip.tsx    # the status strip: whose turn, seconds left
+apps/server/src/
+  game/                          # GENERATED, gitignored: core, eval, engine, net
+  import-meta-env.d.ts           # one line for step.ts
+  telegram/config.ts             # TelegramConfig: from the environment; `enabled` only with all three values
+  telegram/init-data.ts          # checkInitData(raw, token, nowSeconds): pure, node:crypto
+  telegram/telegram.module.ts    # exports TelegramConfig
+  mp/clock.ts                    # Clock { now(), setTimeout(), clearTimeout() }, realClock
+  mp/timing.ts                   # every number of §19.5
+  mp/seating.ts                  # eligibility, host succession, the engine table builder (pure)
+  mp/room.ts                     # class Room: the §19.5 machine; no sockets
+  mp/registry.ts                 # RoomRegistry: codes, who sits where, limits
+  mp/gateway.ts                  # MpGateway: `ws` on the HTTP server, auth, decode, limits
+  mp/mp.module.ts                # provides CLOCK, RoomRegistry, MpGateway; exports RoomRegistry
+  bot/bot-api.ts                 # BotApi: thin fetch wrapper of the Bot API methods (fake in tests)
+  bot/bot.service.ts             # handleUpdate(): commands and inline queries
+  bot/webhook.controller.ts      # POST /api/telegram/webhook (the global prefix makes it /api/…)
+  bot/registration.ts            # on bootstrap in production: setWebhook, setMyCommands, setChatMenuButton
+  bot/words.ts                   # the bot's messages
+  bot/bot.module.ts              # imports TelegramModule; TABLE_LOOKUP (§19.8)
+```
+
+**Environment** (runtime only; never at build time): `TELEGRAM_BOT_TOKEN`, `TELEGRAM_BOT_USERNAME`, `TELEGRAM_APP_SHORT_NAME`. Telegram and multiplayer are on only with all three (one line in the server log says so, without the token). `PUBLIC_URL` is optional, default `https://poker.romanbitca.com`, used only for registration. Registration runs only when `NODE_ENV` is `production` as well, so tests and `npm start` never call Telegram.
+
+**Nest.** No `@nestjs/websockets`: `MpGateway` makes one `new WebSocketServer({ noServer: true, maxPayload: MP_MAX_INBOUND_BYTES, perMessageDeflate: false })` and listens to the HTTP server's `upgrade` event (`app.getHttpServer()`, in `onApplicationBootstrap`). `ws` is one small dependency; two more Nest packages and their adapters are not needed for one socket. The gate is `TelegramConfig.enabled`: when false, no listener is added, and Node treats the request as a normal GET (a plain JSON 404). Once the listener exists, Node hands it every upgrade: any path but `MP_WS_PATH` is answered 404 by the listener itself. The tests use `Test.createTestingModule` (they override `CLOCK`); pitfall 45 only concerns static files.
+
+### 19.4 The wire protocol
+
+One file, `apps/web/src/net/protocol.ts`, is the contract. The client imports it; the server imports its copy.
+
+**In `engine/types.ts`** (A.4b, next to `Observation`; the public view of a hand):
+
+```ts
+/** One seat of a hand, as one player may see it. `hole`: this player's own cards, or another
+ *  seat's only after it is in `revealed`; otherwise null. Built only by engine/project.ts. */
+export interface PublicSeat {
+  dealtIn: boolean;
+  stack: number;
+  hole: [Card, Card] | null;
+  folded: boolean;
+  allIn: boolean;
+  streetBet: number;
+  totalBet: number;
+}
+
+/** A hand as one player may see it: no deck, no seed, no other seat's hidden cards. */
+export interface PublicHand {
+  handSeq: number;
+  sb: number;
+  bb: number;
+  seats: PublicSeat[];
+  button: number;
+  sbSeat: number;
+  bbSeat: number;
+  street: Street;
+  phase: Phase;
+  board: Card[];
+  currentBet: number;
+  minRaiseInc: number;
+  toAct: number | null;
+  runout: boolean;
+  revealed: number[];
+  startStacks: number[];
+  log: LogEvent[];
+  result: HandResult | null;
+}
+```
+
+**`engine/project.ts`**: `publicHand(h: HandState, viewer: number | null): PublicHand`. It copies those fields; `hole` is copied only for `viewer` and for seats in `h.revealed`. It is the one function besides `observe` that reads hole cards for someone outside the engine; a test (acceptance 6) proves it. `log` is the engine's `LogEvent[]` as it is: every event is public (§A.3), and the client's sounds and narration read it unchanged.
+
+**`net/protocol.ts`** (checked with `tsc` under the web config, 9 Nov 2026):
+
+```ts
+/**
+ * The contract between the game and the server (PLAN §19.4): types, constants and the one decoder
+ * of what a client may send. No run-time imports (the §2.1 `net` row). The server reads a generated
+ * copy (apps/server/src/game/net/protocol.ts, scripts/sync-game.mjs): one file, two readers.
+ *
+ * Messages are JSON text frames, `t` names the message. Times are ms since the epoch on the
+ * server's clock. Seats are the server's real seats, 0..seats-1; the client maps them to its own
+ * order (app/mp/localView.ts).
+ */
+import type { LegalActions, PlayerAction, PublicHand } from '../engine/types.ts';
+
+export const MP_PROTOCOL_VERSION = 1;
+export const MP_WS_PATH = '/api/mp/ws';
+/** Largest frame a client may send: bigger closes the socket with 1009. */
+export const MP_MAX_INBOUND_BYTES = 16_384;
+/** The client pings this often; no pong within MP_PONG_WAIT_MS means the socket is dead. */
+export const MP_PING_EVERY_MS = 20_000;
+export const MP_PONG_WAIT_MS = 10_000;
+
+/** A table code: 8 characters without 0, O, 1, I, L. It is also the invite's `startapp` value. */
+export const TABLE_CODE_RE = /^[2-9A-HJKMNP-Z]{8}$/;
+/** `startapp=new` (the bot's /new) opens the Create screen. */
+export const START_NEW = 'new';
+
+export type StakesId = 'quick' | 'normal' | 'long';
+/** The three games of the Create screen; §3.2 holds for each (10..500 big blinds). */
+export const STAKES: Readonly<Record<StakesId, { sb: number; bb: number; stack: number }>> = {
+  quick: { sb: 25, bb: 50, stack: 1000 },
+  normal: { sb: 10, bb: 20, stack: 2000 },
+  long: { sb: 10, bb: 20, stack: 5000 },
+};
+export const TURN_SECONDS = [15, 30, 60] as const;
+export type TurnSeconds = (typeof TURN_SECONDS)[number];
+export const MIN_SEATS = 2;
+export const MAX_SEATS = 9;
+
+/** What the host chooses. The server turns `stakes` into numbers; a client never sends chips. */
+export interface TableSettings {
+  seats: number;
+  stakes: StakesId;
+  turnSeconds: TurnSeconds;
+}
+
+/** Client → server. Every message except `hello` needs a `hello` before it on the socket. */
+export type ClientMsg =
+  | { t: 'hello'; v: number; initData: string }
+  | { t: 'create'; settings: TableSettings }
+  | { t: 'join'; code: string }
+  | { t: 'leave' }
+  | { t: 'start' }
+  | { t: 'act'; seq: number; action: PlayerAction }
+  | { t: 'back' }
+  | { t: 'reload' }
+  | { t: 'ping'; n: number };
+
+export type SeatStatus = 'playing' | 'nextHand' | 'sittingOut' | 'busted' | 'leaving';
+
+/** One taken seat. Never the player's Telegram id, username or photo (§19.9 L5). */
+export interface SeatInfo {
+  /** The first name, cleaned (§19.9). Not unique. */
+  name: string;
+  host: boolean;
+  status: SeatStatus;
+  /** Chips behind right now (for a seat dealt in, the same number as `hand.seats[i].stack`). */
+  stack: number;
+  online: boolean;
+}
+
+/** Whose turn it is. `seq` must come back in `act`; `deadlineAt` is the server's clock. */
+export interface Decision {
+  seat: number;
+  seq: number;
+  deadlineAt: number;
+}
+
+/** One table as one seated player sees it. Sent whole after every change. */
+export interface TableView {
+  /** Grows by one with every change at the table; a client drops a view with an older `rev`. */
+  rev: number;
+  /** The server's clock when this view was sent. */
+  now: number;
+  code: string;
+  /** `https://t.me/<bot>/<app>?startapp=<code>` */
+  invite: string;
+  settings: {
+    seats: number;
+    sb: number;
+    bb: number;
+    stack: number;
+    turnSeconds: TurnSeconds;
+  };
+  status: 'waiting' | 'playing';
+  /** True once the host has started the table: it then goes on by itself (§19.5). */
+  started: boolean;
+  /** This player's real seat. */
+  you: number;
+  /** Index = real seat; null = empty. */
+  seats: (SeatInfo | null)[];
+  /** Finished hands at this table: the top bar shows "Hand {handsPlayed + 1}". */
+  handsPlayed: number;
+  /** The hand in play or the one just finished; built only by engine/project.ts. */
+  hand: PublicHand | null;
+  decision: Decision | null;
+  /** Non-null only when `decision.seat === you`. */
+  legal: LegalActions | null;
+  /** While a finished hand is on show: when the next one is dealt. */
+  nextHandAt: number | null;
+}
+
+/** Things to say once, as toasts. Sent with the view of the change, never again. */
+export type Notice =
+  | { n: 'joined' | 'left' | 'hostChanged'; name: string }
+  | { n: 'timedOut'; action: 'check' | 'fold' }
+  | { n: 'sittingOut' }
+  | { n: 'handVoided' };
+
+export type EndReason = 'server_restart' | 'idle' | 'error';
+
+export type MpErrorCode =
+  | 'bad_message'
+  | 'not_authed'
+  | 'auth_failed'
+  | 'outdated'
+  | 'replaced'
+  | 'rate_limited'
+  | 'server_full'
+  | 'not_found'
+  | 'full'
+  | 'already_seated'
+  | 'not_seated'
+  | 'not_host'
+  | 'not_enough_players'
+  | 'already_started'
+  | 'stale_action'
+  | 'not_your_turn'
+  | 'illegal_action'
+  | 'not_busted';
+
+/** Server → client. */
+export type ServerMsg =
+  /** After a good `hello`. `code`: the table this player sits at, or null; a `table` follows. */
+  | { t: 'welcome'; v: number; name: string; now: number; code: string | null }
+  | { t: 'table'; view: TableView; notices: Notice[] }
+  /** The `leave` went through; the view stops. */
+  | { t: 'left' }
+  | { t: 'ended'; code: string; reason: EndReason }
+  /** `re`: the kind of message refused, null when none. `other`: the table of `already_seated`. */
+  | { t: 'error'; code: MpErrorCode; re: ClientMsg['t'] | null; other?: string }
+  | { t: 'pong'; n: number; now: number };
+
+/** WebSocket close codes of the protocol (1000–1015 keep their standard meaning). */
+export const WS_CLOSE = {
+  authFailed: 4001,
+  replaced: 4002,
+  outdated: 4003,
+  authTimeout: 4004,
+  badMessage: 4005,
+  rateLimited: 4008,
+  silent: 4009,
+} as const;
+
+const isObject = (x: unknown): x is Record<string, unknown> =>
+  typeof x === 'object' && x !== null && !Array.isArray(x);
+
+function decodeAction(x: unknown): PlayerAction | null {
+  if (!isObject(x)) return null;
+  switch (x.type) {
+    case 'fold':
+      return { type: 'fold' };
+    case 'check':
+      return { type: 'check' };
+    case 'call':
+      return { type: 'call' };
+    case 'bet':
+    case 'raise': {
+      const to = x.to;
+      if (typeof to !== 'number' || !Number.isSafeInteger(to) || to <= 0) return null;
+      return x.type === 'bet' ? { type: 'bet', to } : { type: 'raise', to };
+    }
+    default:
+      return null;
+  }
+}
+
+function decodeSettings(x: unknown): TableSettings | null {
+  if (!isObject(x)) return null;
+  const { seats, stakes, turnSeconds } = x;
+  if (typeof seats !== 'number' || !Number.isInteger(seats)) return null;
+  if (seats < MIN_SEATS || seats > MAX_SEATS) return null;
+  if (stakes !== 'quick' && stakes !== 'normal' && stakes !== 'long') return null;
+  if (turnSeconds !== 15 && turnSeconds !== 30 && turnSeconds !== 60) return null;
+  return { seats, stakes, turnSeconds };
+}
+
+/**
+ * The one check of what a client sends: a fresh object with only the known fields, or null. Pure:
+ * chips, seats and turns are the room's to judge. Never throws, whatever `JSON.parse` gave.
+ */
+export function decodeClientMsg(x: unknown): ClientMsg | null {
+  if (!isObject(x)) return null;
+  switch (x.t) {
+    case 'hello': {
+      const { v, initData } = x;
+      if (typeof v !== 'number' || !Number.isSafeInteger(v)) return null;
+      if (typeof initData !== 'string' || initData.length === 0 || initData.length > 8192) {
+        return null;
+      }
+      return { t: 'hello', v, initData };
+    }
+    case 'create': {
+      const settings = decodeSettings(x.settings);
+      return settings === null ? null : { t: 'create', settings };
+    }
+    case 'join': {
+      const { code } = x;
+      return typeof code === 'string' && TABLE_CODE_RE.test(code) ? { t: 'join', code } : null;
+    }
+    case 'act': {
+      const { seq } = x;
+      const action = decodeAction(x.action);
+      if (typeof seq !== 'number' || !Number.isSafeInteger(seq) || seq < 0) return null;
+      return action === null ? null : { t: 'act', seq, action };
+    }
+    case 'ping': {
+      const { n } = x;
+      return typeof n === 'number' && Number.isSafeInteger(n) ? { t: 'ping', n } : null;
+    }
+    case 'leave':
+      return { t: 'leave' };
+    case 'start':
+      return { t: 'start' };
+    case 'back':
+      return { t: 'back' };
+    case 'reload':
+      return { t: 'reload' };
+    default:
+      return null;
+  }
+}
+```
+
+**What each message does and what it can get back.** "Error" means `{ t: 'error', code, re }`; nothing else changes.
+
+| Message | When valid | Reply | Errors |
+|---|---|---|---|
+| `hello` | First and once per socket, within 5 s of opening | `welcome`; then `table` when `code` is not null | Bad `initData`: `auth_failed`, close 4001. `v` is not `MP_PROTOCOL_VERSION`: `outdated`, close 4003. Twice: `bad_message` |
+| `create` | Not seated anywhere; server has room | `table` (you are the host, status `waiting`) | `already_seated` with `other`; `server_full`; `rate_limited` (Limits table) |
+| `join` | Seat free; or you already sit here (nothing changes, a `leaving` seat is yours again) | `table`; everyone else gets a `table` with the notice `joined` | `not_found`; `full`; `already_seated` with `other`; `rate_limited` |
+| `leave` | Seated | `left`; then the socket stays open for a new `create` or `join` | `not_seated` |
+| `start` | Host, status `waiting`, `started` false, at least 2 who can be dealt in | Everyone gets the first hand's `table` | `not_seated`; `not_host`; `already_started`; `not_enough_players` |
+| `act` | Checked in this order: seated; `seq` equals `decision.seq`; `decision.seat` is your seat; the engine accepts it | Everyone gets `table` | `not_seated`; `stale_action` (`seq` differs: a doubled message, or a turn that timed out); `not_your_turn`; `illegal_action` (`step` refused: no state change). The client ignores `stale_action` and `not_your_turn` |
+| `back` | Seat status `sittingOut` | Everyone gets `table` | `not_seated`; none otherwise (idempotent) |
+| `reload` | Seat status `busted` | Everyone gets `table`; chips become `settings.stack`, status `nextHand` | `not_seated`; `not_busted` |
+| `ping` | Any time after `hello` | `pong` with the same `n` | none |
+| anything undecodable | | | `bad_message`; three on one socket: close 4005 |
+
+**Sequence numbers.** The room has one counter, `decisionSeq`, which grows by one whenever a new decision opens. A decision's `seq` is that value. An `act` with any other `seq` is refused with `stale_action` and changes nothing, so late, doubled and replayed messages do nothing. A timed-out turn moves the counter, so a tap that arrives after its turn ended is refused too.
+
+**`rev`.** Every change at a table increases the room's `rev` by one, and every seated, online player gets a `table` with that `rev`. A client drops a view whose `rev` is not greater than the last one it applied (within one code). Views are whole: there is no diff to get wrong and nothing to replay, and a reconnect is just the next view.
+
+**Reconnect and resume (client).** While a table is on: on a close or a missed pong the client reconnects with 0.5, 1, 2, 4, 8, 8, … seconds between tries (each ± 20%), hello again with the same `initData`, and the server's `welcome` and `table` bring it back. Whether it retries depends on the close code (the table below). A hidden page waits and reconnects at once when it is visible again. After 2 minutes of failures the client stops and offers "Try again" (§19.10). A `welcome` whose `code` is null while the client is at a table means that table is gone: `Table ended`.
+
+**Reconnect and resume (server).** The seat belongs to the Telegram user id for as long as the room lives. On a new socket for a user who has one: the old socket gets `{ t: 'error', code: 'replaced', re: null }` and closes with 4002 ("you opened the game somewhere else"), and the new socket takes over. `online` goes false when a socket closes and true when one comes back; nothing else about the seat changes (the §19.5 rules decide about turns).
+
+**Versioning.** The server accepts exactly its own `MP_PROTOCOL_VERSION`; there is no compatibility layer. A change that an older client could misread bumps the constant. An older client (an old bundle in the service worker) gets `outdated`, closes with 4003 and says "A new version is ready."
+
+**Close codes.**
+
+| Code | Meaning | Client retries? |
+|---|---|---|
+| 1000, 1006, 1011 | Normal or unexpected drop | Yes |
+| 1009 | A frame over `MP_MAX_INBOUND_BYTES` | No: a bug |
+| 1012 | Server restart (`ended` with `server_restart` came first) | No |
+| 4001 | `initData` refused | No: "Please close the game and open it again" |
+| 4002 | Replaced by a newer socket of the same user | No |
+| 4003 | Client too old | No: "A new version is ready…" |
+| 4004 | No `hello` within 5 s | Yes |
+| 4005 | Three undecodable messages | No: a bug |
+| 4008 | Rate limit | Yes, after 10 s |
+| 4009 | Silent socket | Yes |
+
+**Limits** (constants in `mp/timing.ts` and `net/protocol.ts`; each has a test).
+
+| Limit | Value | Over it |
+|---|---|---|
+| Inbound frame | 16 KiB (`maxPayload`) | close 1009 |
+| Messages per socket | token bucket: 20 tokens, 5 refilled per second | `rate_limited`, the message is dropped; 50 drops close 4008 |
+| Hello deadline | 5 s after open | close 4004 |
+| Silent socket | no message in 45 s (the client pings every 20 s) | close 4009 |
+| Outbound buffer | `ws.bufferedAmount` over 256 KiB | close 1008; the client reconnects and gets a fresh view |
+| Open sockets | 1,000 | upgrade refused with 503 |
+| Rooms | 200 | `server_full` |
+| `create` per user | 5 per 10 minutes | `rate_limited` |
+| Failed `join` (`not_found`) per user | 10 per 5 minutes | `rate_limited`, so codes cannot be guessed |
+
+The upgrade itself answers 403 when `Origin` is present and its host is not the request's `Host` (same-origin only). The iframe on Telegram Web does not change this: the page that opens the socket is ours, so its `Origin` is ours.
+
+### 19.5 The table machine (`mp/room.ts`)
+
+`Room` has no sockets and no timers of its own. It gets `{ clock, newSeed, send(userId, msg), onClosed, inviteUrl }` and has one method per client message plus `connected(userId)`, `disconnected(userId)` and `end(reason)`. Each method returns the error code or null. Every timer goes through `clock` and carries a token, so a stale callback does nothing (pitfall 22).
+
+**Seat status.**
+
+| `status` | Meaning | Dealt into the next hand? |
+|---|---|---|
+| `nextHand` | Just joined, reloaded or came back | Yes |
+| `playing` | Normal | Yes |
+| `sittingOut` | Timed out twice in a row; stays until "I'm back" | No |
+| `busted` | No chips; a reload is offered | No |
+| `leaving` | Left while dealt in; the server plays out the cards; the seat empties at hand end | No |
+
+⚠️ A seat dealt into a hand stays taken until that hand ends, whatever its player does. So every seat number of a hand (its log, pots, `toAct`) exists in `seats`, and the pot always adds up (§19.6).
+
+**The room.** `status` is `waiting` or `playing`. `started` is false until the host's `start`. A room ends (`end(reason)`, terminal) when it is empty, on `server_restart`, when idle, or on repeated errors.
+
+**Numbers** (`mp/timing.ts`; the only place they are written):
+
+| Name | Value |
+|---|---|
+| Turn | `settings.turnSeconds` (15, 30 or 60) |
+| `DEAL_GRACE_MS` | 1,500 added to the first decision of a hand |
+| `OFFLINE_TURN_MS` | 15,000: at most this long for a player who is offline |
+| `AWAY_TURN_MS` | 3,000: a player whose `timeouts` already stands at `TIMEOUTS_TO_SIT_OUT` (the rest of this hand) |
+| `STREET_PAUSE_MS` | 1,000 before an `advance` |
+| `RUNOUT_PAUSE_MS` | 1,500 before each `advance` of an all-in run-out |
+| `REVEAL_MS` | 500 per shown hand, before the `advance` that settles a showdown |
+| `HAND_END_FOLD_MS` | 4,000 from a hand won by folds to the next deal |
+| `HAND_END_SHOWDOWN_MS` | 7,000 from a showdown to the next deal |
+| `RESUME_MS` | 3,000 from "two can play again" to the next deal (started tables only) |
+| `TIMEOUTS_TO_SIT_OUT` | 2 in a row |
+| `SEAT_LOST_MS` | 600,000: offline this long and the seat empties at the next deal |
+| `IDLE_NOBODY_MS` | 300,000: nobody online → `ended` `idle` |
+| `IDLE_WAITING_MS` | 1,800,000: status `waiting` this long → `ended` `idle` |
+
+**The flow.** One flow timer at a time (`turn`, `advance`, `nextHand`, `resume`); arming a new one cancels the old one.
+
+| Event | What happens |
+|---|---|
+| `create` | First seat, `status: 'nextHand'`, host, chips `settings.stack`. Room `waiting`, `started: false` |
+| `join` | Lowest free seat, `nextHand`, chips `settings.stack`, notice `joined`; a `leaving` seat of the same user turns back to `playing` |
+| `start` (host) | `started = true`, then **deal** |
+| **deal** | ① Empty the seats that are `leaving`, and those offline for `SEAT_LOST_MS`. ② `nextHand` becomes `playing` (a stack of 0 becomes `busted`). ③ `eligible` = `playing` with chips. ④ Fewer than 2: status `waiting`, `hand = null`, `nextHandAt = null`, broadcast, stop. ⑤ Build the engine table (§19.3): the first deal `createTable`, then `{ ...table, slots }` of the last `nextTable`. `hand = startHand(table, newSeed())`. ⑥ status `playing`, then **next step** |
+| **next step** | `phase` is `betting`: **open decision**. `roundComplete` or `showdown`: broadcast, arm `advance` (`RUNOUT_PAUSE_MS` during a run-out, `STREET_PAUSE_MS`, or for `showdown` `REVEAL_MS` × hands shown). `complete`: **hand end** |
+| **open decision** | `decisionSeq` + 1. Deadline: `leaving` seat → now; `timeouts` at the limit → `AWAY_TURN_MS`; offline → the smaller of `OFFLINE_TURN_MS` and the normal turn; else the turn (+ `DEAL_GRACE_MS` if it is the hand's first decision). Broadcast, arm `turn` |
+| `act` | Checks in §19.4's table; `step(hand, { kind: 'act', seat, action })`; `timeouts = 0`; **next step** |
+| `turn` fires | `action = legal.canCheck ? check : fold` (`safestAction`). `step`. `timeouts + 1` and the notice `timedOut` to that player (not for a `leaving` seat). **next step** |
+| `advance` fires | `step(hand, { kind: 'advance' })`, **next step** |
+| **hand end** | Every dealt-in seat takes the hand's final stack. A stack of 0 → `busted`. `timeouts ≥ 2` → `sittingOut` with the notice `sittingOut` (unless busted). `handsPlayed + 1`, `table = nextTable(table, hand)`. `nextHandAt = now + HAND_END_*`, broadcast, arm `nextHand` |
+| `nextHand` fires | **deal** |
+| `back` | `sittingOut` → `nextHand` (or `busted` with no chips), `timeouts = 0`. If `started` and status `waiting` with 2 who can play: arm `resume` |
+| `reload` | `busted` → chips `settings.stack`, `nextHand`. If `started` and status `waiting` with 2 who can play: arm `resume` |
+| A `join` while `started`, status `waiting` | Same `resume` rule |
+| `leave` | `left` to the player. Dealt into the running hand (folded or not): `leaving` until hand end, and a seat that is the current decision acts at once. Otherwise the seat empties now (host rule below). No seat left: `end` |
+| `disconnected(user)` | `online = false`. If it is their open decision and more than `OFFLINE_TURN_MS` is left, the deadline moves to `now + OFFLINE_TURN_MS`. Nothing else |
+| `connected(user)` | `online = true`, a `table` to that player. The deadline does not move |
+| **Idle watch**, after every change | Nobody online: arm `idle` (`IDLE_NOBODY_MS`); status `waiting`: arm `idle` (`IDLE_WAITING_MS`, the shorter of the two if both hold). The condition gone: cancel. When it fires: `end('idle')` |
+
+**A disconnect** is treated like a timeout: the same clock path, the same counter, the same sitting-out and the same "I'm back". Nothing about the seat changes when a player comes back, so a short drop costs at most the current turn.
+
+**Leaving mid-hand** means folding now: when the turn comes the server checks if that is free and folds otherwise. A leaver's chips are gone. A `join` by the same user before the seat empties cancels the leaving.
+
+**The host.** When the host leaves (or the seat empties), the host is the next taken, not `leaving` seat clockwise, with the notice `hostChanged`. The only host power is `start`, so the rule is simple; no seat left ends the room. The room does not need a host after the first hand.
+
+**A voided hand** (`InvariantError`, or an `EngineError` on an action the server itself made, §4.5): every dealt-in seat gets its `startStacks` back, the notice `handVoided`, `hand = null`, and `nextHand` armed for `HAND_END_FOLD_MS`; `table` stays as it was, so the button does not move. A second voided hand in a row: `end('error')`.
+
+**Server restart.** `onApplicationShutdown` (the `SIGTERM` path, §17.3) calls `room.end('server_restart')` for every room: `{ t: 'ended', code, reason: 'server_restart' }` to each online player, then the sockets close with 1012. No table survives a redeploy: this is decision 2. A client that was away then gets `welcome` with `code: null`, and shows "This table has ended."
+
+**Chips** live in `seat.stack` between hands and in `hand.seats` during a hand. A reload sets a busted seat to `settings.stack`. Nothing else ever creates, moves or removes chips; a seat that empties takes its chips away with it.
+
+### 19.6 One Table, two drivers (`app/mp/driver.ts`)
+
+The Table already reads everything through selectors of the store's `game` slice (`game.hand`, `game.table`, `game.legal`, `game.mode`), and the selectors never read `deck` or `seed`. So the seam is: **while a multiplayer table is on, `MpDriver` writes the `game` slice instead of the `TableController`**, with a `HandState`-shaped hand built from what the server sent. The Table's code does not know where the data came from.
+
+**The adapter (`app/mp/localView.ts`, pure).** `localView(view: TableView, heroName: string): { table, hand, legal, mode }`:
+
+- The order: the real seats that have a player, clockwise, starting at `view.you`. Local seat `i` is `order[i]`, so **seat 0 is always the viewer and empty seats do not exist**: `tableGeometry` gets the real number of players (2..9).
+- `hand`: `null` when `view.hand` is null. Otherwise each seat-indexed array (`seats`, `startStacks`, `result.payouts`, `result.net`) is re-ordered and each seat number (`button`, `sbSeat`, `bbSeat`, `toAct`, `revealed`, `result.pots[].eligible`, `result.potWinners`, `result.shown[].seat`, and the `seat` or `seats` of every `log` event) is mapped to local. A seat not dealt in takes its chips from the seat info (`seats[i].stack`), because the engine's slot says 0 for it. The rest are the fields the type needs: `schema: 1`, `engineVersion: ''`, `seed: '0'.repeat(32)`, `deck: []`, `deckPos: 0`, `lastAggressor: null`, `preflopAggressor: null`, `undoneDecisions: []`, `startTotal` the sum of `startStacks`, each seat's `lastActedAtBet: null`. ⚠️ This `HandState` never goes to `step`, `checkInvariants`, a worker or `persist`.
+- `table`: `config` from `view.settings` (`seatCount = order.length`, `botLevel: 'easy'`, `seatLevels` nulls), `slots` from the seat infos (`playerId: 's' + real`, `kind: 'hero'` for local 0 and `'remote'` for the others, `personality: null`), `handsDealt = view.hand ? view.hand.handSeq - 1 : view.handsPlayed` (so the banner keeps this hand's number).
+- `legal`: `view.legal`.
+- `mode`: `handEnd` for a complete hand; `heroTurn` when `legal` is not null; `botTurn` when betting; `advancing` for `roundComplete` and `showdown`; `idle` with no hand. (`botTurn` is only the store's existing name for "someone else's turn".)
+- `next: null`, `heroBust` from `seats[you].status`, `seatStats: NO_SEAT_STATS`, `canUndo: false`, `feedback: null`, `decisions: []`, `coachLevel: 'exam'`, `summary: null`.
+
+Why `coachLevel: 'exam'`: `LEVEL_RULES.exam` has no win badge, no price chip, no "By river", no tips, no Undo, no grade chips (§10.2), so the Table's coach places go quiet from the same data they already read. Equity stays `'off'` because no job runs.
+
+**The store (`app/store.ts`).** New slice `mp: MpSlice` (`active: boolean`, `view: TableView | null`, `connection: 'idle' | 'connecting' | 'online' | 'reconnecting' | 'lost'`, `problem: MpProblem | null`, `turnEndsAt: number | null`, `nextHandEndsAt: number | null`, in `performance.now()` time) and `tg: { inside: boolean }`. New in `AppStore`: `setRemoteHandler((cmd) => boolean)`; `dispatch` asks it first for game commands, and a command it returns true for does not reach the controller. New selectors `selectRemote`, `selectMpView`, `selectConnection`, `selectInTelegram`, `selectTurn`, `selectSeatNotes`.
+
+**The driver.** While a table is on it owns the `game` slice and the `mp` slice:
+
+| Entering (first `table`) | Leaving (`left`, `ended`, a dialog's OK) |
+|---|---|
+| `controller.park()` (below) | `controller.unpark()` |
+| `{ type: 'gate', gate: 'offTable', closed: true, owner: 'mp' }`: the local game's bots and timers stand still even on the Table screen | The same with `closed: false` |
+| `setRemoteHandler` | `setRemoteHandler(null)` |
+| `ui.backTrap = 'mpLeave'` (below) | `null` |
+| `{ type: 'replace', screen: 'table' }` or `'mpRoom'` | Home |
+
+`act` → `{ t: 'act', seq: view.decision.seq, action }`, and at once `legal: null` so the bar locks; a refused action re-publishes the last view. `reload`, `changeTable` (the out-of-chips dialog's other button: "Leave table") and `leaveTable` go to the socket. `nextHand`, `topUp`, `undo`, `keepMove` are swallowed. Every other command is not the driver's (false), so Settings, Export and the sound button keep working. A view with `status: 'waiting'` shows `mpRoom`, `'playing'` shows `table`.
+
+`turnEndsAt` and `nextHandEndsAt` come from `deadlineAt - now` and `nextHandAt - now` of the view, added to `performance.now()` on receipt, so the phone's clock does not matter (decision 3).
+
+**When the socket opens.** Inside Telegram only, at `wss:` (`ws:` on a plain-http test page) on the page's own host, `MP_WS_PATH`. At launch: `hello`, then by `welcome`: seated → the table (`welcome.code`); a table code in `startParam` → `join`; `startParam` is `new` → the Create screen; otherwise the socket closes again. It opens again on "Create table", and it closes when the player leaves a table. Outside Telegram no socket ever opens (§15.2).
+
+**`TableController.park()` / `unpark()`** (the only controller change): `parked = true` stops `publish()` from writing the `game` slice and from syncing `equityJobs` and `hintJobs`; `park()` also does one `equityJobs.sync(null, epoch)` and `hintJobs.sync(null)` so the equity and coach slices empty. `unpark()` sets it false and calls `publish()`, and the local game comes back exactly as it was (`tests/app/controller.park.test.ts`). The `data` slice keeps being written.
+
+**The back trap (`ui.backTrap: Overlay | null`, the new UI command `{ type: 'backTrap', overlay }`, `reduceUi`).** A `back` with no overlay that Back may close opens this overlay instead of leaving the screen. It is how Back at a multiplayer table (Android, browser, Telegram's BackButton) asks "Leave this table?" instead of walking away.
+
+**Navigation (`app/navigation.ts`).** New screens `mpCreate`, `mpRoom`; new overlays `mpLeave`, `mpProblem` (both `dialog` gate; `mpLeave` Back closes it, `mpProblem` no). `readOnlyNav` does not apply while `mp.active`.
+
+**What the Table screen changes** (`ui/screens/Table.tsx`, one selector, `selectRemote`):
+
+| Place | At a remote table |
+|---|---|
+| `CoachSlot`, `CoachPanel`, `SideCoach` | `TurnStrip` instead (§19.10); Undo hidden by the data (Exam) |
+| `CoachSheetHost`, `CoachKey`, tips (`selectDueTip`) | Nothing |
+| `SeatsLayer` | No `onSelect` (no bot card); `selectSeatNotes` adds the pod's note (`Offline`, `Out`, `Next`) as a new `Seat` prop |
+| `seatView` / `SeatViewData` | New field `bot` (`slot.kind === 'bot'`): `seatLabel` says "bot" only for a bot |
+| `cardsOf` (`tableViews.ts`) | One-line change: a dealt-in live seat with `hole === null` is `hidden` (card backs), not `none` |
+| `BannerLayer`, `SideBanner` | `HandEndBanner` gets `countdown` instead of `onNext`: not a button; the line "Next hand in {s} s". `onReview` and `summary` absent |
+| Menu (`screensEntry.tsx`) | Resume · Hand rankings · Sound (compact) · Leave table (`mpLeave`) |
+| `ActionArea` | When the viewer's seat is `sittingOut`: the §19.10 line and "I'm back" instead of Row A |
+| `OutOfChipsDialog` | Reused: "Get {x} chips" and "Leave table" (a new prop) |
+| `Table()` | Does not ask for the coach's and the summary's chunks |
+
+Everything else (`Seat`, `ActionBar`, `SizingTray`, `Board`, `Pot`, `HeroStrip`, `HandsTab`, `RankingsDrawer`, the sounds of `app/cues.ts`, the wake lock) reads the same `game` slice and needs no change. The hero's hand label ("Pair of Kings") stays: it is the player's own cards in words, it is not a coach, and the rankings drawer highlights the same thing.
+
+**Timers (§0.3).** `app/mp/socket.ts` gets the controller's `Timers`, and `tests/app/timers.test.ts` keeps holding: no direct timer call outside the controller. `TurnStrip` keeps a display timer (§0.3 allows it): one `setTimeout` chain a second, and the ring is a CSS animation with `--turn-ms`.
+
+### 19.7 The Telegram client (`app/tg/*`)
+
+**Launch.** `app/tg/launch.ts` (entry chunk, imports nothing, a few lines): `parseLaunch(win)` reads `location.hash` with `URLSearchParams`, takes `tgWebAppData`, `tgWebAppVersion`, `tgWebAppPlatform`, stores them in `sessionStorage` under `pc.tg.launch` (for a reload that loses the fragment; `sessionStorage` wrapped in `try`), and returns `{ initData, version, platform, startParam }`, or null when there is no non-empty `tgWebAppData`. `startParam` is `new URLSearchParams(initData).get('start_param')`. Null means no Telegram: nothing else in this section runs and no chunk loads.
+
+`boot.ts`, after `createTableController`: if `parseLaunch` found Telegram, `appStore.setState({ tg: { inside: true } })` and `void import('./tg/start.ts').then((m) => m.startTelegram({ win, store: appStore, controller, launch, timers: realTimers }))`.
+
+**The bridge (decided: our own, not a package).** The official script is not allowed (`script-src 'self'`). `@telegram-apps/bridge` (MIT, 2.11.0, 640 KB unpacked) brings valibot and seven more packages. What we need is about 80 lines, one file, no dependency, tested with a fake window:
+
+- `post(type, data?)`: the three transports of §19.2, in that order; a no-op outside them. (`window.external` exists in every browser: test for `notify` in it, as the script does.)
+- Receive: `window.Telegram.WebView.receiveEvent`, `window.TelegramGameProxy.receiveEvent`, `window.TelegramGameProxy_receiveEvent`, set up once, and in an iframe the `message` listener (only from `window.parent`).
+- In an iframe: `iframe_ready {reload_supported: true}` at start; on `reload_iframe`, `iframe_will_reload` and `location.reload()`.
+- `on(type, fn)`, `off`.
+- `atLeast(version)`, by the script's rule (dotted parts, missing parts are 0), so we never send an event the client does not know.
+
+**The shell (`app/tg/shell.ts`).**
+
+| Job | How |
+|---|---|
+| Ready | `web_app_ready` and `web_app_expand` when `startTelegram` runs (the first render is done by then; `app/` may not call `requestAnimationFrame`, §0.3) |
+| Colours | `web_app_set_header_color` and `web_app_set_background_color` with `#0f1512`; `web_app_set_bottom_bar_color` the same from 7.10. The felt is the app's own design (§12.8): Telegram's bars match it. Theme parameters are not applied |
+| Back | Subscribes to `ui.nav`: `web_app_setup_back_button` with `is_visible: canGoBack(nav)` (`app/lifecycle.ts`); `back_button_pressed` → `{ type: 'back' }`. The app's own history guard stays: it does no harm in a WebView, and in an iframe it keeps the browser's Back working |
+| Viewport | `web_app_request_viewport`; on `viewport_changed` the shell keeps `--tg-viewport-stable-height` as a CSS variable. No layout change: the Table uses `dvh` (§12.3) and the Mini App is expanded |
+| Safe area | `web_app_request_safe_area`, `web_app_request_content_safe_area`; the insets become `--tg-safe-*`. The bottom bar's rules use `max(env(safe-area-inset-bottom), var(--tg-safe-bottom, 0px))` (the Action bar and the Screen footer, two rules). We do not ask for fullscreen: Telegram's own header stays, with Back and Close |
+| Haptics | A port in `app/device.ts`: inside Telegram `impact: light` for the turn and `notification: success` for a win instead of `navigator.vibrate` (which iOS lacks) |
+| Vertical swipes | `web_app_setup_swipe_behavior` with `allow_vertical_swipe: false` while the Table is on screen, true otherwise, so the sizing slider never drags the sheet down |
+| Closing | `web_app_setup_closing_behavior` with `need_confirmation: true` only while a multiplayer table is on |
+| Invite | `web_app_open_tg_link` with `path_full: '/share/url?url=<invite, encoded>&text=<words, encoded>'`: Telegram's own share list |
+
+### 19.8 The bot
+
+**Webhook.** `POST /api/telegram/webhook`. The header `X-Telegram-Bot-Api-Secret-Token` must equal `sha256Hex('webhook:' + token)` (64 hex characters, a valid `secret_token`), compared in constant time; otherwise 401, and the body is not read. Off (404) without the Telegram config. The handler answers 200 at once and works after it; a repeated `update_id` (last 1,000 kept) is dropped. Errors from the Bot API are counted, never thrown: Telegram sees 200.
+
+**Registration** (`bot/registration.ts`, on bootstrap, only in production with the config): `setWebhook` (`url` = `PUBLIC_URL + '/api/telegram/webhook'`, `secret_token`, `allowed_updates: ['message', 'inline_query']`, `drop_pending_updates: true`); `setMyCommands` (`start` "Open the game", `new` "Make a table for friends", `help` "How it works", `post` "A message for your channel"); `setChatMenuButton` (`MenuButtonWebApp`: `text: 'Play'`, `web_app.url` = `PUBLIC_URL`). A failure is logged in one line (no token) and retried after 5 s, 30 s, 120 s; it never stops the server.
+
+**Commands.** Reply with `sendMessage`, in the chat of the message; a command with `@name` is handled only if it names this bot. Every button is a **URL** button to `invite(param)` = `https://t.me/<bot>/<app>?startapp=<param>`, because that is what works in groups and channels (§19.2).
+
+| Update | Reply | Button |
+|---|---|---|
+| `/start` | "Welcome to RB Poker Coach. Learn poker by playing. Free, play money only." | "Play" → `invite()` (no `startapp`) |
+| `/start <code>` (a table code) | "Tap to join the table." | "Join table" → `invite(code)` |
+| `/start new` | The same as `/new` | |
+| `/new` | "Tap to open the game and make a table." | "New table" → `invite('new')` |
+| `/help` | "Open the game with the Play button. Play with friends: make a table and send the link. Play money only. Chips have no value." | "Play" → `invite()` |
+| `/post` | "Play Texas Hold'em and learn while you play. Free, play money only. {link}" with the direct link in the text — a message to forward to a channel | "Play" → `invite()` |
+| Inline query (any text) | One result, `is_personal: true`, `cache_time: 0`: at a table: title "Invite to my poker table", description "Friends tap the button to join.", message "Join my poker table! Play money only.", button "Join table" → `invite(code)`; not at a table: title "Play RB Poker Coach", description "Free. Play money only.", message "Play Texas Hold'em and learn while you play. Free, play money only.", button "Play" → `invite()` | |
+
+The bot sends no other messages, keeps no chat list and logs no user. `/post` is open to anyone: it only sends this text to whoever asked. Channels: forward the `/post` message, or paste the link; the text carries the link so a post works even if a client drops the button.
+
+**Which table a user is at (inline mode).** `bot/bot.service.ts` depends on one small interface, `TableLookup { codeOfUser(userId: number): string | null }`, under the Nest token `TABLE_LOOKUP`. `BotModule` provides a stand-in that answers null. `RoomRegistry` implements it: whichever of chunks 10.4 and 10.5 merges second makes `TABLE_LOOKUP` the real one (a line in `bot.module.ts`), so the two can be built side by side.
+
+### 19.9 Security and leak rules
+
+**`initData`** (`telegram/init-data.ts`, §19.2): `checkInitData(raw, token, nowSeconds)`: parse with `URLSearchParams`; a duplicate key or a missing `hash` is malformed; build the check string from every other field; compare by `crypto.timingSafeEqual` of the raw bytes. `auth_date` must be within **24 hours** behind and at most **5 minutes** ahead of the server clock. It is checked on every `hello`, so a Mini App left open longer than a day is asked to reopen. `user` must be present, with `id` a safe integer and `first_name` a string. It goes **only in the `hello` frame**, never in a URL (proxies log URLs), never in a log, and is not stored after the check.
+
+**Identity.** The Telegram user id is the only identity. **One socket per user** (§19.4) and **one seat per user** (`already_seated`, with the other table's code). `MpUser = { id: number; name: string }` lives in the server's memory.
+
+**Names.** `first_name` only: normalised (NFC), control and format characters removed (`\p{C}`, so no right-to-left overrides), trimmed, at most 24 code points; empty becomes "Player {seat + 1}". Names are text nodes in React and never reach HTML. `last_name`, `username`, `language_code` and `photo_url` are not read.
+
+**Leak rules (⚠️ pitfall 13).** In a message to the player on real seat V:
+
+| # | Rule |
+|---|---|
+| L1 | Every hand view comes from `publicHand(h, V)`; nothing else on the server reads `HandState.seats[].hole`, `deck`, `deckPos` or `seed` for a message |
+| L2 | `hand.seats[i].hole` is non-null only for `i === V` (dealt in) and for seats in `hand.revealed`, which holds only live seats (§3.9: a folded hand is never shown) |
+| L3 | No key named `deck`, `deckPos`, `seed`, `tableSeed`, `startTotal` and no `TableState` or `HandState` appears anywhere |
+| L4 | `legal` is non-null only on V's own decision; it never describes another seat |
+| L5 | No message carries a Telegram id, a username or a photo of anyone; names are the cleaned first names above (`welcome` has V's own) |
+| L6 | ⚠️ The seed is **never** sent, not even after the hand: the seed gives the whole deck and with it every folded hand. So no shuffle code at these tables (no §16.3 check): they have no Review either |
+
+**Tests** (acceptance 6): a fast-check property on `publicHand` with permuted hidden cards; an integration recorder of every frame to every socket with a checker for L1–L6; the same checker on real browser frames. The checker walks the JSON structure, it does not search strings (card numbers are everywhere).
+
+**Other limits and refusals.** §19.4 Limits. No bot or room id is guessable: table codes are 8 characters from a 31-letter alphabet from `crypto.randomInt`. Errors reveal nothing about other tables beyond `not_found` and `full`. Chips and blinds are only ever server numbers: the client sends a preset, an action and a seat it was given. Logging: at most one line at boot about whether Telegram is on, plus counters; never a token, a user id, a name, or `initData`.
+
+**Cloudflare and Traefik.** No change (§19.2). The `Origin` check of §19.4 is the only origin rule.
+
+### 19.10 Screens and words
+
+The owner tests on a phone and is not a native English speaker. Every word here is final and goes into `i18n/mp.ts`; `tests/ui/mpCopy.test.ts` holds them equal to this table. The look is the existing screens' (§12): `ScreenBar`, `Screen.module.css`.
+
+**Flows.**
+
+- **Create.** Home (or Welcome, on a first launch) inside Telegram has one more button under Play: "Play with friends". It opens `mpCreate`.
+- **Share.** After "Create table" the host is in the waiting room with the invite on top: "Invite friends" opens Telegram's own share list (§19.7). The link works for anyone with Telegram.
+- **Join.** The invite opens the Mini App with `startapp=<code>`: the app shows "Joining the table…", sends `join`, and shows the waiting room or the Table. A player already at a table who opens the game by any way returns to it (`welcome.code`).
+- **Waiting.** Everyone sees the seats fill. The host's "Start game" works from 2 players. A player who joins a running game sees the table and gets cards from the next hand.
+- **Playing.** The Table screen of Stages 3–9. The strip that holds the coach says whose turn it is and the seconds left, with a ring on that seat; below 10 seconds the seconds are bold (not colour alone). The action bar is as always; no coach and no win chance.
+- **Hand end.** The hand-end banner for 4 s (folds) or 7 s (showdown), then the next hand. It waits for nobody: there is one clock for the whole table.
+- **Busted.** The out-of-chips dialog. The table goes on behind it.
+- **Sitting out.** After two timeouts in a row the bar is replaced by "You are sitting out." and "I'm back".
+- **Disconnected.** A thin banner over the Table: "Connection lost. Trying again…". The bar is locked. After 2 minutes: "We can't reach the game." with "Try again" and "Leave table".
+- **Table ended.** A dialog nobody can dismiss except with OK, then Home.
+
+**The words.**
+
+| Where | Text |
+|---|---|
+| Home, Welcome (the one first-paint word, in `i18n/start.ts`) | "Play with friends" |
+| Create: title | "New table" |
+| Create: players | "Players" · "You can start with fewer." |
+| Create: game | "Game" · "Quick game" with "1,000 chips · blinds 25/50" · "Normal game" with "2,000 chips · blinds 10/20" · "Long game" with "5,000 chips · blinds 10/20" |
+| Create: time | "Time to act" · "15 seconds" · "30 seconds" · "60 seconds" |
+| Create: button | "Create table" |
+| Create: footer | "Play money only." "Chips have no value." · "Hands here do not count in your Stats." |
+| Joining | "Joining the table…" |
+| Waiting: title | "Table {code}" |
+| Waiting: invite | "Send this link to your friends." · "Invite friends" (Telegram's share list, with the text "Join my poker table! Play money only.") · "Copy link" (shown only where `navigator.clipboard` exists) · "Link copied." |
+| Waiting: players | "You" · "Host" · "Offline" · "Empty seat" |
+| Waiting: host | "Start game" · "You need at least 2 players." |
+| Waiting: guest | "Waiting for {name} to start the game." |
+| Waiting: started, too few | "Waiting for more players." |
+| Waiting: leave | "Leave table" |
+| Strip: your turn | "Your turn" · "{s} s" |
+| Strip: someone else | "{name} is thinking" · "{s} s" |
+| Strip: next hand | "Next hand in {s} s" |
+| Strip: not dealt in | "You get cards in the next hand." |
+| Seat notes | First match: not online "Offline"; `sittingOut`, `busted` or `leaving` "Out"; `nextHand` "Next" |
+| Sitting out | "You are sitting out." · "I'm back" |
+| Timeout toasts | "Your time ran out. You folded." · "Your time ran out. You checked." |
+| Toasts | "{name} joined the table." · "{name} left the table." · "{name} is now the host." |
+| Voided hand | The F.10 line ("This hand was cancelled because of an internal error. Your chips were returned.") |
+| Busted dialog | "You are out of chips. That's okay: chips are free here." · "Get {x} chips" · "Leave table" |
+| Leave dialog | "Leave this table? If a hand is running, you fold it. Your chips will be gone." · "Leave table" · "Stay" |
+| Connection | "Connection lost. Trying again…" · "We can't reach the game." · "Try again" |
+| Table ended | "The game was updated, so this table ended. Chips are not kept." (`server_restart`) · "This table closed because nobody played." (`idle`) · "Something went wrong, so this table ended." (`error`) · "This table has ended." (`welcome` says it is gone) · "OK" |
+| Joining failed | "This table is gone." · "This table is full." · "You are already at another table." with "Go to my table" and "Leave it and join this one" · "Too many tables are open right now. Please try again later." |
+| Login problem | "We could not check your Telegram login. Please close the game and open it again." |
+| Old version | "A new version is ready. Please close the game and open it again." |
+| Other device | "You opened the game in another place. This window has stopped." |
+
+**E2E fixture and test env (chunk 10.10).** `tests/e2e/fixtures.ts` gets `test.use({ multiplayer: true })`: then `forbiddenReason` also allows a same-origin WebSocket to `MP_WS_PATH`; every other spec keeps the §15.2 guard. Playwright's `webServer` env sets a test token, `TELEGRAM_BOT_USERNAME`, `TELEGRAM_APP_SHORT_NAME` (no `NODE_ENV`: no registration, §19.3); `mp.off.spec.ts` uses `startOwnServer` without them. `tests/e2e/telegram.ts` signs `initData` with `node:crypto` (the §19.2 rule, its own code, not the server's), and builds the fragment `#tgWebAppData=…&tgWebAppVersion=9.1&tgWebAppPlatform=tdesktop`. The specs run only in `chromium-phone-390x844` and `webkit-phone-390x844` (`testInfo`), at most 3 contexts.
+
+### 19.11 Headers, CSP, service worker, check-deploy
+
+| What | Change | Why |
+|---|---|---|
+| `frame-ancestors` | `'none'` → `https://web.telegram.org https://webk.telegram.org https://weba.telegram.org` (helmet: `frameAncestors: [...]`) | Telegram Web shows Mini Apps in an iframe on those hosts (§19.2); all other pages still cannot frame the game. One value in `security.ts`, on with or without the token, so `check-deploy` has one thing to expect |
+| `X-Frame-Options` | Removed (helmet: `xFrameOptions: false`) | It has no value for "these origins only" and DENY would block the iframe |
+| `connect-src` | **No change: `'self'`** | Same-origin `wss:` is covered by `'self'` in every supported Safari (§19.2). `apps/web/scripts/csp.ts` (the meta tag) stays the same. If a real phone proves otherwise: add `wss://poker.romanbitca.com` in `security.ts` and `csp.ts` (one line each); the WebKit E2E test guards this |
+| `SECURITY_HEADERS` (`security.ts`) | The new CSP, no `x-frame-options` | `check-deploy.mjs` and `test/http.test.ts` read this object |
+| `check-deploy.mjs` | Fails if `x-frame-options` is present. New `--ws`: opens `wss://<host>/api/mp/ws`, sends a `hello` with garbage `initData` and expects a close with 4001 (Telegram on, and the proxies pass WebSockets). Without `--ws` no socket is opened (the CI `docker` job has no token) | §17.6 step 7 |
+| Service worker | **No change.** `navigateFallbackDenylist: [/^\/api\//]` already keeps `/api` out of the SPA fallback, WebSockets never pass through a service worker, the webhook is server to server, and `index.html` from the precache keeps its response headers. The precache has no runtime caching (§15.1) | |
+| `Permissions-Policy`, COOP, CORP | No change. COOP does nothing in an iframe; CORP is only checked under COEP, which Telegram Web does not send (§19.2) | |
+| §17.6 step 4 | Three variables in Coolify, **runtime only** (§19.13) | A build-time token would end up in image layers |
+
+The WebSocket handshake never touches Express, so `helmet` and `compression` do not see it; the handshake's own checks are in §19.4.
+
+### 19.12 Privacy and the §16 rules
+
+**Appendix G (chunk 10.11; the new text goes in with `i18n/about.ts` in one PR, because `About.copy.test.ts` compares them).**
+
+G.2, the "Where" line becomes:
+
+> - **Where:** only on this device, inside this browser ("local storage"). There is no account. While you play alone, the app only loads its own files and checks for updates, and nothing about you or your games is sent. Play with friends is different: see below.
+
+G.2 gets a new last line:
+
+> - **Play with friends (inside Telegram only):** when you use it, Telegram gives our server your Telegram user ID (a number, not your phone number) and your first name, so the table knows who is who. The other players at your table see your first name, your chips and your moves. They see your cards only if the hand goes to a showdown. The server keeps this in its memory only, and only while the table is open. Nothing is saved after the table ends, and hands at these tables do not go to your Stats. We keep no list of players and no chat.
+
+In G.1, "You play against computer bots with virtual chips that have no value." becomes "You play against computer bots, or with friends at a private table in Telegram, with virtual chips that have no value." (the rest of G.1 is unchanged).
+
+G.5's "Your data" line gets one sentence at the end: "Only Play with friends uses our server (see Privacy)."
+
+**The §16 rules at Telegram tables.**
+
+| Rule (§16.2) | How it holds |
+|---|---|
+| Never sell chips or anything else | No payment code, no Stars, no links |
+| No prizes | Hands end in chips that exist only at this table |
+| No chip transfers | The protocol has no message that moves chips between players; the only chip message is `reload`, from the server's fixed amount |
+| Reload is free and unlimited | `reload` has no limit and no cost |
+| No leaderboards with rewards | No leaderboard at all |
+| Disclaimers | "Play money only." and "Chips have no value." on the Create screen; G.1 in About |
+
+§16.1 stays true for everything else. For Play with friends: the data is the Telegram id and first name; it is held to do what the player asked for, in memory, for the life of the table. No analytics, no cookies, no third party beyond Telegram itself. Whether GDPR applies and what notice it needs is the same UNVERIFIED reading as §16.1, and now applies to real personal data; see the risk register.
+
+### 19.13 The owner's steps (once, in the morning)
+
+Everything else is done and tested without this. In Telegram:
+
+1. Open **@BotFather**. Send `/newbot`. Name: `RB Poker Coach`. Username: anything ending in `bot`, for example `rb_poker_coach_bot`. BotFather sends a **token**. Keep it secret.
+2. Send `/newapp`, choose your bot. Title: `RB Poker Coach`. Description: `Learn poker by playing. Free, play money only.` Photo: use `docs/assets/telegram-app-640x360.png` (made by chunk 10.11; BotFather asks for 640×360). GIF: send `/empty`. URL: `https://poker.romanbitca.com`. Short name: `play`.
+3. Send `/setinline`, choose your bot, send `Invite friends`.
+4. Send the agent the token, the bot's username and the short name. (Or in Coolify, app `rb-poker`, Environment, add `TELEGRAM_BOT_TOKEN`, `TELEGRAM_BOT_USERNAME`, `TELEGRAM_APP_SHORT_NAME`. Turn off "Available at Buildtime" for all three, then Redeploy.)
+5. Open `https://t.me/<your bot>/play` on your phone. Tap **Play with friends**, **Create table**, **Invite friends**. Send the link to a friend and play one hand.
+6. To post in your channel: send `/post` to your bot, and forward the message to the channel. Or paste the link `https://t.me/<your bot>/play` in your own post.
+7. Tell the agent if anything looks wrong. A screenshot is enough.
+
+`/newapp` and the 640×360 photo come from BotFather's own prompts, as described by third-party guides; §19.2 could not confirm them from Telegram's documentation. If BotFather asks something else, answer as it says: the only values that matter are the URL and the short name.
+
+### 19.14 Later chunks (after the core and the owner's check)
+
+**Quick match** (`feature/mp-quick-match`, 1.4.11). A new client message `{ t: 'quick' }` and a server queue: the server seats the player at the first public table with a free seat, or makes a new one (Normal game, 6 seats, 30 s). Public tables have no host: a hand starts by itself when two can play, 10 s after the second one sits down (the `resume` path). Strangers play: the name rules of §19.9 already apply; there is still no chat. It needs: `TableView.public`, the `quick` decoder case, a bump of `MP_PROTOCOL_VERSION`, tests `test/mp/quick.test.ts`, `tests/e2e/mp.quick.spec.ts`.
+
+**The app's bots in empty seats** (`feature/mp-bots-fill-seats`, 1.4.12). A host option ("Fill empty seats with bots"), the `decide()` of §8 on the server. Costs: `scripts/sync-game.mjs` must also copy `analysis`, `brain` and `data` (with the generated tables); bots think in a `worker_threads` pool so a hand of Monte Carlo cannot stall the room; `kind: 'bot'` slots in the room's table, `nextTable` replaces a busted one as it does locally. Tests: `test/mp/bots.test.ts` and a non-cheating test (bots get `observe()` only, §9.6).
+
 ---
 
 ## Known pitfalls
@@ -2707,6 +3540,11 @@ Build in order. Every stage ends running locally via `npm start` and `docker com
 46. ⚠️ **Offline tests in WebKit.** In Playwright's WebKit (1.63), `context.setOffline(true)` also fails every response the service worker gives (a controlled page's `fetch` and the reload both fail: "WebKit encountered an internal error"), and a `context.route()` that aborts requests sees the navigation before the service worker does ("Blocked by Web Inspector"). Chromium has neither problem. So the offline test takes the network away for real: it starts its own server on a free port, kills it once the service worker controls the page, and reloads (Chromium also calls `setOffline`). With service workers blocked, that reload fails in both browsers ("connection refused"), so the test cannot pass by accident (checked 28 Sep 2026).
 47. ⚠️ **A changed import can split the entry chunk.** The bundler (Rolldown) cuts the modules that the entry and the lazy chunks share into chunks of their own, and which ones it cuts depends on the import graph, not on the code. In chunk 7.2 `botCardViews.ts` read two small functions from `app/levels.ts` (a module with nothing under it) instead of from `tableViews.ts`, and the whole store graph (about 30 modules) moved out of the entry chunk into a shared one, and 5 initial files became 14: initial JS +3.3 KB and CSS +1.1 KB gzip for no change in the code. A lazy chunk that imports `jsx-runtime` but nothing from `react` does the same to the runtime helpers (+0.15 KB; `MoreOptions` calls `useId` for this reason too). After a change to imports run `npm run build && npm run size` and look at the number of initial files (5 in 7.2: `index`, `react`, `jsx-runtime`, `cards`, `en`; 6 since the screens after the first tap became lazy, §15.3: `store` holds the store graph that the entry shares with them; 1 since chunk 9.4, whose lazy check, `app/shuffleCheck.ts` behind an `import()` in `store.ts`, made Rolldown fold the six into the entry: −1.5 KB, as one gzip stream compresses better); `tests/ui/review.bundle.test.ts` fails when the JS budget breaks, or when one static import pulls a lazy screen (the Table, Setup, Settings, the Menu, the dialogs) back into the initial JS. Chunk 8.3 met it twice (measured on 8.1 before the lazy screens, 5 initial files): `boot.ts` importing `app/secure.ts` (13 initial files, +3.7 KB JS and +1.1 KB CSS), and a lazy chunk importing any persist module that imports `schema.ts` (`schema.ts`, the engine types and `core/assert` cut into a chunk of their own: 6 files, +1.4 KB). So the lazy Data chunk gets those functions at run time (`persist/kit.ts`, §14 notes of 8.3). Chunk 8.2 met it again: a lazy `app/history.ts` that imported `engine/replay.ts` (or `app/reviewViews.ts`) moved the whole engine out of the entry into an extra initial file, +3.6 KB; imported statically it costs its own 0.4 KB. Chunk 9.2 met it again: Learn importing the rankings rows cut `ui/format.ts` out of the entry (7 initial files); the entry no longer needs it since the toasts take `joinNames` from `ui/names.ts` (§15.3 "Learn"). The hand drill (§13.5) met it three times and kept the 6 initial files: its logic chunk reached the evaluator, which the store chunk holds, and the evaluator was cut into an initial file of its own (+1 file) until that chunk also imported `app/store.ts` (it reads the tab mode there), so the whole store chunk is reached the same way; its page imported `RankingsDrawer` and cut `ui/format.ts` out of the entry chunk (+1 file), so the frame in the screens chunk, which holds the drawer already, passes it in; and an `import()` in `app/store.ts` moved Vite's preload helper into the store chunk (+0.1 KB), so boot registers the loader (`setDrillLoader`).
 48. ⚠️ **A page that looks closed can still hold the game.** In Playwright's WebKit (1.63) `page.close({ runBeforeUnload: true })` returns at once and leaves the page open (no `pagehide`, no `close` event; checked 5 Nov 2026), so it keeps the `pc-writer` lock and a new page of the context is read-only (§14.7). Tests close pages with a plain `page.close()` (chunk 8.3 changed `resume.spec.ts` so).
+49. ⚠️ **The seed after a multiplayer hand.** The seed gives the whole deck, and the deck gives every folded hand (§3.9 says those stay hidden). Never send it to a client, not even when the hand is over (§19.9 L6).
+50. ⚠️ **`initData` in a URL, or a wrong check string.** It goes only in the `hello` frame: proxies and logs keep URLs. The hash covers every received field except `hash`; `signature` stays in the string (§19.2).
+51. **`X-Frame-Options` and `frame-ancestors` together.** Keep one: with `frame-ancestors` the framing rule lives in the CSP alone, and `X-Frame-Options: DENY` would block Telegram Web's iframe (§19.11).
+52. **Empty seats in the engine.** `checkSlots` wants one slot per seat with a unique name, so the room gives the engine internal names (`s0`..`s8`); real, possibly equal names live in the room (§19.3).
+53. **Timers at a table.** Every room timer goes through `Clock` with a token; a timer from before a state change does nothing (the room's form of pitfall 22, §19.5).
 
 ---
 
@@ -2810,6 +3648,12 @@ The human answered on 23 Sep 2026. Answered rows show the decision; open rows ke
 | R22 | Cloudflare (proxied wildcard in front of Coolify) rewrites `/sw.js`'s `Cache-Control: no-cache` to `max-age=14400` (zone Browser Cache TTL 4 h), so `check-deploy` fails that URL (§17.6 "Live deployment"). Impact is small (the service-worker update check bypasses the HTTP cache), but the rule stands | **Closed 6 Nov 2026** (owner: "yes, add the Cloudflare cache rule"): a zone cache rule (phase `http_request_cache_settings`), expression `http.host eq "poker.romanbitca.com"`, Browser TTL "respect origin"; `/sw.js` now carries the origin's `no-cache` and `check-deploy` passes every URL. Other hosts keep the zone's 4 h. R21 is 8.2's storage budget (#66) |
 | R23 | Coach strategy audit (fix/coach-strategy-audit, 1.3.85): what the change leaves approximate. The coach's EV model and the bots' differ (the coach reads the measured folds, §8.9; the bots keep the MDF model they were calibrated with, §9.7). The `PUSH_FOLD` words' `Pfold` and `E` come from the general ranking's top `pushSetPct`% while the shove follows the solver's set (§8.4), and an opponent's short shove is still read as the top `pushPct`% of the general ranking (§8.6), not as the solver's set | Low | Low | All three are explanations or reads near the edge of a range; the audit counts (66 → 3 bluffs "also fine", 3 → 0 push/fold mismatches) and the self-play gates hold. Follow-ups: store the solver's calling ranges so the `PUSH_FOLD` numbers are the game's; read a short shove through `pushOrderPct`; measure `FOLD_FACTOR` again whenever the bots change | 5–8 |
 | R24 | Open question Q (EXECUTION "Waiting on the human", from chunk 4.1, PR #27): by §6.3 rule 3's wording a card that makes three of a kind on the board, or two pair with the board's pair, is an out, so the Draw bucket (≥ 8 outs) and the coach's words called such hands draws. The audit of 6 Nov 2026 (964 coach decisions) found 32 of 70 Draw spots with no flush or straight draw, all on paired boards (9♣8♦ on K♥K♠3♣: "Draw: 8 outs. You hit about 17%", bet as a semi-bluff) | **Decided 6 Nov 2026** (branch `fix/coach-words-and-draws`: the question's default, extended) | | Rules 1–3 stay as written and the outs stay visible and exact; such outs are **weak** (§6.3 "Weak outs", `OutCard.weak`): marked "(weak)" in the coach's groups of outs (F.1 `{groups}`), never a Draw (§8.2 `drawOuts`). *Reason:* the improvement is a small pair, or trips that every King shares, not a draw worth betting; a set, trips with a hole card or a full house stays a real out. The same audit's #8: a flush or straight draw with no made hand of its own is a Draw at any `p` below Monster (§8.2 `drawOnly`), so §8.5 step 5 decides its bet or check. Bots read the same buckets (§9.4); the ten §9.7 gates pass with them (1.3.84 row). The owner may still overrule the decision; EXECUTION keeps the question until then | 4, 5 |
+| R25 | Telegram cannot be tested for real tonight: no token until the owner's §19.13 steps. The bridge, the launch and the `initData` check are tested with fakes and a test token | Medium | High | The official script's rules are copied exactly (§19.2); the failure modes are plain ("We could not check your Telegram login…"); acceptance 16 is the owner's check | 10 |
+| R26 | ⚠️ Every merge to `main` deploys and ends all tables (§19.5, in-memory). While friends play, a merge kills their game | Medium | Medium | Told plainly ("The game was updated, so this table ended"); the orchestrator holds merges while the owner tests; persistence stays out of scope | 10 |
+| R27 | A new Telegram Web host or a change of its iframe origin blanks the game there (`frame-ancestors`) | Low | Medium | Hosts checked 8 Nov 2026 (§19.2); one line in `security.ts`; the mobile and desktop apps do not use the iframe | 10 |
+| R28 | One process, tables in memory: a crash ends every table, and the server does not scale past one container | Low | Low | Caps in §19.4 (200 rooms, 1,000 sockets) fit a friends' game; the health check restarts the container | 10 |
+| R29 | Privacy for Play with friends is a new promise (§19.12): the notice has no contact address, and the GDPR reading of §16.1 now covers real personal data | Medium | Medium | The owner decides; default: the text of §19.12 as written. Nothing is stored after a table, nothing leaves the server but what the table shows | 10 |
+| R30 | The server's copy of the engine could drift if someone edits `apps/server/src/game/` | Low | High | Generated and gitignored, `--check` in acceptance 1, a comment in §19.3; a clean checkout always rebuilds it | 10 |
 
 ### UNVERIFIED items and how we close them
 
@@ -2830,6 +3674,10 @@ The human answered on 23 Sep 2026. Answered rows show the decision; open rows ke
 | Whether any secure-context API works behind a self-signed certificate on phones | Not needed: LAN http for gameplay, Coolify HTTPS for the rest (§17.4) |
 | The update flow on real phones (chunk 9.5): an installed app that is resumed fires `visibilitychange`, so it asks for a new version; iOS and Android let the waiting worker in and reload as in Playwright's Chromium and WebKit | Stage 9 acceptance 5's second half: once on the Coolify HTTPS URL with a real push, on the owner's phone (installed app, mid-hand) |
 | The `vite:preloadError` reload on real phones (`feature/stage-9-follow-ups`, §15.1 notes): Safari and Chrome on a phone fire it for a chunk a redeploy removed, as Playwright's WebKit and Chromium do for a 404 | Device script on a plain-http LAN address (§17.4, no service worker): open the game, redeploy, open Learn mid-hand: no reload then, one reload at the next hand |
+| Direct-link `initData` has a `user` (the Mini Apps page lists it as optional and does not say so for direct links) | Acceptance 16: the first real launch. Without it the server answers `auth_failed` |
+| The bot-token hash really covers the `signature` field (§19.2: "all received fields"; no Telegram test vector) | Acceptance 16: the first real launch |
+| BotFather's `/newapp` prompts and the 640×360 photo (third-party guides, §19.13) | The owner's step 2; BotFather's own words win |
+| A forwarded channel post keeps its URL button (the text carries the link in case not, §19.8) | The owner's step 6 |
 
 ### Change log
 
@@ -2928,6 +3776,7 @@ The human answered on 23 Sep 2026. Answered rows show the decision; open rows ke
 | 1.3.96 | 6 Nov 2026 | `ci-local.sh --slow`: one retry for the enforced speed checks (R17), so load from other work on the shared Mac does not fail the run; a real slowdown still fails twice. |
 | 1.3.97 | 6 Nov 2026 | The gold edge of the best five (branch `feature/gold-edge-best-five`; version number provisional, rows are renumbered at merge). The owner, 6 Nov 2026, playing on the phone: "sometimes cards look like with opacity, like they are not active. And I don't understand why this is happening. Maybe we need to fix this." **§6.1, §12.4, §12.9, §13.4:** on the Table no card is faded for being out of the best five (the 60% `off` highlight is gone: 7♣ K♦ on 6♥ 8♥ 4♠ J♠ faded the 4♠, Emeka's 6♥ 6♦ + A♦ K♥ + J♠ the 8♥ and 4♠); every card of the five has one gold edge, a 3 px accent outline (the kickers' 1 px outline read as no mark), and the cards that make the category stay raised 6 px. During the hand the hero's five; after a showdown the winners' (the board the main pot's first winner's, each winner's own cards in its five), and a hero who lost the showdown keeps plain cards, so one winner means exactly five gold cards. Folded seats, the hero's folded cards and the animations keep their fades. **§12.11, A.7, A.8, F.10:** a fifth first-table tip, `bestFive`, the first time the hero has a best five (after a flop the hero still plays), under the board (above it where the bubble would cover the hero's cards, as on a phone on its side: `boardTipSide()`), before the Hands tab's: "Gold edge: the five cards that make your hand." **§12.12, F.10:** a gold-edged card is read "King of hearts, part of your hand", after a showdown "…, part of the winning hand" (`CardView.winning`). **§13.3, §13.5:** the rankings panel, the lessons and the drill keep dimming the cards that do not count (a chart's style). Tests: `tableViews.test.ts`, `Card.test.tsx`, `BoardPot.test.tsx`, `Seat.test.tsx`, `seats.test.ts`, `tips.test.ts`, `Table.tips.test.tsx`, new `tests/e2e/goldEdge.spec.ts`; `tips.spec.ts`, `axe.spec.ts` and `perf.spec.ts` wait for five tips. No new DOM nodes (§15.3). **Size:** initial JS 130.99 → 131.01 kB, CSS 19.25 kB. |
 | 1.3.98 | 8 Nov 2026 | `ci-local.sh --no-docker` (§17.5): the `docker` job's checks against the server started directly, for when Docker Desktop is off; the status says no image was built. |
+| 1.3.102 | 9 Nov 2026 | **Stage 10's design** (branch `docs/stage-10-telegram-multiplayer`; the owner's request of 8 Nov 2026, a Telegram Mini App and play with friends). New **§19** (the design: what Telegram does, checked against its docs and the official script, Bot API 10.3; architecture and the engine copy; the wire protocol `net/protocol.ts`; the table machine; the Table seam; the bot; security and leak rules; the words; headers; privacy; the owner's steps) and **Stage 10** in §18 (acceptance and chunks 10.1–10.13, change-log rows from 1.4.0). §1.4, §1.6, §2.1 (`net` row), §2.6, §15.2, §16 point to §19. Pitfalls 49–53, R25–R30, four UNVERIFIED rows. No code in this PR. Decided here: the server reads a generated copy of `core`, `eval`, `engine`, `net` (`scripts/sync-game.mjs`, built and run on this repository before writing it); `connect-src` stays `'self'` (WebKit fixed the `wss:` match in r292266, April 2022); the seed is never sent, even after a hand (§19.9 L6). |
 
 ---
 
