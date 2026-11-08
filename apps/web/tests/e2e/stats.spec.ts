@@ -3,6 +3,7 @@ import { volumeStorage } from '../helpers/statsVolume.ts';
 import { expect, test } from './fixtures.ts';
 import {
   collectErrors,
+  foldOrCheck,
   newTable,
   openApp,
   pcState,
@@ -95,7 +96,9 @@ test.describe('stats', () => {
     const seed = seedFor(testInfo, 'stats-4b');
     await openApp(page, seed);
     await newTable(page, { players: 4 });
-    const random = prng(seed);
+    // The hero folds or checks (`foldOrCheck`): a hero who busted in the sixth hand left the
+    // out-of-chips dialog over the Table, and its scrim took the tap on Menu below.
+    const random = foldOrCheck;
     // The New table starts at the third hand's banner, before another hand is dealt (a hand in
     // play would be folded and counted too, §3.1).
     let played = 0;
