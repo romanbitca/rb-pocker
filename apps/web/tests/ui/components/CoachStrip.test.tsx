@@ -15,7 +15,9 @@ afterEach(cleanup);
 const ADVICE: StripView = {
   kind: 'advice',
   headline: 'Call 40',
+  headlineShort: 'Call 40',
   line: 'You win about 45%. You need 25%.',
+  lineShort: '',
   why: false,
 };
 
@@ -36,12 +38,13 @@ describe('CoachStrip (§12.6)', () => {
       name: 'Coach: Call 40. You win about 45%. You need 25%. Show why',
     });
     expect(button.getAttribute('aria-haspopup')).toBe('dialog');
-    // Two sentences, one a line (the CSS keeps the "\n", §12.6).
-    expect(container.textContent).toBe('Coach: Call 40You win about 45%.\nYou need 25%.');
+    // Two sentences, one a line (the CSS keeps the "\n", §12.6), and "Why?" on its right end.
+    expect(container.textContent).toBe('Coach: Call 40You win about 45%.\nYou need 25%.Why?');
+    expect(container.querySelector('[data-coach-why]')?.textContent).toBe(coachWords.why);
     fireEvent.click(button);
     expect(onOpen).toHaveBeenCalledOnce();
-    // §15.3: the section, the button, the head (with its <strong>) and the line.
-    expect(container.querySelectorAll('*')).toHaveLength(5);
+    // §15.3: the section, the button, the head (with its <strong>), the line and "Why?".
+    expect(container.querySelectorAll('*')).toHaveLength(6);
     expect(smallTapTargets(container)).toEqual([]);
   });
 
@@ -50,7 +53,7 @@ describe('CoachStrip (§12.6)', () => {
     const view = coachView(coachData(raiserOnly()), null, input(FACING)).strip;
     const { container } = strip(view);
     expect(container.textContent).toBe(
-      'Coach: Call 40All 5 players: 26%.\nRaiser alone: about 44%.',
+      'Coach: Call 40All 5 players: 26%.\nRaiser alone: about 44%.Why?',
     );
     expect(
       screen.getByRole('button', {
@@ -173,7 +176,7 @@ describe('the portrait strip on a narrow phone (§12.3, §12.6)', () => {
         SHELL.coachStrip - room,
       );
       // §15.3: still the section, the advice, the head (with its <strong>) and the line (+ "Why?").
-      expect(container.querySelectorAll('*')).toHaveLength(view.why ? 6 : 5);
+      expect(container.querySelectorAll('*')).toHaveLength(6);
       cleanup();
     }
   });
@@ -192,7 +195,7 @@ describe('the portrait strip on a narrow phone (§12.3, §12.6)', () => {
           {...props}
         />,
       );
-      const line = container.querySelector('[data-coach-advice] > :last-child') as HTMLElement;
+      const line = container.querySelector('[data-coach-advice] > :nth-child(2)') as HTMLElement;
       expect(getComputedStyle(line).getPropertyValue('-webkit-line-clamp')).toBe('none');
       expect(getComputedStyle(line).whiteSpace).toBe('pre-line');
       cleanup();

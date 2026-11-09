@@ -6,9 +6,10 @@
  * Variants:
  * - `strip` (portrait, 56 px): a 44 px slot on the left (CSS padding; the toolbar Undo sits over
  *   it), then the level's content. The advice is "Coach: Call 40" over its line, which wraps to
- *   two lines at most (the labelled pair needs two on a 360–390 px phone; a longer sentence ends
- *   in "…"); the strip's height never follows the words. Beginner's advice is one big button (tap
- *   the strip or "›" opens the sheet); Intermediate's has a "Why?" button.
+ *   two lines at most (the labelled pair needs two on a 360–390 px phone); a head or a sentence
+ *   too long for its room gives way to a shorter form (`useFit`), never to "…", and the strip's
+ *   height never follows the words. Beginner's advice is one big button, tap it or its "Why?";
+ *   Intermediate's has a "Why?" button.
  * - `header` (the wide inline panel's head, §12.5): the same content without opening a sheet: the
  *   details sit right under it.
  * - `strip` with `wrap` (the landscape column's coach row, §12.5): the lines take the lines they
@@ -19,7 +20,7 @@
  *   sheet (at Intermediate it opens the hint first) or tries again after a failure.
  *
  * The narration ("Ben raises to 60.") is plain text: the live announcements of §12.12 (one polite
- * log, throttled) are their own chunk. DOM: 1–5 elements (§15.3); the "›" is CSS.
+ * log, throttled) are their own chunk. DOM: 1–6 elements (§15.3).
  *
  * After the hero acts (§10.2, §12.6, chunk 6.4) the strip shows the decision's grade chip for
  * 1.5 s in place of the narration (`chip`, when the level shows that grade); the hero's next turn
@@ -31,8 +32,11 @@ import { en } from '../../i18n/en.ts';
 import { coachWords } from '../../i18n/coachUi.ts';
 import type { StripView } from '../coach.ts';
 import { sentences } from '../coachText.ts';
+import { useFit } from '../hooks.ts';
 import styles from './CoachStrip.module.css';
 import { GradeChip } from './GradeChip.tsx';
+
+type AdviceView = Extract<StripView, { kind: 'advice' }>;
 
 export type StripVariant = 'strip' | 'header' | 'pill';
 
@@ -59,14 +63,36 @@ const cx = (...names: (string | false | null | undefined)[]): string =>
  * "Coach: Call 40" over the line. A line of two sentences (the two numbers, §12.6: "All 5 players:
  * 26%. Raiser alone: about 44%.", "You win about 45%. You need 25%.") shows one a line: the CSS
  * keeps the "\n" (`white-space: pre-line`), so a pair reads one number and its label a line.
+ *
+ * Each picks what fits its room, never a cut word (1.3.100): the head its big blinds out, then
+ * "Coach:" (the section's name still says it); the line a shorter sentence, then none (the sheet
+ * has it whole; "Why?" is beside it).
  */
-function Advice({ headline, line }: { headline: string; line: string }) {
+function Advice({ view }: { view: AdviceView }) {
+  const heads = [
+    { prefix: true, text: view.headline },
+    { prefix: true, text: view.headlineShort },
+    { prefix: false, text: view.headlineShort },
+  ].filter((f, i, all) => all.findIndex((x) => x.prefix === f.prefix && x.text === f.text) === i);
+  const head = useFit<HTMLSpanElement>(
+    heads.map((f) => `${f.prefix}${f.text}`),
+    'width',
+  );
+  const face = heads[head.index] as (typeof heads)[number];
+  const lines = [view.line, view.lineShort, ''].filter((t, i, all) => all.indexOf(t) === i);
+  const line = useFit<HTMLSpanElement>(lines, 'height');
+  const words = lines[line.index] ?? '';
   return (
     <>
-      <span className={styles.head}>
-        {coachWords.prefix} <strong>{headline}</strong>
+      <span ref={head.ref} className={styles.head} data-tight={head.tight ? '' : undefined}>
+        {face.prefix && <>{coachWords.prefix} </>}
+        <strong>{face.text}</strong>
       </span>
-      {line !== '' && <span className={styles.line}>{sentences(line).join('\n')}</span>}
+      {words !== '' && (
+        <span ref={line.ref} className={styles.line}>
+          {sentences(words).join('\n')}
+        </span>
+      )}
     </>
   );
 }
@@ -192,14 +218,14 @@ export const CoachStrip = memo(function CoachStrip({
       if (header) {
         body = (
           <p className={styles.advice} data-coach-advice="">
-            <Advice headline={view.headline} line={view.line} />
+            <Advice view={view} />
           </p>
         );
       } else if (view.why) {
         body = (
           <>
             <p className={cx(styles.advice, styles.besideWhy)} data-coach-advice="">
-              <Advice headline={view.headline} line={view.line} />
+              <Advice view={view} />
             </p>
             <button type="button" className={styles.why} aria-haspopup="dialog" onClick={onOpen}>
               {coachWords.why}
@@ -207,16 +233,20 @@ export const CoachStrip = memo(function CoachStrip({
           </>
         );
       } else {
+        // Beginner: the whole strip opens the sheet, with "Why?" on its face where it ends.
         body = (
           <button
             type="button"
-            className={cx(styles.advice, styles.open)}
+            className={cx(styles.advice, styles.open, styles.besideWhy)}
             aria-haspopup="dialog"
             aria-label={`${coachWords.prefix} ${view.headline}. ${view.line} ${coachWords.openSheet}`}
             data-coach-advice=""
             onClick={onOpen}
           >
-            <Advice headline={view.headline} line={view.line} />
+            <Advice view={view} />
+            <span className={styles.whyFace} data-coach-why="">
+              {coachWords.why}
+            </span>
           </button>
         );
       }

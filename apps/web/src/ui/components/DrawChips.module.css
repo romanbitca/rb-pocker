@@ -16,7 +16,6 @@
   height: 24px;
   margin: 0;
   padding: 0 10px;
-  overflow: hidden;
   border: 1px solid var(--control-border);
   border-radius: 12px;
   background: var(--control-bg);
@@ -25,7 +24,7 @@
   font-size: 0.75rem;
   font-weight: 600;
   line-height: 22px;
-  text-overflow: ellipsis;
+  /* One line: a row too narrow for the words shows a shorter form (`useFit`), never "…". */
   white-space: nowrap;
 }
 button.chip {
@@ -45,8 +44,8 @@ button.chip[aria-expanded='true'] {
 }
 
 /* The landscape column (§12.5): beside the win badge the chip has 180 px, so its words take a
-   second line where one is too short ("Two overcards · 24%" over "by river !"), never "…". The
-   hit area still reaches 10 px above and below the pill. */
+   second line where one is too short ("Two overcards · 24%" over "by river !"). The hit area still
+   reaches 10 px above and below the pill. */
 .wrap {
   height: auto;
 }
@@ -57,7 +56,6 @@ button.chip[aria-expanded='true'] {
   min-height: 24px;
   padding: 2px 10px;
   line-height: 1.2;
-  text-overflow: clip;
   text-wrap: balance;
   white-space: normal;
 }

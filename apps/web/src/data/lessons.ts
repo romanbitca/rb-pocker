@@ -15,8 +15,12 @@ export interface DiagramGroup {
   readonly label: string;
   /** Text-form cards ("Ks"); null is a card face down. */
   readonly cards: readonly (string | null)[];
-  /** Indices of the cards drawn dimmed (45%): they do not count, as in the rankings (§13.2). */
-  readonly dim?: readonly number[];
+  /**
+   * The picture's best five, as on the Table (§6.1): the indices of the cards that make the hand
+   * (gold edge, raised) and of its kickers (gold edge). A row without them is not about that.
+   */
+  readonly core?: readonly number[];
+  readonly kickers?: readonly number[];
   /** The row the picture is about (the winning hand, the button): outlined. Its label or the
    *  caption says why, so the outline is never the only cue (§12.12). */
   readonly mark?: boolean;
@@ -52,10 +56,15 @@ export const LESSONS: readonly Lesson[] = [
     title: 'The goal',
     diagram: {
       groups: [
-        { label: 'Your 2 cards', cards: ['Ah', 'Kd'] },
-        { label: '5 shared cards', cards: ['Ks', '9h', '5c', '2d', 'Js'], dim: [2, 3] },
+        { label: 'Your 2 cards', cards: ['Ah', 'Kd'], core: [1], kickers: [0] },
+        {
+          label: '5 shared cards',
+          cards: ['Ks', '9h', '5c', '2d', 'Js'],
+          core: [0],
+          kickers: [1, 4],
+        },
       ],
-      caption: 'Your best 5 cards make a pair of Kings. The dim cards do not count.',
+      caption: 'Your best 5 cards have a gold edge. They make a pair of Kings.',
     },
     body: [
       'Win chips. Have the best 5-card hand at the end, or make everyone else fold.',

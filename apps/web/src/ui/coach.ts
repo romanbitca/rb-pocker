@@ -38,7 +38,7 @@ import {
   type PriceView,
 } from './actionBar.ts';
 import { coachAdvice, uiLevel, type BarSlot, type CoachUiLevel } from './coachAdvice.ts';
-import { hintText, pctText, type HintText, type TextContext } from './coachText.ts';
+import { hintText, pctText, sentences, type HintText, type TextContext } from './coachText.ts';
 import { plainText } from './glossary.ts';
 
 export { slotOf, uiLevel, type BarSlot, type CoachUiLevel } from './coachAdvice.ts';
@@ -56,11 +56,15 @@ export type StripView =
    * (counts as help)" (`countsAsHelp`).
    */
   | { readonly kind: 'hint'; readonly ready: boolean; readonly countsAsHelp: boolean }
-  /** The advice: "Coach: Call 40" and one line; Intermediate adds "Why?". */
+  /** The advice: "Coach: Call 40", its line and "Why?" (Intermediate's own button). */
   | {
       readonly kind: 'advice';
       readonly headline: string;
+      /** The headline without the big blinds, for a strip too narrow for the whole. */
+      readonly headlineShort: string;
       readonly line: string;
+      /** A shorter line, for a strip too narrow for `line`; '' when there is none. */
+      readonly lineShort: string;
       readonly why: boolean;
     }
   /** "Coach is not available. Tap to try again." (§12.11). */
@@ -268,30 +272,44 @@ export function hintView(
   };
 }
 
-/** The strip's one line under the headline (§12.6). */
-function adviceLine(decision: Decision, hint: HintView, level: CoachUiLevel): string {
+/** The strip's line under the headline (§12.6), and a shorter one for a narrow strip. */
+function adviceLine(
+  decision: Decision,
+  hint: HintView,
+  level: CoachUiLevel,
+): { readonly line: string; readonly short: string } {
   // Pitfall 35: with RANGE_ADJUST, only the labelled pair; each says whom it counts when the
   // range number leaves out players the HUD's counts (§8.10).
   if (hint.rangeAdjust !== null) {
     const any = pctText(decision.eRandom);
     const likely = pctText(hint.shown.eRange ?? decision.eRange);
     const { players, callers } = hint.shown;
-    if (callers === null) return coachWords.pair(any, likely);
-    return callers === 0
-      ? coachWords.pairRaiser(players, any, likely)
-      : coachWords.pairCallers(players, any, callers, likely);
+    if (callers === null) return { line: coachWords.pair(any, likely), short: '' };
+    return {
+      line:
+        callers === 0
+          ? coachWords.pairRaiser(players, any, likely)
+          : coachWords.pairCallers(players, any, callers, likely),
+      short: '',
+    };
   }
-  // Beginner facing a bet: the two numbers that decide it ("You win about 45%. You need 25%."),
-  // when they do: the price bar's plain comparison agrees with the advice (§12.6). Else (a fold
-  // the price alone would pay, a call it would not, an open) the reason says why.
+  // Facing a bet, the two numbers that decide it ("You win about 45%. You need 25%."), when they
+  // do: the price bar's plain comparison agrees with the advice (§12.6). At Beginner always; at
+  // the other levels when the reason's own sentence weighs them, so "You win about 23%." never
+  // stands without the need it compares with (1.3.100). Else (a fold the price alone would pay,
+  // a call it would not, an open) the reason says why.
   if (
-    level === 'beginner' &&
+    (level === 'beginner' || hint.comparesPrice) &&
     hint.numbers.needValue !== null &&
     hint.shown.bar?.basis === 'plain'
   ) {
-    return coachWords.winNeed(pctText(decision.eRandom), pctText(hint.numbers.needValue));
+    return {
+      line: coachWords.winNeed(pctText(decision.eRandom), pctText(hint.numbers.needValue)),
+      short: '',
+    };
   }
-  return plainText(hint.reasonFirst);
+  const short = hint.reasonShort === null ? '' : plainText(hint.reasonShort);
+  return { line: plainText(sentences(hint.reasonFirst)[0] ?? ''), short };
 }
 
 /** Everything the coach's places show for this moment. */
@@ -333,6 +351,7 @@ export function coachView(
       const decision = data.decision as Decision;
       const hint = hintView(decision, data.explanation as Explanation, level, input);
       const { shown, ring, size } = coachAdvice(data);
+      const { line, short: lineShort } = adviceLine(decision, hint, level);
       return {
         ...base,
         hint,
@@ -341,7 +360,9 @@ export function coachView(
           ? {
               kind: 'advice',
               headline: hint.headline,
-              line: adviceLine(decision, hint, level),
+              headlineShort: hint.headlineShort,
+              line,
+              lineShort,
               why: level !== 'beginner',
             }
           : { kind: 'hint', ready: true, countsAsHelp },

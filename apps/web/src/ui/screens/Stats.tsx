@@ -561,8 +561,8 @@ function Collection({ view }: { view: StatsView }) {
             <li key={row.category} style={S.hand} data-category={row.category}>
               <span style={S.strong}>{data.name}</span>
               <span style={S.cards} aria-hidden="true">
-                {exampleCards(data).map(({ card, dim }) => (
-                  <Card key={card} card={card} size="sm" dim={dim} />
+                {exampleCards(data).map(({ card, highlight }) => (
+                  <Card key={card} card={card} size="sm" highlight={highlight} />
                 ))}
               </span>
               {row.count > 0 && row.first !== null ? (

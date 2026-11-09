@@ -10,12 +10,14 @@ import { type Level, pauseClock, playTo, scriptedTable } from './scripted.ts';
 // alone: about 38%.", and one line cut it off on phones narrower than about 400 px. Now the line
 // wraps to two lines in a 56 px strip (the head, two lines, and 6 px for the action bar's "Coach"
 // badge, which reaches 5 px up). At the scripted table's first hero decision (Beginner: the strip
-// is one button with "›"; Intermediate after "Hint": the words beside "Why?") the strip is given
-// the longest lines the two numbers can make (one sentence a line, as CoachStrip renders a line of
-// two sentences), and each is read in full: no word cut or hidden, inside the strip, clear of Undo,
-// "Why?" and the "Coach" badge; the strip clear of the hero strip and the action bar. The table,
-// the hero strip and the action bar do not move when the line's length changes: the strip's height
-// never follows its words. A line too long for two lines ends in "…" and stays in its place too.
+// is one button with "Why?" on its right end; Intermediate after "Hint": the words beside "Why?")
+// the strip is given the longest lines the two numbers can make (one sentence a line, as
+// CoachStrip renders a line of two sentences), and each is read in full: no word cut or hidden,
+// inside the strip, clear of Undo, "Why?" and the "Coach" badge; the strip clear of the hero strip
+// and the action bar. The table, the hero strip and the action bar do not move when the line's
+// length changes: the strip's height never follows its words. Text wider than two lines is set
+// by the test only (the app picks a shorter form before the paint, `useFit`, 1.3.100): its clamp
+// keeps it to two lines, in its place.
 
 /** The longest line of the two win numbers: 8 opponents, 6 callers, three-character numbers. */
 const LONGEST = coachWords.pairCallers(8, '>99', 6, '>99');
@@ -95,7 +97,10 @@ function measure(page: Page, line: string | null): Promise<StripMeasure> {
       if (text !== null) line.textContent = text;
       const range = document.createRange();
       range.selectNodeContents(line);
-      const why = strip.querySelector(':scope > button:not([data-coach-advice])');
+      // Intermediate's button; Beginner's "Why?" is the face at the end of the strip's button.
+      const why =
+        strip.querySelector(':scope > button:not([data-coach-advice])') ??
+        strip.querySelector('[data-coach-why]');
       const undo = document.querySelector('[data-undo]');
       const badge = document.querySelector('[data-slot][data-coach] > span:last-child');
       const bar = one('[data-slot="fold"]').closest('[role="group"]');
@@ -226,7 +231,7 @@ test.describe('the coach strip on a narrow phone (§12.3, §12.6)', () => {
       await page.screenshot({ path: shot });
       await testInfo.attach(`coach strip, ${level}`, { path: shot, contentType: 'image/png' });
 
-      // Too long for two lines: the second ends in "…", inside the strip; nothing moves.
+      // Set by hand, too long for two lines: clamped at two, inside the strip; nothing moves.
       expect(problems(await measure(page, TOO_LONG), before, true)).toEqual([]);
       expect(errors).toEqual([]);
     });

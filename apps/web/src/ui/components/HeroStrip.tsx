@@ -11,10 +11,11 @@
  * focus a tapped button, so it focuses itself first and the drawer can return focus to it (§13.1).
  * The win badge and the draw chips (`WinBadge.tsx`, `DrawChips.tsx`) sit beside and under it.
  */
-import { memo, useId } from 'react';
+import { memo, useId, useRef } from 'react';
 import type { HeroView } from '../../app/store.ts';
 import { en } from '../../i18n/en.ts';
 import { formatChips } from '../format.ts';
+import { useFit } from '../hooks.ts';
 import { Card, cardViewLabel } from './Card.tsx';
 import styles from './HeroStrip.module.css';
 
@@ -73,7 +74,7 @@ export const HeroChips = memo(function HeroChips({ hero }: { hero: HeroView }) {
         : null;
   return (
     <span className={styles.chips}>
-      <span className={styles.stack}>{en.table.heroChips(formatChips(hero.stack))}</span>
+      <span data-hero-stack="">{en.table.heroChips(formatChips(hero.stack))}</span>
       {marker !== null && (
         <span className={cx(styles.marker, hero.dealer && styles.dealer)}>{marker}</span>
       )}
@@ -100,6 +101,25 @@ export interface HeroLabelProps {
 /** Hand names longer than this many characters are drawn smaller (`data-long`). */
 export const LONG_LABEL = 16;
 
+/** A name's forms, longest first: "Full House, Queens full of Sevens", "Full House". */
+function nameForms(label: string): readonly string[] {
+  const comma = label.indexOf(',');
+  return comma === -1 ? [label] : [label, label.slice(0, comma)];
+}
+
+/**
+ * A sub-label's forms, longest first; '' (no line) is the last. Nothing is ever cut with "…": the
+ * label picks the first that fits its room (`useFit`, 1.3.100). Screen readers read the hand
+ * name; the rows of the rankings and the coach sheet have the whole words.
+ */
+function subForms(hero: HeroView, nuts: boolean): readonly string[] {
+  if (hero.folded) return [en.table.folded];
+  const sub = hero.subLabel;
+  if (sub === null) return [];
+  const forms = nuts ? [sub + en.table.nuts, en.table.nutsAlone] : [sub, en.table.subShort[sub]];
+  return [...forms, ''].filter((f, i, all): f is string => f !== undefined && all.indexOf(f) === i);
+}
+
 /** `describe()`'s label and sub-label; "You folded" once the hero has folded. */
 export const HeroLabel = memo(function HeroLabel({
   hero,
@@ -109,13 +129,19 @@ export const HeroLabel = memo(function HeroLabel({
   className,
 }: HeroLabelProps) {
   const hintId = useId();
-  const sub = hero.folded
-    ? en.table.folded
-    : hero.subLabel !== null && nuts
-      ? hero.subLabel + en.table.nuts
-      : hero.subLabel;
+  const box = useRef<HTMLSpanElement>(null);
+  const names = nameForms(hero.label);
+  const name = useFit<HTMLSpanElement>(names, 'height');
+  const subs = subForms(hero, nuts);
+  // The sub-label gives way when its own lines fit but the label would leave its row of the
+  // strip (a long name and a long sub-label at Large text ran into the coach strip below).
+  const sub = useFit<HTMLSpanElement>(subs, 'height', {
+    box: () => box.current,
+    extraKey: names[name.index] ?? '',
+  });
+  const subWords = subs[sub.index] ?? '';
   return (
-    <span className={cx(styles.labelBox, className)}>
+    <span ref={box} className={cx(styles.labelBox, className)}>
       <button
         type="button"
         className={cx(styles.label, hero.folded && styles.labelFolded)}
@@ -131,10 +157,19 @@ export const HeroLabel = memo(function HeroLabel({
           onOpenRankings();
         }}
       >
-        <span className={styles.name} data-hero-name="">
-          {hero.label}
+        <span
+          ref={name.ref}
+          className={styles.name}
+          data-hero-name=""
+          data-tight={name.tight ? '' : undefined}
+        >
+          {names[name.index]}
         </span>
-        {sub !== null && <span className={styles.sub}>{sub}</span>}
+        {subWords !== '' && (
+          <span ref={sub.ref} className={styles.sub} data-hero-sub="">
+            {subWords}
+          </span>
+        )}
       </button>
       <span id={hintId} hidden>
         {en.table.labelHint}

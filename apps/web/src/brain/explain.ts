@@ -205,6 +205,7 @@ export const TEMPLATES = {
   'RANGE_ADJUST.weaker': { params: ['eRandom', 'eRange'] },
   'RANGE_ADJUST.plain': { params: ['eRandom', 'eRange'] },
   'RANGE_ADJUST.raiser': { params: ['n', 'eRandom', 'eRange'] },
+  'RANGE_ADJUST.both': { params: ['eRandom', 'eRange'] },
   'RANGE_ADJUST.callers': { params: ['n', 'eRandom', 'callers', 'eRange'] },
   WHY_NOT_FOLD: { params: [] },
   WHY_NOT_CHECK: { params: [] },
@@ -1056,6 +1057,7 @@ function rangeAdjustLine(input: ExplainInput, rangeE: number, callers: number | 
   if (callers !== null) {
     // The two numbers count different players: each says whom (§8.10).
     const n = count(input.nOpp);
+    if (callers === 0 && input.nOpp === 2) return line('RANGE_ADJUST.both', params);
     return callers === 0
       ? line('RANGE_ADJUST.raiser', { ...params, n })
       : line('RANGE_ADJUST.callers', { ...params, n, callers: count(callers) });

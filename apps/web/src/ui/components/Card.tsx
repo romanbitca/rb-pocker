@@ -1,6 +1,6 @@
 /**
- * One playing card (PLAN §13.4, §6.1, §12.12): `<Card size card highlight? dim? used?>` serves the
- * rankings panel, the board, the hero strip and the seats.
+ * One playing card (PLAN §13.4, §6.1, §12.12): `<Card size card highlight? used?>` serves the
+ * rankings panel, the lessons, the drill, the board, the hero strip and the seats.
  *
  * - Face up: ONE element. The rank is its text ("10", never "T"); the suit is drawn by CSS
  *   (`Card.module.css`: the sprite's suit paths as a mask on `::after`, and on `::before` for the
@@ -12,9 +12,10 @@
  *   card, so no rank or suit can reach the DOM or the accessibility tree.
  * - Fixed size per `size` (no layout shift, PLAN §15.3). `board` takes its width from the
  *   `--card-w` custom property (the board sets it from `boardCardSize()`).
- * - On the Table (board, hero strip, seats) the best five carry `highlight`: the gold edge, `core`
- *   raised too, and `cardViewLabel` names them for screen readers. Nothing there is faded for being
- *   out of the five (1.3.97); `dim` is the rankings examples' and the lessons' style only.
+ * - One rule everywhere (1.3.100): the five that count carry `highlight`, the gold edge, `core`
+ *   raised too (on the Table `cardViewLabel` names them for screen readers). No card is ever faded
+ *   for being out of the five (1.3.97 on the Table; the rankings, the lessons and the drill since
+ *   1.3.100).
  */
 import { memo } from 'react';
 import {
@@ -62,10 +63,7 @@ export interface CardProps {
   size: CardSize;
   /** §6.1 highlight, one of the best five: the gold edge (a 3 px outline); core is raised too. */
   highlight?: CardHighlight | undefined;
-  /** 45% opacity: a kicker in the rankings examples (§13.2), a lesson's card that does not count.
-   * Never on the Table (1.3.97). */
-  dim?: boolean | undefined;
-  /** Outlined: one of the hero's own cards on the rankings "You" line (§13.3). */
+  /** Underlined: one of the hero's own cards on the rankings "You" line (§13.3), the drill's. */
   used?: boolean | undefined;
   /** A screen-reader name instead of "King of hearts" (e.g. a risky out, §6.4). */
   label?: string | undefined;
@@ -78,7 +76,6 @@ export const Card = memo(function Card({
   card,
   size,
   highlight,
-  dim,
   used,
   label,
   className,
@@ -108,7 +105,6 @@ export const Card = memo(function Card({
         rank.length > 1 && styles.ten,
         SUIT_CLASS[suit],
         highlight !== undefined && HIGHLIGHT_CLASS[highlight],
-        dim === true && styles.dim,
         used === true && styles.used,
         className,
       )}

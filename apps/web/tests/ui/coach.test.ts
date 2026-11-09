@@ -139,7 +139,8 @@ describe('the hint’s text (§8.10 hint structure, Appendix F.1)', () => {
     expect(t.reason).toBe(
       'You win about 45%. You need 25% to call 40 into 120. 45% is more than 25%, so calling wins over time.',
     );
-    expect(t.reasonFirst).toBe('You win about 45%.');
+    // A comparison shows whole: the win chance beside the need (1.3.100).
+    expect(t.reasonFirst).toBe('You win about 45%. You need 25% to call 40 into 120.');
     expect(t.extra).toEqual([]);
     // The close alternative (fold) gets the close-call line instead of its "Why not fold?".
     expect(t.whyNot).toEqual(['Why not raise? Worse hands fold, and better hands call.']);
@@ -190,16 +191,14 @@ describe('the hint’s text (§8.10 hint structure, Appendix F.1)', () => {
     const allIn = textOf(
       decision({ eRandom: 0.5, eRange: 0.3, trace: [r('CALL_ALLIN', { need: 0.25 })] }),
     );
-    expect(allIn.reason).toBe(
-      'You need 25% to call. You win about 30% against hands that go all-in here. Call.',
-    );
+    expect(allIn.reason).toBe('You need 25% to call. Call.');
     // 20 points apart: RANGE_ADJUST first, with both numbers (§8.10).
     expect(allIn.rangeAdjust).toBe(
       'Against any cards you win 50%. This player bets only with good hands. Against those, you win about 30%.',
     );
     const plain = textOf(decision({ eRandom: 0.5, eRange: 0.47, trace: [r('CALL_PROFITABLE')] }));
     expect(plain.rangeAdjust).toBeNull();
-    expect(plain.reasonFirst).toBe('You win about 50%.');
+    expect(plain.reasonFirst).toBe('You win about 50%. You need 25% to call 40 into 120.');
   });
 
   it('RANGE_ADJUST comes first, labelled, and makes {E} the range number after it', () => {
@@ -207,9 +206,84 @@ describe('the hint’s text (§8.10 hint structure, Appendix F.1)', () => {
     expect(t.rangeAdjust).toBe(
       'Against any cards you win 62%. This player bets only with good hands. Against those, you win about 20%.',
     );
-    expect(t.reason).toBe('You need 25% to call. You win only about 20%. Folding saves chips.');
+    // Said once (1.3.100): RANGE_ADJUST has just said "you win about 20%".
+    expect(t.reason).toBe('You need 25% to call. Folding saves chips.');
     expect(t.reasonFirst).toBe('You need 25% to call.');
     expect(t.whyNot).toContain('Why not call? You need 25%, and you win about 20%.');
+  });
+
+  it('the win chance is said once, and the need stands where a sentence weighs it (1.3.100)', () => {
+    // RANGE_ADJUST's last sentence says it: no "You win about 23%" right after it, at any level.
+    const adjusted = textOf(
+      decision({
+        action: { type: 'call' },
+        eRandom: 0.3,
+        eRange: 0.23,
+        need: 0.2,
+        trace: [r('CALL_PROFITABLE', { toCall: 50, pot: 200 })],
+      }),
+    );
+    expect(adjusted.rangeAdjust).toMatch(/you win about 23%\.$/);
+    expect(adjusted.reason).toBe(
+      'You need 20% to call 40 into 120. 23% is more than 20%, so calling wins over time.',
+    );
+    expect(adjusted.reasonFirst).toBe('You need 20% to call 40 into 120.');
+    // "You win about 40% if you see every card" adds a condition: it stays beside the need.
+    const foldRealised = decision({
+      action: { type: 'fold' },
+      kind: 'fold',
+      eRandom: 0.4,
+      eRange: 0.4,
+      need: 0.3,
+      trace: [r('FOLD_PRICE', { E: 0.4, need: 0.3, R: 0.6 })],
+    });
+    const realised = hintText(foldRealised, explanationOf(foldRealised, { position: 'OOP' }), CTX);
+    expect(realised.reasonFirst).toBe(
+      'You need 30% to call. You win about 40% if you see every card.',
+    );
+    // A reason that is no comparison keeps its first sentence.
+    const value = textOf(
+      decision({
+        action: { type: 'bet', to: 60 },
+        kind: 'bet',
+        need: 0,
+        trace: [r('VALUE_BET', { handName: 'Pair of Kings', category: 'pair', size: 60 })],
+      }),
+    );
+    expect(value.reasonFirst).toBe('Your Pair of Kings is probably best (about 45%).');
+    expect(value.comparesPrice).toBe(false);
+  });
+
+  it('a long hand name gives a shorter strip line; the head a shorter form (1.3.100)', () => {
+    const bet = decision({
+      action: { type: 'bet', to: 60 },
+      kind: 'bet',
+      need: 0,
+      trace: [
+        r('VALUE_BET', {
+          handName: 'Two Pair, Queens and Sevens',
+          category: 'twoPair',
+          size: 60,
+        }),
+      ],
+    });
+    const long = explanationOf(bet, { handName: 'Two Pair, Queens and Sevens' });
+    const v = coachView(coachData({ decision: bet, explanation: long }), null, input(CHECKED));
+    expect(v.strip).toMatchObject({
+      headline: 'Bet 60 (3\u00A0BB)',
+      headlineShort: 'Bet 60',
+      line: 'Your Two Pair, Queens and Sevens is probably best (about 45%).',
+      lineShort: 'Your hand is probably best (about 45%).',
+    });
+    const open = textOf(
+      decision({
+        action: { type: 'fold' },
+        kind: 'fold',
+        trace: [r('FOLD_RANGE', { behind: 3 })],
+      }),
+    );
+    expect(open.reasonShort).toBe('Your hand is not strong enough here.');
+    expect(textOf(decision()).reasonShort).toBeNull();
   });
 
   it('every reason code renders with every placeholder filled', () => {
@@ -269,7 +343,9 @@ describe('coachView (§10.2, §12.6)', () => {
     expect(v.strip).toEqual({
       kind: 'advice',
       headline: 'Call 40',
+      headlineShort: 'Call 40',
       line: 'You win about 45%. You need 25%.',
+      lineShort: '',
       why: false,
     });
     expect(v.ring).toBe('middle');
@@ -326,7 +402,9 @@ describe('coachView (§10.2, §12.6)', () => {
     expect(opened.strip).toEqual({
       kind: 'advice',
       headline: 'Call 40',
-      line: 'You win about 45%.',
+      headlineShort: 'Call 40',
+      line: 'You win about 45%. You need 25%.',
+      lineShort: '',
       why: true,
     });
     expect(opened.ring).toBe('middle');
@@ -510,6 +588,15 @@ describe('coachView (§10.2, §12.6)', () => {
     expect(v.hint?.numbers.winValue).toBe(0.26);
   });
 
+  it('two players read "Both players", never "All 2 players" (1.3.100)', () => {
+    const v = coachView(coachData(raiserOnly(0, 2)), null, input(FACING));
+    expect(v.strip).toMatchObject({ line: 'Both players: 26%. Raiser alone: about 44%.' });
+    expect(v.hint?.numbers.win).toBe('Against both players with any cards: 26%');
+    expect(v.hint?.rangeAdjust).toBe(
+      "Against both players with any cards, you win 26%. Against the raiser's likely hands alone, you win about 44%.",
+    );
+  });
+
   it('with callers already in, the raiser and the callers; the same players keep the old words', () => {
     const one = coachView(coachData(raiserOnly(1)), null, input(FACING));
     expect(one.strip).toMatchObject({ line: 'All 5 players: 26%. Raiser + 1 caller: about 44%.' });
@@ -557,15 +644,15 @@ describe('coachView (§10.2, §12.6)', () => {
           const v = coachView(data, null, input(FACING));
           const any = `${pctText(eRandom / 100)}%`;
           const who = callers === 0 ? 'Raiser alone' : `Raiser + ${callers} caller`;
-          expect(v.strip.kind === 'advice' && v.strip.line).toContain(
-            `All ${players} players: ${any}.`,
-          );
+          const everyone = players === 2 ? 'Both players' : `All ${players} players`;
+          expect(v.strip.kind === 'advice' && v.strip.line).toContain(`${everyone}: ${any}.`);
           expect(v.strip.kind === 'advice' && v.strip.line).toContain(who);
-          expect(v.hint?.numbers.win).toBe(`Against all ${players} players with any cards: ${any}`);
+          const lower = players === 2 ? 'both players' : `all ${players} players`;
+          expect(v.hint?.numbers.win).toBe(`Against ${lower} with any cards: ${any}`);
           expect(v.hint?.numbers.likely).toMatch(
             callers === 0 ? /raiser's .* alone/ : /raiser and/,
           );
-          expect(v.hint?.rangeAdjust).toContain(`Against all ${players} players with any cards`);
+          expect(v.hint?.rangeAdjust).toContain(`Against ${lower} with any cards`);
         },
       ),
       { numRuns: 500 },

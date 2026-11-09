@@ -9,11 +9,11 @@
  *
  * Presentational: the chips come from `drawChipViews()` (ui/equity.ts); the Table wires them.
  */
-import { memo, useCallback, useId, useRef, useState, type MouseEvent } from 'react';
+import { memo, useCallback, useId, useRef, useState, type MouseEvent, type Ref } from 'react';
 import { cardAriaLabel } from '../../core/cards.ts';
 import { en } from '../../i18n/en.ts';
 import type { DrawChipView } from '../equity.ts';
-import { useDismiss } from '../hooks.ts';
+import { useDismiss, useFit } from '../hooks.ts';
 import { Card } from './Card.tsx';
 import styles from './DrawChips.module.css';
 
@@ -29,11 +29,56 @@ export interface DrawChipsProps {
   /** Phones: the short chip text and a "!" mark (the full text does not fit). */
   compact?: boolean | undefined;
   /**
-   * The chip may take two lines instead of ending in "…" (the landscape column, where it sits
+   * The chip may take two lines where one is too short (the landscape column, where it sits
    * beside the win badge in 180 px, §12.5).
    */
   wrap?: boolean | undefined;
   className?: string | undefined;
+}
+
+interface ChipProps {
+  readonly chip: DrawChipView;
+  readonly compact: boolean;
+  readonly interactive: boolean;
+  readonly expanded: boolean;
+  readonly popoverId: string;
+  readonly onToggle: (e: MouseEvent<HTMLButtonElement>) => void;
+}
+
+/** One chip: the longest of its forms that fits the row, never cut with "…" (`useFit`, 1.3.100). */
+function Chip({ chip, compact, interactive, expanded, popoverId, onToggle }: ChipProps) {
+  const faces = [...(compact ? [] : [chip.text]), chip.short, ...chip.shorter].filter(
+    (face, i, all) => all.indexOf(face) === i,
+  );
+  const fit = useFit<HTMLElement>(faces, 'width');
+  const face = faces[fit.index] as string;
+  const content = (
+    <>
+      {face}
+      {compact && chip.risky > 0 && (
+        <span className={styles.chipMark} aria-hidden="true">
+          {en.draws.riskyMark}
+        </span>
+      )}
+    </>
+  );
+  return interactive ? (
+    <button
+      ref={fit.ref as Ref<HTMLButtonElement>}
+      type="button"
+      className={styles.chip}
+      aria-label={face === chip.text ? undefined : chip.text}
+      aria-expanded={expanded}
+      aria-controls={expanded ? popoverId : undefined}
+      onClick={onToggle}
+    >
+      {content}
+    </button>
+  ) : (
+    <span ref={fit.ref as Ref<HTMLSpanElement>} className={styles.chip}>
+      {content}
+    </span>
+  );
 }
 
 export const DrawChips = memo(function DrawChips({
@@ -66,37 +111,17 @@ export const DrawChips = memo(function DrawChips({
       className={cx(styles.row, wrap && styles.wrap, className)}
       data-draw-chips=""
     >
-      {shown.map((chip) => {
-        const face = compact ? (
-          <>
-            {chip.short}
-            {chip.risky > 0 && (
-              <span className={styles.chipMark} aria-hidden="true">
-                {en.draws.riskyMark}
-              </span>
-            )}
-          </>
-        ) : (
-          chip.text
-        );
-        return interactive ? (
-          <button
-            key={chip.key}
-            type="button"
-            className={styles.chip}
-            aria-label={compact ? chip.text : undefined}
-            aria-expanded={open}
-            aria-controls={open ? popoverId : undefined}
-            onClick={toggle}
-          >
-            {face}
-          </button>
-        ) : (
-          <span key={chip.key} className={styles.chip}>
-            {face}
-          </span>
-        );
-      })}
+      {shown.map((chip) => (
+        <Chip
+          key={chip.key}
+          chip={chip}
+          compact={compact}
+          interactive={interactive}
+          expanded={open}
+          popoverId={popoverId}
+          onToggle={toggle}
+        />
+      ))}
       {hidden > 0 &&
         (interactive ? (
           <button

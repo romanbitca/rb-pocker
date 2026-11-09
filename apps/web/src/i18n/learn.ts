@@ -35,6 +35,6 @@ export const learnWords = {
   price: (win: number, need: number) => `Win ${win}% · Need ${need}%`,
   /** The bar's name for screen readers. */
   priceLabel: (win: number, need: number) => `Win chance ${win}%. Need ${need}%.`,
-  /** A dimmed card in a lesson's picture, for screen readers: "Five of clubs, does not count". */
-  dimCard: (card: string) => `${card}, does not count`,
+  /** A card out of a lesson picture's best five, for screen readers: "Five of clubs, does not count". */
+  notCounted: (card: string) => `${card}, does not count`,
 } as const;

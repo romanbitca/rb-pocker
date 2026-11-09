@@ -6,6 +6,7 @@
 import type { Screen } from '../app/store.ts';
 import { parseCard, type Card } from '../core/cards.ts';
 import type { DiagramGroup } from '../data/lessons.ts';
+import type { CardHighlight } from './views.ts';
 
 /** Learn's four screens (app/navigation.ts): one lazy chunk draws them all. */
 export type LearnPage = Extract<Screen, 'learn' | 'lesson' | 'handRankings' | 'glossary'>;
@@ -28,10 +29,25 @@ export function searchGlossary<T extends GlossaryRow>(rows: readonly T[], query:
   return [...inTerm, ...inText];
 }
 
-/** A picture's cards: `card` null is face down; `dim` ones do not count (drawn at 45%). */
-export function diagramCards(group: DiagramGroup): { card: Card | null; dim: boolean }[] {
-  return group.cards.map((text, i) => ({
-    card: text === null ? null : parseCard(text),
-    dim: group.dim?.includes(i) ?? false,
-  }));
+/**
+ * A picture's cards: `card` null is face down; `highlight` the §6.1 gold edge of a card that
+ * counts (the picture's best five, `core` raised too); `out` a card left out of those five, when
+ * the row marks some: it looks like any other card and says so to screen readers (1.3.100).
+ */
+export function diagramCards(
+  group: DiagramGroup,
+): { card: Card | null; highlight: CardHighlight | undefined; out: boolean }[] {
+  const marks = group.core !== undefined || group.kickers !== undefined;
+  return group.cards.map((text, i) => {
+    const highlight = group.core?.includes(i)
+      ? 'core'
+      : group.kickers?.includes(i)
+        ? 'kicker'
+        : undefined;
+    return {
+      card: text === null ? null : parseCard(text),
+      highlight,
+      out: marks && highlight === undefined && text !== null,
+    };
+  });
 }

@@ -26,6 +26,9 @@
  *    `.realise` only at or above it); before the flop with nobody raised no price at all (numbers
  *    line, bar, "Why not fold?": a limp's price); a draw sentence's groups add up to the hint's
  *    outs, and one count only for one kind of out; no "free card" or "draws pay" on the river.
+ *    And the words the UI makes of a hint (`checkHintText`, 1.3.100): "both players", never "all 2
+ *    players"; the win chance RANGE_ADJUST has just said is not said again; the start of a price
+ *    reason shows the win chance and the need together.
  * 4. **Lessons** (`checkLessons`, `data/lessons.ts`, F.8; chunk 9.2): at most 150 words a lesson
  *    (its picture's labels and line, the price bar's numbers and its text), every sentence at most
  *    15 words, whole-number percentages, no stray brace.
@@ -63,6 +66,7 @@ import {
   type GlossaryEntry,
   type Segment,
 } from '../src/i18n/coach.ts';
+import { reasonWords, sentences } from '../src/ui/coachText.ts';
 import { LESSONS, type Lesson, type LessonBlock } from '../src/data/lessons.ts';
 import { aboutWords, type AboutTerm, type HelpLine } from '../src/i18n/about.ts';
 import { enCoach } from '../src/i18n/enCoach.ts';
@@ -355,12 +359,12 @@ function rangeCallers(input: ExplainInput, rangeE: number | null): number | null
 function whomProblems(text: string, input: ExplainInput, rangeE: number | null): string[] {
   const callers = rangeCallers(input, rangeE);
   if (callers === null) {
-    return /\braiser\b|\ball \d+ players\b/.test(text)
+    return /\braiser\b|\ball \d+ players\b|\bboth players\b/.test(text)
       ? [`RANGE_ADJUST "${text}" says whom it counts, but both numbers count every opponent`]
       : [];
   }
   const sentences = text.split(/(?<=[.?!])\s+/);
-  const all = `all ${input.nOpp} players`;
+  const all = input.nOpp === 2 ? 'both players' : `all ${input.nOpp} players`;
   const who = callers === 0 ? 'raiser' : `raiser and ${callers} caller`;
   const problems: string[] = [];
   if (!(sentences[0] ?? '').includes(all)) {
@@ -484,6 +488,38 @@ export function checkHint(
   }
   problems.push(...outsProblems(e, input, strings));
   problems.push(...barProblems(e, input));
+  problems.push(...checkHintText(e, strings));
+  return problems;
+}
+
+/** A sentence that only says the win chance (not "… if you see every card"). */
+const WIN_ONLY = /^(you win|against hands that go all-in here, you win)\b(?!.*if you see)/i;
+
+/**
+ * The words the UI makes of a hint (see the header, part 3): "both players"; the win chance
+ * RANGE_ADJUST has just said is not said again; a price reason's start shows both of its halves.
+ */
+export function checkHintText(e: Explanation, strings: CoachStrings = EN_COACH): string[] {
+  const problems: string[] = [];
+  for (const line of hintLines(e)) {
+    const text = lineText(line, strings);
+    if (/\ball 2 players\b/i.test(text)) problems.push(`"${text}": "both players" is the word`);
+  }
+  const { reason, reasonFirst, comparesPrice } = reasonWords(e);
+  const range = e.shown.eRange;
+  for (const sentence of sentences(reason)) {
+    if (
+      range !== null &&
+      WIN_ONLY.test(sentence) &&
+      sentence.includes(`${pctText(100 * range)}%`)
+    ) {
+      problems.push(`"${sentence}" says again the win chance RANGE_ADJUST has just said`);
+    }
+  }
+  if (comparesPrice && range === null) {
+    const halves = /\bwins?\b.*\d+%/i.test(reasonFirst) && /\bneed\b.*\d+%/i.test(reasonFirst);
+    if (!halves) problems.push(`"${reasonFirst}" shows only half of its comparison`);
+  }
   return problems;
 }
 

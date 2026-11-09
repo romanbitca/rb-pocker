@@ -22,12 +22,14 @@ import {
 import {
   checkGlossary,
   checkHint,
+  checkHintText,
   checkLine,
   checkTemplates,
   sampleLine,
   sentenceWords,
 } from '../../scripts/copy-rules.ts';
 import { rngFromSeed } from '../../src/core/rng.ts';
+import { reasonWords } from '../../src/ui/coachText.ts';
 
 const SCRIPT = fileURLToPath(new URL('../../scripts/check-copy.ts', import.meta.url));
 
@@ -326,6 +328,47 @@ describe('failing fixtures: lines and hints', () => {
     const forced = { ...explain(headsUp), reasons: [ra, ...explain(headsUp).reasons.slice(1)] };
     expect(checkHint(forced, headsUp).join()).toMatch(
       /says whom it counts, but both numbers count every opponent/,
+    );
+  });
+
+  it('two opponents are "both players"; the win chance is said once (1.3.100)', () => {
+    const both: ExplainInput = {
+      ...SPOT,
+      street: 'preflop',
+      facing: 'open',
+      nOpp: 2,
+      eRandom: 0.26,
+      eRange: 0.26,
+      need: 0.38,
+      action: { type: 'fold' },
+      trace: [{ code: 'FOLD_VS_RAISE', data: { E: 0.44, callers: 0 } }],
+      villain: 'raises',
+    };
+    const e = explain(both);
+    expect(e.reasons[0]?.key).toBe('RANGE_ADJUST.both');
+    expect(checkHint(e, both)).toEqual([]);
+    const allTwo: Line = {
+      key: 'RANGE_ADJUST.raiser',
+      params: { n: { kind: 'count', value: 2 }, eRandom: pct(26), eRange: pct(44) },
+      glossary: [],
+    };
+    expect(checkHintText({ ...e, reasons: [allTwo, ...e.reasons.slice(1)] }).join()).toMatch(
+      /all 2 players.*both players/,
+    );
+    // The sentence that only repeats RANGE_ADJUST's number is gone from the reason.
+    const said: ExplainInput = {
+      ...SPOT,
+      eRandom: 0.4,
+      eRange: 0.3,
+      trace: [{ code: 'CALL_PROFITABLE', data: {} }],
+    };
+    const adjusted = explain(said);
+    expect(adjusted.shown.eRange).toBe(0.3);
+    expect(checkHint(adjusted, said)).toEqual([]);
+    expect(reasonWords(adjusted).reason).not.toMatch(/^You win about 30%/);
+    expect(checkHintText(explain(SPOT))).toEqual([]);
+    expect(reasonWords(explain(SPOT)).reasonFirst).toBe(
+      'You win about 40%. You need 25% to call 40 into 120.',
     );
   });
 

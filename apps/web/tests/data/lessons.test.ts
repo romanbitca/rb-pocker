@@ -6,7 +6,7 @@
 import { describe as suite, expect, it } from 'vitest';
 import { LESSON_COUNT } from '../../src/app/store.ts';
 import { newDeck, parseCard, suitOf, type Card } from '../../src/core/cards.ts';
-import { LESSONS, type Lesson } from '../../src/data/lessons.ts';
+import { LESSONS, type DiagramGroup, type Lesson } from '../../src/data/lessons.ts';
 import { describe } from '../../src/eval/describe.ts';
 import { categoryOf, score5 } from '../../src/eval/evaluate.ts';
 import { learnWords } from '../../src/i18n/learn.ts';
@@ -118,22 +118,30 @@ suite('data/lessons.ts (Appendix F.8)', () => {
       const shown = l.diagram.groups.flatMap((g) => cards(g.cards));
       expect(new Set(shown).size, l.title).toBe(shown.length);
       for (const g of l.diagram.groups) {
-        for (const i of g.dim ?? []) expect(g.cards[i], `${l.title} dim ${i}`).toBeTypeOf('string');
+        for (const i of [...(g.core ?? []), ...(g.kickers ?? [])]) {
+          expect(g.cards[i], `${l.title} card ${i}`).toBeTypeOf('string');
+        }
       }
     }
   });
 });
 
 suite('the numbers the lessons state', () => {
-  it('lesson 1: the best five are the cards not dimmed, a pair of Kings', () => {
+  it('lesson 1: the best five have the gold edge, a pair of Kings', () => {
     const l = lesson('goal');
     const hole = cards(group(l, 'Your 2 cards').cards) as [Card, Card];
     const shared = group(l, '5 shared cards');
     const info = describe(hole, cards(shared.cards));
     expect(info.category).toBe('pair');
     expect(info.name).toMatch(/Kings/);
-    const counted = shared.cards.filter((_, i) => !(shared.dim ?? []).includes(i));
-    expect([...info.best5].sort()).toEqual([...hole, ...cards(counted)].sort());
+    const marked = (g: DiagramGroup, marks: readonly number[] | undefined): Card[] =>
+      cards(g.cards.filter((_, i) => (marks ?? []).includes(i)));
+    const own = group(l, 'Your 2 cards');
+    const core = [...marked(own, own.core), ...marked(shared, shared.core)].sort();
+    const kickers = [...marked(own, own.kickers), ...marked(shared, shared.kickers)].sort();
+    expect(core).toEqual([...info.core].sort());
+    expect(kickers).toEqual([...info.kickers].sort());
+    expect([...core, ...kickers].sort()).toEqual([...info.best5].sort());
   });
 
   it('lesson 4: both are a pair of Kings and the Ace kicker wins (hand 1, the marked one)', () => {

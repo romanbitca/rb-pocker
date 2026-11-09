@@ -278,7 +278,6 @@ function CardsPreview() {
           <Card card={null} size={size} />
           <Card card={sample[0] ?? 0} size={size} highlight="core" />
           <Card card={sample[1] ?? 0} size={size} highlight="kicker" />
-          <Card card={sample[3] ?? 0} size={size} dim />
           <Card card={sample[0] ?? 0} size={size} used />
         </section>
       ))}

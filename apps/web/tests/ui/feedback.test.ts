@@ -65,7 +65,7 @@ describe('the card (F.4, F.5)', () => {
       small: 'Undo lets you try again. The first move still counts in your stats.',
     });
     const slightly = view({ row: 'checkedStrong' }, 'inaccuracy');
-    expect(feedbackTexts(slightly, 'chips').title).toBe('Small mistake');
+    expect(feedbackTexts(slightly, 'chips').title).toBe('Slightly off');
     expect(feedbackTexts(slightly, 'bb').coachMove).toBe("Coach's move: Call 2 BB.");
   });
 

@@ -105,23 +105,21 @@ describe('Card (PLAN §13.4)', () => {
     expect(a).toBe(b);
   });
 
-  it('marks highlights, dimmed kickers and used cards with classes', () => {
+  it('marks highlights and used cards with classes', () => {
     const { container } = render(
       <>
         <Card card={card('Ah')} size="board" highlight="core" />
         <Card card={card('Kh')} size="board" highlight="kicker" />
         <Card card={card('2c')} size="board" />
-        <Card card={card('Qs')} size="sm" dim />
         <Card card={card('Js')} size="sm" used />
       </>,
     );
     const classes = [...container.querySelectorAll('[role="img"]')].map((e) => e.className);
     expect(classes[0]).toMatch(/core/);
     expect(classes[1]).toMatch(/kicker/);
-    // A card outside the best five carries no mark at all (1.3.97: no fade on the Table).
+    // A card outside the best five carries no mark at all (1.3.97, 1.3.100: never a fade).
     expect(classes[2]).not.toMatch(/core|kicker|off|dim|used/);
-    expect(classes[3]).toMatch(/dim/);
-    expect(classes[4]).toMatch(/used/);
+    expect(classes[3]).toMatch(/used/);
   });
 
   it('gives all five cards of the best hand one gold edge, raises the category, fades none', () => {
@@ -136,13 +134,17 @@ describe('Card (PLAN §13.4)', () => {
     expect(rules.filter(([s]) => /\b(core|kicker)\b/.test(s)).map(([s]) => s)).toEqual([
       '.core, .kicker',
       '.core',
+      // The same rule in proportion at the mini sizes (rankings, lessons, the drill's lists).
+      '.sm.core, .sm.kicker, .md.core, .md.kicker',
+      '.sm.core, .md.core',
     ]);
+    expect(body('.sm.core, .sm.kicker, .md.core, .md.kicker')).toContain('outline-width: 2px;');
     expect(body('.core')).toContain('transform: translateY(-6px);');
     expect(body('.core')).not.toContain('outline');
-    // The only fade left is `dim`, the rankings examples' and lessons' style (§13.2), never the
-    // Table's: the old 60% "off" class made cards out of the five look inactive (the owner).
+    // No card is faded anywhere (1.3.100): the old 60% "off" class and the 45% examples made
+    // cards out of the five look inactive (the owner).
     const faded = rules.filter(([, b]) => /(^|[\s;])opacity:/.test(b)).map(([s]) => s);
-    expect(faded).toEqual(['.dim']);
+    expect(faded).toEqual([]);
   });
 
   it('names a Table card with the gold edge for screen readers (§12.12)', () => {

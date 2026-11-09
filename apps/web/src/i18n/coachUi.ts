@@ -8,6 +8,10 @@
  */
 import { about } from './en.ts';
 
+/** Whom the HUD's number counts when the range number counts fewer: "All 5 players", "Both players". */
+const allPlayers = (players: number): string =>
+  players === 2 ? 'Both players' : `All ${players} players`;
+
 export const coachWords = {
   /** The strip (§12.6). */
   thinking: 'Coach is thinking…',
@@ -16,7 +20,7 @@ export const coachWords = {
   /** Exam's hint button (§10.2, §12.6): opening it counts as help. */
   hintExam: 'Hint (counts as help)',
   why: 'Why?',
-  /** The strip opens the sheet (the "›"): its accessible name ends with this. */
+  /** The strip opens the sheet ("Why?" on its face): its accessible name ends with this. */
   openSheet: 'Show why',
   failed: 'Coach is not available. Tap to try again.',
   /** Compact mode's pill in the hero strip (§12.3). */
@@ -32,9 +36,9 @@ export const coachWords = {
    * line, and a 360 px phone has 210 px for one beside "Why?" (§12.6).
    */
   pairRaiser: (players: number, any: string, likely: string) =>
-    `All ${players} players: ${any}%. Raiser alone: ${about(likely)}%.`,
+    `${allPlayers(players)}: ${any}%. Raiser alone: ${about(likely)}%.`,
   pairCallers: (players: number, any: string, callers: number, likely: string) =>
-    `All ${players} players: ${any}%. Raiser + ${callers} ${callers === 1 ? 'caller' : 'callers'}: ${about(likely)}%.`,
+    `${allPlayers(players)}: ${any}%. Raiser + ${callers} ${callers === 1 ? 'caller' : 'callers'}: ${about(likely)}%.`,
   /** The headline (§8.10 hint structure 1): "Call 40", "Raise to 60 (3 BB)". */
   headline: {
     fold: 'Fold',
@@ -55,7 +59,8 @@ export const coachWords = {
   winAny: (x: string) => `Win chance ${x}% (any cards)`,
   winLikely: (x: string) => `Against their likely hands: ${about(x)}%`,
   /** The same two when the range number counts only the raiser and its callers (§8.10). */
-  winAll: (players: number, x: string) => `Against all ${players} players with any cards: ${x}%`,
+  winAll: (players: number, x: string) =>
+    `Against ${allPlayers(players).toLowerCase()} with any cards: ${x}%`,
   winRaiser: (x: string) => `Against the raiser's likely hands alone: ${about(x)}%`,
   winCallers: (callers: number, x: string) =>
     `Against the likely hands of the raiser and ${callers} ${callers === 1 ? 'caller' : 'callers'}: ${about(x)}%`,

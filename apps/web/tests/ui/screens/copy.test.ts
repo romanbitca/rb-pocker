@@ -278,7 +278,7 @@ describe('screen copy comes from docs/PLAN.md', () => {
         W.price(1, 2).replace('1', '{win}').replace('2', '{need}'),
         W.priceLabel(1, 2).replace('1', '{win}').replace('2', '{need}'),
       ],
-      dimCard: W.dimCard('{card}'),
+      notCounted: W.notCounted('{card}'),
       glossary: [W.search, W.matches(2).replace('2', '{n}'), W.matches(1), W.noMatch],
       waiting: [en.screens.loading, en.screens.loadFailed, en.back],
     }),

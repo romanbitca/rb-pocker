@@ -14,8 +14,8 @@
  *   Next, to the new question's prompt.
  * - Motion: the deal, the exit, the counters' pop, the feedback and the chip burst at streak
  *   milestones are CSS animations, all off under reduced motion (`data-motion`, §12.8).
- * - Cards are RB's `Card` (SVG suits, the four-colour setting); after the answer the cards that
- *   make the hand are raised and outlined and the others dimmed (§6.1, §13.2).
+ * - Cards are RB's `Card` (SVG suits, the four-colour setting); after the answer the five that
+ *   count have the §6.1 gold edge, the cards that make the hand raised too; nothing is faded.
  * - Styles: inline (`drillStyles.ts`), shared classes, and `Drill.module.css` for what needs CSS
  *   (the one stylesheet is loaded at first paint, §15.3).
  */
@@ -84,7 +84,7 @@ function pickState(answered: boolean, picked: boolean, right: boolean): css.Pick
 
 interface RowProps {
   cards: readonly CardValue[];
-  /** After the answer: the hand whose cards are marked (`core` raised, the rest dimmed). */
+  /** After the answer: the hand whose five have the gold edge (`core` raised too). */
   facts: HandFacts | null;
   /** The deal order of the first card (a second row continues the first). */
   start: number;
@@ -96,6 +96,7 @@ const CardRow = memo(function CardRow({ cards, facts, start, inButton }: RowProp
     <span style={inButton === true ? css.handInButton : css.hand}>
       {cards.map((card, i) => {
         const core = facts?.core.includes(card) ?? false;
+        const counted = facts?.best5.includes(card) ?? false;
         return (
           <span
             key={card}
@@ -105,8 +106,7 @@ const CardRow = memo(function CardRow({ cards, facts, start, inButton }: RowProp
             <Card
               card={card}
               size="board"
-              highlight={core ? 'core' : undefined}
-              dim={facts !== null && !core}
+              highlight={core ? 'core' : counted ? 'kicker' : undefined}
             />
           </span>
         );
@@ -189,7 +189,13 @@ function ResultLine({
       </p>
       <span style={css.minis}>
         {facts.best5.map((card) => (
-          <Card key={card} card={card} size="sm" used={own.includes(card)} />
+          <Card
+            key={card}
+            card={card}
+            size="sm"
+            highlight={facts.core.includes(card) ? 'core' : 'kicker'}
+            used={own.includes(card)}
+          />
         ))}
       </span>
     </div>

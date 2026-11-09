@@ -35,6 +35,10 @@ export interface ScriptedOptions {
   speed?: 'normal' | 'fast' | 'instant';
   /** Default 3 (the table the seed was found for). */
   players?: number;
+  /** Default `SEED` (hand 1 above); another seed deals another hand. */
+  seed?: string;
+  /** Default the settings' own (Normal). */
+  textSize?: 'normal' | 'large';
 }
 
 /** Opens the scripted table at `level` and waits for the first hand (no auto-next). */
@@ -44,10 +48,16 @@ export async function scriptedTable(
   options: ScriptedOptions = {},
 ): Promise<void> {
   await page.clock.install();
-  await openApp(page, SEED, SCRIPT);
-  await page.evaluate((coachLevel) => {
-    window.__pc?.dispatch({ type: 'settings', patch: { coachLevel } });
-  }, level);
+  await openApp(page, options.seed ?? SEED, SCRIPT);
+  await page.evaluate(
+    ({ coachLevel, textSize }) => {
+      window.__pc?.dispatch({
+        type: 'settings',
+        patch: { coachLevel, ...(textSize === undefined ? {} : { textSize }) },
+      });
+    },
+    { coachLevel: level, textSize: options.textSize },
+  );
   await newTable(page, { players: options.players ?? 3, speed: options.speed ?? 'instant' });
 }
 
