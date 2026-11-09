@@ -469,7 +469,8 @@ function NoticeLayer() {
 
 /** `--speed`, `data-motion`, `data-deck` and `data-text` on the root element (the module comment). */
 function useDocumentLook(): void {
-  const speed = useAppStore((s) => s.settings.speed);
+  // "Skip to result ›" (§12.7, 1.3.99): this hand's animations at Instant too; the setting stays.
+  const speed = useAppStore((s) => (s.game.skipping ? 'instant' : s.settings.speed));
   const reduceMotion = useAppStore((s) => s.settings.reduceMotion);
   const fourColour = useAppStore((s) => s.settings.fourColour);
   const large = useAppStore((s) => s.settings.textSize === 'large');

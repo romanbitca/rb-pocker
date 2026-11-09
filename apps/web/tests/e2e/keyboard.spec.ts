@@ -6,8 +6,8 @@ import { inputCount, nextPoint } from './scripted.ts';
 // PLAN §18 Stage 9, acceptance 2, its last sentence: "A full hand is playable by keyboard only"
 // (the §12.5 shortcuts, §12.12; chunk 9.3), with the script of its first sentence done by keys
 // (chunk 9.6): start a table (Tab to Welcome's Play, Enter), play a hand, open the hint (H), undo
-// (U), open the hands drawer (K), and after the hand S (the hand summary, when the banner offers
-// one; 1.3.92). At the desktop size (K hides and shows the hands column) and at the tablet size
+// (U), open the hands drawer (K), and after the hand S (the hand summary, when the hand end offers
+// one; 1.3.92), then Enter and Space for the next hands (1.3.99). At the desktop size (K hides and shows the hands column) and at the tablet size
 // (portrait: K opens the drawer, a dialog that has the keyboard, and K or Esc closes it), in both
 // browsers. The bots check and call (`?script=passive`, a test-build hook), so
 // the hand always reaches its end; the coach is at Intermediate, so H has a hint to show. The
@@ -52,6 +52,30 @@ async function keyAct(page: Page, key: string): Promise<void> {
   }).toPass({ timeout: 10_000 });
 }
 
+/** Enter or Space at a hand end, pressed again while the 250 ms guard (§12.7) ignores it. */
+async function dealWith(page: Page, key: string, handSeq: number): Promise<void> {
+  const seq = () => pcState(page).then((s) => s.game.hand?.handSeq);
+  await expect(async () => {
+    if ((await seq()) !== handSeq) await page.keyboard.press(key);
+    expect(await seq()).toBe(handSeq);
+  }).toPass({ timeout: 10_000 });
+}
+
+/** C at every decision until the hand ends. */
+async function playToEnd(page: Page): Promise<void> {
+  for (let points = 0; points < 40; points++) {
+    const point = await nextPoint(page);
+    if (point === 'end') return;
+    if (point === 'feedback') {
+      await page.keyboard.press('Escape');
+      await expect(page.locator('[data-feedback]')).toHaveCount(0);
+      continue;
+    }
+    await keyAct(page, 'c');
+  }
+  throw new Error('the hand did not end');
+}
+
 test('a full hand by keyboard only, from Play, with every §12.5 shortcut', async ({
   page,
   browserName,
@@ -67,7 +91,7 @@ test('a full hand by keyboard only, from Play, with every §12.5 shortcut', asyn
   await page.evaluate(() => {
     window.__pc?.dispatch({
       type: 'settings',
-      patch: { coachLevel: 'intermediate', players: 3, speed: 'fast', autoNext: true },
+      patch: { coachLevel: 'intermediate', players: 3, speed: 'fast', autoNext: false },
     });
   });
   // From here on the page gets keys only.
@@ -126,8 +150,9 @@ test('a full hand by keyboard only, from Play, with every §12.5 shortcut', asyn
   await page.keyboard.press('?');
   const list = page.getByRole('dialog', { name: 'Keyboard shortcuts' });
   await expect(list).toBeVisible();
-  await expect(list.locator('kbd')).toHaveCount(12);
+  await expect(list.locator('kbd')).toHaveCount(13);
   await expect(list).toContainText('Hand summary or exam result');
+  await expect(list).toContainText('Next hand');
   await page.keyboard.press('Escape');
   await expect(list).toHaveCount(0);
 
@@ -213,9 +238,9 @@ test('a full hand by keyboard only, from Play, with every §12.5 shortcut', asyn
   expect(end.game.hand?.handSeq).toBe(handSeq);
   expect(foldTried, 'F was tried with checking free').toBe(true);
 
-  // The hand summary never opens by itself (1.3.92). S opens it when the banner offers one
-  // (Intermediate: after an Inaccuracy or worse; pressed at once, before the 1.5 s wait ends), the
-  // next hand waits while it is open, and Esc closes it; then the next hand comes by itself.
+  // The hand summary never opens by itself (1.3.92). S opens it when the hand end offers one
+  // (Intermediate: after an Inaccuracy or worse), the next hand waits while it is open, and Enter
+  // does nothing then (the sheet has the keyboard); Esc closes it.
   expect(end.ui.overlays).not.toContain('summary');
   await page.keyboard.press('s');
   const pressed = await pcState(page);
@@ -223,15 +248,22 @@ test('a full hand by keyboard only, from Play, with every §12.5 shortcut', asyn
     expect(pressed.game.summary).not.toBeNull();
     await expect(page.locator('[data-summary-next]')).toBeVisible();
     expect((await pcState(page)).game.hand?.handSeq).toBe(handSeq);
+    // Its "Next hand ›" has the focus or not: either way Enter is not the table's here.
+    await page.locator('[data-summary] [aria-label="Close"], [data-summary] h2').first().focus();
+    await page.keyboard.press('Space').catch(() => {});
+    expect((await pcState(page)).game.hand?.handSeq).toBe(handSeq);
     await page.keyboard.press('Escape');
     await expect(page.locator('[data-summary]')).toHaveCount(0);
   } else {
-    // No summary to open (or the next hand had already come): S did nothing.
-    expect(pressed.game.summary === null || pressed.game.hand?.handSeq !== handSeq).toBe(true);
+    // No summary to open: S did nothing.
+    expect(pressed.game.summary).toBeNull();
   }
-  await expect
-    .poll(() => pcState(page).then((s) => s.game.hand?.handSeq), { timeout: 20_000 })
-    .toBe(handSeq + 1);
+
+  // Enter deals the next hand (1.3.99); Space the one after it. Row A's "Next hand ›" names them.
+  await expect(page.locator('[data-hand-end]')).toHaveAttribute('aria-keyshortcuts', 'Enter Space');
+  await dealWith(page, 'Enter', handSeq + 1);
+  await playToEnd(page);
+  await dealWith(page, 'Space', handSeq + 2);
 
   const pointers = await page.evaluate(
     () => (window as unknown as { __pointers: { pointers: number } }).__pointers.pointers,

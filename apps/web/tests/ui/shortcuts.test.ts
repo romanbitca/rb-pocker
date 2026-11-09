@@ -54,6 +54,7 @@ describe('shortcutOf (§12.5)', () => {
       ['ArrowUp', 'up'],
       ['ArrowDown', 'down'],
       ['Enter', 'confirm'],
+      [' ', 'space'], // 1.3.99: only "Next hand ›" reads it (`useNextKeys`)
       ['u', 'undo'],
       ['h', 'hint'],
       ['K', 'hands'],
@@ -62,7 +63,7 @@ describe('shortcutOf (§12.5)', () => {
       ['?', 'help'],
     ];
     for (const [k, s] of map) expect(shortcutOf(key(k)), k).toBe(s);
-    for (const k of ['6', '0', 'x', 'Escape', ' ', 'Tab', 'ArrowLeft', '/', 'Shift']) {
+    for (const k of ['6', '0', 'x', 'Escape', 'Tab', 'ArrowLeft', '/', 'Shift']) {
       expect(shortcutOf(key(k)), k).toBeNull();
     }
   });

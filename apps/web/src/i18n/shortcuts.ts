@@ -14,6 +14,8 @@ export const shortcutWords = {
     ['1 to 5', 'Pick a bet size'],
     ['↑ ↓', 'Bet size up or down'],
     ['Enter', 'Confirm the bet'],
+    /** At the hand end (1.3.99): Row A's "Next hand ›". */
+    ['Enter or Space', 'Next hand'],
     ['Esc', 'Close'],
     ['U', 'Undo'],
     ['H', 'Coach hint'],

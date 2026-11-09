@@ -311,6 +311,12 @@ export interface GameSlice {
    * S) opens the `summary` overlay.
    */
   summary: SummaryOffer;
+  /**
+   * The hero folded and tapped "Skip to result ›" (§12.7, 1.3.99): the rest of this hand runs at
+   * Instant speed. False again when the next hand is dealt, or Undo takes the fold back; the
+   * speed in the settings never changes.
+   */
+  skipping: boolean;
 }
 
 /** What the hand-end banner offers to open (`GameSlice.summary`, §12.9). */
@@ -682,8 +688,10 @@ export type GameCommand =
   | { type: 'newTable'; setup?: Partial<TableSetup>; confirmed?: boolean }
   /** The hero's action; only in mode `heroTurn`, and only inside `game.legal`. */
   | { type: 'act'; action: PlayerAction }
-  /** Tap on the hand-end banner or "Next hand ›": start the next hand now. */
+  /** "Next hand ›" (Row A's, the summary's; Enter or Space): start the next hand now. */
   | { type: 'nextHand' }
+  /** "Skip to result ›" after the hero folded: this hand runs on at Instant speed (§12.7). */
+  | { type: 'skipHand' }
   /** Out of chips → Reload {startingStack} chips (§3.1). */
   | { type: 'reload' }
   /** Menu → Top up to {startingStack} chips (between hands, when below it; §3.1). */
@@ -892,6 +900,7 @@ export function initialGame(): GameSlice {
     decisions: [],
     coachLevel: null,
     summary: null,
+    skipping: false,
   };
 }
 

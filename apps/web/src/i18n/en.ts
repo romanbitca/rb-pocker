@@ -183,6 +183,8 @@ export const en = {
     raiseTo: (x: string) => `Raise to ${x}`,
     allIn: (x: string) => `All-in ${x}`,
     waiting: 'Waiting…',
+    /** The middle button after the hero folded (§12.7, 1.3.99); the "›" is drawn. */
+    skip: 'Skip to result',
     /** Shown when the disabled Fold is tapped while checking is free. */
     foldNotNeeded: 'Checking is free. No need to fold.',
     /** Shown when the disabled Raise is tapped: a short all-in did not reopen the betting. */
@@ -564,8 +566,12 @@ export const en = {
     /** The same flush name: the first card that differs decided. */
     losesCard: (name: string, hand: string, yours: string, theirs: string) =>
       `${name}: ${hand} — your ${yours} beats their ${theirs}`,
+    /** The hero's own result (§12.9, 1.3.99), when the hand changed the hero's stack. */
+    youWon: (x: string) => `You won ${x}`,
+    youLost: (x: string) => `You lost ${x}`,
+    /** Row A's one big button at the hand end (§12.7, 1.3.99); the "›" is drawn. */
     nextHand: 'Next hand',
-    /** Under the banner: opens Review on this hand (§12.9, §12.10). */
+    /** At the hand end, with "Hand summary": opens Review on this hand (§12.9, §12.10). */
     review: 'Review this hand',
     /**
      * Beside "Review this hand" when the hand has a summary (§10.2, §12.9; 1.3.92): opens the

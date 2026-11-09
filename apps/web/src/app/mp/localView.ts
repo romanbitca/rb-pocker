@@ -170,5 +170,6 @@ export function localView(view: TableView, heroName: string): LocalGame {
     decisions: NO_DECISIONS,
     coachLevel: 'exam',
     summary: null,
+    skipping: false,
   };
 }

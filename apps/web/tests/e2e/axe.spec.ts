@@ -723,9 +723,15 @@ test.describe('axe: the first-table tips', () => {
               return document.querySelector(tap) === null ? null : 'end';
             }
             if (s.game.mode === 'heroTurn') {
-              // A reader waits for the hero turn's two tips before acting.
+              // A reader waits for the hero turn's two tips before acting, and for the Hands tab's
+              // when it is due at this turn (as tips.spec.ts): a tap on Row A just after a tip
+              // showed closes it unseen, and the loop then waits for a tip that never comes.
               const tips = s.data.tips ?? {};
-              return tips['heroStrip'] === true && tips['coachStrip'] === true ? 'hero' : null;
+              const handsTabDue =
+                tips['handsTab'] !== true && (s.game.hand?.board.length ?? 0) >= 3;
+              return tips['heroStrip'] === true && tips['coachStrip'] === true && !handsTabDue
+                ? 'hero'
+                : null;
             }
             return null;
           },

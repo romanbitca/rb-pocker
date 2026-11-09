@@ -754,6 +754,8 @@ export class TableController {
   private undoSnapshot: UndoSnapshot | null = null;
   /** What holds the hand after a hero act: its grade (≤ 1,500 ms), or the open feedback card. */
   private hold: 'grading' | 'feedback' | null = null;
+  /** "Skip to result ›" was tapped: the rest of this hand runs at Instant speed (§12.7, 1.3.99). */
+  private skipping = false;
   /** The grade of the latest hero decision while it is on its way. */
   private grading: PendingGrade | null = null;
   /** The feedback card on show (mode 'feedback'). */
@@ -956,6 +958,9 @@ export class TableController {
       case 'nextHand':
         this.nextHandNow();
         break;
+      case 'skipHand':
+        this.skipHand();
+        break;
       case 'reload':
         this.reload();
         break;
@@ -1143,11 +1148,28 @@ export class TableController {
     this.publish();
   }
 
-  /** A tap on the hand-end banner: the next hand now. */
+  /** A tap on "Next hand ›" (or Enter, Space; §12.7): the next hand now. */
   private nextHandNow(): void {
     if (this.mode !== 'handEnd') return;
     this.cancelFlow();
     this.continueToNextHand();
+  }
+
+  /**
+   * "Skip to result ›" (§12.7, 1.3.99): the hero has folded and does not want to watch. The hand
+   * runs on through the same steps at Instant speed, this hand only: no setting changes, the same
+   * bot decisions come, a card or a hand shows at the step it always would, and a feedback card
+   * for the fold still waits for its answer. The pause running now is cut short too.
+   */
+  private skipHand(): void {
+    const h = this.hand;
+    if (this.skipping || h === null || h.phase === 'complete' || h.seats[HERO]?.folded !== true) {
+      this.trace('skip ignored', { mode: this.mode });
+      return;
+    }
+    this.skipping = true;
+    this.trace('skip to result');
+    this.hurryFlow();
   }
 
   /** Out of chips → Reload (§3.1): the hero gets the starting stack and the next hand starts. */
@@ -2082,6 +2104,7 @@ export class TableController {
     this.meta = restored.meta;
     this.hold = null;
     this.feedback = null;
+    this.skipping = false; // the fold is taken back: the hero plays on, at the player's speed
     this.trace('undo', { decisionId: snap.decisionId, undoCount: this.meta.undoCount });
     this.trace('input', restored.reshuffle);
     this.closeFeedbackOverlay();
@@ -2100,6 +2123,7 @@ export class TableController {
     this.undoSnapshot = null;
     this.hold = null;
     this.feedback = null;
+    this.skipping = false;
     this.decisionLevel = null;
     this.levels.clear();
     this.latched = null;
@@ -2136,8 +2160,12 @@ export class TableController {
   // -------------------------------------------------------------------------------------------
   // Timings
 
-  /** §11.3 r6: after the hero folds, a Normal-speed hand continues at Fast. */
+  /**
+   * §11.3 r6: after the hero folds, a Normal-speed hand continues at Fast; "Skip to result ›" runs
+   * the rest of it at Instant (§12.7, 1.3.99).
+   */
   private effectiveSpeed(): Speed {
+    if (this.skipping) return 'instant';
     const speed = this.settings().speed;
     return speed === 'normal' && this.hand?.seats[HERO]?.folded === true ? 'fast' : speed;
   }
@@ -2229,6 +2257,15 @@ export class TableController {
     const ran = this.timers.now() - (flow.startedAt ?? this.timers.now());
     flow.remaining = Math.max(0, flow.remaining - ran);
     flow.startedAt = null;
+  }
+
+  /** The pause running now, as Instant speed has it: at most a bot's 80 ms, else none (§9.8). */
+  private hurryFlow(): void {
+    const flow = this.flow;
+    if (flow === null || flow.kind === 'nextHand') return;
+    this.pauseFlow();
+    flow.remaining = Math.min(flow.remaining, flow.kind === 'act' ? TIMING.instantBotMs : 0);
+    if (!this.gatesClosed()) this.startFlow(flow);
   }
 
   private cancelFlow(): void {
@@ -3383,7 +3420,8 @@ export class TableController {
       g.feedback !== this.feedback ||
       g.decisions !== decisions ||
       g.coachLevel !== this.latched ||
-      g.summary !== summary
+      g.summary !== summary ||
+      g.skipping !== this.skipping
     ) {
       this.store.setState({
         game: {
@@ -3400,6 +3438,7 @@ export class TableController {
           decisions,
           coachLevel: this.latched,
           summary,
+          skipping: this.skipping,
         },
       });
     }

@@ -615,13 +615,16 @@ describe('the commands at a table', () => {
     expect(selectRemote(r.state())).toBe(true); // until `left`
   });
 
-  it.each(['nextHand', 'topUp', 'undo', 'keepMove'] as const)('%s is swallowed', (type) => {
-    const r = seated();
-    const sent = r.ws.sent.length;
-    r.dispatch({ type });
-    expect(r.ws.sent).toHaveLength(sent);
-    expect(r.game).not.toHaveBeenCalled();
-  });
+  it.each(['nextHand', 'skipHand', 'topUp', 'undo', 'keepMove'] as const)(
+    '%s is swallowed',
+    (type) => {
+      const r = seated();
+      const sent = r.ws.sent.length;
+      r.dispatch({ type });
+      expect(r.ws.sent).toHaveLength(sent);
+      expect(r.game).not.toHaveBeenCalled();
+    },
+  );
 
   it.each<GameCommand>([
     { type: 'settings', patch: { sound: false } },

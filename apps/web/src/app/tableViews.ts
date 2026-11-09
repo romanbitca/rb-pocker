@@ -530,6 +530,30 @@ const handEndMemo = memo((hand: HandState | null, table: TableState | null): Han
 export const selectHandEnd = (s: AppState): HandEndView | null =>
   handEndMemo(s.game.hand, s.game.table);
 
+/**
+ * The hand-end controls are up (§12.7, §12.9; 1.3.99): Row A's "Next hand ›", the result and its
+ * links.
+ */
+export const selectHandEndUp = (s: AppState): boolean =>
+  s.game.mode === 'handEnd' && selectHandEnd(s) !== null;
+
+/**
+ * Row A's "Skip to result ›" (§12.7, 1.3.99): the hero has folded and the hand still runs. Not
+ * while the feedback card asks about the fold, not once it has been tapped, and never at a server
+ * table (§19.6): the other players set its pace.
+ */
+export const selectCanSkip = (s: AppState): boolean => {
+  const { hand, mode, skipping } = s.game;
+  return (
+    !s.mp.active &&
+    !skipping &&
+    mode !== 'feedback' &&
+    hand !== null &&
+    hand.phase !== 'complete' &&
+    hand.seats[HERO]?.folded === true
+  );
+};
+
 const sessionLineMemo = memo(
   (
     hand: HandState | null,

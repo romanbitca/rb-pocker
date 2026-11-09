@@ -181,11 +181,12 @@ describe('the layouts (§12.3, §12.5)', () => {
     expect(screen.queryByRole('dialog')).toBeNull();
   }, 20_000);
 
-  it('landscape: at a hand end the column holds the banner, no empty coach rows', async () => {
+  it('landscape: at a hand end the column holds the result, no empty coach rows', async () => {
     start();
     act(() => state().dispatch({ type: 'layout', layout: 'landscape' }));
     await playUntil(() => state().game.mode === 'handEnd');
     await settle();
+    expect(document.querySelector('aside [data-hand-result]')).not.toBeNull();
     expect(document.querySelector('aside [data-hand-end]')).not.toBeNull();
     expect(document.querySelector('aside [data-coach-strip]')).toBeNull();
   }, 20_000);
