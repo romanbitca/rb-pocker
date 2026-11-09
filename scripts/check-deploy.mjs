@@ -3,10 +3,13 @@
  * rules, `/api/health` answers with the running commit, and no response sets a cookie.
  *
  * Usage (from the repository root, after `npm ci`):
- *   node scripts/check-deploy.mjs <url> [--commit <sha>]
+ *   node scripts/check-deploy.mjs <url> [--commit <sha>] [--ws]
  *
  * <url>     where the app runs, e.g. https://poker.example.com or http://localhost:3000 (Docker)
  * --commit  also require `/api/health` to report this commit (full or short sha)
+ * --ws      also open the multiplayer socket and require it to refuse a made-up login (§19.11):
+ *           Telegram is on and the proxies pass WebSockets. Only with the bot token set; without
+ *           this flag no socket is opened.
  *
  * Expects a production server (NODE_ENV=production, so HSTS is on): the Coolify deploy or
  * `docker compose up`. The expected values come from apps/server/src/security.ts, the single
@@ -19,11 +22,23 @@ import {
   STRICT_TRANSPORT_SECURITY,
 } from '../apps/server/src/security.ts';
 
-const USAGE = 'Usage: node scripts/check-deploy.mjs <url> [--commit <sha>]';
+const USAGE = 'Usage: node scripts/check-deploy.mjs <url> [--commit <sha>] [--ws]';
+
+/**
+ * §19.4: the socket's path, the `v` of a `hello`, and the close code of a refused `initData`.
+ * test/check-deploy.test.ts holds the first two equal to the PLAN.
+ */
+const MP_WS_PATH = '/api/mp/ws';
+const MP_PROTOCOL_VERSION = 1;
+const CLOSE_AUTH_FAILED = 4001;
+const WS_TIMEOUT_MS = 15_000;
 
 let args;
 try {
-  args = parseArgs({ allowPositionals: true, options: { commit: { type: 'string' } } });
+  args = parseArgs({
+    allowPositionals: true,
+    options: { commit: { type: 'string' }, ws: { type: 'boolean' } },
+  });
 } catch (error) {
   console.error(`${error.message}\n${USAGE}`);
   process.exit(2);
@@ -84,7 +99,51 @@ async function check(path, { cacheControl, contentType }) {
   const cookies = response.headers.getSetCookie();
   if (cookies.length > 0) problems.push(`sets a cookie: ${cookies.join(', ')}`);
   if (header('x-powered-by') !== null) problems.push(`X-Powered-By: ${header('x-powered-by')}`);
+  // The framing rule lives in the CSP alone; DENY here would block Telegram Web (§19.11).
+  if (header('x-frame-options') !== null) {
+    problems.push(`X-Frame-Options: ${header('x-frame-options')}`);
+  }
   return { body, problems };
+}
+
+/**
+ * Opens the multiplayer socket and sends a `hello` with made-up `initData`. The right answer is a
+ * close with 4001: Telegram is on, the proxies pass WebSockets, and a login is really checked. No
+ * `Origin` header is sent, so the gateway's same-origin rule (§19.4) lets the upgrade through.
+ */
+async function checkSocket() {
+  const url = new URL(MP_WS_PATH, base);
+  url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
+  const closedWith = await new Promise((resolve) => {
+    const socket = new WebSocket(url);
+    const timer = setTimeout(() => {
+      socket.close();
+      resolve(null);
+    }, WS_TIMEOUT_MS);
+    socket.addEventListener('open', () => {
+      socket.send(
+        JSON.stringify({
+          t: 'hello',
+          v: MP_PROTOCOL_VERSION,
+          initData: 'check-deploy=not-a-login',
+        }),
+      );
+    });
+    // A failed upgrade (Telegram is off, a proxy refuses it) comes here too, as 1006.
+    socket.addEventListener('close', (event) => {
+      clearTimeout(timer);
+      resolve(event.code);
+    });
+  });
+  if (closedWith === CLOSE_AUTH_FAILED) {
+    report(MP_WS_PATH, [], ` (closed with ${closedWith})`);
+  } else if (closedWith === null) {
+    report(MP_WS_PATH, [
+      `no close within ${WS_TIMEOUT_MS / 1000} s, expected ${CLOSE_AUTH_FAILED}`,
+    ]);
+  } else {
+    report(MP_WS_PATH, [`closed with ${closedWith}, expected ${CLOSE_AUTH_FAILED}`]);
+  }
 }
 
 console.log(`Checking ${base}`);
@@ -139,6 +198,8 @@ if (health !== null) {
   }
   report('/api/health', health.problems, ` (commit ${commit})`);
 }
+
+if (args.values.ws === true) await checkSocket();
 
 console.log(failed === 0 ? 'All checks passed.' : `${failed} URL(s) failed.`);
 process.exit(failed === 0 ? 0 : 1);

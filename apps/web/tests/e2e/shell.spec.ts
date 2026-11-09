@@ -9,7 +9,9 @@ test.describe('app shell', () => {
 
     // PLAN §15.2, §17.2: the header is the meta CSP plus frame-ancestors (ignored in a meta tag).
     const headers = await response.allHeaders();
-    expect(headers['content-security-policy']).toBe(`${META_CSP};frame-ancestors 'none'`);
+    expect(headers['content-security-policy']).toBe(
+      `${META_CSP};frame-ancestors https://web.telegram.org https://webk.telegram.org https://weba.telegram.org`,
+    );
     await expect(page.locator('meta[http-equiv="Content-Security-Policy"]')).toHaveAttribute(
       'content',
       META_CSP,

@@ -14,6 +14,17 @@ type Middleware = (
   next: (err?: unknown) => void,
 ) => void;
 
+/**
+ * The only pages that may show the game in a frame: Telegram Web, whose hosts show a Mini App in an
+ * iframe (§19.2, §19.11). On with or without a bot token, so `check-deploy` has one thing to expect.
+ * A new host (R27) is one line here and one in CONTENT_SECURITY_POLICY.
+ */
+const FRAME_ANCESTORS = [
+  'https://web.telegram.org',
+  'https://webk.telegram.org',
+  'https://weba.telegram.org',
+];
+
 /** Exactly the §17.2 directives. Nothing is loaded from another origin. */
 const CSP_DIRECTIVES = {
   defaultSrc: ["'self'"],
@@ -28,14 +39,15 @@ const CSP_DIRECTIVES = {
   objectSrc: ["'none'"],
   baseUri: ["'none'"],
   formAction: ["'none'"],
-  frameAncestors: ["'none'"],
+  frameAncestors: FRAME_ANCESTORS,
 };
 
 /** What helmet sends for `CSP_DIRECTIVES` (joined with `;`, no space). No `upgrade-insecure-requests`. */
 export const CONTENT_SECURITY_POLICY =
   "default-src 'self';script-src 'self';style-src 'self' 'unsafe-inline';img-src 'self' data:;" +
   "font-src 'self';connect-src 'self';worker-src 'self';manifest-src 'self';object-src 'none';" +
-  "base-uri 'none';form-action 'none';frame-ancestors 'none'";
+  "base-uri 'none';form-action 'none';" +
+  'frame-ancestors https://web.telegram.org https://webk.telegram.org https://weba.telegram.org';
 
 /** `screen-wake-lock` and `web-share` stay at their default (`self`). */
 export const PERMISSIONS_POLICY = 'camera=(), microphone=(), geolocation=(), payment=(), usb=()';
@@ -45,15 +57,14 @@ export const STRICT_TRANSPORT_SECURITY = 'max-age=31536000; includeSubDomains';
 
 /**
  * Sent on every response, whatever NODE_ENV is (names in lower case, as Node reports them).
- * HSTS and Cache-Control are the only §17.2 headers that vary; `X-Powered-By` and `Set-Cookie`
- * never appear.
+ * HSTS and Cache-Control are the only §17.2 headers that vary; `X-Powered-By`, `Set-Cookie` and
+ * `X-Frame-Options` never appear (framing is the CSP's `frame-ancestors` alone, pitfall 51).
  */
 export const SECURITY_HEADERS: Readonly<Record<string, string>> = {
   'content-security-policy': CONTENT_SECURITY_POLICY,
   'permissions-policy': PERMISSIONS_POLICY,
   'referrer-policy': 'no-referrer',
   'x-content-type-options': 'nosniff',
-  'x-frame-options': 'DENY',
   // helmet's other defaults, kept on purpose (§17.2).
   'cross-origin-opener-policy': 'same-origin',
   'cross-origin-resource-policy': 'same-origin',
@@ -79,7 +90,8 @@ export function helmetOptions(nodeEnv: string | undefined): HelmetOptions {
     // useDefaults:false also drops helmet's default `upgrade-insecure-requests`, which breaks
     // http://localhost in Safari and every http://<LAN-IP> test (pitfall 41).
     contentSecurityPolicy: { useDefaults: false, directives: CSP_DIRECTIVES },
-    xFrameOptions: { action: 'deny' },
+    // It has no value for "these origins only", and DENY would block Telegram Web's iframe (§19.11).
+    xFrameOptions: false,
     // `true` is helmet's default HSTS. Only in production, where the proxy terminates HTTPS.
     strictTransportSecurity: nodeEnv === 'production',
   };
