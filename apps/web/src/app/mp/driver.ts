@@ -75,6 +75,10 @@ export function socketUrl(location: Pick<Location, 'protocol' | 'host'>): string
   return `${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}${MP_WS_PATH}`;
 }
 
+/** Sorts `hostChanged` before the other notices of one view, which keep their order. */
+const hostChangedFirst = (a: Notice, b: Notice): number =>
+  Number(b.n === 'hostChanged') - Number(a.n === 'hostChanged');
+
 /** Why a socket that closed for good stopped (§19.4), for the player. */
 function problemOfClose(code: number): MpProblem {
   switch (code) {
@@ -345,6 +349,12 @@ export class MpDriver {
   private readonly onStopped = (code: number): void => {
     this.socket = null;
     if (this.quiet()) return;
+    if (code === 1012 && !this.active) {
+      // A redeploy with no table on (the Create screen, "Joining the table…"): nothing ended, and
+      // the new server answers in a moment.
+      this.ensureSocket();
+      return;
+    }
     if (this.store.getState().mp.problem === null) this.showProblem(problemOfClose(code));
   };
 
@@ -411,7 +421,8 @@ export class MpDriver {
     if (last?.code !== view.code) this.rememberTable(view.code);
     this.showScreen(view, entering);
     this.syncBustDialog();
-    for (const notice of notices) this.say(notice);
+    // The Table's bar holds one toast, the newest (§12.11): who left says more than who is host.
+    for (const notice of [...notices].sort(hostChangedFirst)) this.say(notice);
   }
 
   private onLeft(): void {

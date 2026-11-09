@@ -1,5 +1,6 @@
 import type { BrowserContext, Page } from '@playwright/test';
 import { expect, test } from './fixtures.ts';
+import { launchFragment, newTelegramUser, signInitData } from './telegram.ts';
 
 /**
  * PLAN §19.11, Stage 10 acceptance 10: Telegram Web shows the Mini App in an iframe on its own
@@ -29,6 +30,7 @@ async function openInFrame(
   page: Page,
   parent: string,
   src: string,
+  head = '',
 ): Promise<void> {
   // Chromium stops a public page from framing localhost until the user allows it. The real game
   // is not on a local address, and without this nothing would ever reach the frame-ancestors check.
@@ -36,7 +38,7 @@ async function openInFrame(
   await page.route(`${parent}/`, (route) =>
     route.fulfill({
       contentType: 'text/html',
-      body: `<!doctype html><iframe id="game" title="game" src="${src}" style="width:100vw;height:100vh;border:0"></iframe>`,
+      body: `<!doctype html>${head}<iframe id="game" title="game" src="${src}" style="width:100vw;height:100vh;border:0"></iframe>`,
     }),
   );
   await page.goto(`${parent}/`);
@@ -93,4 +95,38 @@ test.describe('the game in a frame', () => {
       forbiddenRequests.length = 0;
     });
   }
+});
+
+test.describe('Play with friends in the frame of Telegram Web', () => {
+  test.use({ multiplayer: true });
+
+  test('the game speaks to its parent and opens its own socket under the real CSP', async ({
+    context,
+    page,
+    baseURL,
+    forbiddenRequests,
+  }, testInfo) => {
+    test.skip(testInfo.project.name !== 'chromium-phone-390x844', 'Chromium at one size');
+    const parent = 'https://web.telegram.org';
+    const src = `${baseURL}/${launchFragment(signInitData(newTelegramUser('Ann')))}`;
+    const heard =
+      "<script>window.heard=[];addEventListener('message',(e)=>heard.push(e.data));</script>";
+    await openInFrame(context, page, parent, src, heard);
+
+    const game = page.frameLocator('#game');
+    await game.getByRole('button', { name: 'Play with friends', exact: true }).click();
+    await expect(game.getByRole('heading', { level: 1 })).toHaveText('New table');
+    await game.getByRole('button', { name: 'Create table', exact: true }).click();
+    await expect(game.getByRole('heading', { level: 1 })).toHaveText(/^Table [2-9A-HJKMNP-Z]{8}$/);
+
+    const said = await page.evaluate(() =>
+      ((window as unknown as { heard: string[] }).heard ?? []).map(
+        (m) => (JSON.parse(m) as { eventType: string }).eventType,
+      ),
+    );
+    expect(said).toEqual(expect.arrayContaining(['iframe_ready', 'web_app_ready']));
+    // The outer page is the one request that leaves the origin; the socket was the game's own.
+    expect(forbiddenRequests).toEqual([`leaves the origin: GET ${parent}/`]);
+    forbiddenRequests.length = 0;
+  });
 });

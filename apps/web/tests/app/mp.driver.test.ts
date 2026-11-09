@@ -246,6 +246,33 @@ describe('when the socket opens (§19.6)', () => {
     expect(r.last().sent[1]).toEqual({ t: 'create', settings: SETTINGS });
   });
 
+  it('a server restart with no table on says nothing and connects again', () => {
+    const r = rig();
+    r.dispatch({ type: 'go', screen: 'mpCreate' });
+    const first = r.last();
+    first.open();
+    first.receive(welcome(null));
+    first.drop(1012);
+    expect(r.state().mp.problem).toBeNull();
+    expect(r.state().ui.overlays).toEqual([]);
+    expect(r.last()).not.toBe(first);
+    expect(r.state().ui.screen).toBe('mpCreate');
+  });
+
+  it('a restart while joining keeps the join for the new server', () => {
+    const r = rig({ startParam: CODE });
+    r.driver.launch();
+    const first = r.last();
+    first.open();
+    first.drop(1012);
+    expect(r.state().mp.problem).toBeNull();
+    const second = r.last();
+    expect(second).not.toBe(first);
+    second.open();
+    second.receive(welcome(null));
+    expect(second.kinds()).toEqual(['hello', 'join']);
+  });
+
   it('Back from the Create screen closes it', () => {
     const r = rig();
     r.dispatch({ type: 'go', screen: 'mpCreate' });
@@ -1185,6 +1212,18 @@ describe('notices', () => {
     expect(r.state().ui.toasts).toEqual([]);
   });
 
+  it('a host who leaves: the toast that stays on the Table says who left, not who is host now', () => {
+    const r = seated(theirTurn({ rev: 1 }));
+    r.ws.receive(
+      tableMsg(theirTurn({ rev: 2 }), [
+        { n: 'left', name: 'Bo' },
+        { n: 'hostChanged', name: 'Cy' },
+      ]),
+    );
+    const toasts = r.state().ui.toasts.map((t) => (t.kind === 'mpNotice' ? t.notice.n : t.kind));
+    expect(toasts).toEqual(['hostChanged', 'left']);
+  });
+
   it('a voided hand is the same toast as at any table', () => {
     const r = seated(theirTurn({ rev: 1 }));
     r.ws.receive(tableMsg(theirTurn({ rev: 2 }), [{ n: 'handVoided' }]));
@@ -1225,6 +1264,18 @@ describe('selectTurn', () => {
     const kinds: SeatKind[] = ['in', 'out', 'in'];
     const r = seated(viewOfHand(kinds, startHand(remoteTable(kinds), SEED), 1));
     expect(selectTurn(r.state())).toEqual({ kind: 'notDealtIn' });
+  });
+
+  it('sitting out or busted: no promise of cards, whose turn it is instead', () => {
+    const kinds: SeatKind[] = ['in', 'out', 'in'];
+    for (const status of ['sittingOut', 'busted'] as const) {
+      const hand = startHand(remoteTable(kinds), SEED);
+      const view = viewOfHand(kinds, hand, 1);
+      const seats = view.seats.map((seat, i) => (i === 1 && seat ? { ...seat, status } : seat));
+      const r = seated({ ...view, seats });
+      expect(selectTurn(r.state())).toMatchObject({ kind: 'other' });
+      r.driver.dispose();
+    }
   });
 
   it('the waiting room says nothing', () => {

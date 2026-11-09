@@ -57,7 +57,9 @@ export function turnOf(
   nextHandEndsAt: number | null,
 ): MpTurn | null {
   if (nextHandEndsAt !== null) return { kind: 'nextHand', endsAt: nextHandEndsAt };
-  if (view.hand !== null && view.hand.seats[view.you]?.dealtIn !== true) {
+  // Only a seat the next deal will take: someone sitting out or busted is told what to do instead.
+  const dealtNext = view.seats[view.you]?.status === 'nextHand';
+  if (dealtNext && view.hand !== null && view.hand.seats[view.you]?.dealtIn !== true) {
     return { kind: 'notDealtIn' };
   }
   const seat = view.decision?.seat;
