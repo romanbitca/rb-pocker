@@ -86,6 +86,8 @@ export class Room {
   private nextHandAt: number | null = null;
   /** Said with the next broadcast, then forgotten. */
   private notices: { notice: Notice; to: (seat: number) => boolean }[] = [];
+  /** The chips each user took away from a seat here: sitting down again gives them back (§19.5). */
+  private readonly keptStacks = new Map<number, number>();
 
   /** Bumped by every arm and disarm: a callback from before that does nothing (pitfall 53). */
   private flowToken = 0;
@@ -157,7 +159,7 @@ export class Room {
         seat.online = false;
         if (this.decision?.seat === seatNo) this.moveDeadline(0);
       } else {
-        this.seats[seatNo] = null;
+        this.vacate(seatNo);
       }
       this.passHost();
       if (this.isEmpty()) this.end('idle');
@@ -236,6 +238,11 @@ export class Room {
       const seatNo = this.seatOf(userId);
       if (seatNo === null) return;
       const seat = this.seats[seatNo] as RoomSeat;
+      if (seat.online) {
+        // A new socket took over from one still open: nothing changed for anybody else (§19.5).
+        this.tell(userId, { t: 'table', view: this.viewFor(seatNo), notices: [] });
+        return;
+      }
       seat.online = true;
       seat.offlineSince = null;
       this.changed();
@@ -311,7 +318,7 @@ export class Room {
       if (seat.status !== 'leaving' && !lost) return;
       // The others were told when a `leaving` player left; a lost seat goes without a word.
       if (seat.status !== 'leaving') this.say({ n: 'left', name: seat.name });
-      this.seats[i] = null;
+      this.vacate(i);
     });
   }
 
@@ -443,15 +450,23 @@ export class Room {
   // Seats
 
   private sit(user: MpUser, seat: number): void {
+    // Leaving and coming back must never top up a stack: only a real bust gets a free reload.
+    const stack = this.keptStacks.get(user.id) ?? this.settings.stack;
     this.seats[seat] = {
       userId: user.id,
       name: seatName(user, seat),
-      status: 'nextHand',
-      stack: this.settings.stack,
+      status: stack > 0 ? 'nextHand' : 'busted',
+      stack,
       online: true,
       offlineSince: null,
       timeouts: 0,
     };
+  }
+
+  private vacate(seatNo: number): void {
+    const seat = this.seats[seatNo] as RoomSeat;
+    this.keptStacks.set(seat.userId, seat.stack);
+    this.seats[seatNo] = null;
   }
 
   /** A `join` by someone who already has a seat here. */

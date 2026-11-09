@@ -29,7 +29,7 @@ export const RECONNECT_JITTER = 0.2;
 export const GIVE_UP_AFTER_MS = 120_000;
 /** Close code 4008 (rate limit): the next try waits this long (§19.4). */
 export const RATE_LIMIT_WAIT_MS = 10_000;
-/** No `welcome` this long after dialling: the try failed (the server's own deadline is 5 s). */
+/** No `welcome` this long after dialling: the try failed (the server's own deadline is 3 s). */
 export const WELCOME_WAIT_MS = 15_000;
 
 /** Close codes that must not be retried (§19.4); every other code is. */

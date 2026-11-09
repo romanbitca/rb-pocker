@@ -45,13 +45,26 @@ export function roomSettings(settings: TableSettings): RoomSettings {
 
 const MAX_NAME_CODE_POINTS = 24;
 
+/** Combining marks in a row: enough for any real name, too few to stack over the next line. */
+const MAX_COMBINING_MARKS = 3;
+/** Control and format, default-ignorable (the Hangul fillers), the Braille blank, line breaks. */
+const NOT_SHOWN = /[\p{C}\p{Default_Ignorable_Code_Point}\u{2800}\p{Zl}\p{Zp}]/gu;
+const TOO_MANY_MARKS = new RegExp(`(\\p{M}{${MAX_COMBINING_MARKS}})\\p{M}+`, 'gu');
+const SOMETHING_TO_SEE = /[\p{L}\p{N}\p{P}\p{S}]/u;
+
 /**
- * §19.9: NFC, no control or format characters (so no right-to-left overrides), trimmed, at most 24
- * code points. May come back empty; the seat's name is then `seatName`'s.
+ * §19.9: NFC, nothing that does not show (no control, format or default-ignorable characters, so no
+ * right-to-left overrides and no blank names), at most 3 combining marks in a row, trimmed, at most
+ * 24 code points. Comes back empty when nothing would show; the seat's name is then `seatName`'s.
  */
 export function cleanName(firstName: string): string {
-  const cleaned = firstName.normalize('NFC').replace(/\p{C}/gu, '').trim();
-  return [...cleaned].slice(0, MAX_NAME_CODE_POINTS).join('').trim();
+  const cleaned = firstName
+    .normalize('NFC')
+    .replace(NOT_SHOWN, '')
+    .replace(TOO_MANY_MARKS, '$1')
+    .trim();
+  const name = [...cleaned].slice(0, MAX_NAME_CODE_POINTS).join('').trim();
+  return SOMETHING_TO_SEE.test(name) ? name : '';
 }
 
 /** The name a seat shows: the cleaned first name, or "Player {seat + 1}" when that is empty. */

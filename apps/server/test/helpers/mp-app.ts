@@ -1,5 +1,5 @@
-import { request as httpRequest } from 'node:http';
-import type { AddressInfo, Socket } from 'node:net';
+import { request as httpRequest, type Server } from 'node:http';
+import { connect, type AddressInfo, type Socket } from 'node:net';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { Test } from '@nestjs/testing';
 import { vi } from 'vitest';
@@ -105,6 +105,87 @@ export function rawUpgrade(
     req.on('error', reject);
     req.end();
   });
+}
+
+/** A client that speaks WebSocket by hand, so it can stop reading or ignore a close. */
+export interface RawClient {
+  readonly socket: Socket;
+  readonly status: number;
+  /** Everything received after the response to the upgrade. */
+  received(): Buffer;
+}
+
+/** Opens a socket that never sends its FIN (`allowHalfOpen`) and asks for an upgrade. */
+export function rawClient(
+  port: number,
+  path: string,
+  headers: Record<string, string> = {},
+): Promise<RawClient> {
+  return new Promise((resolve, reject) => {
+    const socket = connect({ port, host: '127.0.0.1', allowHalfOpen: true });
+    socket.on('error', reject);
+    socket.write(
+      [
+        `GET ${path} HTTP/1.1`,
+        'Host: 127.0.0.1',
+        'Connection: Upgrade',
+        'Upgrade: websocket',
+        'Sec-WebSocket-Version: 13',
+        'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==',
+        ...Object.entries(headers).map(([name, value]) => `${name}: ${value}`),
+        '',
+        '',
+      ].join('\r\n'),
+    );
+    let buffer = Buffer.alloc(0);
+    let answered = false;
+    socket.on('data', (data) => {
+      buffer = Buffer.concat([buffer, data]);
+      if (answered) return;
+      const end = buffer.indexOf('\r\n\r\n');
+      if (end === -1) return;
+      answered = true;
+      const status = Number(buffer.subarray(9, 12).toString('latin1'));
+      buffer = buffer.subarray(end + 4);
+      resolve({ socket, status, received: () => buffer });
+    });
+  });
+}
+
+const FRAME_MASK = [1, 2, 3, 4] as const;
+
+/** One masked client frame of up to 65,535 bytes. */
+export function maskedFrame(opcode: number, payload: string): Buffer {
+  const data = Buffer.from(payload);
+  const head =
+    data.length < 126
+      ? [0x80 | opcode, 0x80 | data.length]
+      : [0x80 | opcode, 0x80 | 126, data.length >> 8, data.length & 0xff];
+  const body = data.map((byte, i) => byte ^ (FRAME_MASK[i % 4] as number));
+  return Buffer.concat([Buffer.from(head), Buffer.from(FRAME_MASK), body]);
+}
+
+/** Open TCP connections of the app, upgraded ones included. */
+export function openConnections(mp: MpApp): Promise<number> {
+  return new Promise((resolve, reject) => {
+    (mp.app.getHttpServer() as Server).getConnections((err, count) => {
+      if (err) reject(err);
+      else resolve(count);
+    });
+  });
+}
+
+/** Polls `check` until it holds. `ms` is real time, far more than a busy Mac needs. */
+export async function eventually(
+  check: () => boolean | Promise<boolean>,
+  what: string,
+  ms = 10_000,
+): Promise<void> {
+  const deadline = Date.now() + ms;
+  while (!(await check())) {
+    if (Date.now() > deadline) throw new Error(`it never happened: ${what}`);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
 }
 
 /** A real browser-style WebSocket that keeps every frame it gets. */

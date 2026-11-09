@@ -509,14 +509,133 @@ describe('§19.5 the host', () => {
   });
 });
 
+describe('§19.5 a seat given up and taken again', () => {
+  /** A hand is over and `loser` has fewer chips than the table's stack. */
+  function afterALoss(seats = 3): { h: Harness; loser: number; chips: number } {
+    const h = new Harness({ seats }).deal(3);
+    h.playHand(passive);
+    const loser = h.latest().seats.findIndex((seat) => seat !== null && seat.stack < 2000);
+    expect(loser).not.toBe(-1);
+    return { h, loser, chips: h.latest().seats[loser]?.stack as number };
+  }
+
+  it('join: someone who left and comes back gets the stack they left with, not a top-up', () => {
+    const { h, loser, chips } = afterALoss();
+    h.room.leave(userId(loser));
+    h.clock.next(); // the next deal empties the seat
+    expect(h.latest().seats[loser]).toBeNull();
+
+    expect(h.room.join(h.user(loser))).toBeNull();
+    const seat = h.room.seatOf(userId(loser)) as number;
+    expect(h.latest().seats[seat]).toMatchObject({ stack: chips, status: 'nextHand' });
+  });
+
+  it('join: a stack is remembered for the life of the table, over several visits', () => {
+    const { h, loser, chips } = afterALoss();
+    h.room.leave(userId(loser));
+    h.clock.next();
+    for (let visit = 0; visit < 3; visit++) {
+      h.room.join(h.user(loser));
+      h.room.leave(userId(loser));
+    }
+    h.room.join(h.user(loser));
+    const seat = h.room.seatOf(userId(loser)) as number;
+    expect(h.latest().seats[seat]?.stack).toBe(chips);
+  });
+
+  it('join: a seat lost to being offline is remembered the same way', () => {
+    const { h, loser, chips } = afterALoss();
+    h.room.disconnected(userId(loser));
+    (h.rawSeats()[loser] as RoomSeat).offlineSince = h.clock.now() - 10 * 60_000;
+    h.clock.next();
+    expect(h.latest().seats[loser]).toBeNull();
+    h.room.join(h.user(loser));
+    expect(h.latest().seats[h.room.seatOf(userId(loser)) as number]?.stack).toBe(chips);
+  });
+
+  it('join: someone who left busted comes back busted, and the free reload is still theirs', () => {
+    const h = new Harness({ seats: 3 }).deal(2);
+    const busted = bust(h);
+    h.room.join(h.user(2)); // a third player, so the table goes on
+    h.room.leave(userId(busted));
+    h.clock.next();
+    expect(h.latest().seats[busted]).toBeNull();
+
+    h.room.join(h.user(busted));
+    const seat = h.room.seatOf(userId(busted)) as number;
+    expect(h.latest().seats[seat]).toMatchObject({ stack: 0, status: 'busted' });
+    expect(h.room.reload(userId(busted))).toBeNull();
+    expect(h.latest().seats[seat]).toMatchObject({ stack: 2000, status: 'nextHand' });
+  });
+
+  it('join: a stack never comes back to someone else, and a first visit gets the table stack', () => {
+    const { h, loser } = afterALoss();
+    h.room.leave(userId(loser));
+    h.clock.next();
+    h.room.join(h.user(5));
+    expect(h.latest().seats[h.room.seatOf(userId(5)) as number]?.stack).toBe(2000);
+  });
+
+  it('a reload stays for a real bust only: a short stack that comes back is not_busted', () => {
+    const { h, loser } = afterALoss();
+    h.room.leave(userId(loser));
+    h.clock.next();
+    h.room.join(h.user(loser));
+    expect(h.room.reload(userId(loser))).toBe('not_busted');
+  });
+});
+
 describe('§19.9 names', () => {
+  /** Written by number: these characters must not sit invisibly in this file. */
+  const cp = (...points: number[]): string => String.fromCodePoint(...points);
+
   it('cleanName: NFC, no control or format characters, trimmed, at most 24 code points', () => {
     expect(cleanName('  Ann  ')).toBe('Ann');
-    expect(cleanName('éva')).toBe('éva');
-    expect(cleanName('a‮b​c\u0007')).toBe('abc');
-    expect([...cleanName('😀'.repeat(30))]).toHaveLength(24);
+    expect(cleanName(`e${cp(0x301)}va`)).toBe(`${cp(0xe9)}va`);
+    expect(cleanName(`a${cp(0x202e)}b${cp(0x200b)}c${cp(7)}`)).toBe('abc');
+    expect([...cleanName(cp(0x1f600).repeat(30))]).toHaveLength(24);
     expect(cleanName('x'.repeat(24) + '   y')).toBe('x'.repeat(24));
-    expect(cleanName('‮​')).toBe('');
+    expect(cleanName(cp(0x202e, 0x200b))).toBe('');
+  });
+
+  it.each([
+    ['a Hangul filler', cp(0x3164, 0x3164)],
+    ['a halfwidth Hangul filler', cp(0xffa0)],
+    ['the other Hangul fillers', cp(0x115f, 0x1160)],
+    ['a Braille blank', cp(0x2800)],
+    ['variation selectors', cp(0xfe0f, 0xfe00)],
+    ['a soft hyphen', cp(0xad)],
+    ['a combining mark with nothing under it', cp(0x301, 0x301)],
+    ['a line separator', cp(0x2028)],
+    ['a paragraph separator', cp(0x2029)],
+  ])('cleanName: %s alone looks blank, so it is empty', (_what, name) => {
+    expect(cleanName(name)).toBe('');
+    expect(seatName({ id: 1, name: cleanName(name) }, 1)).toBe('Player 2');
+  });
+
+  it('cleanName: the blanks go from inside a name too', () => {
+    expect(cleanName(`An${cp(0x3164)}n${cp(0x2800)}`)).toBe('Ann');
+    expect(cleanName(`a${cp(0x2028)}b${cp(0x2029)}c`)).toBe('abc');
+  });
+
+  it('cleanName: at most 3 combining marks in a row', () => {
+    const zalgo = cleanName(`a${cp(0x301).repeat(40)}b`);
+    // NFC makes the first mark and the "a" one letter; of the other 39, three stay.
+    expect([...zalgo]).toEqual([cp(0xe1), cp(0x301), cp(0x301), cp(0x301), 'b']);
+    expect(cleanName(`o${cp(0x302, 0x323)}`)).toBe(`o${cp(0x302, 0x323)}`.normalize('NFC'));
+  });
+
+  it.each([
+    ['Vietnamese', `Nguy${cp(0x1ec5)}n`],
+    ['Hindi', cp(0x930, 0x93e, 0x91c)],
+    ['Thai', cp(0xe2a, 0xe21, 0xe0a, 0xe32, 0xe22)],
+    ['Arabic', cp(0x645, 0x62d, 0x645, 0x62f)],
+    ['Chinese', cp(0x674e, 0x660e)],
+    ['Korean', cp(0xbbfc, 0xc218)],
+    ['an emoji', `Ann ${cp(0x1f600)}`],
+    ['an apostrophe', "O'Neil"],
+  ])('cleanName: a real %s name is left as it is', (_what, name) => {
+    expect(cleanName(name)).toBe(name.normalize('NFC'));
   });
 
   it('seatName: empty becomes "Player {seat + 1}"', () => {
