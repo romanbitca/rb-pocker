@@ -219,15 +219,21 @@ job_docker() {
 # --no-docker: the `docker` job's checks against the real server, started without a container.
 native_check() { # runs in the worktree, from `step`
   local dir pid code=0
-  # Not under $CI_DIR: Express's sendFile refuses a path with a dot folder such as ~/.cache, so the
-  # SPA fallback would answer 404 there (the container's /app has no dot folder).
+  # The Dockerfile's `prod-deps` and `runtime` stages, by hand: only the server's production
+  # dependencies, and only the files the image copies. Not under $CI_DIR: Express's sendFile refuses a
+  # path with a dot folder such as ~/.cache, so the SPA fallback would answer 404 there.
   dir=$(mktemp -d)
-  mkdir -p "$dir/apps/server" "$dir/apps/web"
-  cp -R apps/server/dist apps/server/package.json "$dir/apps/server/"
-  cp -R apps/web/dist "$dir/apps/web/"
-  ln -s "$WT/node_modules" "$dir/node_modules"
-  if [ -d apps/server/node_modules ]; then ln -s "$WT/apps/server/node_modules" "$dir/apps/server/node_modules"; fi
-  (cd "$dir" && exec env SOURCE_COMMIT="$SHA" NODE_ENV=production PORT="$CI_DOCKER_PORT" node apps/server/dist/main.js) &
+  mkdir -p "$dir/deps/apps/web" "$dir/deps/apps/server" "$dir/run/apps/server" "$dir/run/apps/web"
+  cp package.json package-lock.json "$dir/deps/"
+  cp apps/web/package.json "$dir/deps/apps/web/"
+  cp apps/server/package.json "$dir/deps/apps/server/"
+  (cd "$dir/deps" && npm ci --omit=dev --workspace @rb/server --no-audit --no-fund && mkdir -p apps/server/node_modules) || return 1
+  cp -R "$dir/deps/node_modules" "$dir/run/node_modules"
+  cp -R "$dir/deps/apps/server/node_modules" "$dir/run/apps/server/node_modules"
+  cp apps/server/package.json "$dir/run/apps/server/"
+  cp -R apps/server/dist "$dir/run/apps/server/dist"
+  cp -R apps/web/dist "$dir/run/apps/web/dist"
+  (cd "$dir/run/apps/server" && exec env SOURCE_COMMIT="$SHA" NODE_ENV=production PORT="$CI_DOCKER_PORT" node dist/main.js) &
   pid=$!
   for _ in $(seq 1 60); do
     curl -sf -m 2 "http://localhost:$CI_DOCKER_PORT/api/health" > /dev/null && break

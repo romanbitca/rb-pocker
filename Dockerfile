@@ -22,12 +22,15 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 COPY apps/web/package.json apps/web/
 COPY apps/server/package.json apps/server/
-RUN npm ci --omit=dev --workspace @rb/server --no-audit --no-fund
+RUN npm ci --omit=dev --workspace @rb/server --no-audit --no-fund && mkdir -p apps/server/node_modules
 
 FROM ${NODE_IMAGE} AS runtime
 ENV NODE_ENV=production PORT=3000
 WORKDIR /app
 COPY --from=prod-deps --chown=node:node /app/node_modules ./node_modules
+# npm leaves a package here when another workspace needs a different version of it (`ws`: the
+# server's, while jsdom's is at the root). Without this the server cannot find it and never starts.
+COPY --from=prod-deps --chown=node:node /app/apps/server/node_modules apps/server/node_modules
 # "type": "module" for dist/*.js, and the version /api/health reports.
 COPY --chown=node:node apps/server/package.json apps/server/
 COPY --from=build --chown=node:node /app/apps/server/dist apps/server/dist
