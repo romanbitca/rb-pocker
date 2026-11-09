@@ -1,6 +1,7 @@
 import { join, resolve } from 'node:path';
 import { Module } from '@nestjs/common';
 import { ServeStaticModule } from '@nestjs/serve-static';
+import { BotModule } from './bot/bot.module.js';
 import { HealthModule } from './health.module.js';
 import { staticCacheHeaders } from './security.js';
 import { TelegramModule } from './telegram/telegram.module.js';
@@ -20,6 +21,7 @@ const rootPath = webDistDir();
   imports: [
     HealthModule,
     TelegramModule,
+    BotModule,
     ServeStaticModule.forRoot({
       rootPath,
       // Kept out of the SPA fallback: `/api`, `/api/` and `/api/x` stay JSON 404s, and a missing
