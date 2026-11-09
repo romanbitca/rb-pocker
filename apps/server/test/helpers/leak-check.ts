@@ -3,6 +3,7 @@
  * structure and looks at keys and whole values; it never searches strings for numbers, because card
  * numbers are everywhere.
  */
+import type { PublicHand, PublicSeat } from '../../src/game/engine/types.js';
 
 /** L3, and the fields only a `HandState` or a `TableState` has. */
 const FORBIDDEN_KEYS = new Set([
@@ -41,6 +42,40 @@ const FORBIDDEN_KEYS = new Set([
 
 /** A seed as the engine writes it (L6). */
 const SEED_SHAPE = /^[0-9a-f]{32}$/;
+
+/** L1, as far as a frame can show it: a hand has exactly the fields `publicHand` writes. */
+const HAND_FIELDS: Record<keyof PublicHand, true> = {
+  handSeq: true,
+  sb: true,
+  bb: true,
+  seats: true,
+  button: true,
+  sbSeat: true,
+  bbSeat: true,
+  street: true,
+  phase: true,
+  board: true,
+  currentBet: true,
+  minRaiseInc: true,
+  toAct: true,
+  runout: true,
+  revealed: true,
+  startStacks: true,
+  log: true,
+  result: true,
+};
+const HAND_SEAT_FIELDS: Record<keyof PublicSeat, true> = {
+  dealtIn: true,
+  stack: true,
+  hole: true,
+  folded: true,
+  allIn: true,
+  streetBet: true,
+  totalBet: true,
+};
+
+const sameKeys = (object: object, fields: object): boolean =>
+  Object.keys(object).sort().join() === Object.keys(fields).sort().join();
 
 export interface LeakRules {
   /** Every Telegram id that exists in this test: no number and no string may contain one. */
@@ -109,7 +144,11 @@ function checkView(view: View, rules: LeakRules, problems: string[]): void {
   const you = view.you;
   const hand = view.hand;
   if (hand !== null) {
+    if (!sameKeys(hand, HAND_FIELDS)) problems.push(`L1: the hand's fields are not publicHand's`);
     hand.seats.forEach((seat, i) => {
+      if (!sameKeys(seat, HAND_SEAT_FIELDS)) {
+        problems.push(`L1: seat ${i} of the hand has other fields than publicHand writes`);
+      }
       if (seat.hole !== null && i !== you && !hand.revealed.includes(i)) {
         problems.push(`L2: the hidden cards of seat ${i} went to seat ${you}`);
       }
@@ -131,8 +170,9 @@ function checkView(view: View, rules: LeakRules, problems: string[]): void {
 }
 
 /**
- * Everything wrong with this frame, as it went on the wire; empty when it passes L2–L6. L1 needs
- * the server's hand as well, so `room.leak.test.ts` checks it by itself.
+ * Everything wrong with this frame, as it went on the wire; empty when it passes. L1 needs the
+ * server's own objects to be proved in full, so `room.leak.test.ts` also checks it by itself; here,
+ * a hand must at least have exactly `publicHand`'s fields.
  */
 export function leakProblems(frame: unknown, rules: LeakRules): string[] {
   const msg = JSON.parse(JSON.stringify(frame)) as { t: string; view?: View };

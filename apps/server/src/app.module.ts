@@ -3,6 +3,7 @@ import { Module } from '@nestjs/common';
 import { ServeStaticModule } from '@nestjs/serve-static';
 import { BotModule } from './bot/bot.module.js';
 import { HealthModule } from './health.module.js';
+import { MpModule } from './mp/mp.module.js';
 import { staticCacheHeaders } from './security.js';
 import { TelegramModule } from './telegram/telegram.module.js';
 
@@ -21,6 +22,7 @@ const rootPath = webDistDir();
   imports: [
     HealthModule,
     TelegramModule,
+    MpModule,
     BotModule,
     ServeStaticModule.forRoot({
       rootPath,
