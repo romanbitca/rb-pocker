@@ -100,9 +100,10 @@ describe('About', () => {
       'Why',
       'How to delete it',
       'Hosting',
+      'Play with friends (inside Telegram only)',
     ]);
     expect(within(section('Play money only')).getByText(/^This is a free poker/).textContent).toBe(
-      'This is a free poker learning game. You play against computer bots with virtual chips that have no value. They cannot be bought, sold, won as prizes, or exchanged for money. Success here does not mean you will win at real-money poker. Intended for adults.',
+      'This is a free poker learning game. You play against computer bots, or with friends at a private table in Telegram, with virtual chips that have no value. They cannot be bought, sold, won as prizes, or exchanged for money. Success here does not mean you will win at real-money poker. Intended for adults.',
     );
 
     const help = section('Help with gambling');

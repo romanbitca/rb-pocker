@@ -75,6 +75,59 @@ describe('About says what Appendix G says, word for word', () => {
   });
 });
 
+describe('tables with friends in Telegram (§19.12)', () => {
+  const plan = section('19.12');
+  const privacy = (name: string) => W.privacy.terms.find((term) => term.name === name)?.text ?? '';
+  const where = privacy('Where:');
+  const friends = privacy('Play with friends (inside Telegram only):');
+
+  it('§19.12 quotes the same two privacy lines as G.2, and the new one comes last', () => {
+    expect(quotedTerms(plan)).toEqual([
+      { name: 'Where:', text: where },
+      { name: 'Play with friends (inside Telegram only):', text: friends },
+    ]);
+    expect(W.privacy.terms.at(-1)?.text).toBe(friends);
+  });
+
+  it("§19.12's sentences for G.1, G.2 and G.5 are the words on the page", () => {
+    const game = W.howItWorks.terms.find((term) => term.name === 'The game:')?.text ?? '';
+    const data = W.howItWorks.terms.find((term) => term.name === 'Your data:')?.text ?? '';
+    const fair = W.howItWorks.terms.find((term) => term.name === 'Fair cards:')?.text ?? '';
+    const g1 =
+      'You play against computer bots, or with friends at a private table in Telegram, with virtual chips that have no value.';
+    const yourData = 'Only Play with friends uses our server (see Privacy).';
+    const noCode =
+      'At tables with friends, our server deals the cards, so there is no shuffle code and no Review.';
+    const stored =
+      "While you are at a table with friends, we also store that table's code, so you can come back to it. It is deleted when you leave or the table ends.";
+
+    expect(W.playMoney.text).toContain(g1);
+    expect(plan).toContain(`"${g1}"`);
+    expect(data.endsWith(yourData)).toBe(true);
+    expect(plan).toContain(`"${yourData}"`);
+    expect(fair.endsWith(noCode)).toBe(true);
+    expect(plan).toContain(`"${noCode}"`);
+    expect(plan).toContain(`"${game}"`);
+    expect(privacy('What we store:').endsWith(stored)).toBe(true);
+    expect(plan).toContain(`"${stored}"`);
+  });
+
+  it('says what happens alone, when the server hears from you, and what a table keeps', () => {
+    // Alone: nothing about the player or the games.
+    expect(where).toContain('nothing about you or your games is sent');
+    expect(where).toContain('Play with friends is different: see below.');
+    // Only then: the client connects for Play with friends and nothing else (§19.6, chunk 10.8).
+    expect(friends).toContain('and only then, Telegram gives our server');
+    // initData holds more than the server reads (§19.9).
+    expect(friends).toContain('The server reads only the ID and the first name');
+    expect(friends).toContain('your first name, your chips and your moves');
+    expect(friends).toContain('in its memory only, and only while the table is open');
+    // The per-user limits of §19.4 are the one thing that outlives a table.
+    expect(friends).toContain('Nothing is saved after the table ends, except a count');
+    expect(friends).toContain('gone within 10 minutes');
+  });
+});
+
 describe('checkAbout (npm run check:copy)', () => {
   it('passes on the real words; every help line dials the number it shows', () => {
     expect(checkAbout()).toEqual([]);

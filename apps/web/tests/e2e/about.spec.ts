@@ -32,9 +32,9 @@ async function expectAboutPage(page: Page): Promise<void> {
   await expect(heading(page)).toHaveText('About');
   await expect(page.getByRole('heading', { level: 2 })).toHaveText(SECTIONS);
   for (const line of [
-    "No-Limit Texas Hold'em against computer bots, with play chips only.",
+    "No-Limit Texas Hold'em against computer bots, or with friends in Telegram, with play chips only.",
     'only what you can see: your cards, the board, the pot and every bet.',
-    'There is no account, and nothing is sent to us or anyone else.',
+    'nothing about you or your games is sent.',
     'Success here does not mean you will win at real-money poker.',
     'If gambling is causing problems for you or someone you know',
     'This app is built with open-source software:',

@@ -35,12 +35,12 @@ export interface RgbaImage {
   readonly rgba: Uint8Array;
 }
 
-type Rgb = readonly [number, number, number];
+export type Rgb = readonly [number, number, number];
 
 // Colours from src/ui/styles/tokens.css (PLAN §12.8): felt, dark felt, text.
 const FELT: Rgb = [0x1f, 0x6b, 0x43];
 const FELT_DARK: Rgb = [0x15, 0x4d, 0x30];
-const LIGHT: Rgb = [0xf2, 0xf5, 0xf3];
+export const LIGHT: Rgb = [0xf2, 0xf5, 0xf3];
 
 /** Samples per pixel along each axis. */
 const SUPERSAMPLE = 4;
@@ -56,7 +56,7 @@ const SPADE_BOTTOM = 1.8;
 const STEM_TOP = 0.55;
 
 /** True when (x, y), in spade units, is inside the spade. */
-function inSpade(x: number, y: number): boolean {
+export function inSpade(x: number, y: number): boolean {
   // Body: the heart curve (x² + y² − 1)³ = x²y³, used with y pointing down, so the tip is at the
   // top and the two lobes are at the bottom (|x| ≤ 1.139, -1 ≤ y ≤ 1.236).
   const a = x * x + y * y - 1;
@@ -76,7 +76,7 @@ function inRoundedSquare(u: number, v: number): boolean {
 }
 
 /** Felt colour at (u, v), in icon units: lighter in the middle, darker towards the edges. */
-function feltAt(u: number, v: number): Rgb {
+export function feltAt(u: number, v: number): Rgb {
   const du = u - 0.5;
   const dv = v - 0.42;
   const t = Math.min(Math.sqrt(du * du + dv * dv) / 0.72, 1);
