@@ -3,6 +3,7 @@ import { Module } from '@nestjs/common';
 import { ServeStaticModule } from '@nestjs/serve-static';
 import { HealthModule } from './health.module.js';
 import { staticCacheHeaders } from './security.js';
+import { TelegramModule } from './telegram/telegram.module.js';
 
 /**
  * Where the built game is: apps/web/dist (PLAN §2.6 a). `import.meta.dirname` is apps/server/dist
@@ -18,6 +19,7 @@ const rootPath = webDistDir();
 @Module({
   imports: [
     HealthModule,
+    TelegramModule,
     ServeStaticModule.forRoot({
       rootPath,
       // Kept out of the SPA fallback: `/api`, `/api/` and `/api/x` stay JSON 404s, and a missing
