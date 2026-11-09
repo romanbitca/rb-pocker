@@ -39,11 +39,11 @@ suite('rankings logic (PLAN §13.2–§13.4)', () => {
     ]);
   });
 
-  it('dims the trailing kickers of each example', () => {
+  it('gives all five example cards the gold edge, the kickers not raised (1.3.100)', () => {
     const quads = exampleCards(RANKINGS[2]);
-    expect(quads.map((c) => c.dim)).toEqual([false, false, false, false, true]);
+    expect(quads.map((c) => c.highlight)).toEqual(['core', 'core', 'core', 'core', 'kicker']);
     const high = exampleCards(RANKINGS[9]);
-    expect(high.map((c) => c.dim)).toEqual([false, true, true, true, true]);
+    expect(high.map((c) => c.highlight)).toEqual(['core', 'kicker', 'kicker', 'kicker', 'kicker']);
   });
 
   it('marks the hero’s row, the rows that beat it and the rows it beats', () => {
@@ -85,18 +85,23 @@ suite('rankings logic (PLAN §13.2–§13.4)', () => {
     expect(hero('Ah Kh', '').category).toBe('highCard');
   });
 
-  it('builds the "You" line from the best five, own cards outlined, kickers dimmed', () => {
+  it('builds the "You" line from the best five, gold edge on all five, own cards underlined', () => {
     const h = hero('Kh Qc', 'Kd 7s 2h');
     expect(youLine(h)).toEqual([
-      { card: h.best5[0], used: true, dim: false },
-      { card: h.best5[1], used: false, dim: false },
-      { card: h.best5[2], used: true, dim: true },
-      { card: h.best5[3], used: false, dim: true },
-      { card: h.best5[4], used: false, dim: true },
+      { card: h.best5[0], used: true, highlight: 'core' },
+      { card: h.best5[1], used: false, highlight: 'core' },
+      { card: h.best5[2], used: true, highlight: 'kicker' },
+      { card: h.best5[3], used: false, highlight: 'kicker' },
+      { card: h.best5[4], used: false, highlight: 'kicker' },
     ]);
-    // Preflop there is no best five yet: the two hole cards.
+    // Preflop there is no best five yet: the two hole cards, plain.
     const pre = hero('Ah 9d', '');
     expect(youLine(pre).map((c) => c.card)).toEqual([...pre.hole]);
+    expect(youLine(pre).every((c) => c.highlight === undefined)).toBe(true);
+    // After a fold nothing has the gold edge (as on the Table).
+    expect(youLine(hero('Kh Kc', 'Kd 4s 2h', true)).every((c) => c.highlight === undefined)).toBe(
+      true,
+    );
   });
 
   it('labels rows for screen readers as §13.4 shows', () => {

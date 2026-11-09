@@ -104,7 +104,8 @@ describe('CoachDetails (§12.6)', () => {
       />,
     );
     expect(screen.queryByRole('img', { name: /Hand strength/ })).toBeNull();
-    expect(screen.getByText('You win about 45%.')).toBeTruthy();
+    // A comparison shows whole (1.3.100): the win chance beside the need.
+    expect(screen.getByText('You win about 45%. You need 25% to call 40 into 120.')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: coachWords.more }));
     expect(screen.getByText(/so calling wins over time\.$/)).toBeTruthy();
     expect(screen.queryByRole('button', { name: coachWords.more })).toBeNull();
@@ -129,7 +130,8 @@ describe('CoachDetails (§12.6)', () => {
     const lines = [...why.querySelectorAll('p')].map((p) => p.textContent);
     expect(lines).toEqual([
       'Against any cards you win 62%. This player bets only with good hands. Against those, you win about 20%.',
-      'You need 25% to call. You win only about 20%. Folding saves chips.',
+      // Said once (1.3.100): the sentence above says "you win about 20%".
+      'You need 25% to call. Folding saves chips.',
     ]);
     const numbers = [...container.querySelectorAll('li')].map((li) => li.textContent);
     expect(numbers.slice(0, 2)).toEqual([
@@ -151,7 +153,8 @@ describe('CoachDetails (§12.6)', () => {
     const lines = [...why.querySelectorAll('p')].map((p) => p.textContent);
     expect(lines).toEqual([
       "Against all 5 players with any cards, you win 26%. Against the raiser's likely hands alone, you win about 44%.",
-      'You win about 44% against their likely hands. You need 25%. Calling is fine.',
+      // Said once (1.3.100): the sentence above says "you win about 44%".
+      'You need 25%. Calling is fine.',
     ]);
     const numbers = [...container.querySelectorAll('li')].map((li) => li.textContent);
     expect(numbers.slice(0, 3)).toEqual([

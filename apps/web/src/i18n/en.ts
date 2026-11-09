@@ -8,6 +8,7 @@
  * here, so `en` holds them too; the first screen's code imports `enStart` instead of `en`, and this
  * file loads with the screens after the first tap (PLAN §15.3, chunk 9.7).
  */
+import { GRADE_WORDS } from './grades.ts';
 import { enStart } from './start.ts';
 
 /**
@@ -236,14 +237,8 @@ export const en = {
    * templates `feedback.*` below (`coach.templates`, chunk 5.6).
    */
   feedback: {
-    /** F.4: the card's title per grade. Best and Good never open the card: their chip text. */
-    title: {
-      best: 'Best move',
-      good: 'Good',
-      inaccuracy: 'Small mistake',
-      mistake: 'Mistake',
-      blunder: 'Big mistake',
-    },
+    /** F.4: the card's title per grade, the grade's one name (Best and Good never open the card). */
+    title: GRADE_WORDS,
     /** "Coach's move: Call 40." (§12.6) */
     coachMove: (move: string) => `Coach's move: ${move}.`,
     undo: 'Undo: try again',
@@ -402,6 +397,22 @@ export const en = {
     folded: 'You folded',
     /** After the sub-label when no hand can beat the hero's (§6.5). */
     nuts: ' · Best possible hand',
+    /** The same alone, in a label too narrow for both (1.3.100). */
+    nutsAlone: 'Best possible hand',
+    /**
+     * A sub-label's short form (Appendix F.3), for a label too narrow for the whole one: what it
+     * means for the player, in the words that fit (the sheet and the rankings keep the whole one).
+     */
+    subShort: {
+      'The board plays: everyone shares this hand': 'Everyone shares it',
+      'Pocket pair under the board': 'Under the board',
+      'The pair is on the board: everyone has it': 'Everyone has it',
+      'Both your cards make pairs': 'Both cards pair',
+      'Both pairs are on the board: your kicker decides': 'Your kicker decides',
+      'A set: well hidden and strong': 'Well hidden and strong',
+      'Trips: others may share your card': 'Others may share it',
+      'The three are on the board: everyone has them': 'Everyone has them',
+    } as Readonly<Record<string, string>>,
     allIn: 'All-in',
     yourBet: (chips: string) => `Your bet ${chips}`,
   },
@@ -458,6 +469,17 @@ export const en = {
       overcards: 'Two overcards',
       backdoorFlush: 'Backdoor flush draw',
       backdoorStraight: 'Backdoor straight draw',
+    },
+    /** The names on a chip too narrow for the full name (1.3.100). */
+    brief: {
+      flush: 'Flush draw',
+      nutFlush: 'Nut flush',
+      oesd: 'Straight draw',
+      doubleGutshot: 'Double gutshot',
+      gutshot: 'Gutshot',
+      overcards: 'Two overcards',
+      backdoorFlush: 'Backdoor flush',
+      backdoorStraight: 'Backdoor straight',
     },
     /** "Flush draw · 9 outs · 35% by river". */
     chip: (name: string, outs: number, pct: string, when: string) =>

@@ -39,14 +39,18 @@ describe('searchGlossary (F.9)', () => {
 });
 
 describe('diagramCards', () => {
-  it('parses the cards, keeps face-down ones as null and marks the dimmed ones', () => {
-    expect(diagramCards({ label: 'x', cards: ['Ks', null, 'Td'], dim: [2] })).toEqual([
-      { card: parseCard('Ks'), dim: false },
-      { card: null, dim: false },
-      { card: parseCard('Td'), dim: true },
+  it('parses the cards, keeps face-down ones as null and marks the best five (the gold edge)', () => {
+    expect(
+      diagramCards({ label: 'x', cards: ['Ks', null, 'Td', '5c'], core: [0], kickers: [2] }),
+    ).toEqual([
+      { card: parseCard('Ks'), highlight: 'core', out: false },
+      { card: null, highlight: undefined, out: false },
+      { card: parseCard('Td'), highlight: 'kicker', out: false },
+      { card: parseCard('5c'), highlight: undefined, out: true },
     ]);
+    // A row that marks nothing is not about the best five: no card is "out" of it.
     expect(diagramCards({ label: 'y', cards: ['2c'] })).toEqual([
-      { card: parseCard('2c'), dim: false },
+      { card: parseCard('2c'), highlight: undefined, out: false },
     ]);
   });
 });

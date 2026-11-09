@@ -164,6 +164,9 @@ export const enCoach = {
       // players than the HUD's number, so each number says whom it counts.
       'RANGE_ADJUST.raiser':
         "Against all {n} players with any cards, you win {eRandom}%. Against the raiser's likely hands alone, you win about {eRange}%.",
+      // "All 2 players" reads badly: with two opponents, both (the raiser alone is one of them).
+      'RANGE_ADJUST.both':
+        "Against both players with any cards, you win {eRandom}%. Against the raiser's likely hands alone, you win about {eRange}%.",
       'RANGE_ADJUST.callers': {
         count: 'callers',
         one: 'Against all {n} players with any cards, you win {eRandom}%. Against the likely hands of the raiser and {callers} caller, you win about {eRange}%.',

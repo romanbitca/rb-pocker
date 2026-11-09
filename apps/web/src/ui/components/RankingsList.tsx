@@ -2,7 +2,8 @@
  * The ten hand-ranking rows and the tie-break footer (PLAN §13.2–§13.4): shared by the phone drawer,
  * the wide-screen column (and later the Learn page).
  *
- * Each row: rank number, name, 5 mini cards (kickers at 45%), a one-line tip, how often it
+ * Each row: rank number, name, 5 mini cards (the §6.1 gold edge on all five, the cards that make
+ * the hand raised; nothing is faded, 1.3.100), a one-line tip, how often it
  * happens (7-card odds) and, while the hero plays a hand, "By river": the hero's own chance to
  * finish with exactly this hand (§6.6; its header explains it on a tap). Live highlight (§13.3):
  * the hero's row gets `aria-current="true"`, an
@@ -203,8 +204,8 @@ export const RankingsList = memo(function RankingsList({
                 </span>
                 <span className={styles.rarity}>{formatRarity(row.rarity)}</span>
                 <span className={styles.cards}>
-                  {exampleCards(row).map(({ card, dim }) => (
-                    <Card key={card} card={card} size={cardSize} dim={dim} />
+                  {exampleCards(row).map(({ card, highlight }) => (
+                    <Card key={card} card={card} size={cardSize} highlight={highlight} />
                   ))}
                 </span>
                 <span className={styles.oneIn}>{formatOneIn(row.oneIn)}</span>
@@ -219,8 +220,14 @@ export const RankingsList = memo(function RankingsList({
                 <div className={styles.youLine}>
                   <span className={styles.youLabel}>{en.rankings.yourCards}</span>
                   <span className={styles.cards}>
-                    {youLine(hero).map(({ card, used, dim }) => (
-                      <Card key={card} card={card} size={cardSize} used={used} dim={dim} />
+                    {youLine(hero).map(({ card, used, highlight }) => (
+                      <Card
+                        key={card}
+                        card={card}
+                        size={cardSize}
+                        used={used}
+                        highlight={highlight}
+                      />
                     ))}
                   </span>
                 </div>

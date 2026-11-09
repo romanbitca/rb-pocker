@@ -3,6 +3,8 @@
  * They load with the screen's lazy chunk (`ui/screens/Stats.tsx`, §15.3); the screen's loading and
  * failure lines are in `en.stats`. Numbers arrive formatted ("2,340", "+640", "45%").
  */
+import { GRADE_WORDS } from './grades.ts';
+
 export const statsWords = {
   tabs: {
     /** The group of the four pages, for screen readers. */
@@ -143,12 +145,6 @@ export const statsWords = {
       "Your stats and settings are saved only on this device, inside this browser. Nothing is sent to the internet, and there is no account. If you clear your browser data, use private mode, or (on iPhone) don't open the game in Safari for a while, the stats can be deleted. To keep them safe, add the game to your Home Screen, and use Export to save a backup file. On a new phone, use Import.",
   },
 
-  /** Appendix F.4 chip words. */
-  grades: {
-    best: 'Best move',
-    good: 'Good',
-    inaccuracy: 'Slightly off',
-    mistake: 'Mistake',
-    blunder: 'Big mistake',
-  },
+  /** Appendix F.4: each grade's one name. */
+  grades: GRADE_WORDS,
 } as const;

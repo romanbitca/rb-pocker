@@ -7,12 +7,14 @@
  * - The cards are examples, not dealt ones: the picture is a `data-examples` subtree (the E2E card
  *   watch skips it, as for the rankings panel).
  * - Screen readers (§12.12): the picture is a `figure` named by its line; each row is a group
- *   named by its label, each card by its name ("King of spades", "Hidden card"), and a dimmed card
- *   adds "does not count". The price bar is an image named by both numbers.
+ *   named by its label, each card by its name ("King of spades", "Hidden card"); where a row marks
+ *   the best five, a card with the gold edge adds "part of your hand" and the others "does not
+ *   count" (the eye sees the edge, §6.1). The price bar is an image named by both numbers.
  */
 import { memo, useId, type CSSProperties } from 'react';
 import { cardAriaLabel } from '../../core/cards.ts';
 import type { DiagramGroup, Lesson, LessonBlock, LessonDiagram } from '../../data/lessons.ts';
+import { en } from '../../i18n/en.ts';
 import { learnWords as W } from '../../i18n/learn.ts';
 import { diagramCards } from '../learn.ts';
 import styles from '../screens/Learn.module.css';
@@ -33,13 +35,21 @@ function Group({ group }: { group: DiagramGroup }) {
         {group.label}
       </p>
       <div className={styles.cards}>
-        {diagramCards(group).map(({ card, dim }, i) => (
+        {diagramCards(group).map(({ card, highlight, out }, i) => (
           <Card
             key={i}
             card={card}
             size="md"
-            dim={dim}
-            label={card !== null && dim ? W.dimCard(cardAriaLabel(card)) : undefined}
+            highlight={highlight}
+            label={
+              card === null
+                ? undefined
+                : highlight !== undefined
+                  ? en.cards.yourHand(cardAriaLabel(card))
+                  : out
+                    ? W.notCounted(cardAriaLabel(card))
+                    : undefined
+            }
           />
         ))}
       </div>

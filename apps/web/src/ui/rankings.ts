@@ -9,7 +9,7 @@ import type { HandInfo } from '../eval/describe.ts';
 import type { HandCategory } from '../eval/evaluate.ts';
 import { en } from '../i18n/en.ts';
 import { formatChips } from './format.ts';
-import type { HeroHandView } from './views.ts';
+import type { CardHighlight, HeroHandView } from './views.ts';
 
 /** A category's row: 0 = royal flush … 9 = high card. */
 export function rowIndex(category: HandCategory): number {
@@ -40,11 +40,14 @@ export function formatOneIn(n: number): string {
   return en.rankings.oneIn(formatChips(n));
 }
 
-/** A row's example hand, with its kickers dimmed (§13.2). */
-export function exampleCards(row: RankingRow): { card: Card; dim: boolean }[] {
+/**
+ * A row's example hand: all five count, so all five have the §6.1 gold edge, the cards that make
+ * the hand raised too (the Table's one rule, 1.3.100; nothing is faded, §13.2).
+ */
+export function exampleCards(row: RankingRow): { card: Card; highlight: CardHighlight }[] {
   return row.cards.map((text, i) => ({
     card: parseCard(text),
-    dim: i >= row.cards.length - row.kickers,
+    highlight: i >= row.cards.length - row.kickers ? 'kicker' : 'core',
   }));
 }
 
@@ -86,15 +89,24 @@ export function heroHandView(
 }
 
 /**
- * The "You" line (§13.3): the hero's actual best five, their own cards outlined and kickers
- * dimmed. Preflop there is no best five yet, so it shows the two hole cards.
+ * The "You" line (§13.3): the hero's actual best five with the §6.1 gold edge, as on the Table
+ * (the cards that make the hand raised), their own cards underlined (`used`). Preflop there is no
+ * best five yet and after a fold no edge either, so it shows the plain cards (the two hole cards
+ * preflop).
  */
-export function youLine(hero: HeroHandView): { card: Card; used: boolean; dim: boolean }[] {
+export function youLine(
+  hero: HeroHandView,
+): { card: Card; used: boolean; highlight: CardHighlight | undefined }[] {
   const cards = hero.best5.length > 0 ? hero.best5 : hero.hole;
   return cards.map((card) => ({
     card,
     used: hero.hole.includes(card),
-    dim: hero.kickers.includes(card),
+    highlight:
+      hero.folded || hero.best5.length === 0
+        ? undefined
+        : hero.kickers.includes(card)
+          ? 'kicker'
+          : 'core',
   }));
 }
 

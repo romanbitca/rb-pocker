@@ -92,10 +92,6 @@ button.pod {
   color: var(--muted);
   font-size: 12px;
 }
-.nameText {
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
 /* Personality badge (Easy and Medium only), before the name: the shape tells them apart. */
 .badge {
   flex: none;
@@ -103,14 +99,14 @@ button.pod {
   height: 11px;
   color: var(--text);
 }
+/* Clear of the plate's 2 px edge at the pod's bottom, 70–72 px: the gold edge of the seat that
+   acts or wins runs under the numbers, never through them (1.3.100). */
 .stack {
-  top: 59px;
-  overflow: hidden;
+  top: 57px;
   font-size: 13px;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
   text-align: center;
-  text-overflow: ellipsis;
 }
 
 /* Status tag under the avatar, so its initial stays visible: Fold, All-in, Check, Call, Bet,
@@ -246,7 +242,7 @@ button.pod {
   font-size: 11px;
 }
 .revealed .stack {
-  top: 60px;
+  top: 58px;
   font-size: 11px;
 }
 /* The cards say it all at a showdown; the tag, the dealer disc and the blind tag would cover

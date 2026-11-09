@@ -125,9 +125,9 @@ export interface HeroHandView {
   readonly category: HandCategory;
   /** `describe().best5`, category-forming cards first; `[]` preflop. */
   readonly best5: readonly Card[];
-  /** `describe().kickers`: dimmed on the "You" line. */
+  /** `describe().kickers`: not raised on the "You" line (the rest of the five are). */
   readonly kickers: readonly Card[];
-  /** The hero's hole cards: outlined on the "You" line where they are used. */
+  /** The hero's hole cards: underlined on the "You" line where they are used. */
   readonly hole: readonly [Card, Card];
   /** The hero folded this hand: grey highlight and "You folded". */
   readonly folded: boolean;

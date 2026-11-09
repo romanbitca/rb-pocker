@@ -280,6 +280,7 @@ describe('the draw chips (Appendix F.3, §6.4, §10.2)', () => {
         name: 'Flush draw',
         text: 'Flush draw',
         short: 'Flush draw',
+        shorter: ['Flush draw'],
         risky: 0,
         cards: [],
       },

@@ -189,4 +189,29 @@ describe('Seat memo (PLAN §15.3, pitfall 37)', () => {
     rerender(<Seat view={seatView({ stack: 999 })} place={PLACE} />);
     expect(renders.mock.calls.length).toBe(before + 1);
   });
+
+  it('keeps the stack clear of the gold ring at the pod’s bottom (1.3.100)', () => {
+    const css = Object.values(
+      import.meta.glob('../../../src/ui/components/Seat.module.css', {
+        query: '?raw',
+        import: 'default',
+        eager: true,
+      }),
+    )
+      .map(String)
+      .join('');
+    const px = (selector: string, prop: string): number => {
+      const value = [...css.matchAll(new RegExp(`${selector} \\{([^}]*)\\}`, 'g'))]
+        .map((m) => new RegExp(`${prop}: (\\d+)px`).exec(m[1] ?? '')?.[1])
+        .find((v) => v !== undefined);
+      if (value === undefined) throw new Error(`no ${prop} in ${selector}`);
+      return Number(value);
+    };
+    // The pod is 72 px tall and the plate's edge is its last 2 px: the numbers end above them.
+    expect(px('\\.seat', 'height')).toBe(72);
+    expect(px('\\.stack', 'top') + px('\\.stack', 'font-size')).toBeLessThanOrEqual(70);
+    expect(
+      px('\\.revealed \\.stack', 'top') + px('\\.revealed \\.stack', 'font-size'),
+    ).toBeLessThanOrEqual(70);
+  });
 });

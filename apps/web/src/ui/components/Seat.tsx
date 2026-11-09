@@ -147,8 +147,12 @@ function SeatImpl({ view, place, onSelect }: SeatProps) {
   );
   const avatar = { '--avatar': `var(--avatar-${avatarIndex(view.name)})` } as CSSProperties;
   const body = (
-    <span className={styles.body} aria-hidden="true">
-      <span className={styles.plate} />
+    <span
+      className={styles.body}
+      aria-hidden="true"
+      data-seat-winner={view.winner ? '' : undefined}
+    >
+      <span className={styles.plate} data-seat-plate="" />
       <HoleCards cards={view.cards} />
       {!revealed && (
         <span className={styles.avatar} style={avatar}>
@@ -161,9 +165,11 @@ function SeatImpl({ view, place, onSelect }: SeatProps) {
         {view.personality !== null && (
           <SpriteIcon id={ICONS[view.personality]} className={styles.badge} />
         )}
-        <span className={styles.nameText}>{view.name}</span>
+        <span data-seat-name="">{view.name}</span>
       </span>
-      <span className={styles.stack}>{compactChips(view.stack)}</span>
+      <span className={styles.stack} data-seat-stack="">
+        {compactChips(view.stack)}
+      </span>
     </span>
   );
   const label = seatLabel(view);

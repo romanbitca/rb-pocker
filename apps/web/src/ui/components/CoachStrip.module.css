@@ -22,24 +22,21 @@
   padding: 0 0 0 52px;
 }
 
-/* "Ben raises to 60." */
+/* "Ben raises to 60.": wraps, never cut. */
 .narration,
 .muted {
   flex: 1;
   min-width: 0;
   margin: 0;
-  overflow: hidden;
   color: var(--muted);
   font-size: 0.9375rem;
   line-height: 1.25;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 /* "Coach: Call 40" over its line. In the strip the line takes two lines at most: the 18 px head
    and two 16 px lines fill the 50 px. A line of two sentences (the two numbers, §12.6) shows one a
    line (the "\n" CoachStrip puts between them); one sentence wraps, split evenly where the browser
-   can; past two lines it ends in "…" (the sheet has it whole). */
+   can; too long for two lines, it gives way to a shorter form or none (`useFit`, 1.3.100). */
 .advice {
   display: flex;
   flex: 1;
@@ -50,7 +47,8 @@
 }
 /* The head and the line keep their heights (never squeezed by the 50 px). Each one's clip box
    reaches a little below its lines (padding, then as much negative margin), so "(", "," and the
-   descenders are not cut. */
+   descenders are not cut. The head stays on one line while a shorter form fits (`useFit`: the
+   big blinds go, then "Coach:"); its last resort is to wrap, never "…" (1.3.100). */
 .head {
   flex: none;
   margin: 0 0 -2px;
@@ -59,8 +57,11 @@
   color: var(--muted);
   font-size: 0.9375rem;
   line-height: 1.2;
-  text-overflow: ellipsis;
   white-space: nowrap;
+}
+.head[data-tight] {
+  overflow: visible;
+  white-space: normal;
 }
 .head strong {
   color: var(--text);
@@ -114,10 +115,6 @@
   -webkit-line-clamp: none;
   line-clamp: none;
 }
-.wrap .narration,
-.wrap .muted {
-  white-space: normal;
-}
 
 /* The landscape column's coach row (§12.5, §12.6 notes), 264 px: the toolbar Undo's 44 px slot and
    8 px on the left (the column is at the screen's right edge: the left safe area is not its
@@ -138,13 +135,14 @@
 .wrap .line {
   overflow: visible;
 }
-/* "Why?" (Intermediate and up) at the row's top right, 74×44. Its place is a float at the top of
-   the words: the head and the first line sit beside it (130 px), the lines under its 44 px use
-   the whole 212 px. The labelled pair (§12.6, "Their likely hands: about 10%." is 193 px) thus
-   shows one number a line in two lines; beside "Why?" it took three (77 px), and the 40 px left
-   in the column at 844×390 showed neither the number the coach decides by nor "Why?" (they
-   scrolled). The head's line is 28 px, so the head and one line (17.5 px) pass the 44 px: a line
-   that started even half a pixel above the float's end was cut short beside it in Chromium. */
+/* "Why?" at the row's top right, 74×44 (Beginner's on the row's own button). Its place is a float
+   at the top of the words: the head and the first line sit beside it (130 px), the lines under
+   its 44 px use the whole 212 px. The labelled pair (§12.6, "Their likely hands: about 10%." is
+   193 px) thus shows one number a line in two lines; beside "Why?" it took three (77 px), and the
+   40 px left in the column at 844×390 showed neither the number the coach decides by nor "Why?"
+   (they scrolled). The head's line is 28 px, so the head and one line (17.5 px) pass the 44 px: a
+   line that started even half a pixel above the float's end was cut short beside it in Chromium.
+   The head keeps the float's width on its right, so it picks the form that fits beside it. */
 .wrap .besideWhy::before {
   content: '';
   float: right;
@@ -152,6 +150,7 @@
   height: 44px;
 }
 .wrap .besideWhy .head {
+  width: calc(100% - 82px);
   line-height: 28px;
 }
 .wrap .why {
@@ -162,26 +161,25 @@
   padding: 0;
   font-size: 15px;
 }
-/* Beginner: the whole row opens the sheet; its "›" sits at the end of the head, so the lines below
-   keep the whole width. */
 .wrap .open {
   padding-right: 0;
 }
-.wrap .open .head {
-  padding-right: 28px;
-}
-.wrap .open::after {
-  top: 10px;
+.wrap .whyFace {
+  top: 0;
+  width: 74px;
+  font-size: 15px;
+  transform: none;
 }
 
-/* Beginner: the whole strip opens the sheet; the "›" is drawn by CSS (§12.7: never a glyph). */
+/* Beginner: the whole strip opens the sheet; "Why?" on its right end says so (1.3.100), where
+   Intermediate has its own "Why?" button: the same size and place, so no level jumps. */
 .open {
   position: relative;
   align-self: stretch;
   min-width: 44px;
   min-height: 44px;
   margin: 0;
-  padding: 0 28px 0 0;
+  padding: 0 76px 0 0;
   border: 0;
   border-radius: var(--radius-2);
   background: none;
@@ -189,20 +187,6 @@
   font: inherit;
   text-align: left;
   cursor: pointer;
-}
-.open::after {
-  content: '';
-  position: absolute;
-  top: 50%;
-  right: 2px;
-  width: 20px;
-  height: 20px;
-  transform: translateY(-50%);
-  background-color: var(--muted);
-  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='none' stroke='black' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round' d='m9 5 7 7-7 7'/%3E%3C/svg%3E")
-    center / contain no-repeat;
-  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='none' stroke='black' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round' d='m9 5 7 7-7 7'/%3E%3C/svg%3E")
-    center / contain no-repeat;
 }
 .open:active {
   background: var(--control-bg-pressed);
@@ -219,7 +203,8 @@
 /* Intermediate: "Hint" (disabled until the hint is ready) and "Why?". */
 .hint,
 .why,
-.wide {
+.wide,
+.whyFace {
   flex: none;
   min-width: 44px;
   height: 44px;
@@ -238,6 +223,21 @@
 .hint {
   border-color: var(--accent);
   padding: 0 20px;
+}
+/* 68 px wide: Beginner's button keeps that much, and 8 px, on its right. */
+.why,
+.whyFace {
+  width: 68px;
+  padding: 0;
+}
+.whyFace {
+  position: absolute;
+  top: 50%;
+  right: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transform: translateY(-50%);
 }
 .hint[aria-disabled='true'] {
   border-color: var(--control-border);

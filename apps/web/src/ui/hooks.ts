@@ -1,12 +1,14 @@
 /**
  * Small DOM hooks for the Table screen: a media query and an element's size (both degrade where
  * the API is missing, as in jsdom: `matchMedia` → false, `ResizeObserver` → window `resize`
- * events), a popover's dismissal, and a line that shows for a few seconds.
+ * events), a popover's dismissal, a line that shows for a few seconds, and a text that picks the
+ * form that fits.
  */
 import {
   useCallback,
   useEffect,
   useLayoutEffect,
+  useRef,
   useState,
   useSyncExternalStore,
   type RefObject,
@@ -55,6 +57,79 @@ export function useElementSize(ref: RefObject<HTMLElement | null>, fallback: Siz
     return () => window.removeEventListener('resize', measure);
   }, [ref]);
   return measured ?? fallback;
+}
+
+/**
+ * A text's element overflows its box along `axis`: 'width' for one line, 'height' for clamped
+ * lines (the hidden ones count; a chip's hit area sticks out of its height, so one line reads
+ * only its width). A 1×1 box is text for screen readers only: it has nowhere to fit.
+ */
+const overflows = (el: HTMLElement, axis: 'width' | 'height'): boolean => {
+  if (el.clientWidth <= 1) return false;
+  return axis === 'width'
+    ? el.scrollWidth > el.clientWidth + 1
+    : el.scrollHeight > el.clientHeight + 1;
+};
+
+export interface Fit<E extends HTMLElement> {
+  /** For the element that shows the text. Its parent's width must not follow the text. */
+  readonly ref: RefObject<E | null>;
+  /** The face on show: the longest that fits (the last one when none does). */
+  readonly index: number;
+  /** The last face does not fit either: the element gets its last resort (`data-tight`). */
+  readonly tight: boolean;
+}
+
+/**
+ * Which of `faces` (the forms of one text, longest first) fits its element, so a text is shortened
+ * and never cut with "…" (PLAN §12.3, §12.6; 1.3.100). Measured after layout and before the paint:
+ * a face that overflows steps down to the next, within one frame. `box` measures an ancestor too
+ * (the element's lines fit, but the box they sit in does not); `extraKey` starts over when
+ * something else in that box changes. A new width starts over from the longest. Without layout
+ * (jsdom: every size is 0) the first face fits.
+ */
+export function useFit<E extends HTMLElement>(
+  faces: readonly string[],
+  axis: 'width' | 'height',
+  options: { readonly box?: () => HTMLElement | null; readonly extraKey?: string } = {},
+): Fit<E> {
+  const ref = useRef<E>(null);
+  const key =
+    faces.join('\u0001') + (options.extraKey === undefined ? '' : `\u0001${options.extraKey}`);
+  const [fit, setFit] = useState({ key, index: 0, tight: false });
+  const now = fit.key === key ? fit : { key, index: 0, tight: false };
+
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (el === null || now.tight) return;
+    const box = options.box?.() ?? null;
+    if (!overflows(el, axis) && (box === null || !overflows(box, axis))) return;
+    setFit({
+      key,
+      index: Math.min(now.index + 1, faces.length - 1),
+      tight: now.index >= faces.length - 1,
+    });
+  }, [key, axis, now.index, now.tight, faces.length]);
+
+  useLayoutEffect(() => {
+    const box = ref.current?.parentElement ?? null;
+    if (box === null) return;
+    let width = box.clientWidth;
+    const widen = (): void => {
+      if (Math.abs(box.clientWidth - width) < 1) return;
+      width = box.clientWidth;
+      setFit((f) => (f.index === 0 && !f.tight ? f : { ...f, index: 0, tight: false }));
+    };
+    if (typeof ResizeObserver === 'function') {
+      const observer = new ResizeObserver(widen);
+      observer.observe(box);
+      return () => observer.disconnect();
+    }
+    window.addEventListener('resize', widen);
+    return () => window.removeEventListener('resize', widen);
+  }, [key]);
+
+  return { ref, index: now.index, tight: now.tight };
 }
 
 /**

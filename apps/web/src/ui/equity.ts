@@ -202,6 +202,8 @@ export interface DrawChipView {
   readonly text: string;
   /** The phone chip: "Flush draw · 35% by river" (a "!" mark stands for the risky outs). */
   readonly short: string;
+  /** What a row too narrow for `short` shows instead, longest first ("…" never: 1.3.100). */
+  readonly shorter: readonly string[];
   /** Risky outs among this draw's cards. */
   readonly risky: number;
   /** The out cards (empty at Exam). */
@@ -223,11 +225,14 @@ export function drawChipViews(data: DrawChipsData | null): DrawChipView[] {
     const name = en.draws.name[d.kind];
     const risky = d.cards.filter((c) => c.risky).length;
     const when = d.when === 'byRiver' ? en.draws.byRiver : en.draws.nextCard;
+    const brief = en.draws.brief[d.kind];
+    const pct = percentText(d.pct);
     return {
       key: d.kind,
       name,
       text: data.namesOnly ? name : drawChipText(d),
-      short: data.namesOnly ? name : en.draws.chipShort(name, percentText(d.pct), when),
+      short: data.namesOnly ? name : en.draws.chipShort(name, pct, when),
+      shorter: data.namesOnly ? [brief] : [en.draws.chipShort(brief, pct, when), brief, pct],
       risky: data.namesOnly ? 0 : risky,
       cards: data.namesOnly ? [] : d.cards,
     };

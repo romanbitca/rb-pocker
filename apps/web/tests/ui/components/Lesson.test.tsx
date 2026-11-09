@@ -24,22 +24,30 @@ const names = (root: HTMLElement): string[] =>
     .map((el) => el.getAttribute('aria-label') ?? '');
 
 describe('LessonPicture', () => {
-  it('a figure named by its line: one group per row, each card named, dimmed ones "do not count"', () => {
+  it('a figure named by its line: one group per row, each card named, the five marked', () => {
     const { container } = render(<LessonPicture diagram={lesson('goal').diagram} />);
     const figure = screen.getByRole('figure', {
-      name: 'Your best 5 cards make a pair of Kings. The dim cards do not count.',
+      name: 'Your best 5 cards have a gold edge. They make a pair of Kings.',
     });
     expect(figure.hasAttribute('data-examples')).toBe(true);
     const mine = screen.getByRole('group', { name: 'Your 2 cards' });
-    expect(names(mine)).toEqual(['Ace of hearts', 'King of diamonds']);
+    expect(names(mine)).toEqual([
+      'Ace of hearts, part of your hand',
+      'King of diamonds, part of your hand',
+    ]);
     const shared = screen.getByRole('group', { name: '5 shared cards' });
     expect(names(shared)).toEqual([
-      'King of spades',
-      'Nine of hearts',
+      'King of spades, part of your hand',
+      'Nine of hearts, part of your hand',
       'Five of clubs, does not count',
       'Two of diamonds, does not count',
-      'Jack of spades',
+      'Jack of spades, part of your hand',
     ]);
+    // The Table's rule (§6.1): the five have the gold edge, the pair raised, the others plain.
+    const classes = [...shared.querySelectorAll('[role="img"]')].map((c) => c.className);
+    expect(classes.map((c) => /core/.test(c))).toEqual([true, false, false, false, false]);
+    expect(classes.map((c) => /kicker/.test(c))).toEqual([false, true, false, false, true]);
+    expect(classes.some((c) => /dim/.test(c))).toBe(false);
     // RB's cards: one element each, the suit a CSS mask, the rank as text ("10", never "T").
     expect(container.querySelectorAll('[data-suit]')).toHaveLength(7);
     expect(SUITS.test(container.innerHTML)).toBe(false);

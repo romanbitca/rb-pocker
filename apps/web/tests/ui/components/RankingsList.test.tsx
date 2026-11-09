@@ -109,12 +109,12 @@ suite('RankingsList live highlight (Stage 3 acceptance 4)', () => {
     expect(container.textContent).toContain('0.003%');
     expect(container.textContent).toContain('1 in 30,900');
     for (const line of en.rankings.footer) expect(container.textContent).toContain(line);
-    // Kickers of the examples are dimmed: One pair has three.
+    // All five example cards have the gold edge (1.3.100); One pair's three kickers are not raised.
     const pair = container.querySelector('li[data-category="pair"]') as HTMLElement;
-    const dimmed = [...pair.querySelectorAll('[role="img"]')].filter((c) =>
-      /dim/.test(c.className),
-    );
-    expect(dimmed).toHaveLength(3);
+    const cards = [...pair.querySelectorAll('[role="img"]')];
+    expect(cards.filter((c) => /core/.test(c.className))).toHaveLength(2);
+    expect(cards.filter((c) => /kicker/.test(c.className))).toHaveLength(3);
+    expect(cards.filter((c) => /dim/.test(c.className))).toHaveLength(0);
   });
 
   it('marks the rows a caller names (the hand drill’s "This round", §13.5) with a badge', () => {

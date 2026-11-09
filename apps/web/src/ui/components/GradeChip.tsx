@@ -7,6 +7,7 @@
  */
 import { memo } from 'react';
 import type { Grade } from '../../brain/types.ts';
+import { GRADE_WORDS } from '../../i18n/grades.ts';
 import styles from './Levels.module.css';
 
 /** The F.4 marks as SVG paths (24×24): ✓✓ ✓ ~ ✗ ✗✗. */
@@ -18,14 +19,8 @@ export const GRADE_MARK: Readonly<Record<Grade, string>> = {
   blunder: 'M2.5 7l7 10M9.5 7l-7 10M14.5 7l7 10M21.5 7l-7 10',
 };
 
-/** F.4's chip words. */
-export const GRADE_CHIP_TEXT: Readonly<Record<Grade, string>> = {
-  best: 'Best move',
-  good: 'Good',
-  inaccuracy: 'Slightly off',
-  mistake: 'Mistake',
-  blunder: 'Big mistake',
-};
+/** F.4's chip words: each grade's one name. */
+export const GRADE_CHIP_TEXT: Readonly<Record<Grade, string>> = GRADE_WORDS;
 
 export function GradeMark({ grade, className }: { grade: Grade; className?: string | undefined }) {
   return (

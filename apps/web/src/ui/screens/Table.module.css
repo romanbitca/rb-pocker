@@ -214,7 +214,6 @@
   font-variant-numeric: tabular-nums;
   line-height: 1.15;
   text-align: center;
-  text-overflow: ellipsis;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
   line-clamp: 2;
@@ -347,8 +346,10 @@
   margin-top: calc(-1 * var(--hero-overlap));
 }
 
+/* As tall as its row: the label measures against it and gives way (`useFit`, HeroStrip.tsx). */
 .heroLabel {
   grid-area: label;
+  align-self: stretch;
   padding-top: 6px;
 }
 /* No draw chips: the label may use their row too (a long name and its sub-label need it). Not in
@@ -485,7 +486,7 @@
   bottom: 0;
   z-index: 1;
 }
-/* While the pill shows, a draw chip ends before it (the chip shortens with an ellipsis). */
+/* While the pill shows, a draw chip ends before it (the chip takes a shorter form, `useFit`). */
 .hero:has(.heroPill button) .heroDraws {
   margin-right: 80px;
 }

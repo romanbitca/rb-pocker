@@ -111,9 +111,9 @@ describe('the feedback card (§12.6)', () => {
     expect(undoButton().getAttribute('aria-describedby')).toBe(small().id);
   });
 
-  it('Small mistake and Mistake titles (F.4)', () => {
+  it('Slightly off and Mistake titles (F.4: one name a grade)', () => {
     renderCard({ ...VIEW, grade: 'inaccuracy' });
-    expect(screen.getByRole('heading', { level: 2 }).textContent).toBe('Small mistake');
+    expect(screen.getByRole('heading', { level: 2 }).textContent).toBe('Slightly off');
     cleanup();
     renderCard({ ...VIEW, grade: 'mistake' });
     expect(screen.getByRole('heading', { level: 2 }).textContent).toBe('Mistake');
