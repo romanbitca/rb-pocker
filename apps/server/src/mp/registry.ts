@@ -27,7 +27,7 @@ function newTableCode(): string {
 }
 
 /** Events of one kind per user in a sliding window. */
-class SlidingLimit {
+export class SlidingLimit {
   private readonly events = new Map<number, number[]>();
 
   constructor(

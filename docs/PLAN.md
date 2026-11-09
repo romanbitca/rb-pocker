@@ -2824,7 +2824,7 @@ apps/server/src/
 
 **Environment** (runtime only; never at build time): `TELEGRAM_BOT_TOKEN`, `TELEGRAM_BOT_USERNAME`, `TELEGRAM_APP_SHORT_NAME`. Telegram and multiplayer are on only with all three (one line in the server log says so, without the token). `PUBLIC_URL` is optional, default `https://poker.romanbitca.com`, used only for registration. Registration runs only when `NODE_ENV` is `production` as well, so tests and `npm start` never call Telegram.
 
-**Nest.** No `@nestjs/websockets`: `MpGateway` makes one `new WebSocketServer({ noServer: true, maxPayload: MP_MAX_INBOUND_BYTES, perMessageDeflate: false })` and listens to the HTTP server's `upgrade` event (`app.getHttpServer()`, in `onApplicationBootstrap`). `ws` is one small dependency; two more Nest packages and their adapters are not needed for one socket. The gate is `TelegramConfig.enabled`: when false, no listener is added, and Node treats the request as a normal GET (a plain JSON 404). Once the listener exists, Node hands it every upgrade: any path but `MP_WS_PATH` is answered 404 by the listener itself. The tests use `Test.createTestingModule` (they override `CLOCK`); pitfall 45 only concerns static files.
+**Nest.** No `@nestjs/websockets`: `MpGateway` makes one `new WebSocketServer({ noServer: true, maxPayload: MP_MAX_INBOUND_BYTES, perMessageDeflate: false, autoPong: false })` and listens to the HTTP server's `upgrade` event (`app.getHttpServer()`, in `onApplicationBootstrap`). `ws` is one small dependency; two more Nest packages and their adapters are not needed for one socket. The gate is `TelegramConfig.enabled`: when false, no listener is added, and Node treats the request as a normal GET (a plain JSON 404). Once the listener exists, Node hands it every upgrade: any path but `MP_WS_PATH` is answered 404 by the listener itself. The tests use `Test.createTestingModule` (they override `CLOCK`); pitfall 45 only concerns static files.
 
 ### 19.4 The wire protocol
 
@@ -3118,7 +3118,7 @@ export function decodeClientMsg(x: unknown): ClientMsg | null {
 
 | Message | When valid | Reply | Errors |
 |---|---|---|---|
-| `hello` | First and once per socket, within 5 s of opening | `welcome`; then `table` when `code` is not null | Bad `initData`: `auth_failed`, close 4001. `v` is not `MP_PROTOCOL_VERSION`: `outdated`, close 4003. Twice: `bad_message` |
+| `hello` | First and once per socket, within 3 s of opening | `welcome`; then `table` when `code` is not null | Bad `initData`: `auth_failed`, close 4001. `v` is not `MP_PROTOCOL_VERSION`: `outdated`, close 4003. Twice: `bad_message`. More than 12 good ones a minute for one user: `rate_limited`, close 4008 |
 | `create` | Not seated anywhere; server has room | `table` (you are the host, status `waiting`) | `already_seated` with `other`; `server_full`; `rate_limited` (Limits table) |
 | `join` | Seat free; or you already sit here (nothing changes, a `leaving` seat is yours again) | `table`; everyone else gets a `table` with the notice `joined` | `not_found`; `full`; `already_seated` with `other`; `rate_limited` |
 | `leave` | Seated | `left`; then the socket stays open for a new `create` or `join` | `not_seated` |
@@ -3135,7 +3135,7 @@ export function decodeClientMsg(x: unknown): ClientMsg | null {
 
 **Reconnect and resume (client).** While a table is on: on a close or a missed pong the client reconnects with 0.5, 1, 2, 4, 8, 8, … seconds between tries (each ± 20%), hello again with the same `initData`, and the server's `welcome` and `table` bring it back. Whether it retries depends on the close code (the table below). A hidden page waits and reconnects at once when it is visible again. After 2 minutes of failures the client stops and offers "Try again" (§19.10). A `welcome` whose `code` is null while the client is at a table means that table is gone: `Table ended`.
 
-**Reconnect and resume (server).** The seat belongs to the Telegram user id for as long as the room lives. On a new socket for a user who has one: the old socket gets `{ t: 'error', code: 'replaced', re: null }` and closes with 4002 ("you opened the game somewhere else"), and the new socket takes over. `online` goes false when a socket closes and true when one comes back; nothing else about the seat changes (the §19.5 rules decide about turns).
+**Reconnect and resume (server).** The seat belongs to the Telegram user id for as long as the room lives. On a new socket for a user who has one: the old socket gets `{ t: 'error', code: 'replaced', re: null }` and closes with 4002 ("you opened the game somewhere else"), and the new socket takes over. `online` goes false when a socket closes and true when one comes back; nothing else about the seat changes (the §19.5 rules decide about turns). A new socket that takes over from one still open changes nothing for the others: only that player gets a `table`, with the same `rev`.
 
 **Versioning.** The server accepts exactly its own `MP_PROTOCOL_VERSION`; there is no compatibility layer. A change that an older client could misread bumps the constant. An older client (an old bundle in the service worker) gets `outdated`, closes with 4003 and says "A new version is ready."
 
@@ -3149,10 +3149,12 @@ export function decodeClientMsg(x: unknown): ClientMsg | null {
 | 4001 | `initData` refused | No: "Please close the game and open it again" |
 | 4002 | Replaced by a newer socket of the same user | No |
 | 4003 | Client too old | No: "A new version is ready…" |
-| 4004 | No `hello` within 5 s | Yes |
+| 4004 | No `hello` within 3 s | Yes |
 | 4005 | Three undecodable messages | No: a bug |
 | 4008 | Rate limit | Yes, after 10 s |
 | 4009 | Silent socket | Yes |
+
+Before `hello`, and for a silent socket, the server sends the close frame and cuts the connection without waiting for an answer, so a client that never answers cannot keep a slot. A client may then see 1006 instead of the code, and 1006 is retried the same way.
 
 **Limits** (constants in `mp/timing.ts` and `net/protocol.ts`; each has a test).
 
@@ -3160,17 +3162,21 @@ export function decodeClientMsg(x: unknown): ClientMsg | null {
 |---|---|---|
 | Inbound frame | 16 KiB (`maxPayload`) | close 1009 |
 | Messages per socket | token bucket: 20 tokens, 5 refilled per second | `rate_limited`, the message is dropped; 50 drops close 4008 |
-| Hello deadline | 5 s after open | close 4004 |
-| Silent socket | no message in 45 s (the client pings every 20 s) | close 4009 |
+| Hello deadline | 3 s after open | cut off (4004) |
+| Silent socket | no message in 45 s (the client pings every 20 s) | cut off (4009) |
 | Outbound buffer | `ws.bufferedAmount` over 256 KiB | close 1008; the client reconnects and gets a fresh view |
 | Open sockets | 1,000 | upgrade refused with 503 |
 | Rooms | 200 | `server_full` |
 | `create` per user | 5 per 10 minutes | `rate_limited` |
 | Failed `join` (`not_found`) per user | 10 per 5 minutes | `rate_limited`, so codes cannot be guessed |
+| Anonymous sockets (no `hello` yet) per client address (§19.9) | 16 | upgrade refused with 503 |
+| Good `hello` per user | 12 per minute | `rate_limited`, close 4008 |
 
 The per-user counters live in memory and are removed when their window ends: the privacy notice promises it (G.2).
 
-The upgrade itself answers 403 when `Origin` is present and its host is not the request's `Host` (same-origin only). The iframe on Telegram Web does not change this: the page that opens the socket is ours, so its `Origin` is ours.
+The upgrade itself answers 403 when `Origin` is present and its host is not the request's `Host` (same-origin only). The iframe on Telegram Web does not change this: the page that opens the socket is ours, so its `Origin` is ours. Every refused upgrade is answered and then destroyed, whatever the client does with its side of the connection.
+
+Protocol ping frames get no pong (`autoPong: false`). `ws` answers each one by itself, outside the outbound limit, so a client that sends pings and reads nothing would queue pongs without end. The heartbeat is the `ping` message, which every limit covers.
 
 ### 19.5 The table machine (`mp/room.ts`)
 
@@ -3214,7 +3220,7 @@ The upgrade itself answers 403 when `Origin` is present and its host is not the 
 | Event | What happens |
 |---|---|
 | `create` | First seat, `status: 'nextHand'`, host, chips `settings.stack`. Room `waiting`, `started: false` |
-| `join` | Lowest free seat, `nextHand`, chips `settings.stack`, notice `joined`; a `leaving` seat of the same user turns back to `playing` (`busted` if its hand is over and it has no chips) |
+| `join` | Lowest free seat, `nextHand`, chips `settings.stack` (someone who sat at this table before gets the stack they took away instead, and with none of it is `busted`), notice `joined`; a `leaving` seat of the same user turns back to `playing` (`busted` if its hand is over and it has no chips) |
 | `start` (host) | `started = true`, then **deal** |
 | **deal** | ① Empty the seats that are `leaving`, and those offline for `SEAT_LOST_MS`. ② `nextHand` becomes `playing` (a stack of 0 becomes `busted`). ③ `eligible` = `playing` with chips. ④ Fewer than 2: status `waiting`, `hand = null`, `nextHandAt = null`, broadcast, stop. ⑤ Build the engine table (§19.3): the first deal `createTable`, then `{ ...table, slots }` of the last `nextTable`. `hand = startHand(table, newSeed())`. ⑥ status `playing`, then **next step** |
 | **next step** | `phase` is `betting`: **open decision**. `roundComplete` or `showdown`: broadcast, arm `advance` (`RUNOUT_PAUSE_MS` during a run-out, `STREET_PAUSE_MS`, or for `showdown` `REVEAL_MS` × hands shown). `complete`: **hand end** |
@@ -3229,7 +3235,7 @@ The upgrade itself answers 403 when `Origin` is present and its host is not the 
 | A `join` while `started`, status `waiting` | Same `resume` rule |
 | `leave` | `left` to the player. Dealt into the hand in `view.hand` (running or finished and on show; folded or not): `leaving` until the next deal, `online` false, and a seat that is the current decision acts at once. Otherwise the seat empties now (host rule below). No seat left: `end` |
 | `disconnected(user)` | `online = false`. If it is their open decision and more than `OFFLINE_TURN_MS` is left, the deadline moves to `now + OFFLINE_TURN_MS`. Nothing else |
-| `connected(user)` | `online = true`, a `table` to that player. The deadline does not move |
+| `connected(user)` | `online` was false: `online = true`, everyone gets the `table`. It was true (a new socket took over from one still open): a `table` to that player only, same `rev`. The deadline does not move |
 | **Idle watch**, after every change | Nobody online: arm `idle` (`IDLE_NOBODY_MS`); status `waiting`: arm `idle` (`IDLE_WAITING_MS`, the shorter of the two if both hold). The condition gone: cancel. When it fires: `end('idle')` |
 
 **A disconnect** is treated like a timeout: the same clock path, the same counter, the same sitting-out and the same "I'm back". Nothing about the seat changes when a player comes back, so a short drop costs at most the current turn.
@@ -3242,7 +3248,7 @@ The upgrade itself answers 403 when `Origin` is present and its host is not the 
 
 **Server restart.** `beforeApplicationShutdown` (the `SIGTERM` path, §17.3; not `onApplicationShutdown`, because Nest closes the HTTP server before that hook and `server.close()` waits for every upgraded socket) calls `room.end('server_restart')` for every room: `{ t: 'ended', code, reason: 'server_restart' }` to each online player, then the sockets close with 1012, and a client that has not answered after `SHUTDOWN_GRACE_MS` (2 s) is cut off. No table survives a redeploy: this is decision 2. A client that was away then gets `welcome` with `code: null`, and shows "This table has ended."
 
-**Chips** live in `seat.stack` between hands and in `hand.seats` during a hand. A reload sets a busted seat to `settings.stack`. Nothing else ever creates, moves or removes chips; a seat that empties takes its chips away with it.
+**Chips** live in `seat.stack` between hands and in `hand.seats` during a hand. A reload sets a busted seat to `settings.stack`. Nothing else ever creates, moves or removes chips; a seat that empties takes its chips away with it, and the room remembers them for as long as it lives: the same user sitting down again gets them back, so leaving and coming back never tops anyone up. A free reload is for a real bust only.
 
 ### 19.6 One Table, two drivers (`app/mp/driver.ts`)
 
@@ -3370,7 +3376,7 @@ The bot sends no other messages, keeps no chat list and logs no user. `/post` is
 
 **Identity.** The Telegram user id is the only identity. **One socket per user** (§19.4) and **one seat per user** (`already_seated`, with the other table's code). `MpUser = { id: number; name: string }` lives in the server's memory.
 
-**Names.** `first_name` only: normalised (NFC), control and format characters removed (`\p{C}`, so no right-to-left overrides), trimmed, at most 24 code points; empty becomes "Player {seat + 1}". Names are text nodes in React and never reach HTML. `last_name`, `username`, `language_code` and `photo_url` are not read.
+**Names.** `first_name` only: normalised (NFC), control and format characters removed (`\p{C}`, so no right-to-left overrides), and default-ignorable characters, the Braille blank (U+2800) and line and paragraph separators removed (so no name that looks blank: the Hangul fillers U+3164 and U+FFA0 are among them), at most 3 combining marks in a row, trimmed, at most 24 code points; empty, or with nothing left that shows, becomes "Player {seat + 1}". Names are text nodes in React and never reach HTML. `last_name`, `username`, `language_code` and `photo_url` are not read.
 
 **Leak rules (⚠️ pitfall 13).** In a message to the player on real seat V:
 
@@ -3384,6 +3390,8 @@ The bot sends no other messages, keeps no chat list and logs no user. `/post` is
 | L6 | ⚠️ The seed is **never** sent, not even after the hand: the seed gives the whole deck and with it every folded hand. So no shuffle code at these tables (no §16.3 check): they have no Review either |
 
 **Tests** (acceptance 6): a fast-check property on `publicHand` with permuted hidden cards; an integration recorder of every frame to every socket with a checker for L1–L6; the same checker on real browser frames. The checker walks the JSON structure, it does not search strings (card numbers are everywhere).
+
+**The client's address.** The per-address cap of §19.4 counts by `clientAddress(req)` (`mp/gateway.ts`). Production is always behind the proxy chain Cloudflare → Traefik → this server, and the container's port is not public, so the client is `CF-Connecting-IP`, which Cloudflare sets and overwrites. The header is believed only when the TCP peer is a private or loopback address (a proxy); any other peer has no proxy in front of it and is the client itself. An IPv6 client counts by its /64. ⚠️ Someone who found the origin and reached Traefik past Cloudflare could forge the header; then only the global cap of 1,000 sockets and the 3-second hello deadline hold.
 
 **Other limits and refusals.** §19.4 Limits. No bot or room id is guessable: table codes are 8 characters from a 31-letter alphabet from `crypto.randomInt`. Errors reveal nothing about other tables beyond `not_found` and `full`. Chips and blinds are only ever server numbers: the client sends a preset, an action and a seat it was given. Logging: at most one line at boot about whether Telegram is on, plus counters; never a token, a user id, a name, or `initData`.
 
@@ -3811,6 +3819,7 @@ The human answered on 23 Sep 2026. Answered rows show the decision; open rows ke
 | 1.4.6 | 9 Nov 2026 | The Telegram shell (chunk 10.7, branch `feature/telegram-shell`; version number provisional, rows are renumbered at merge). `app/tg/launch.ts` (entry chunk, imports nothing), `app/tg/{bridge,shell,start}.ts` (one lazy chunk, 1.7 KB gzip, asked for only when `parseLaunch` found Telegram), `tg` in the store (**A.8**), the haptics port in `app/device.ts`, `--tg-safe-bottom` in the Action bar's and the Screen's padding. No external script: the CSP is unchanged. The official script was read again on 9 Nov 2026. **§19.2:** the haptic payloads; `web_app_open_tg_link` also goes in an iframe, and an older client opens the link itself; only the two safe-area requests are 8.0, `web_app_request_viewport` has no gate. **§19.7:** an empty `tgWebAppData` in the fragment, the script's defaults for a missing version or platform, the header colour from 6.9 (before that a client takes only theme keys), `--tg-safe-*` is the device's insets plus Telegram's own, the shell's `confirmClosing` and `shareInvite`, `startTelegram` returns the shell. **§12.8, §12.13:** inside Telegram "Vibration" is Telegram's haptic feedback, on iOS too. Initial JS +0.38 KB (131.01 → 131.39, 1 file), CSS 19.25 → 19.26 KB, precache +2.2 KB. Tests: `tests/app/tg.launch.test.ts`, `tg.bridge.test.ts`, `tg.shell.test.ts` (Stage 10 acceptance 12), a block in `tests/ui/review.bundle.test.ts` (14). |
 | 1.4.7 | 9 Nov 2026 | The multiplayer client's driver (branch `feature/mp-client-driver`, Stage 10 chunk 10.8; version number provisional, rows are renumbered at merge). `app/mp/{socket,localView,driver}.ts`, the `mp` slice, `MpCommand`s, the remote handler, the Back trap, `controller.park()`/`unpark()`, the `cardsOf` line, placeholders for `mpCreate` and `mpRoom` in `ui/App.tsx`. **§19.6 changed, for privacy (orchestrator, 9 Nov 2026):** the plan sent `hello` at every launch inside Telegram, so a player who only plays alone would have sent us their Telegram id anyway. Now the socket opens only for the Create screen, a table code in `startapp`, or a table this device remembers (`pc.v1.mpTable`, new in **§14.2**; Export, Import and Reset stats leave it alone, **§14.8**); a solo player makes no connection. **§19.6 also:** `legal.seat` is mapped (the plan left it as the real seat, which the action bar reads against the local seats); the remote handler is registered once, because "Create table" comes before any table; leaving goes Home first; `MpProblem`, `MpCommand`, the shapes of `selectTurn` and `selectSeatNotes`; a new socket's first view may repeat the `rev`; `coach` is kept for `unpark()`; `onNav` leaves the feedback card alone while parked. **§19.10:** returning to a table says when it applies. **A.8:** the slice, the toast, the commands. **Tests:** `tests/app/mp.socket.test.ts`, `mp.localView.test.ts`, `mp.driver.test.ts`, `controller.park.test.ts`, `store.backTrap.test.ts`, a case in `tests/ui/review.bundle.test.ts` (acceptance 11, and the part of 14 that concerns the client). Nothing calls `createMpDriver` yet: `app/tg/start.ts` (10.7) does it with chunk 10.9. **Size (§15.3):** initial JS 131.41 → 131.73 kB (the store's slice, `park`, the Back trap; `app/mp/` is in no chunk until 10.9), over the 130 kB target as main already was, under the 150 kB gate. |
 | 1.4.10 | 9 Nov 2026 | Telegram privacy words and the owner's steps (chunk 10.11, branch `docs/telegram-privacy-and-owner-steps`; version number provisional, rows are renumbered at merge). Appendix G.1, G.2, G.5 and `i18n/about.ts` (§19.12). §19.12 changed: `initData` holds more than the two fields the server reads, and the per-user limits outlive a table by up to 10 minutes (§19.4, which now says they are removed when their window ends). The notice relies on chunk 10.8's rule for §19.6: the client connects only when the player opens Play with friends, launches with a table code or has a remembered table. G.2's "What we store" names the table code that chunk 10.8 remembers on the device (`pc.v1.mpTable`). G.5's "The game" and "Fair cards" lines also say what is different at tables with friends (§19.9 L6). §16.1 and R29 follow. §19.13 in `README.md` and §17.6. The 640×360 cover, drawn in code with its own stroke font (§16.4): `apps/web/scripts/gen-telegram-cover.ts`. The notice has no contact address: a question for the owner (R29). |
+| 1.4.13 | 9 Nov 2026 | Hardening the socket and the table against denial of service (branch `fix/mp-server-hardening`, after a security review of chunks 10.3 and 10.4, which found no way to see hidden cards, act for another player, forge a login or crash the process; version number provisional, rows are renumbered at merge). **§19.4:** protocol pings get no automatic pong (`autoPong: false`): 84 MB of pings from a client that read nothing left 80 MB queued on the server, past the send limit and with no `hello`. The hello deadline is 3 s, not 5. At most 16 sockets per client address may be without a `hello` (§19.9; one more upgrade is a 503). Before `hello`, and for a silent socket, the socket is cut off at once instead of waiting for the client to answer the close (one that never answered held its slot 34–37 s); the close frame still goes out first, so a normal client still sees 4001, 4003, 4004 or 4009. A good `hello` is limited to 12 a minute per user: each socket has its own message bucket, and 100 reconnects in 142 ms sent another seat 100 frames. A refused upgrade is destroyed after its answer. **§19.5:** `connected` broadcasts only when `online` changes. A user who sits down again at a table gets the stack they took away (1,960 no longer becomes 2,000), and with none of it is `busted`: a free reload stays for a real bust only. **§19.9:** the client's address; names that look blank (the Hangul fillers, the Braille blank, stacked combining marks) are cleaned away. Tests, each of which failed before its fix: the new cases in `test/mp/gateway.limits.test.ts`, `room.timers.test.ts`, `room.seats.test.ts`; helpers `rawClient`, `maskedFrame`, `openConnections`, `eventually` in `test/helpers/mp-app.ts`. |
 
 ---
 

@@ -3,7 +3,8 @@
  * only way to a table. Who you are comes only from a signed `initData` in the `hello` frame. A frame
  * is checked here (size, rate, shape, who sent it); whether it may happen is the room's to say.
  */
-import type { IncomingMessage, Server } from 'node:http';
+import type { IncomingHttpHeaders, IncomingMessage, Server } from 'node:http';
+import { BlockList, isIP } from 'node:net';
 import type { Duplex } from 'node:stream';
 import {
   Inject,
@@ -26,10 +27,13 @@ import {
 import { TelegramConfig } from '../telegram/config.js';
 import { checkInitData } from '../telegram/init-data.js';
 import { CLOCK, realClock, type Clock, type TimerHandle } from './clock.js';
-import { RoomRegistry, type Refusal } from './registry.js';
+import { RoomRegistry, SlidingLimit, type Refusal } from './registry.js';
 import { cleanName, type MpUser } from './seating.js';
 import {
   HELLO_DEADLINE_MS,
+  HELLO_LIMIT,
+  HELLO_WINDOW_MS,
+  MAX_ANONYMOUS_PER_IP,
   MAX_BAD_MESSAGES,
   MAX_DROPS,
   MAX_OUTBOUND_BYTES,
@@ -58,6 +62,8 @@ interface Connection {
   readonly socket: WebSocket;
   /** Null until a good `hello`. */
   user: MpUser | null;
+  /** The client's address while this socket counts as anonymous; null after `hello`. */
+  anonymousFrom: string | null;
   tokens: number;
   refilledAt: number;
   drops: number;
@@ -86,10 +92,64 @@ function pathOf(req: IncomingMessage): string | null {
   }
 }
 
+/** Who can sit directly in front of this server: the container network, or this machine. */
+const PROXY_PEERS = new BlockList();
+PROXY_PEERS.addSubnet('10.0.0.0', 8, 'ipv4');
+PROXY_PEERS.addSubnet('172.16.0.0', 12, 'ipv4');
+PROXY_PEERS.addSubnet('192.168.0.0', 16, 'ipv4');
+PROXY_PEERS.addSubnet('127.0.0.0', 8, 'ipv4');
+PROXY_PEERS.addAddress('::1', 'ipv6');
+PROXY_PEERS.addSubnet('fc00::', 7, 'ipv6');
+
+function isProxyPeer(address: string): boolean {
+  const family = isIP(address);
+  return family !== 0 && PROXY_PEERS.check(address, family === 4 ? 'ipv4' : 'ipv6');
+}
+
+/** `::ffff:1.2.3.4` is 1.2.3.4. */
+function plainAddress(address: string): string {
+  const mapped = /^::ffff:(.+)$/i.exec(address)?.[1];
+  return mapped !== undefined && isIP(mapped) === 4 ? mapped : address;
+}
+
+/** One client, for counting: an IPv4 address, or an IPv6 /64, which one customer gets whole. */
+function addressKey(address: string): string {
+  if (isIP(address) !== 6) return address;
+  const [left = '', right] = address.toLowerCase().split('::');
+  const head = left === '' ? [] : left.split(':');
+  const tail = right === undefined || right === '' ? [] : right.split(':');
+  const zeros =
+    right === undefined ? [] : new Array<string>(8 - head.length - tail.length).fill('0');
+  return [...head, ...zeros, ...tail]
+    .slice(0, 4)
+    .map((group) => group.replace(/^0+(?=.)/, ''))
+    .join(':');
+}
+
+/**
+ * Whose socket this is, for the per-address cap (§19.9). Behind the proxy chain (Cloudflare → Traefik
+ * → this server) the client is `CF-Connecting-IP`, which Cloudflare always overwrites. A peer that is
+ * not a private address has no proxy in front of it, so its header means nothing.
+ */
+export function clientAddress(req: {
+  readonly headers: IncomingHttpHeaders;
+  readonly socket: { readonly remoteAddress?: string | undefined };
+}): string {
+  const peer = plainAddress(req.socket.remoteAddress ?? '');
+  if (peer === '') return 'unknown';
+  const header = req.headers['cf-connecting-ip'];
+  const claimed = typeof header === 'string' ? plainAddress(header.trim()) : '';
+  return addressKey(isProxyPeer(peer) && isIP(claimed) !== 0 ? claimed : peer);
+}
+
 /** Answers an upgrade that will not happen, in plain HTTP, and hangs up. */
 function refuseUpgrade(socket: Duplex, status: keyof typeof STATUS_TEXT): void {
   // Nothing else listens on this socket yet, and a reset here must not become an uncaught error.
   socket.on('error', () => {});
+  // `end()` alone leaves the socket open for as long as the client keeps its side open.
+  socket.once('finish', () => {
+    socket.destroy();
+  });
   socket.end(
     `HTTP/1.1 ${status} ${STATUS_TEXT[status]}\r\nConnection: close\r\nContent-Length: 0\r\n\r\n`,
   );
@@ -110,10 +170,16 @@ export class MpGateway implements OnApplicationBootstrap, BeforeApplicationShutd
     noServer: true,
     maxPayload: MP_MAX_INBOUND_BYTES,
     perMessageDeflate: false,
+    // A pong answers every protocol ping, whoever sends it and however full the send queue is. The
+    // client's heartbeat is the protocol's own `ping` message, under every limit of §19.4.
+    autoPong: false,
   });
   private readonly connections = new Set<Connection>();
   /** One socket per user (§19.9). */
   private readonly byUser = new Map<number, Connection>();
+  /** Sockets per client address that have not said `hello` yet. */
+  private readonly anonymous = new Map<string, number>();
+  private readonly hellos = new SlidingLimit(HELLO_LIMIT, HELLO_WINDOW_MS);
   private shuttingDown = false;
 
   constructor(
@@ -139,24 +205,30 @@ export class MpGateway implements OnApplicationBootstrap, BeforeApplicationShutd
   }
 
   private onUpgrade(req: IncomingMessage, socket: Duplex, head: Buffer): void {
+    const from = clientAddress(req);
     if (pathOf(req) !== MP_WS_PATH) {
       refuseUpgrade(socket, 404);
     } else if (!isSameOrigin(req)) {
       refuseUpgrade(socket, 403);
-    } else if (this.shuttingDown || this.connections.size >= MAX_SOCKETS) {
+    } else if (
+      this.shuttingDown ||
+      this.connections.size >= MAX_SOCKETS ||
+      (this.anonymous.get(from) ?? 0) >= MAX_ANONYMOUS_PER_IP
+    ) {
       refuseUpgrade(socket, 503);
     } else {
       this.wss.handleUpgrade(req, socket, head, (ws) => {
-        this.onOpen(ws);
+        this.onOpen(ws, from);
       });
     }
   }
 
-  private onOpen(socket: WebSocket): void {
+  private onOpen(socket: WebSocket, from: string): void {
     const now = this.clock.now();
     const conn: Connection = {
       socket,
       user: null,
+      anonymousFrom: from,
       tokens: TOKEN_BUCKET_SIZE,
       refilledAt: now,
       drops: 0,
@@ -166,8 +238,9 @@ export class MpGateway implements OnApplicationBootstrap, BeforeApplicationShutd
       silenceTimer: null,
     };
     this.connections.add(conn);
+    this.anonymous.set(from, (this.anonymous.get(from) ?? 0) + 1);
     conn.helloTimer = this.clock.setTimeout(() => {
-      socket.close(WS_CLOSE.authTimeout);
+      this.cutOff(conn, WS_CLOSE.authTimeout);
     }, HELLO_DEADLINE_MS);
     this.watchSilence(conn);
     socket.on('message', (data, isBinary) => {
@@ -187,7 +260,7 @@ export class MpGateway implements OnApplicationBootstrap, BeforeApplicationShutd
       this.onFrame(conn, data, isBinary);
     } catch {
       // A bug must not take the whole server down with one message. The client reconnects.
-      conn.socket.close(CLOSE_UNEXPECTED);
+      this.shut(conn, CLOSE_UNEXPECTED);
     }
   }
 
@@ -195,14 +268,14 @@ export class MpGateway implements OnApplicationBootstrap, BeforeApplicationShutd
     if (!this.takeToken(conn)) {
       conn.drops++;
       this.send(conn, { t: 'error', code: 'rate_limited', re: null });
-      if (conn.drops >= MAX_DROPS) conn.socket.close(WS_CLOSE.rateLimited);
+      if (conn.drops >= MAX_DROPS) this.shut(conn, WS_CLOSE.rateLimited);
       return;
     }
     const msg = decodeFrame(data, isBinary);
     if (msg === null) {
       conn.badMessages++;
       this.send(conn, { t: 'error', code: 'bad_message', re: null });
-      if (conn.badMessages >= MAX_BAD_MESSAGES) conn.socket.close(WS_CLOSE.badMessage);
+      if (conn.badMessages >= MAX_BAD_MESSAGES) this.shut(conn, WS_CLOSE.badMessage);
     } else if (msg.t === 'hello') {
       this.onHello(conn, msg);
     } else if (conn.user === null) {
@@ -219,21 +292,26 @@ export class MpGateway implements OnApplicationBootstrap, BeforeApplicationShutd
     }
     if (msg.v !== MP_PROTOCOL_VERSION) {
       this.refuse(conn, 'hello', 'outdated');
-      conn.socket.close(WS_CLOSE.outdated);
+      this.cutOff(conn, WS_CLOSE.outdated);
       return;
     }
-    const check = checkInitData(
-      msg.initData,
-      this.config.botToken,
-      Math.floor(this.clock.now() / 1000),
-    );
+    const now = this.clock.now();
+    const check = checkInitData(msg.initData, this.config.botToken, Math.floor(now / 1000));
     if (!check.ok) {
       this.refuse(conn, 'hello', 'auth_failed');
-      conn.socket.close(WS_CLOSE.authFailed);
+      this.cutOff(conn, WS_CLOSE.authFailed);
       return;
     }
+    // Each socket has its own message bucket, so reconnecting has to be limited per person.
+    if (this.hellos.isFull(check.user.id, now)) {
+      this.refuse(conn, 'hello', 'rate_limited');
+      this.cutOff(conn, WS_CLOSE.rateLimited);
+      return;
+    }
+    this.hellos.add(check.user.id, now);
     if (conn.helloTimer !== null) this.clock.clearTimeout(conn.helloTimer);
     conn.helloTimer = null;
+    this.stopCountingAnonymous(conn);
     const user: MpUser = { id: check.user.id, name: cleanName(check.user.firstName) };
     conn.user = user;
     this.takeOver(conn, user.id);
@@ -322,11 +400,35 @@ export class MpGateway implements OnApplicationBootstrap, BeforeApplicationShutd
     const wait = conn.lastMessageAt + SILENT_SOCKET_MS - this.clock.now();
     conn.silenceTimer = this.clock.setTimeout(() => {
       if (this.clock.now() - conn.lastMessageAt >= SILENT_SOCKET_MS) {
-        conn.socket.close(WS_CLOSE.silent);
+        this.cutOff(conn, WS_CLOSE.silent);
       } else {
         this.watchSilence(conn);
       }
     }, wait);
+  }
+
+  /**
+   * Says why in a close frame, as far as the network lets it through, and lets go at once. After a
+   * plain `close()` the slot is held until the client answers, or for 30 s if it never does.
+   */
+  private cutOff(conn: Connection, code: number): void {
+    conn.socket.close(code);
+    conn.socket.terminate();
+  }
+
+  /** A socket that never said who it is gets no patience; one with a player behind it does. */
+  private shut(conn: Connection, code: number): void {
+    if (conn.user === null) this.cutOff(conn, code);
+    else conn.socket.close(code);
+  }
+
+  private stopCountingAnonymous(conn: Connection): void {
+    const from = conn.anonymousFrom;
+    if (from === null) return;
+    conn.anonymousFrom = null;
+    const left = (this.anonymous.get(from) ?? 1) - 1;
+    if (left > 0) this.anonymous.set(from, left);
+    else this.anonymous.delete(from);
   }
 
   /** Never throws: a socket's trouble is not the table's. */
@@ -349,6 +451,7 @@ export class MpGateway implements OnApplicationBootstrap, BeforeApplicationShutd
     if (conn.helloTimer !== null) this.clock.clearTimeout(conn.helloTimer);
     if (conn.silenceTimer !== null) this.clock.clearTimeout(conn.silenceTimer);
     this.connections.delete(conn);
+    this.stopCountingAnonymous(conn);
     const { user } = conn;
     if (user === null || this.byUser.get(user.id) !== conn) return;
     this.byUser.delete(user.id);

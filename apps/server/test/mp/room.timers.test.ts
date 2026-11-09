@@ -316,11 +316,14 @@ describe('§19.5 disconnected and connected', () => {
     expect(h.room.act(userId(seat), view.decision?.seq as number, { type: 'call' })).toBeNull();
   });
 
-  it('connected: a player who is already online still gets a table (a new socket took over)', () => {
+  it('connected: a player who is already online gets a table and nobody else hears of it (a new socket took over)', () => {
     const h = new Harness().deal(2);
-    const before = h.tablesTo(1).length;
+    const { rev } = h.view(0);
+    const before = [h.tablesTo(0).length, h.tablesTo(1).length] as const;
     h.room.connected(userId(1));
-    expect(h.tablesTo(1)).toHaveLength(before + 1);
+    expect(h.tablesTo(1)).toHaveLength(before[1] + 1);
+    expect(h.tablesTo(0)).toHaveLength(before[0]);
+    expect(h.view(1).rev).toBe(rev);
   });
 
   it('a disconnect takes the same path as a timeout: the same counter, the same sitting out, the same "I\'m back"', () => {

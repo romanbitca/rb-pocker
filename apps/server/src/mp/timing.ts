@@ -34,8 +34,13 @@ export const VOIDED_HANDS_TO_END = 2;
 
 // The limits of §19.4.
 
-/** After the socket opens; no `hello` by then closes it 4004. */
-export const HELLO_DEADLINE_MS = 5_000;
+/** After the socket opens; no `hello` by then cuts it off (4004). */
+export const HELLO_DEADLINE_MS = 3_000;
+/** Sockets per client address that have not said `hello` yet; one more upgrade is refused with 503. */
+export const MAX_ANONYMOUS_PER_IP = 16;
+/** Good `hello`s per user in `HELLO_WINDOW_MS`; more is `rate_limited`, 4008. */
+export const HELLO_LIMIT = 12;
+export const HELLO_WINDOW_MS = 60_000;
 /** No message in this long closes the socket 4009 (the client pings every 20 s). */
 export const SILENT_SOCKET_MS = 45_000;
 /** Messages per socket: a token bucket. */
