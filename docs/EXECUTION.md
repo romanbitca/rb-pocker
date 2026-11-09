@@ -142,26 +142,26 @@ Legend: `[ ]` todo · `[~]` in progress (branch exists) · `[x]` merged to `main
 - [x] `test/e2e-flakes` - [#92](https://github.com/romanbitca/rb-pocker/pull/92), test-only: a hero that can't bust (data 4b, stats 4b: a bust opened the out-of-chips dialog), the badge test waits for jobs and grades, keyboard holds the bots until Undo (`faults.think`), tips wait for the tapped tip to close; each 10/10, 5/5 under load. Merged 25dfc72 (gold-edge train).
 - [x] `feature/gold-edge-best-five` - **owner report (6 Nov ~19:00Z, screenshots):** "sometimes cards look like with opacity, like they are not active". Cards outside the best five were faded (`.dim`, opacity 0.45) without explanation. Now: no fade on the Table; all five cards of the best hand (the hero's, or the winner's at the end) get the gold edge; a one-time tip explains it. [#93](https://github.com/romanbitca/rb-pocker/pull/93): one 3 px gold edge on the five (the hand's cards stay raised), screen-reader text "…, part of your hand", the tip "Gold edge: the five cards that make your hand." (first flop; above the board in landscape); the rankings panel, lessons and drill keep their dimmed examples. Merged 89ba847 (gold-edge train).
 - [~] `chore/release-v1.0.0` - draft [#86](https://github.com/romanbitca/rb-pocker/pull/86): app version 1.0.0 (`ENGINE_VERSION` stays 0.1.0 and no longer follows package.json, §4.6), CHANGELOG.md, PLAN 1.3.95; `local-ci` ✅ 7fd5e91 (unit 3761, e2e 486). Merge after 9.8 (rebase first), then tag `v1.0.0`.
-- [~] `feature/hand-end-at-the-thumb` - product review 8 Nov (owner: "a set of improvements"): one big "Next hand ›" at the thumb, the result and Next hand in the wide panel, Enter/Space deal, "Skip to result ›" after a fold. Agent. PLAN 1.3.99.
-- [~] `feature/no-cut-words-one-gold-rule` - no text cut with "…", one gold rule everywhere (Lesson 1, Hands drawer, Drill), one word per grade, "Both players", "Why?". Agent. PLAN 1.3.100.
-- [~] `feature/review-decisions-stats-leaks-drill-fit` - Review shows your decisions (grade, numbers, coach; Next decision; opens at the first mistake), leaks first in Stats and "Work on: …" on Home, the Drill fits one screen. Agent. PLAN 1.3.101.
+- [x] `feature/hand-end-at-the-thumb` - product review 8 Nov (owner: "a set of improvements"): one big "Next hand ›" at the thumb, the result and Next hand in the wide panel, Enter/Space deal, "Skip to result ›" after a fold. PLAN 1.3.99. Merged 91e2c6b (improvements train).
+- [x] `feature/no-cut-words-one-gold-rule` - no text cut with "…", one gold rule everywhere (Lesson 1, Hands drawer, Drill), one word per grade, "Both players", "Why?". PLAN 1.3.100. Merged 5aa5b9f (improvements train).
+- [x] `feature/review-decisions-stats-leaks-drill-fit` - Review shows your decisions (grade, numbers, coach; Next decision; opens at the first mistake), leaks first in Stats and "Work on: …" on Home, the Drill fits one screen. PLAN 1.3.101. Merged e19ed14 (improvements train).
 - [H] 9.8 [H] **Human gate:** Coolify ✅ (5 Nov, https://poker.romanbitca.com), device matrix, VoiceOver/TalkBack → release v1.0.
 
 ---
 
 ## Stage 10 - Telegram Mini App and playing with friends (PLAN §18 Stage 10, §19; owner request 8 Nov 2026)
 
-- [~] 10.1 `feature/mp-engine-copy-and-protocol` - the engine copied for the server, the wire protocol, `PublicHand`. Agent.
-- [~] 10.2 `feature/telegram-initdata` - `initData` validation. Agent.
-- [ ] 10.3 `feature/mp-table-machine` - rooms, seats, hands, timers (needs 10.1).
-- [ ] 10.4 `feature/mp-websocket` - the gateway, limits, reconnect, leak tests (needs 10.2, 10.3).
-- [~] 10.5 `feature/telegram-bot` - webhook, `/start` `/new` `/help` `/post`, inline (needs 10.2). Agent.
-- [~] 10.6 `chore/headers-for-telegram` - `frame-ancestors` for Telegram Web, check-deploy. Agent.
-- [~] 10.7 `feature/telegram-shell` - launch params, bridge, theme, BackButton, safe area, haptics. Agent.
-- [ ] 10.8 `feature/mp-client-driver` - the Table driven by the server (needs 10.1).
+- [x] 10.1 `feature/mp-engine-copy-and-protocol` - the engine copied for the server, the wire protocol, `PublicHand`. Merged #98 7864aa3.
+- [x] 10.2 `feature/telegram-initdata` - `initData` validation. Merged #96 a1138ff.
+- [x] 10.3 `feature/mp-table-machine` - rooms, seats, hands, timers (needs 10.1). Merged #103.
+- [x] 10.4 `feature/mp-websocket` - the gateway, limits, reconnect, leak tests (needs 10.2, 10.3). Merged #105.
+- [x] 10.5 `feature/telegram-bot` - webhook, `/start` `/new` `/help` `/post`, inline (needs 10.2). Merged #100 0431561.
+- [x] 10.6 `chore/headers-for-telegram` - `frame-ancestors` for Telegram Web, check-deploy. Merged #97 960d59f.
+- [x] 10.7 `feature/telegram-shell` - launch params, bridge, theme, BackButton, safe area, haptics. Merged #99 748c697.
+- [x] 10.8 `feature/mp-client-driver` - the Table driven by the server (needs 10.1). Merged #104 ef44ff6.
 - [ ] 10.9 `feature/mp-screens` - Create, Share, Join, Waiting, Playing, Busted, Ended (needs 10.7, 10.8).
 - [ ] 10.10 `test/mp-end-to-end` - 2–3 browser contexts with signed `initData`, leak, connection (needs 10.4, 10.6, 10.7, 10.9).
-- [~] 10.11 `docs/telegram-privacy-and-owner-steps` - privacy text, owner's steps, cover image. Agent.
+- [x] 10.11 `docs/telegram-privacy-and-owner-steps` - privacy text, owner's steps, cover image. Merged #101 25766ac.
 - [ ] 10.12 `feature/mp-quick-match` - public tables for strangers (after the core).
 - [ ] 10.13 `feature/mp-bots-fill-seats` - the app's bots fill empty seats (after the core).
 - [ ] 10.14 [H] **Human gate:** create the bot at @BotFather (PLAN §19.13), give the token; play a hand with a friend on a real phone.
@@ -297,3 +297,4 @@ If the human's answer later reveals a problem, the fix becomes a new chunk ahead
 | 6 Nov 14:02–15:25Z | Final `--slow`; release PR green | `local-slow` on main 637a169: long tests, tables and the 10 self-play gates ✅; the enforced long-task check ✗ at a load of ~155. Calm re-runs of that check, then an A/B at the same load (6–9) with alternating runs: before #89 (957eea6) 2 of 3 runs failed (up to 325 ms), after #89 (637a169) 2 of 3 failed (up to 80 ms). So the button didn't cause it: the check is sensitive to this Mac's load (R17); the owner's Docker projects keep the 15-minute load at 35–155. Lighthouse ran last on cb9d4d0 (94/100/100); #89 only changes the hand-end banner. Release PR [#86](https://github.com/romanbitca/rb-pocker/pull/86) rebased on 637a169 with CHANGELOG updated: `local-ci` ✅ 1ccdb0a, 17 min, unit 3744, e2e 484. Waiting for the owner's 9.8 results; nothing is pushed to main meanwhile, so the live app doesn't change under the test. | weekly 78% → 79% |
 | 6 Nov 15:30–18:15Z | Owner request: next hand on tap | The owner, testing: "when game end and i see result, it must not start automatically" (since #89 no summary sheet held the next hand). [#90](https://github.com/romanbitca/rb-pocker/pull/90): "Deal the next hand by itself" off by default; old profiles switch once (`Settings.defaultsRev`). `local-ci` ✅ 85a74fc → 4f7e317. **Weekly reset 6 Nov 18:00Z:** 79% at the end; from now on the 80% weekly cap, don't stop. | weekly 79% → 0% (reset) |
 | 8 Nov 22:50–23:20Z | Gold edge and flake fixes merged | The owner: "ok good. now do a set of improvements, and create a telegram bot web app… work all night". Gold-edge train (#92, #93): the first run failed one old leak test on the new screen-reader suffix (fixed); then check and e2e ✅ (unit 3772, e2e 488, no flakes). Docker Desktop was off, so the header checks ran on the server started directly; `--no-docker` added (#94). Merged 25dfc72, 89ba847, e006657. | weekly 4% |
+| 8–9 Nov 23:30–02:00Z | Improvements merged; Stage 10 server and client foundations merged | Product review → three chunks (#106 hand end at the thumb, #107 no cut words + one gold rule, #102 Review decisions + leaks + Drill fit): train tip 1962a76 `local-ci` ✅ unit 4865, e2e 562 (no image built, Docker off). Stage 10 so far: design #95; trains: #98 (10.1) 7864aa3; #96, #100, #97, #99 (10.2, 10.5, 10.6, 10.7) 748c697; #104, #101 (10.8, 10.11) 25766ac; #103, #105 (10.3, 10.4) 28d58df; #109 hardening d4f5363 (a security review proved no leak, no forged login, no act-for-others; the DoS findings were fixed). Coolify built the image with the generated engine copy (deploy of 748c697: check-deploy ✅). Open: #108 (10.9 screens), 10.10 E2E (agent). | weekly 4% → see the next row |
