@@ -20,6 +20,15 @@ const COPIED_MS = 3000;
 
 const ROW: CSSProperties = { display: 'flex', justifyContent: 'space-between', gap: 12 };
 
+/** A guest's main thing (§19.10): the wait, not the invite. */
+const WAITING_LINE: CSSProperties = {
+  margin: 0,
+  fontSize: '1.25rem',
+  fontWeight: 700,
+  lineHeight: 1.3,
+  overflowWrap: 'anywhere',
+};
+
 /** Who the server would deal in (§19.4 `start`: at least 2 of them). */
 const canPlay = (seat: SeatInfo | null): boolean =>
   seat !== null && seat.stack > 0 && (seat.status === 'nextHand' || seat.status === 'playing');
@@ -58,9 +67,10 @@ function Seats({ view }: { view: TableView }) {
 
 /**
  * "Invite friends" opens Telegram's own share list; "Copy link" only where the page has a
- * clipboard, and "Link copied." says it worked.
+ * clipboard, and "Link copied." says it worked. `guest`: someone who waits for the host, for whom
+ * inviting is a side matter: no gold (§19.10).
  */
-function Invite({ link }: { link: string }) {
+function Invite({ link, guest }: { link: string; guest: boolean }) {
   const dispatch = useDispatch();
   const [copied, setCopied] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -89,7 +99,7 @@ function Invite({ link }: { link: string }) {
       <p style={{ margin: 0 }}>{t.inviteLine}</p>
       <button
         type="button"
-        className={styles.primary}
+        className={guest ? styles.secondary : styles.primary}
         onClick={() => dispatch({ type: 'mpShareInvite', text: t.shareText })}
       >
         {t.invite}
@@ -111,14 +121,20 @@ function Room({ view }: { view: TableView }) {
   const me = view.seats[view.you] ?? null;
   const host = view.seats.find((seat) => seat?.host === true) ?? null;
   const enough = view.seats.filter(canPlay).length >= 2;
+  const guest = !view.started && me?.host !== true;
   return (
     <main className={styles.page}>
       {/* Back asks "Leave this table?" here: the driver's trap (§19.6). */}
       <ScreenBar title={t.title(view.code)} onBack={() => dispatch({ type: 'back' })} />
       <div className={styles.content}>
         <ConnectionLine />
-        <Invite link={view.invite} />
+        {guest ? (
+          host !== null && <p style={WAITING_LINE}>{t.guest(host.name)}</p>
+        ) : (
+          <Invite link={view.invite} guest={false} />
+        )}
         <Seats view={view} />
+        {guest && <Invite link={view.invite} guest />}
         {view.started ? (
           <div className={styles.section}>
             <p className={styles.hint}>{t.tooFew}</p>
@@ -148,9 +164,7 @@ function Room({ view }: { view: TableView }) {
             </button>
             {!enough && <p className={styles.hint}>{t.needPlayers}</p>}
           </div>
-        ) : (
-          host !== null && <p className={styles.hint}>{t.guest(host.name)}</p>
-        )}
+        ) : null}
         <button
           type="button"
           className={styles.secondary}

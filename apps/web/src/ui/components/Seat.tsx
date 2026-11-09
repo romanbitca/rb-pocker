@@ -47,6 +47,12 @@ export interface SeatProps {
 const join = (...names: (string | false | null | undefined)[]): string =>
   names.filter(Boolean).join(' ');
 
+/**
+ * A person's name can have up to 24 characters (§19.9), and the pod is 64 px wide: it ends with
+ * "…" there, at the pod's edge (§19.10). A bot's name always fits and is never cut (1.3.100).
+ */
+const PERSON_NAME: CSSProperties = { minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' };
+
 /** Avatar background: one of 8 tokens, by a hash of the name (decoration only, §12.4). */
 export function avatarIndex(name: string): number {
   return fnv1a32(name) % 8;
@@ -188,7 +194,9 @@ function SeatImpl({ view, place, onSelect, note, turnMs }: SeatProps) {
         {view.personality !== null && (
           <SpriteIcon id={ICONS[view.personality]} className={styles.badge} />
         )}
-        <span data-seat-name="">{view.name}</span>
+        <span data-seat-name="" style={view.bot ? undefined : PERSON_NAME}>
+          {view.name}
+        </span>
       </span>
       <span className={styles.stack} data-seat-stack="">
         {compactChips(view.stack)}

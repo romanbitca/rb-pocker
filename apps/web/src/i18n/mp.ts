@@ -49,6 +49,8 @@ export const mpWords = {
   /** The status strip (`TurnStrip`): the coach's place at these tables. */
   strip: {
     yourTurn: 'Your turn',
+    /** No connection on our own turn: the seconds beside it are the most the server allows. */
+    yourTurnOffline: 'Your turn (offline)',
     thinking: (name: string) => `${name} is thinking`,
     seconds: (s: number | string) => `${s} s`,
     nextHand: (s: number | string) => `Next hand in ${s} s`,
@@ -96,9 +98,10 @@ export const mpWords = {
   ok: 'OK',
   joinGone: 'This table is gone.',
   joinFull: 'This table is full.',
-  alreadySeated: 'You are already at another table.',
-  goToMyTable: 'Go to my table',
-  leaveAndJoin: 'Leave it and join this one',
+  alreadySeated:
+    'You are already at a table. This invite is for another table. If you leave, your chips will be gone.',
+  stayAtMyTable: 'Stay at my table',
+  leaveAndJoin: 'Leave and join the new table',
   tooManyTables: 'Too many tables are open right now. Please try again later.',
   login: 'We could not check your Telegram login. Please close the game and open it again.',
   outdated: 'A new version is ready. Please close the game and open it again.',

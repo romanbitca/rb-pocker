@@ -23,6 +23,7 @@ import {
   type KeyboardEvent,
   type MouseEvent,
   type PointerEvent,
+  type ReactNode,
 } from 'react';
 import { en } from '../../i18n/en.ts';
 import { shortcutOf } from '../shortcuts.ts';
@@ -48,6 +49,8 @@ export interface RankingsDrawerProps {
   marked?: RowMarks | undefined;
   /** The collection moment's category (§12.9): its row is ringed and pulses. */
   collected?: HandCategory | null | undefined;
+  /** What stays in sight under the title: the clock of a table of the server's (§19.10). */
+  head?: ReactNode;
 }
 
 /** The sheet stays mounted this long after closing, for the 200 ms slide-out (§12.8). */
@@ -96,6 +99,7 @@ function Sheet({
   whichWins,
   marked,
   collected,
+  head,
 }: RankingsDrawerProps) {
   const titleId = useId();
   const sheetRef = useRef<HTMLDivElement>(null);
@@ -250,6 +254,7 @@ function Sheet({
             <SpriteIcon id={ICONS.close} className={styles.closeIcon} />
           </button>
         </header>
+        {head}
         <div ref={listRef} className={styles.scroll}>
           <RankingsList
             hero={hero}

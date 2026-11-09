@@ -10,7 +10,7 @@ import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { GIVE_UP_AFTER_MS } from '../../src/app/mp/socket.ts';
 import { appStore } from '../../src/app/store.ts';
 import { startHand } from '../../src/engine/start.ts';
-import type { TableView } from '../../src/net/protocol.ts';
+import type { SeatInfo, TableView } from '../../src/net/protocol.ts';
 import { en } from '../../src/i18n/en.ts';
 import { mpWords as W } from '../../src/i18n/mp.ts';
 import { App } from '../../src/ui/App.tsx';
@@ -116,9 +116,20 @@ describe("the status strip (§19.10), in the coach's place", () => {
   });
 
   it('stops at 0 and keeps no timer behind', async () => {
-    theirTurn();
-    await elapse(31_000);
+    const rig = theirTurn();
+    await elapse(21_000);
+    rig.receive({ t: 'pong', n: 1, now: 0 }); // the connection stays up: without it the clock goes (§19.10)
+    await elapse(10_000);
     expect(strip().textContent).toContain(W.strip.seconds(0));
+  });
+
+  it("never says more than the table's setting: the first decision's grace is not on show", async () => {
+    yourTurn({ decision: { seat: TO_ACT, seq: 7, deadlineAt: SERVER_NOW + 31_500 } });
+    expect(strip().textContent).toContain(W.strip.seconds(30));
+    await elapse(2000);
+    expect(strip().textContent).toContain(W.strip.seconds(30));
+    await elapse(1000);
+    expect(strip().textContent).toContain(W.strip.seconds(29));
   });
 
   it('a later view of the same decision does not restart the clock', async () => {
@@ -149,6 +160,59 @@ describe("the status strip (§19.10), in the coach's place", () => {
     rig.connect();
     rig.table(viewOfHand(kinds, hand, 2, { rev: nextRev() }));
     expect(strip().textContent).toBe(W.strip.notDealtIn);
+  });
+});
+
+describe('a name of 24 characters (§19.10)', () => {
+  const LONG = 'Maximiliana-Alexandrovna';
+  const withLong = (real: number): TableView['seats'] => {
+    const seats = [...playingView(OTHER).seats];
+    seats[real] = seatInfo(LONG);
+    return seats;
+  };
+
+  it('on a pod: one line, cut at its edge; the label says the whole name', () => {
+    theirTurn({ seats: withLong(TO_ACT) });
+    const pod = seatOf(localSeat(TO_ACT, OTHER));
+    const name = pod.querySelector('[data-seat-name]') as HTMLElement;
+    expect(name.textContent).toBe(LONG);
+    expect(name.style.overflow).toBe('hidden');
+    expect(name.style.textOverflow).toBe('ellipsis');
+    expect(pod.getAttribute('aria-label')?.startsWith(`${LONG}, stack`)).toBe(true);
+  });
+
+  it("a bot's name is never cut (1.3.100)", () => {
+    render(<Seat view={seatView()} place={PLACE} />);
+    expect((document.querySelector('[data-seat-name]') as HTMLElement).style.textOverflow).toBe('');
+  });
+
+  it('in the strip the name gives way and "is thinking" stays', () => {
+    theirTurn({ seats: withLong(TO_ACT) });
+    const line = within(strip()).getByRole('status');
+    expect(line.textContent).toBe(W.strip.thinking(LONG));
+    const name = line.firstElementChild as HTMLElement;
+    expect(name.textContent).toBe(LONG);
+    expect(name.style.textOverflow).toBe('ellipsis');
+  });
+
+  it('nine players with long names stay within the 600 DOM nodes (§15.3), the drawer open', () => {
+    const kinds: SeatKind[] = Array.from({ length: 9 }, () => 'in');
+    const hand = startHand(remoteTable(kinds), SEED);
+    const toAct = hand.toAct as number;
+    const you = (toAct + 1) % 9;
+    const view = viewOfHand(kinds, hand, you, { rev: nextRev() });
+    const rig = startMp({ startParam: CODE });
+    h = rig;
+    render(<App />);
+    rig.connect();
+    rig.table({
+      ...view,
+      seats: view.seats.map((seat, i) => seat && { ...seat, name: `${LONG}${i}` }),
+    });
+    expect(pods()).toHaveLength(8);
+    expect(document.querySelectorAll('*').length).toBeLessThanOrEqual(600);
+    fireEvent.click(screen.getAllByRole('button', { name: en.rankings.open })[0] as HTMLElement);
+    expect(document.querySelectorAll('*').length).toBeLessThanOrEqual(600);
   });
 });
 
@@ -237,6 +301,105 @@ describe('the pods (§19.6)', () => {
     );
     expect(document.body.textContent).toContain('Out');
     expect(document.body.textContent).not.toContain('Call');
+  });
+});
+
+describe('no cards in this hand: the chips stay (§19.10)', () => {
+  const OUT_SEAT = 2;
+  const kinds: SeatKind[] = ['in', 'in', 'out'];
+  const hand = startHand(remoteTable(kinds), SEED);
+  const stack = (): string | null | undefined =>
+    document.querySelector('[data-hero-stack]')?.textContent;
+
+  function noCards(status?: SeatInfo['status']): MpHarness {
+    const rig = startMp({ startParam: CODE });
+    h = rig;
+    render(<App />);
+    rig.connect();
+    const view = viewOfHand(kinds, hand, OUT_SEAT, { rev: nextRev() });
+    const seats = [...view.seats];
+    seats[OUT_SEAT] = seatInfo('Me', { status: status ?? 'nextHand', stack: 975 });
+    rig.table({ ...view, seats });
+    return rig;
+  }
+
+  it.each(['nextHand', 'sittingOut', 'busted'] as const)('%s: "You · 975"', (status) => {
+    noCards(status);
+    expect(stack()).toBe(en.table.heroChips('975'));
+  });
+
+  it('with cards it is the hand`s own, once', () => {
+    yourTurn();
+    expect(document.querySelectorAll('[data-hero-stack]')).toHaveLength(1);
+  });
+
+  it("compact mode keeps its clock: the pill sits in the hero's block", () => {
+    vi.stubGlobal('matchMedia', (query: string) => ({
+      matches: query === COMPACT_QUERY,
+      media: query,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+    }));
+    try {
+      noCards();
+      expect(stack()).toBe(en.table.heroChips('975'));
+      expect(strip().closest('section')).toBe(
+        screen.getByRole('region', { name: en.table.yourHand }),
+      );
+      expect(strip().textContent).toBe(W.strip.notDealtIn);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('in the landscape column too', () => {
+    const rig = noCards();
+    act(() => appStore.setState((s) => ({ ui: { ...s.ui, layout: 'landscape' } })));
+    expect(rig.state().ui.layout).toBe('landscape');
+    expect(stack()).toBe(en.table.heroChips('975'));
+    expect(document.querySelectorAll('[data-hero-stack]')).toHaveLength(1);
+  });
+});
+
+describe('the Hands drawer keeps the clock in sight (§19.10)', () => {
+  const openDrawer = (): HTMLElement => {
+    fireEvent.click(screen.getAllByRole('button', { name: en.rankings.open })[0] as HTMLElement);
+    return screen.getByRole('dialog', { name: en.rankings.title });
+  };
+
+  it('your turn: under its title, counting', async () => {
+    yourTurn();
+    const band = (): HTMLElement =>
+      document.querySelector('[role="dialog"] [data-turn]') as HTMLElement;
+    openDrawer();
+    expect(band().getAttribute('data-turn')).toBe('you');
+    expect(band().textContent).toContain(W.strip.seconds(30));
+    await elapse(1000);
+    expect(band().textContent).toContain(W.strip.seconds(29));
+  });
+
+  it('only while it is open', () => {
+    yourTurn();
+    expect(document.querySelectorAll('[data-turn]')).toHaveLength(1);
+  });
+
+  it('in landscape the column stays in sight, so it needs none', () => {
+    const rig = yourTurn();
+    act(() => appStore.setState((s) => ({ ui: { ...s.ui, layout: 'landscape' } })));
+    expect(rig.state().ui.layout).toBe('landscape');
+    expect(openDrawer().querySelector('[data-turn]')).toBeNull();
+  });
+
+  it('a Table of the local game has none', () => {
+    const local: TableHarness = startTableHarness();
+    try {
+      render(<App />);
+      act(() => local.state().dispatch({ type: 'play' }));
+      expect(openDrawer().querySelector('[data-turn]')).toBeNull();
+    } finally {
+      cleanup();
+      local.dispose();
+    }
   });
 });
 
@@ -497,6 +660,28 @@ describe('busted (§19.10)', () => {
     expect(screen.queryByRole('alertdialog')).toBeNull();
   });
 
+  it('the result first: nothing covers the hand that took the last chips', () => {
+    const states = playedHand(remoteTable(KINDS));
+    const last = states[states.length - 1] as (typeof states)[number];
+    const rig = startMp({ startParam: CODE });
+    h = rig;
+    render(<App />);
+    rig.connect();
+    const view = viewOfHand(KINDS, last, 0, { rev: nextRev() });
+    const seats = view.seats.map((seat, i) =>
+      i === 0 && seat ? { ...seat, status: 'busted' as const, stack: 0 } : seat,
+    );
+    rig.table({ ...view, seats });
+    expect(document.querySelector('[data-hand-result]')).not.toBeNull();
+    expect(strip().getAttribute('data-turn')).toBe('nextHand');
+    expect(screen.queryByRole('alertdialog')).toBeNull();
+    // The next deal: this seat has no cards in it, and now the question comes.
+    const kinds: SeatKind[] = ['out', 'in', 'in'];
+    const next = viewOfHand(kinds, startHand(remoteTable(kinds), SEED), 0, { rev: nextRev() });
+    rig.table({ ...next, seats: next.seats.map((seat, i) => (i === 0 ? seats[0]! : seat)) });
+    expect(screen.getByRole('alertdialog').textContent).toContain(W.busted.text);
+  });
+
   it('a bust at a local table keeps its own words', () => {
     const local = startTableHarness();
     try {
@@ -541,6 +726,45 @@ describe('the connection (§19.10)', () => {
     const before = rig.sockets.length;
     fireEvent.click(within(alert).getByRole('button', { name: W.connection.tryAgain }));
     expect(rig.sockets.length).toBe(before + 1);
+  });
+
+  it('on your own turn the strip counts what the server allows, and says so', () => {
+    const rig = yourTurn();
+    expect(strip().textContent).toContain(W.strip.seconds(30));
+    act(() => rig.ws().drop(1006));
+    expect(strip().getAttribute('data-turn')).toBe('youOffline');
+    expect(within(strip()).getByRole('status').textContent).toBe(W.strip.yourTurnOffline);
+    expect(strip().textContent).toContain(W.strip.seconds(15));
+  });
+
+  it('at 0 the strip goes quiet: the server has played that turn', async () => {
+    const rig = yourTurn();
+    act(() => rig.ws().drop(1006));
+    await elapse(15_100);
+    expect(strip().getAttribute('data-turn')).toBe('');
+    expect(strip().textContent).toBe('');
+  });
+
+  it("someone else's clock and ring go, and come back with the connection", async () => {
+    const rig = theirTurn();
+    const ring = (): Element | null => document.querySelector('[style*="--turn-ms"]');
+    expect(ring()).not.toBeNull();
+    act(() => rig.ws().drop(1006));
+    expect(strip().textContent).toBe('');
+    expect(ring()).toBeNull();
+    await elapse(1000);
+    rig.connect('ABCD2345');
+    rig.table(playingView(OTHER));
+    expect(strip().textContent).toContain(W.strip.thinking(`P${TO_ACT}`));
+    expect(strip().textContent).toContain(W.strip.seconds(29));
+    expect(ring()).not.toBeNull();
+  });
+
+  it('the card "We can\'t reach the game." is solid: the seat under it does not show through', async () => {
+    const rig = yourTurn();
+    act(() => rig.ws().drop(1006));
+    await elapse(GIVE_UP_AFTER_MS + 60_000);
+    expect(screen.getByRole('alert').style.background).toBe('var(--surface)');
   });
 
   it('"Leave table" there goes Home without the server', async () => {

@@ -14,6 +14,7 @@
  */
 import {
   MP_WS_PATH,
+  OFFLINE_TURN_MS,
   START_NEW,
   TABLE_CODE_RE,
   WS_CLOSE,
@@ -114,7 +115,10 @@ export class MpDriver {
   private socket: MpSocket | null = null;
   private view: TableView | null = null;
   private active = false;
-  /** What to ask the server for, until a `table` (or a refusal) answers it. */
+  /**
+   * What to ask the server for, until a `table` (or a refusal) answers it. An invite to another
+   * table stays here while the player, already seated, is asked what to do (§19.10).
+   */
   private intent: Intent | null = null;
   /** `startapp=new` with a remembered table: the Create screen, if that table is gone. */
   private createScreenAfterWelcome = false;
@@ -126,6 +130,8 @@ export class MpDriver {
   private acting = false;
   /** A new socket: its first view may repeat the last `rev` (§19.4), and the bar waits for it. */
   private awaitsView = false;
+  /** When the connection went, until a view from the server says how things stand (§19.10). */
+  private offlineSince: number | null = null;
   /** This launch's start code has done its job: `launch()` asks nothing of it (§19.6). */
   private startSpent = false;
   private toastSeq = FIRST_TOAST_ID;
@@ -291,6 +297,10 @@ export class MpDriver {
     const { problem } = this.store.getState().mp;
     if (problem?.kind !== 'alreadySeated') return;
     this.clearProblem();
+    if (this.view?.code === problem.other) {
+      this.intent = null; // "Stay at my table": it is on show already
+      return;
+    }
     this.intent = { kind: 'join', code: problem.other };
     this.sendIntent();
   }
@@ -358,6 +368,7 @@ export class MpDriver {
     } else if (this.view !== null && this.active) {
       // A new socket: `welcome` comes first, then the `table` the bar waits for.
       if (connection === 'online') this.awaitsView = true;
+      else this.offlineSince ??= this.monotonic();
       this.publish(); // the bar locks while offline
     }
   };
@@ -399,15 +410,18 @@ export class MpDriver {
   private onWelcome(code: string | null): void {
     if (this.view !== null) {
       if (code === null) {
-        if (this.leaving) this.leave();
+        if (this.afterLeft !== null) this.onLeft();
+        else if (this.leaving) this.leave();
         else this.tableEnded('gone');
         return;
       }
-      if (this.leaving) this.socket?.send({ t: 'leave' });
+      if (this.leaving || this.afterLeft !== null) this.socket?.send({ t: 'leave' });
       return;
     }
     if (code !== null) {
-      this.intent = null; // seated (§19.6): a `table` follows, whatever was asked for
+      // Seated (§19.6): a `table` follows, whatever was asked for. An invite to another table is
+      // kept: the player is asked what to do when that `table` comes (§19.10).
+      if (this.intent?.kind !== 'join' || this.intent.code === code) this.intent = null;
       return;
     }
     this.forgetTable();
@@ -427,8 +441,10 @@ export class MpDriver {
       if (view.rev < last.rev || (view.rev === last.rev && !this.awaitsView)) return;
     }
     this.awaitsView = false;
+    this.offlineSince = null;
     this.acting = false;
-    this.intent = null;
+    const invitedElsewhere = this.intent?.kind === 'join' && this.intent.code !== view.code;
+    if (!invitedElsewhere) this.intent = null;
     this.spendStart();
     this.createScreenAfterWelcome = false;
     const entering = !this.active;
@@ -438,6 +454,7 @@ export class MpDriver {
     if (last?.code !== view.code) this.rememberTable(view.code);
     this.showScreen(view, entering);
     this.syncBustDialog();
+    if (entering && invitedElsewhere) this.showProblem({ kind: 'alreadySeated', other: view.code });
     // The Table's bar holds one toast, the newest (§12.11): who left says more than who is host.
     for (const notice of [...notices].sort(hostChangedFirst)) this.say(notice);
   }
@@ -450,6 +467,14 @@ export class MpDriver {
     }
     this.afterLeft = null;
     this.intent = next;
+    // The old table is over for this player: "Joining the table…" until the new one answers, so a
+    // refusal has nothing stale behind it (`dismissProblem` goes Home from that screen).
+    this.forgetTable();
+    this.view = null;
+    this.offlineSince = null;
+    this.setMp({ view: null, turnEndsAt: null, nextHandEndsAt: null, turn: null, notes: [] });
+    this.dispatch({ type: 'close', overlay: 'outOfChips' });
+    this.dispatch({ type: 'replace', screen: 'mpRoom' });
     this.sendIntent();
   }
 
@@ -547,7 +572,8 @@ export class MpDriver {
         : old?.nextHandAt === nextHandAt && mp.nextHandEndsAt !== null
           ? mp.nextHandEndsAt
           : now + (nextHandAt - view.now);
-    const turn = turnOf(view, turnEndsAt, nextHandEndsAt);
+    const offlineEndsAt = this.offlineSince === null ? null : this.offlineSince + OFFLINE_TURN_MS;
+    const turn = turnOf(view, turnEndsAt, nextHandEndsAt, offlineEndsAt);
     const notes = old === view ? mp.notes : notesOf(view);
     this.store.setState((s) => ({
       game: { ...local, legal: locked ? null : local.legal, diag: s.game.diag },
@@ -565,15 +591,20 @@ export class MpDriver {
     }
   }
 
-  /** §19.10: the out-of-chips dialog is open exactly while the viewer's seat is busted. */
+  /**
+   * §19.10: the out-of-chips dialog is open while the viewer's seat is busted, but first the hand
+   * that took the last chips stays on show: its result would be under the dialog, and the next
+   * deal (a new view, whatever it holds) comes by itself. A later hand end changes nothing: the
+   * viewer was not dealt in, and an open dialog stays.
+   */
   private syncBustDialog(): void {
     const { game, ui } = this.store.getState();
     const open = ui.overlays.includes('outOfChips');
-    if (game.heroBust === open) return;
+    const resultOnShow = game.mode === 'handEnd' && game.hand?.seats[0]?.dealtIn === true;
+    const want = game.heroBust && !resultOnShow;
+    if (want === open) return;
     this.dispatch(
-      game.heroBust
-        ? { type: 'open', overlay: 'outOfChips' }
-        : { type: 'close', overlay: 'outOfChips' },
+      want ? { type: 'open', overlay: 'outOfChips' } : { type: 'close', overlay: 'outOfChips' },
     );
   }
 
@@ -630,6 +661,7 @@ export class MpDriver {
     this.leaving = false;
     this.acting = false;
     this.awaitsView = false;
+    this.offlineSince = null;
     this.view = null;
     if (this.active) {
       this.releaseController();

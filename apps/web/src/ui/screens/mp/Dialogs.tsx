@@ -21,19 +21,20 @@ export function LeaveDialog() {
       <p id={textId} className={o.text}>
         {t.leave.text}
       </p>
+      {/* The safe answer comes first: it has the gold and the focus (§19.10). */}
       <div className={o.buttons}>
+        <button type="button" className={styles.primary} onClick={stay}>
+          {t.leave.stay}
+        </button>
         <button
           type="button"
-          className={styles.primary}
+          className={styles.secondary}
           onClick={() => {
             stay();
             dispatch({ type: 'leaveTable' });
           }}
         >
           {t.leave.confirm}
-        </button>
-        <button type="button" className={styles.secondary} onClick={stay}>
-          {t.leave.stay}
         </button>
       </div>
     </Modal>
@@ -70,7 +71,7 @@ export function ProblemDialog() {
               className={styles.primary}
               onClick={() => dispatch({ type: 'mpGoToMyTable' })}
             >
-              {t.goToMyTable}
+              {t.stayAtMyTable}
             </button>
             <button
               type="button"

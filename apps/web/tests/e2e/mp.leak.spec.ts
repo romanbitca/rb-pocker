@@ -258,6 +258,11 @@ test('three browsers: L1–L6 on every real frame, over a showdown, folds, a run
   }
   expect(reloads).toBeGreaterThan(0);
 
+  // A reload comes after the next deal (§19.10): with a chopped pot that hand has only two.
+  while (((await pcView(ann.page))?.hand?.seats ?? []).filter((s) => s.dealtIn).length < 3) {
+    await waitForHand(ann.page, await playHand(all, () => 'checkOrCall'));
+  }
+
   // A showdown.
   const showdown = await playHand(all, () => 'checkOrCall');
   await Promise.all(all.map((p) => waitForHandEnd(p.page, showdown)));

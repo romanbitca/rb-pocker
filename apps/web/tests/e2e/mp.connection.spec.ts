@@ -85,6 +85,10 @@ test('a dropped connection and back: the seat, the cards and the turn are all st
     plug.pull();
     await expect(ann.page.getByText(CONNECTION_LOST)).toBeVisible();
     await expect(slot(ann.page, 'middle')).toHaveAttribute('aria-disabled', 'true');
+    // Her clock says what the server allows a player who is offline (§19.5, §19.10), not "58 s".
+    const offline = ann.page.locator('[data-turn="youOffline"]');
+    await expect(offline).toContainText('Your turn (offline)');
+    expect(Number(((await offline.textContent()) ?? '').match(/(\d+) s$/)?.[1])).toBeLessThan(16);
     await expect(pod(bob.page, 'Ann')).toContainText('Offline');
     expect((await mpState(bob.page)).turn).toBe(false);
 

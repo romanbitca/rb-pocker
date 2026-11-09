@@ -16,6 +16,8 @@ export const MP_MAX_INBOUND_BYTES = 16_384;
 /** The client pings this often; no pong within MP_PONG_WAIT_MS means the socket is dead. */
 export const MP_PING_EVERY_MS = 20_000;
 export const MP_PONG_WAIT_MS = 10_000;
+/** At most this long on a turn for a player who is offline (§19.5). The strip shows it (§19.10). */
+export const OFFLINE_TURN_MS = 15_000;
 
 /** A table code: 8 characters without 0, O, 1, I, L. It is also the invite's `startapp` value. */
 export const TABLE_CODE_RE = /^[2-9A-HJKMNP-Z]{8}$/;

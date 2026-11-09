@@ -50,13 +50,19 @@ export function seatOrder(view: Pick<TableView, 'seats' | 'you'>): number[] {
 /**
  * What the status strip says (§19.10); first match: a hand on show, the viewer not dealt in, the
  * open decision. Null: nothing to say.
+ *
+ * `offlineEndsAt`: the connection is gone, and this is when the time the server allows a player
+ * who is offline runs out (null: online). The server's clocks cannot be seen then, so the only
+ * one left is the viewer's own turn, which ends by that moment at the latest (§19.5).
  */
 export function turnOf(
   view: TableView,
   turnEndsAt: number | null,
   nextHandEndsAt: number | null,
+  offlineEndsAt: number | null = null,
 ): MpTurn | null {
-  if (nextHandEndsAt !== null) return { kind: 'nextHand', endsAt: nextHandEndsAt };
+  const offline = offlineEndsAt !== null;
+  if (nextHandEndsAt !== null) return offline ? null : { kind: 'nextHand', endsAt: nextHandEndsAt };
   // Only a seat the next deal will take: someone sitting out or busted is told what to do instead.
   const dealtNext = view.seats[view.you]?.status === 'nextHand';
   if (dealtNext && view.hand !== null && view.hand.seats[view.you]?.dealtIn !== true) {
@@ -64,8 +70,12 @@ export function turnOf(
   }
   const seat = view.decision?.seat;
   if (seat === undefined || turnEndsAt === null) return null;
-  if (seat === view.you) return { kind: 'you', endsAt: turnEndsAt };
-  return { kind: 'other', name: view.seats[seat]?.name ?? '', endsAt: turnEndsAt };
+  if (seat === view.you) {
+    return offline
+      ? { kind: 'youOffline', endsAt: Math.min(turnEndsAt, offlineEndsAt) }
+      : { kind: 'you', endsAt: turnEndsAt };
+  }
+  return offline ? null : { kind: 'other', name: view.seats[seat]?.name ?? '', endsAt: turnEndsAt };
 }
 
 function noteOf(seat: SeatInfo | null | undefined): SeatNote | null {

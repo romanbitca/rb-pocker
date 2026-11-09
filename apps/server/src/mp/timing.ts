@@ -5,8 +5,8 @@
 
 /** Added to the first decision of a hand. */
 export const DEAL_GRACE_MS = 1_500;
-/** At most this long for a player who is offline. */
-export const OFFLINE_TURN_MS = 15_000;
+/** At most this long for a player who is offline. The client's strip needs it too (§19.10). */
+export { OFFLINE_TURN_MS } from '../game/net/protocol.js';
 /** A player whose `timeouts` already stands at `TIMEOUTS_TO_SIT_OUT` (the rest of this hand). */
 export const AWAY_TURN_MS = 3_000;
 /** Before an `advance`. */
