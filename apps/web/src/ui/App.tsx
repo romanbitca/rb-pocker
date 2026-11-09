@@ -35,6 +35,7 @@ import {
   selectNav,
   selectNudge,
   selectReadOnly,
+  selectRemote,
   selectSessionLine,
   selectToasts,
   useAppStore,
@@ -366,6 +367,9 @@ const SCREENS = {
   drill: () => <LaterScreen name="DrillScreen" />,
   about: () => <LaterScreen name="AboutScreen" />,
   privacy: () => <LaterScreen name="PrivacyScreen" />,
+  // Placeholders: nothing can open them before chunk 10.9 brings their screens (§19.6).
+  mpCreate: () => null,
+  mpRoom: () => null,
 } as const;
 
 /**
@@ -489,12 +493,13 @@ export function App() {
   usePreloadScreens();
   const nav = useAppStore(selectNav);
   const readOnly = useAppStore(selectReadOnly);
+  const remote = useAppStore(selectRemote); // §19.6: a table of the server's writes nothing here
 
   return (
     <>
       <SvgSprite />
       <ScreenSwitcher
-        nav={readOnly ? readOnlyNav(nav) : nav}
+        nav={readOnly && !remote ? readOnlyNav(nav) : nav}
         screens={SCREENS}
         overlays={OVERLAYS}
       />

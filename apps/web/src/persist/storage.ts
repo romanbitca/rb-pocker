@@ -27,6 +27,8 @@ export const STORAGE_KEYS = {
   preimport: 'pc.v1.preimport',
   /** The hand drill's stats and choices (§13.5), outside the profile. */
   drill: 'pc.v1.drill',
+  /** The code of the table of the server's this device sits at (§19.6). */
+  mpTable: 'pc.v1.mpTable',
 } as const;
 
 /** Unreadable data is copied to `pc.corrupt.<timestamp>`, never deleted automatically (§14.6). */

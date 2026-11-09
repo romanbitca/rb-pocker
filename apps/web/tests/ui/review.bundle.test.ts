@@ -24,6 +24,7 @@ import { build, type Plugin } from 'vite';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { BUDGETS, measureBudgets, type Row } from '../../scripts/size-budget.ts';
 import { SHIPPED_PACKAGES } from '../../src/data/licences.ts';
+import { MP_WS_PATH } from '../../src/net/protocol.ts';
 import { en } from '../../src/i18n/en.ts';
 import { enStart } from '../../src/i18n/start.ts';
 import { LEARN_MARKER } from '../../src/ui/screens/learnMarker.ts';
@@ -363,6 +364,26 @@ describe('Telegram in the production build (§19.7, Stage 10 acceptance 14)', ()
       expect(text(file), file).not.toContain('web_app_ready');
       expect(text(file), file).not.toContain('TelegramWebviewProxy');
     }
+  });
+});
+
+describe('Play with friends in the production build (§19.3, chunk 10.8)', () => {
+  it('no module of §19.3 is in an initial chunk: the store knows them only by their types', () => {
+    const initial = rowOf('Initial JS').files;
+    const modules = [
+      'src/app/mp/socket.ts',
+      'src/app/mp/localView.ts',
+      'src/app/mp/driver.ts',
+      'src/net/protocol.ts',
+      'src/engine/project.ts',
+    ];
+    for (const source of modules) {
+      // A module nothing imports yet (the Telegram entry comes with chunk 10.9) is in no chunk.
+      const file = chunkOf.get(source);
+      if (file !== undefined) expect(initial, source).not.toContain(file);
+    }
+    // Whatever reaches the first paint at run time would bring the protocol's path with it.
+    for (const file of initial) expect(text(file), file).not.toContain(MP_WS_PATH);
   });
 });
 

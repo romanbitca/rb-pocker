@@ -29,6 +29,9 @@
  * one of its sections: 'about' opens it at the top (Settings, the Menu), 'privacy' at its Privacy
  * section (the Privacy links of Welcome and Setup). Each is pushed like any screen, so Back returns
  * to the page that opened it.
+ *
+ * 'mpCreate' and 'mpRoom' (§19.6, Telegram only): "New table", and the waiting room, which also
+ * says "Joining the table…" while no view has come yet.
  */
 export type Screen =
   | 'welcome'
@@ -44,7 +47,9 @@ export type Screen =
   | 'glossary'
   | 'drill'
   | 'about'
-  | 'privacy';
+  | 'privacy'
+  | 'mpCreate'
+  | 'mpRoom';
 
 /**
  * Layers over a screen. Each one but the sizing tray keeps a controller gate closed while it is
@@ -62,6 +67,8 @@ export type Screen =
  * - 'drillGames', 'drillStats': the hand drill's two sheets (§13.5); its All hands drawer is
  *   'rankings'.
  * - 'shortcuts': the list of keyboard shortcuts (§12.5 "?", chunk 9.3), a modal dialog.
+ * - 'mpLeave': "Leave this table?" (§19.6, what Back asks at a table); 'mpProblem': a table that
+ *   ended, a join that failed…; only its own buttons close it.
  */
 export type Overlay =
   | 'menu'
@@ -79,7 +86,9 @@ export type Overlay =
   | 'dataReset'
   | 'drillGames'
   | 'drillStats'
-  | 'shortcuts';
+  | 'shortcuts'
+  | 'mpLeave'
+  | 'mpProblem';
 
 export interface Nav {
   /** The back stack, oldest first; the last one is on screen. Never empty; [0] is a root. */
@@ -124,6 +133,8 @@ const BACK_CLOSES: Readonly<Record<Overlay, boolean>> = {
   drillGames: true,
   drillStats: true,
   shortcuts: true,
+  mpLeave: true,
+  mpProblem: false,
 };
 
 /** The first screen: Welcome on the first launch (no saved profile), Home after that (§12.1). */

@@ -159,9 +159,11 @@ import type { Suggestion, SuggestionTools } from './suggestions.ts';
 import type { UpdateEvent, UpdatePort } from './swUpdate.ts';
 import type { TabLock, TabLockEvent } from './tabLock.ts';
 import {
+  initialCoach,
   NO_SEAT_STATS,
   updateUi,
   type AppStore,
+  type CoachSlice,
   type ControllerMode,
   type Diagnostics,
   type GameCommand,
@@ -702,6 +704,10 @@ export class TableController {
   private settingsDirty = false;
 
   private epoch = 0;
+  /** §19.6: a multiplayer table owns the `game` slice (`park`, `unpark`). */
+  private parked = false;
+  /** This game's coach slice while parked: the hint the player had open comes back with it. */
+  private parkedCoach: CoachSlice | null = null;
   private mode: ControllerMode = 'booting';
   /** The table the current hand was dealt from, as at hand start. */
   private table: TableState | null = null;
@@ -2023,7 +2029,8 @@ export class TableController {
     }
     // §15.1: back on Home with nothing open, a waiting version may go in now.
     this.updateWhenSafe();
-    if (this.hold !== 'feedback' || ui.overlays.includes('feedback')) return;
+    // §19.6: the Table on show is a table of the server's: this game's card waits for its own.
+    if (this.parked || this.hold !== 'feedback' || ui.overlays.includes('feedback')) return;
     if (ui.screen !== 'table') return;
     if (prev.screen === 'table' && prev.overlays.includes('feedback')) this.keepMove();
     else this.ui({ type: 'open', overlay: 'feedback' });
@@ -3321,10 +3328,38 @@ export class TableController {
     return this.legalCache.legal;
   }
 
-  /** Writes the `game` slice when something in it changed; the equity jobs follow the hand. */
+  /** Everything the store shows of this game, except while parked (§19.6): then only `data`. */
   private publish(): void {
     this.prepareCodes();
     this.latchLevel();
+    if (!this.parked) this.publishGame();
+    this.publishData();
+  }
+
+  /**
+   * §19.6: a multiplayer table takes the `game` slice. This game stands still and its equity and
+   * coach slices empty; `offTable` is held closed by the driver, so nothing here moves meanwhile.
+   */
+  park(): void {
+    if (this.parked) return;
+    this.parked = true;
+    this.equityJobs?.sync(null, this.epoch);
+    this.hintJobs?.sync(null);
+    this.parkedCoach = this.store.getState().coach;
+    this.store.setState({ coach: initialCoach() });
+  }
+
+  /** The multiplayer table is over: this game comes back exactly as it was. */
+  unpark(): void {
+    if (!this.parked) return;
+    this.parked = false;
+    if (this.parkedCoach !== null) this.store.setState({ coach: this.parkedCoach });
+    this.parkedCoach = null;
+    this.publish();
+  }
+
+  /** Writes the `game` slice when something in it changed; the equity jobs follow the hand. */
+  private publishGame(): void {
     const hand = this.hand;
     const legal = this.mode === 'heroTurn' && hand !== null ? this.legalOf(hand) : null;
     const heroBust = this.heroBust();
@@ -3383,9 +3418,14 @@ export class TableController {
     this.equityJobs?.sync(this.headless ? null : hand, this.epoch);
     // The coach's hint for the hero's decision; null cancels it (§8.2, chunk 5.7).
     this.hintJobs?.sync(this.hintAsk(hand, legal));
-    // §14.7, §14.8: the tab mode, "Protected from automatic clean-up", Import's preview; §12.13,
-    // §10.4: the install offer, the one-time install card, the level suggestion; §12.11: the
-    // first-table tips seen.
+  }
+
+  /**
+   * §14.7, §14.8: the tab mode, "Protected from automatic clean-up", Import's preview; §12.13,
+   * §10.4: the install offer, the one-time install card, the level suggestion; §12.11: the
+   * first-table tips seen.
+   */
+  private publishData(): void {
     const persisted = this.profile?.persistGranted ?? null;
     const install = this.install?.ready() === true;
     const nudge = this.nudge();

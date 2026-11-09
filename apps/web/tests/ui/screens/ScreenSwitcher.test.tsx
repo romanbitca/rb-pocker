@@ -97,6 +97,8 @@ function App({ firstLaunch, onPlay }: { firstLaunch: boolean; onPlay: () => void
         drill: () => <h1>Hand drill</h1>,
         about: () => <h1>About</h1>,
         privacy: () => <h1>About</h1>,
+        mpCreate: () => <h1>New table</h1>,
+        mpRoom: () => <h1>Waiting room</h1>,
       }}
       overlays={{
         menu: () => (
@@ -176,6 +178,8 @@ describe('ScreenSwitcher', () => {
           drill: renderer('drill'),
           about: renderer('about'),
           privacy: renderer('privacy'),
+          mpCreate: renderer('mpCreate'),
+          mpRoom: renderer('mpRoom'),
         }}
         overlays={{
           menu: renderer('menu'),
@@ -246,6 +250,8 @@ describe('ScreenSwitcher', () => {
           drill: () => <h1>D</h1>,
           about: () => <h1>A</h1>,
           privacy: () => <h1>P</h1>,
+          mpCreate: () => <h1>C</h1>,
+          mpRoom: () => <h1>O</h1>,
         }}
         overlays={{ menu: () => null, outOfChips: () => null, newTable: () => null }}
       />
