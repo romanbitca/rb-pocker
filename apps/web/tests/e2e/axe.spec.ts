@@ -891,7 +891,25 @@ test.describe('axe: Play with friends', () => {
     }
   });
 
-  test('out of chips: the dialog over the Table, and over the waiting room', async ({
+  test('an invite to another table while seated: the dialog over the table', async ({
+    telegram,
+  }, testInfo) => {
+    test.setTimeout(120_000);
+    const ann = await telegram.open(newTelegramUser('Ann'));
+    const mine = await createTable(ann, { seats: 3, stakes: 'quick', turnSeconds: 60 });
+    const bob = await telegram.open(newTelegramUser('Bob'), { startParam: mine });
+    await expect(button(ann.page, 'Start game')).toBeEnabled();
+    await startGame(ann, [ann, bob]);
+    const eve = await telegram.open(newTelegramUser('Eve'));
+    const other = await createTable(eve, { seats: 3, stakes: 'quick', turnSeconds: 60 });
+    await relaunch(bob, { startParam: other });
+    await expect(bob.page.getByRole('alertdialog')).toContainText('You are already at a table.');
+    const audit = new Audit(bob.page, testInfo);
+    await audit.check('Dialog: an invite to another table');
+    await audit.done();
+  });
+
+  test('out of chips: the result, then the dialog over the waiting room', async ({
     telegram,
   }, testInfo) => {
     test.setTimeout(180_000);
@@ -918,8 +936,9 @@ test.describe('axe: Play with friends', () => {
     }
     if (loser === undefined) throw new Error('nobody lost all their chips in six all-ins');
     const audit = new Audit(loser.page, testInfo);
-    await expect(loser.page.getByRole('alertdialog')).toBeVisible();
-    await audit.check('Dialog: out of chips, at the Table of the server');
+    // The result first (§19.10); with nobody else to play the next deal is the waiting room.
+    await expect(loser.page.getByRole('alertdialog')).toHaveCount(0);
+    await expect(loser.page.getByRole('alertdialog')).toBeVisible({ timeout: 15_000 });
     await waitForRoom(loser.page);
     await audit.check('Dialog: out of chips, over the waiting room');
     await audit.done();

@@ -1239,6 +1239,8 @@ export const selectInTelegram = (s: AppState): boolean => s.tg.inside;
 /** What the status strip says (§19.10); `endsAt` is `performance.now()` time. */
 export type MpTurn =
   | { kind: 'you'; endsAt: number }
+  /** Our own turn with no connection: what the server allows a player who is offline (§19.10). */
+  | { kind: 'youOffline'; endsAt: number }
   | { kind: 'other'; name: string; endsAt: number }
   | { kind: 'nextHand'; endsAt: number }
   | { kind: 'notDealtIn' };

@@ -11,13 +11,16 @@
  * Look: inline, so this chunk adds nothing to the one stylesheet (its budget is nearly used, §15.3).
  */
 import { memo, useEffect, useState, type CSSProperties } from 'react';
-import { selectTurn, useAppStore, type MpTurn } from '../../app/store.ts';
+import { selectTurn, useAppStore, type AppState, type MpTurn } from '../../app/store.ts';
 import { mpWords } from '../../i18n/mp.ts';
 
 const t = mpWords.strip;
 
-/** Where it sits: portrait's 56 px row, compact mode's pill, the landscape column, the wide panel. */
-export type TurnStripVariant = 'strip' | 'pill' | 'side' | 'panel';
+/**
+ * Where it sits: portrait's 56 px row, compact mode's pill, the landscape column, the wide panel,
+ * the Hands drawer (which covers the first two).
+ */
+export type TurnStripVariant = 'strip' | 'pill' | 'side' | 'panel' | 'drawer';
 
 const BOX: CSSProperties = {
   display: 'flex',
@@ -33,9 +36,24 @@ const BOX: CSSProperties = {
 
 const VARIANT: Readonly<Record<TurnStripVariant, CSSProperties>> = {
   strip: { height: 50 },
-  pill: { height: 44, maxWidth: 200, gap: 6, fontSize: '0.875rem' },
+  // At 360 px it ends before "You · 975 SB", on the same row of the hero strip. The padding: its
+  // lower 8 px are over Row A's edge, and two lines of words stay above that.
+  pill: {
+    height: 44,
+    maxWidth: 'min(200px, 40vw)',
+    gap: 6,
+    paddingBottom: 8,
+    fontSize: '0.875rem',
+  },
   side: { minHeight: 44, flexWrap: 'wrap' },
   panel: { minHeight: 44 },
+  drawer: {
+    flex: 'none',
+    height: 40,
+    gap: 8,
+    borderBottom: '1px solid rgb(242 245 243 / 8%)',
+    fontSize: '0.875rem',
+  },
 };
 
 const NUMBERS: CSSProperties = {
@@ -45,6 +63,22 @@ const NUMBERS: CSSProperties = {
 };
 /** Below this many seconds they are bold (§19.10). */
 const LOW_SECONDS = 10;
+
+/**
+ * A name of up to 24 characters, one line (§19.10): it gives way, the rest stays. Beside "is
+ * thinking" when both fit on the line, above it when they do not.
+ */
+const NAME: CSSProperties = {
+  display: 'inline-block',
+  maxWidth: '100%',
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  verticalAlign: 'bottom',
+  whiteSpace: 'nowrap',
+};
+
+/** The table's own setting: the first decision's 1.5 s of grace (§19.5) is not said (61 of 60). */
+const selectLimit = (s: AppState): number => s.mp.view?.settings.turnSeconds ?? Infinity;
 
 /** The whole seconds left on `endsAt`, kept fresh by a timer while there is a clock. */
 function useSecondsLeft(endsAt: number | null): number {
@@ -79,6 +113,7 @@ export interface TurnStripProps {
 
 export const TurnStrip = memo(function TurnStrip({ variant, className }: TurnStripProps) {
   const turn = useAppStore(selectTurn);
+  const limit = useAppStore(selectLimit);
   const seconds = useSecondsLeft(endsAtOf(turn));
   const box = { ...BOX, ...VARIANT[variant] };
   // Nothing to say (cards are being turned, the hand is between streets): its row stays.
@@ -97,19 +132,33 @@ export const TurnStrip = memo(function TurnStrip({ variant, className }: TurnStr
       </div>
     );
   }
-  const low = seconds < LOW_SECONDS;
+  // The time an offline player has is up: the server has played the turn, and the next view says
+  // how. Until then nothing here is known.
+  if (turn.kind === 'youOffline' && seconds === 0) {
+    return <div className={className} style={box} data-turn="" />;
+  }
+  const shown = Math.min(seconds, limit);
+  const low = shown < LOW_SECONDS;
   return (
     <div className={className} style={box} data-turn={turn.kind}>
-      {/* A long name wraps: no "…" on the Table (1.3.100). */}
-      <span style={{ minWidth: 0, overflowWrap: 'anywhere' }} role="status">
-        {turn.kind === 'you' ? t.yourTurn : t.thinking(turn.name)}
+      <span style={{ minWidth: 0 }} role="status">
+        {turn.kind === 'you' ? (
+          t.yourTurn
+        ) : turn.kind === 'youOffline' ? (
+          t.yourTurnOffline
+        ) : (
+          <>
+            <span style={NAME}>{turn.name}</span>
+            {t.thinking('')}
+          </>
+        )}
       </span>
       <span
         style={low ? { ...NUMBERS, fontWeight: 700 } : NUMBERS}
         aria-hidden="true"
         data-seconds={low ? 'low' : ''}
       >
-        {t.seconds(seconds)}
+        {t.seconds(shown)}
       </span>
     </div>
   );

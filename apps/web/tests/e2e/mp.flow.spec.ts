@@ -319,11 +319,16 @@ test('a player who runs out of chips gets a free reload and plays on', async ({ 
   const loser = busted as unknown as TelegramPlayer;
   const winner = both.find((player) => player !== loser) as TelegramPlayer;
 
+  // The result comes first (§19.10): nothing covers the hand that took the last chips.
   const dialog = loser.page.getByRole('alertdialog');
-  await expect(dialog).toContainText("You are out of chips. That's okay: chips are free here.");
-  await expect(dialog.getByRole('button', { name: 'Leave table' })).toBeVisible();
+  await expect(loser.page.locator('[data-hand-result]')).toBeVisible();
+  await expect(dialog).toHaveCount(0);
 
   // The hand on show ends, and with nobody else to play the table waits, dialog on top.
+  await expect(dialog).toContainText("You are out of chips. That's okay: chips are free here.", {
+    timeout: 15_000,
+  });
+  await expect(dialog.getByRole('button', { name: 'Leave table' })).toBeVisible();
   await waitForRoom(winner.page);
   await expect(winner.page.getByText('Waiting for more players.')).toBeVisible();
   await expect(dialog).toBeVisible();
@@ -484,6 +489,95 @@ test('an invite that cannot be used: a full table, and a table that is gone', as
   expectNoErrors([ann, bob, carol]);
 });
 
+test('an invite to another table, while seated: it asks, and either answer holds', async ({
+  telegram,
+}) => {
+  test.setTimeout(120_000);
+  const ann = await telegram.open(newTelegramUser('Ann'));
+  const mine = await createTable(ann, LONG_TURNS);
+  const bob = await telegram.open(newTelegramUser('Bob'), { startParam: mine });
+  await expect(ann.page.getByRole('button', { name: 'Start game' })).toBeEnabled();
+  await startGame(ann, [ann, bob]);
+  const eve = await telegram.open(newTelegramUser('Eve'));
+  const other = await createTable(eve, LONG_TURNS);
+
+  const dialog = bob.page.getByRole('alertdialog');
+  const stay = dialog.getByRole('button', { name: 'Stay at my table', exact: true });
+  const move = dialog.getByRole('button', { name: 'Leave and join the new table', exact: true });
+
+  // Bob taps Eve's link: his own table comes up, and he is asked.
+  await relaunch(bob, { startParam: other });
+  await waitForTable(bob.page);
+  await expect(dialog).toContainText('You are already at a table.');
+  await expect(stay).toBeFocused();
+  expect((await pcView(bob.page))?.code).toBe(mine);
+  await expect(eve.page.getByText('Empty seat')).toHaveCount(2);
+
+  // He stays: nothing changed, and a reload of this launch does not ask again.
+  await stay.click();
+  await expect(dialog).toHaveCount(0);
+  await waitForTable(bob.page);
+  await bob.page.reload();
+  await waitForTable(bob.page);
+  await expect(dialog).toHaveCount(0);
+  expect((await pcView(bob.page))?.code).toBe(mine);
+
+  // A new tap, and this time he goes: Eve's waiting room, and his old seat is free.
+  await relaunch(bob, { startParam: other });
+  await move.click();
+  await expect(mpHeading(bob.page)).toHaveText(`Table ${other}`);
+  await expect(eve.page.getByText('Bob', { exact: true })).toBeVisible();
+  await expectToast(ann.page, 'Bob left the table.');
+  expect((await pcView(bob.page))?.code).toBe(other);
+  expectNoErrors([ann, bob, eve]);
+});
+
+test('names of 24 characters stay in their places: the pods, the strip, a small phone', async ({
+  telegram,
+}) => {
+  test.setTimeout(90_000);
+  const long = 'Maximiliana-Alexandrovna';
+  const ann = await telegram.open(newTelegramUser(long));
+  const code = await createTable(ann, LONG_TURNS);
+  const bob = await telegram.open(newTelegramUser('Wolfeschlegelsteinhausen'), {
+    startParam: code,
+  });
+  await expect(ann.page.getByRole('button', { name: 'Start game' })).toBeEnabled();
+  await startGame(ann, [ann, bob]);
+  const onTurn = await waitForFirstOnTurn([ann, bob]);
+  const waiter = onTurn === ann ? bob : ann;
+  await waiter.page.setViewportSize({ width: 360, height: 640 }); // compact mode: the pill
+  await expect(waiter.page.locator('main[data-layout="compact"]')).toBeVisible();
+
+  const places = await waiter.page.evaluate(() => {
+    const name = document.querySelector('[data-seat-name]') as HTMLElement;
+    const pod = (name.closest('[data-seat]') as HTMLElement).getBoundingClientRect();
+    const box = name.getBoundingClientRect();
+    const strip = document.querySelector('[data-turn="other"]') as HTMLElement;
+    const line = strip.getBoundingClientRect();
+    const words = strip.querySelector('[role="status"]') as HTMLElement;
+    const chips = document.querySelector('[data-hero-stack]') as HTMLElement;
+    const bar = document.querySelector('[data-action-area]') as HTMLElement;
+    return {
+      inPod: box.left >= pod.left && box.right <= pod.right,
+      cut: name.scrollWidth > name.clientWidth,
+      onScreen: line.left >= 0 && line.right <= window.innerWidth,
+      fits: words.getBoundingClientRect().height <= line.height,
+      clearOfChips: chips.getBoundingClientRect().right <= line.left,
+      aboveTheBar: words.getBoundingClientRect().bottom <= bar.getBoundingClientRect().top,
+    };
+  });
+  expect(places).toEqual({
+    inPod: true,
+    cut: true,
+    onScreen: true,
+    fits: true,
+    clearOfChips: true,
+    aboveTheBar: true,
+  });
+  expectNoErrors([ann, bob]);
+});
+
 test("Back at a table asks first, the phone's and Telegram's, and Telegram knows a table is on", async ({
   telegram,
 }) => {
@@ -498,6 +592,8 @@ test("Back at a table asks first, the phone's and Telegram's, and Telegram knows
 
   await page.goBack();
   await expect(dialog).toContainText('Leave this table?');
+  // The safe answer has the gold and the focus (§19.10): leaving costs the chips.
+  await expect(dialog.getByRole('button', { name: 'Stay', exact: true })).toBeFocused();
   await dialog.getByRole('button', { name: 'Stay', exact: true }).click();
   await expect(dialog).toHaveCount(0);
   await waitForTable(page);

@@ -124,7 +124,7 @@ import type { StripVariant } from '../components/CoachStrip.tsx';
 import { DrawChips } from '../components/DrawChips.tsx';
 import { HandEndBanner, HandEndLinks } from '../components/HandEndBanner.tsx';
 import { HandsTab } from '../components/HandsTab.tsx';
-import { HeroCards, HeroChips, HeroLabel } from '../components/HeroStrip.tsx';
+import { HeroCards, HeroChips, HeroLabel, HeroStackOnly } from '../components/HeroStrip.tsx';
 import { LoadBoundary } from '../components/LoadBoundary.tsx';
 import { Pot } from '../components/Pot.tsx';
 import { RankingsColumn } from '../components/RankingsColumn.tsx';
@@ -622,6 +622,18 @@ const DrawsSlot = memo(function DrawsSlot({
 // ---------------------------------------------------------------------------------------------
 // The hero strip (portrait, compact, wide) and the landscape column's head
 
+/**
+ * A table of the server's (§19.10): the viewer's chips in the seat info, for a hand they have no
+ * cards in (the hero's view is then null). Null at a table of the local game.
+ */
+const selectSeatStack = (s: AppState): number | null => {
+  const view = s.mp.view;
+  return view?.seats[view.you]?.stack ?? null;
+};
+
+/** The chips with no cards above them: at the foot of their cell, where they always are. */
+const NO_CARDS: CSSProperties = { alignSelf: 'end', marginTop: 0 };
+
 const HeroStrip = memo(function HeroStrip({
   layout,
   onOpenRankings,
@@ -632,8 +644,22 @@ const HeroStrip = memo(function HeroStrip({
   const hero = useAppStore(selectHeroView);
   const nuts = useAppStore(selectNuts);
   const remote = useAppStore(selectRemote);
+  const seatStack = useAppStore(selectSeatStack);
   return (
     <section className={styles.hero} aria-label={en.table.yourHand} data-tip-anchor="heroStrip">
+      {/* No cards this hand: the chips where they always are, and compact mode's clock. */}
+      {hero === null && seatStack !== null && (
+        <>
+          <div className={styles.heroLeft} style={NO_CARDS}>
+            <HeroStackOnly stack={seatStack} />
+          </div>
+          {layout === 'compact' && (
+            <div className={styles.heroPill}>
+              <TurnSlot variant="pill" />
+            </div>
+          )}
+        </>
+      )}
       {hero !== null && (
         <>
           <div className={styles.heroLeft}>
@@ -691,8 +717,19 @@ const SideHero = memo(function SideHero({ onOpenRankings }: { onOpenRankings: ()
   const nuts = useAppStore(selectNuts);
   const trayOpen = useAppStore(selectOverlayOpen('tray'));
   const quizAsking = useAppStore(selectQuizAsking);
+  const seatStack = useAppStore(selectSeatStack);
   const short = useMediaQuery(SHORT_COLUMN_QUERY);
-  if (hero === null || trayOpen || quizAsking) return null;
+  if (trayOpen || quizAsking) return null;
+  if (hero === null) {
+    if (seatStack === null) return null;
+    return (
+      <section className={styles.sideHero} aria-label={en.table.yourHand}>
+        <div style={{ paddingLeft: 8 }}>
+          <HeroStackOnly stack={seatStack} />
+        </div>
+      </section>
+    );
+  }
   return (
     <section
       className={styles.sideHero}
@@ -1267,6 +1304,8 @@ const DrawerHost = memo(function DrawerHost({
         showTips={rules.tips}
         whichWins={rules.whichWins}
         collected={collected}
+        // It covers the strip's row on a phone upright; on its side the column stays in sight.
+        head={remote && layout !== 'landscape' ? <TurnSlot variant="drawer" /> : undefined}
       />
       {!remote && <CoachSheetHost tall={layout === 'landscape'} coachSize={coachSize} />}
     </div>

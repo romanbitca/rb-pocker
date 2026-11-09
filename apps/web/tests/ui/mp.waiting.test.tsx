@@ -167,6 +167,11 @@ describe('the waiting room: the host (§19.10)', () => {
     );
   });
 
+  it('the invite has the gold: the host needs the friends', () => {
+    inRoom();
+    expect(button(W.waiting.invite).className).toContain(cssClass(styles, 'primary'));
+  });
+
   it('"Start game" works from 2 players', () => {
     const rig = inRoom();
     fireEvent.click(button(W.waiting.start));
@@ -221,6 +226,33 @@ describe('the waiting room: a guest (§19.10)', () => {
     noButton(W.waiting.start);
   });
 
+  it('the wait is the main thing: first, in big letters, not a grey hint', () => {
+    inRoom(guest());
+    const line = screen.getByText(W.waiting.guest('Ann'));
+    expect(line.className).not.toContain(cssClass(styles, 'hint'));
+    expect(line.style.fontSize).toBe('1.25rem');
+    const first = document.querySelector('main ul') as HTMLElement;
+    const following = (a: Node, b: Node): boolean =>
+      (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
+    expect(following(line, first)).toBe(true);
+    expect(following(first, button(W.waiting.invite))).toBe(true);
+  });
+
+  it('the invite is there, under the seats, with no gold', () => {
+    const rig = inRoom(guest());
+    expect(button(W.waiting.invite).className).toContain(cssClass(styles, 'secondary'));
+    expect(document.querySelector(`main .${cssClass(styles, 'primary')}`)).toBeNull();
+    fireEvent.click(button(W.waiting.invite));
+    expect(rig.shared).toHaveLength(1);
+  });
+
+  it('a name of 24 characters wraps in the line', () => {
+    const long = 'Maximiliana-Alexandrovna';
+    const view = guest();
+    inRoom({ ...view, seats: view.seats.map((s, i) => (i === 0 && s ? { ...s, name: long } : s)) });
+    expect(screen.getByText(W.waiting.guest(long)).style.overflowWrap).toBe('anywhere');
+  });
+
   it('sees itself as "You" and the seats fill as views come', () => {
     const rig = inRoom(guest());
     expect(document.querySelectorAll('main li')[1]?.querySelector('span')?.textContent).toBe(
@@ -259,10 +291,25 @@ describe('a table that was started and has too few now (§19.10)', () => {
     inRoom(room({ started: true }));
     noButton(W.sittingOut.back);
   });
+
+  it('here everybody needs more players: the invite keeps its gold', () => {
+    inRoom(room({ started: true, you: 1 }));
+    expect(button(W.waiting.invite).className).toContain(cssClass(styles, 'primary'));
+  });
 });
 
 describe('leaving (§19.10)', () => {
   const dialog = (): HTMLElement => screen.getByRole('alertdialog');
+
+  it('"Stay" comes first, with the gold and the focus: leaving costs the chips', () => {
+    inRoom();
+    fireEvent.click(button(W.waiting.leave));
+    const buttons = within(dialog()).getAllByRole('button');
+    expect(buttons.map((b) => b.textContent)).toEqual([W.leave.stay, W.leave.confirm]);
+    expect(buttons[0]?.className).toContain(cssClass(styles, 'primary'));
+    expect(buttons[1]?.className).toContain(cssClass(styles, 'secondary'));
+    expect(document.activeElement).toBe(buttons[0]);
+  });
 
   it('"Leave table" asks first; "Stay" keeps the seat', () => {
     const rig = inRoom();
@@ -345,18 +392,52 @@ describe('the problem dialog (§19.10)', () => {
     expect(rig.state().ui.screen).toBe('home');
   });
 
-  it('already at another table: "Go to my table" and "Leave it and join this one"', () => {
+  it('refused as already seated: "Stay at my table" and "Leave and join the new table"', () => {
     const rig = open({ startParam: CODE });
     const ws = rig.connect();
     rig.receive({ t: 'error', code: 'already_seated', re: 'join', other: OTHER_CODE });
     expect(screen.getByRole('alertdialog').textContent).toContain(W.alreadySeated);
     noButton(W.ok);
-    fireEvent.click(button(W.goToMyTable));
+    fireEvent.click(button(W.stayAtMyTable));
     expect(ws.sent.at(-1)).toEqual({ t: 'join', code: OTHER_CODE });
     expect(screen.queryByRole('alertdialog')).toBeNull();
   });
 
-  it('"Leave it and join this one" leaves, then joins', () => {
+  it('an invite to another table while seated: that table, the question over it, the way over', () => {
+    const rig = open({ startParam: OTHER_CODE });
+    const ws = rig.connect(CODE);
+    rig.table(room());
+    expect(screen.getByRole('heading', { level: 1, name: W.waiting.title(CODE) })).toBeTruthy();
+    const dialog = screen.getByRole('alertdialog');
+    expect(dialog.textContent).toContain(W.alreadySeated);
+    const stay = within(dialog).getByRole('button', { name: W.stayAtMyTable });
+    expect(stay.className).toContain(cssClass(styles, 'primary'));
+    expect(document.activeElement).toBe(stay);
+    expect(ws.kinds()).toEqual(['hello']);
+
+    fireEvent.click(within(dialog).getByRole('button', { name: W.leaveAndJoin }));
+    expect(ws.sent.at(-1)).toEqual({ t: 'leave' });
+    expect(screen.queryByRole('alertdialog')).toBeNull();
+    rig.receive({ t: 'left' });
+    expect(screen.getByRole('heading', { level: 1, name: W.joining })).toBeTruthy();
+    expect(ws.sent.at(-1)).toEqual({ t: 'join', code: OTHER_CODE });
+    rig.table(room({ code: OTHER_CODE }));
+    expect(
+      screen.getByRole('heading', { level: 1, name: W.waiting.title(OTHER_CODE) }),
+    ).toBeTruthy();
+  });
+
+  it('"Stay at my table" there closes it and the table goes on', () => {
+    const rig = open({ startParam: OTHER_CODE });
+    const ws = rig.connect(CODE);
+    rig.table(room());
+    fireEvent.click(button(W.stayAtMyTable));
+    expect(screen.queryByRole('alertdialog')).toBeNull();
+    expect(ws.kinds()).toEqual(['hello']);
+    expect(screen.getByRole('heading', { level: 1, name: W.waiting.title(CODE) })).toBeTruthy();
+  });
+
+  it('"Leave and join the new table" leaves, then joins', () => {
     const rig = open({ startParam: CODE });
     const ws = rig.connect();
     rig.receive({ t: 'error', code: 'already_seated', re: 'join', other: OTHER_CODE });

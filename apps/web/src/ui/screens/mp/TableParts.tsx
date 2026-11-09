@@ -41,7 +41,8 @@ export const ConnectionBanner = memo(function ConnectionBanner() {
   if (connection !== 'lost') return null;
   return (
     <div style={OVER_TABLE}>
-      <div className={styles.card} role="alert">
+      {/* A solid card: the seat under it would show through the words. */}
+      <div className={styles.card} role="alert" style={{ background: 'var(--surface)' }}>
         <p>{t.connection.gone}</p>
         <div className={styles.cardButtons}>
           <button

@@ -22,7 +22,13 @@ import {
 } from '../../src/app/store.ts';
 import { startHand } from '../../src/engine/start.ts';
 import type { LegalActions, PlayerAction } from '../../src/engine/types.ts';
-import type { Notice, ServerMsg, TableSettings, TableView } from '../../src/net/protocol.ts';
+import {
+  OFFLINE_TURN_MS,
+  type Notice,
+  type ServerMsg,
+  type TableSettings,
+  type TableView,
+} from '../../src/net/protocol.ts';
 import { createSafeStorage, STORAGE_KEYS, type StorageBackend } from '../../src/persist/storage.ts';
 import { SEED } from '../engine/helpers.ts';
 import { elapse, makeHarness, scriptedBrain } from './harness.ts';
@@ -32,6 +38,7 @@ import {
   playedHand,
   remoteTable,
   seatInfo,
+  seatsOf,
   SERVER_NOW,
   socketFactory,
   viewOfHand,
@@ -980,6 +987,91 @@ describe('a dropped connection', () => {
     expect(r.sockets).toHaveLength(2);
   });
 
+  describe('the clocks while it is away (§19.10): only what is known', () => {
+    const drop = (r: ReturnType<typeof seated>, at: number): void => {
+      r.clock.mono = at;
+      r.ws.drop(1006);
+    };
+
+    it('your turn: at most the time the server allows a player who is offline', () => {
+      const r = seated(yourTurn()); // 30 s from 1000
+      drop(r, 4000);
+      expect(selectTurn(r.state())).toEqual({ kind: 'youOffline', endsAt: 4000 + OFFLINE_TURN_MS });
+    });
+
+    it('less than that left: the deadline it had', () => {
+      const r = seated(
+        yourTurn({ decision: { seat: TO_ACT, seq: 7, deadlineAt: SERVER_NOW + 6000 } }),
+      );
+      drop(r, 2000);
+      expect(selectTurn(r.state())).toEqual({ kind: 'youOffline', endsAt: 1000 + 6000 });
+    });
+
+    it('the loss is counted from the first moment, whatever the tries that follow say', () => {
+      const r = seated(yourTurn());
+      drop(r, 4000);
+      r.clock.mono = 9000;
+      advance(500);
+      r.last().drop(1006);
+      expect(selectTurn(r.state())).toEqual({ kind: 'youOffline', endsAt: 4000 + OFFLINE_TURN_MS });
+    });
+
+    it("someone else's turn and the next hand: nothing can be known", () => {
+      const r = seated(theirTurn());
+      r.ws.drop(1006);
+      expect(selectTurn(r.state())).toBeNull();
+      const last = playedHand(remoteTable(KINDS)).at(-1) as typeof HAND;
+      const s = seated(viewOfHand(KINDS, last, 0));
+      s.ws.drop(1006);
+      expect(selectTurn(s.state())).toBeNull();
+    });
+
+    it('not dealt in: that does not depend on the connection', () => {
+      const kinds: SeatKind[] = ['in', 'out', 'in'];
+      const r = seated(viewOfHand(kinds, startHand(remoteTable(kinds), SEED), 1));
+      r.ws.drop(1006);
+      expect(selectTurn(r.state())).toEqual({ kind: 'notDealtIn' });
+    });
+
+    it('`welcome` alone says nothing about the clock: the view does', () => {
+      const r = seated(yourTurn({ rev: 5 }));
+      drop(r, 4000);
+      r.clock.mono = 5000;
+      advance(500);
+      const next = r.last();
+      next.open();
+      next.receive(welcome(CODE));
+      expect(selectConnection(r.state())).toBe('online');
+      expect(selectTurn(r.state())).toEqual({ kind: 'youOffline', endsAt: 4000 + OFFLINE_TURN_MS });
+    });
+
+    it('back with the deadline the server moved: what is really left', () => {
+      const r = seated(yourTurn({ rev: 5 }));
+      drop(r, 4000);
+      r.clock.mono = 10_000;
+      advance(500);
+      const next = r.last();
+      next.open();
+      next.receive(welcome(CODE));
+      const decision = { seat: TO_ACT, seq: 7, deadlineAt: SERVER_NOW + 9000 };
+      next.receive(tableMsg(yourTurn({ rev: 6, decision })));
+      expect(selectTurn(r.state())).toEqual({ kind: 'you', endsAt: 10_000 + 9000 });
+    });
+
+    it('back, and the server had not noticed: the deadline it always had', () => {
+      const r = seated(yourTurn({ rev: 5 }));
+      const before = r.state().mp.turnEndsAt as number;
+      drop(r, 4000);
+      r.clock.mono = 5000;
+      advance(500);
+      const next = r.last();
+      next.open();
+      next.receive(welcome(CODE));
+      next.receive(tableMsg(yourTurn({ rev: 5 })));
+      expect(selectTurn(r.state())).toEqual({ kind: 'you', endsAt: before });
+    });
+  });
+
   it('`welcome` with no table while at one: the table is gone', () => {
     const r = seated();
     r.ws.drop(1006);
@@ -1180,6 +1272,141 @@ describe('joining failed', () => {
     ).toHaveLength(2);
   });
 
+  describe('an invite to another table while seated (§19.10): the tap is not lost', () => {
+    /** At table CODE, launched from an invite to `invite`. */
+    function invited(invite = OTHER_CODE, view = theirTurn({ rev: 1 })) {
+      const r = rig({ startParam: invite, remembered: CODE });
+      r.driver.launch();
+      const ws = r.last();
+      ws.open();
+      ws.receive(welcome(CODE));
+      ws.receive(tableMsg(view));
+      return { ...r, ws };
+    }
+    const dialogs = (r: Rig): string[] => r.state().ui.overlays.filter((o) => o === 'mpProblem');
+
+    it('the seat`s table comes up with the question over it, and the server is asked nothing', () => {
+      const r = invited();
+      expect(selectRemote(r.state())).toBe(true);
+      expect(selectMpView(r.state())?.code).toBe(CODE);
+      expect(r.state().ui.screen).toBe('table');
+      expect(selectMpProblem(r.state())).toEqual({ kind: 'alreadySeated', other: CODE });
+      expect(dialogs(r)).toEqual(['mpProblem']);
+      expect(r.ws.kinds()).toEqual(['hello']);
+    });
+
+    it('Back cannot close it', () => {
+      const r = invited();
+      expect(r.state().ui.backTrap).toBe('mpProblem');
+      r.dispatch({ type: 'back' });
+      expect(dialogs(r)).toEqual(['mpProblem']);
+    });
+
+    it('an invite to the table you sit at asks nothing', () => {
+      const r = invited(CODE);
+      expect(selectMpProblem(r.state())).toBeNull();
+      expect(r.ws.kinds()).toEqual(['hello']);
+    });
+
+    it('asks once, and the views of the table go on behind it', () => {
+      const r = invited();
+      r.ws.receive(tableMsg(theirTurn({ rev: 2, handsPlayed: 7 })));
+      expect(dialogs(r)).toEqual(['mpProblem']);
+      expect(selectMpView(r.state())?.handsPlayed).toBe(7);
+    });
+
+    it('"Stay at my table": it closes, the server hears nothing, and it does not ask again', () => {
+      const r = invited();
+      r.dispatch({ type: 'mpGoToMyTable' });
+      expect(selectMpProblem(r.state())).toBeNull();
+      expect(r.state().ui.overlays).toEqual([]);
+      expect(r.state().ui.backTrap).toBe('mpLeave');
+      expect(r.ws.kinds()).toEqual(['hello']);
+      r.ws.receive(tableMsg(theirTurn({ rev: 2 })));
+      expect(selectMpProblem(r.state())).toBeNull();
+      expect(selectMpView(r.state())?.code).toBe(CODE);
+    });
+
+    it('"Leave and join the new table": leaves, says "Joining…", joins, and lands there', () => {
+      const r = invited();
+      r.dispatch({ type: 'mpLeaveAndJoin' });
+      expect(r.ws.kinds()).toEqual(['hello', 'leave']);
+      expect(selectMpView(r.state())?.code).toBe(CODE); // until the server says so
+
+      r.ws.receive({ t: 'left' });
+      expect(selectMpView(r.state())).toBeNull();
+      expect(r.state().ui.screen).toBe('mpRoom');
+      expect(r.ws.sent.at(-1)).toEqual({ t: 'join', code: OTHER_CODE });
+      expect(r.data.has(STORAGE_KEYS.mpTable)).toBe(false);
+
+      r.ws.receive(tableMsg(theirTurn({ rev: 1, code: OTHER_CODE })));
+      expect(selectMpView(r.state())?.code).toBe(OTHER_CODE);
+      expect(r.state().ui.screen).toBe('table');
+      expect(r.data.get(STORAGE_KEYS.mpTable)).toBe(OTHER_CODE);
+      expect(selectMpProblem(r.state())).toBeNull();
+    });
+
+    it('a busted seat`s dialog goes with its table', () => {
+      const seats = [seatInfo('Ann', { status: 'busted', stack: 0 }), seatInfo('Ben'), null];
+      const r = invited(OTHER_CODE, waitingView({ status: 'playing', seats }));
+      expect(r.state().ui.overlays).toEqual(['outOfChips', 'mpProblem']);
+      r.dispatch({ type: 'mpLeaveAndJoin' });
+      r.ws.receive({ t: 'left' });
+      expect(r.state().ui.overlays).toEqual([]);
+    });
+
+    it('the new table is gone after all: says so, and OK goes Home', () => {
+      const r = invited();
+      r.dispatch({ type: 'mpLeaveAndJoin' });
+      r.ws.receive({ t: 'left' });
+      r.ws.receive({ t: 'error', code: 'not_found', re: 'join' });
+      expect(selectMpProblem(r.state())).toEqual({ kind: 'joinGone' });
+      r.dispatch({ type: 'mpDismiss' });
+      expect(r.state().ui.screen).toBe('home');
+      expect(selectRemote(r.state())).toBe(false);
+      expect(r.controller.unpark).toHaveBeenCalledOnce();
+    });
+
+    it('a drop before `left`: `welcome` with no table goes on to the new one', () => {
+      const r = invited();
+      r.dispatch({ type: 'mpLeaveAndJoin' });
+      r.ws.drop(1006);
+      advance(500);
+      const next = r.last();
+      next.open();
+      next.receive(welcome(null));
+      expect(selectMpProblem(r.state())).toBeNull();
+      expect(next.sent.at(-1)).toEqual({ t: 'join', code: OTHER_CODE });
+    });
+
+    it('a drop before the server heard it: the `leave` goes after the reconnect', () => {
+      const r = invited();
+      r.dispatch({ type: 'mpLeaveAndJoin' });
+      r.ws.drop(1006);
+      advance(500);
+      const next = r.last();
+      next.open();
+      next.receive(welcome(CODE));
+      expect(next.sent.at(-1)).toEqual({ t: 'leave' });
+    });
+
+    it('the invite is used once: the same launch reloaded does not ask again', () => {
+      const r = invited();
+      const again = rig({
+        startParam: OTHER_CODE,
+        remembered: CODE,
+        session: r.session,
+        data: r.data,
+      });
+      again.driver.launch();
+      const ws = again.last();
+      ws.open();
+      ws.receive(welcome(CODE));
+      ws.receive(tableMsg(theirTurn({ rev: 1 })));
+      expect(selectMpProblem(again.state())).toBeNull();
+    });
+  });
+
   describe('already at another table', () => {
     function seatedElsewhere(): Rig {
       const r = joining();
@@ -1314,6 +1541,63 @@ describe('out of chips', () => {
     const r = seated(busted(1));
     r.dispatch({ type: 'back' });
     expect(r.state().ui.overlays).toEqual(['outOfChips', 'mpLeave']);
+  });
+
+  describe('the result comes first (§19.10)', () => {
+    const played = playedHand(remoteTable(KINDS));
+    const ended = played[played.length - 1] as typeof HAND;
+    const withBust = (view: TableView): TableView => ({
+      ...view,
+      seats: view.seats.map((seat, i) =>
+        i === view.you && seat ? { ...seat, status: 'busted', stack: 0 } : seat,
+      ),
+    });
+    const atHandEnd = (rev: number): TableView =>
+      withBust(viewOfHand(KINDS, ended, 0, { rev, seats: seatsOf(KINDS, ended) }));
+    /** The next hand, dealt to the other two. */
+    const OUT: SeatKind[] = ['out', 'in', 'in'];
+    const dealt = startHand(remoteTable(OUT), SEED);
+    const nextDeal = (rev: number): TableView => withBust(viewOfHand(OUT, dealt, 0, { rev }));
+
+    it('nothing covers the hand that took the last chips', () => {
+      const r = seated(theirTurn({ rev: 1 }));
+      r.ws.receive(tableMsg(atHandEnd(2)));
+      expect(r.state().game.heroBust).toBe(true);
+      expect(r.state().game.mode).toBe('handEnd');
+      expect(r.state().ui.overlays).not.toContain('outOfChips');
+    });
+
+    it('the next deal opens the dialog: no timer, the view that comes anyway', () => {
+      const r = seated(theirTurn({ rev: 1 }));
+      r.ws.receive(tableMsg(atHandEnd(2)));
+      advance(15_000); // the longest a hand end lasts, and more; the socket's ping is at 20 s
+      expect(r.state().ui.overlays).not.toContain('outOfChips');
+      r.ws.receive(tableMsg(nextDeal(3)));
+      expect(r.state().ui.overlays).toContain('outOfChips');
+    });
+
+    it('nobody left to play with: the waiting room opens it', () => {
+      const r = seated(theirTurn({ rev: 1 }));
+      r.ws.receive(tableMsg(atHandEnd(2)));
+      r.ws.receive(tableMsg({ ...busted(3), status: 'waiting' }));
+      expect(r.state().ui.screen).toBe('mpRoom');
+      expect(r.state().ui.overlays).toContain('outOfChips');
+    });
+
+    it('a later hand end leaves an open dialog alone: that seat was not dealt in', () => {
+      const r = seated(theirTurn({ rev: 1 }));
+      r.ws.receive(tableMsg(nextDeal(2)));
+      expect(r.state().ui.overlays).toContain('outOfChips');
+      const finished = playedHand(remoteTable(OUT)).at(-1) as typeof HAND;
+      r.ws.receive(tableMsg(withBust(viewOfHand(OUT, finished, 0, { rev: 3 }))));
+      expect(r.state().game.mode).toBe('handEnd');
+      expect(r.state().ui.overlays).toContain('outOfChips');
+    });
+
+    it('someone who comes back during that hand end waits for the deal too', () => {
+      const r = seated(atHandEnd(1));
+      expect(r.state().ui.overlays).not.toContain('outOfChips');
+    });
   });
 });
 

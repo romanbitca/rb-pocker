@@ -83,6 +83,15 @@ export const HeroChips = memo(function HeroChips({ hero }: { hero: HeroView }) {
   );
 });
 
+/** "You · 975" with no cards: a seat at a table of the server's that sits this hand out (§19.10). */
+export const HeroStackOnly = memo(function HeroStackOnly({ stack }: { stack: number }) {
+  return (
+    <span className={styles.chips}>
+      <span data-hero-stack="">{en.table.heroChips(formatChips(stack))}</span>
+    </span>
+  );
+});
+
 export interface HeroLabelProps {
   hero: HeroView;
   /** No hand can beat the hero's (§6.5): " · Best possible hand" after the sub-label. */
