@@ -1,5 +1,9 @@
 import { execFile } from 'node:child_process';
+import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import type { IncomingMessage, Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
+import type { Duplex } from 'node:stream';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { NestFactory } from '@nestjs/core';
@@ -45,6 +49,46 @@ async function serve(
   const { port } = app.getHttpServer().address() as AddressInfo;
   return `http://127.0.0.1:${port}`;
 }
+
+/** What the fake gateway saw. */
+interface SeenBySocket {
+  readonly paths: string[];
+  readonly hellos: unknown[];
+  readonly origins: (string | undefined)[];
+}
+
+/**
+ * A stand-in for the §19.4 gateway, enough for `--ws`: the opening handshake, one short masked text
+ * frame from the client, then a close frame with `closeCode`.
+ */
+function fakeGateway(nest: NestExpressApplication, closeCode: number): SeenBySocket {
+  const seen: SeenBySocket = { paths: [], hellos: [], origins: [] };
+  (nest.getHttpServer() as Server).on('upgrade', (req: IncomingMessage, socket: Duplex) => {
+    seen.paths.push(req.url ?? '');
+    seen.origins.push(req.headers.origin);
+    const accept = createHash('sha1')
+      .update(`${req.headers['sec-websocket-key']}258EAFA5-E914-47DA-95CA-C5AB0DC85B11`)
+      .digest('base64');
+    socket.write(
+      `HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: ${accept}\r\n\r\n`,
+    );
+    socket.once('data', (frame: Buffer) => {
+      const length = (frame[1] ?? 0) & 0x7f; // a hello is under 126 bytes, so one length byte
+      const mask = frame.subarray(2, 6);
+      const payload = frame.subarray(6, 6 + length).map((byte, i) => byte ^ (mask[i % 4] ?? 0));
+      seen.hellos.push(JSON.parse(Buffer.from(payload).toString('utf8')));
+      const close = Buffer.from([0x88, 2, closeCode >> 8, closeCode & 0xff]);
+      socket.end(close);
+    });
+    socket.on('error', () => undefined);
+  });
+  return seen;
+}
+
+/** §19.4's constants, from the PLAN: the file that holds them comes with chunk 10.1. */
+const PLAN = readFileSync(new URL('../../../docs/PLAN.md', import.meta.url), 'utf8');
+const PLAN_WS_PATH = /export const MP_WS_PATH = '(.+)';/.exec(PLAN)?.[1];
+const PLAN_VERSION = Number(/export const MP_PROTOCOL_VERSION = (\d+);/.exec(PLAN)?.[1]);
 
 const savedCommit = process.env.SOURCE_COMMIT;
 beforeEach(() => {
@@ -95,6 +139,75 @@ describe('scripts/check-deploy.mjs', { timeout: 30_000 }, () => {
     expect(output).toMatch(/^ok {3}\/manifest\.webmanifest$/m);
   });
 
+  it('fails when a response sends X-Frame-Options (§19.11)', async () => {
+    const url = await serve('production', (nest) => {
+      nest.use('/sw.js', (_req: Request, res: Response, next: NextFunction) => {
+        res.setHeader('X-Frame-Options', 'DENY');
+        next();
+      });
+    });
+
+    const { code, output } = await checkDeploy(url);
+
+    expect(code).toBe(1);
+    expect(output).toMatch(/^FAIL \/sw\.js: X-Frame-Options: DENY$/m);
+    expect(output).toMatch(/^ok {3}\/manifest\.webmanifest$/m);
+  });
+
+  describe('--ws (§19.11)', () => {
+    it('passes when the socket refuses the made-up login with 4001', async () => {
+      let seen: SeenBySocket | undefined;
+      const url = await serve('production', (nest) => {
+        seen = fakeGateway(nest, 4001);
+      });
+
+      const { code, output } = await checkDeploy(url, '--ws');
+
+      expect(output).toContain('All checks passed.');
+      expect(code).toBe(0);
+      expect(output).toMatch(/^ok {3}\/api\/mp\/ws \(closed with 4001\)$/m);
+      expect(seen?.paths).toEqual([PLAN_WS_PATH]);
+      expect(seen?.hellos).toEqual([
+        { t: 'hello', v: PLAN_VERSION, initData: 'check-deploy=not-a-login' },
+      ]);
+      // §19.4: the upgrade is refused when an Origin is present and is not the request's host.
+      expect(seen?.origins).toEqual([undefined]);
+    });
+
+    it('fails on any other close code', async () => {
+      const url = await serve('production', (nest) => {
+        fakeGateway(nest, 4003);
+      });
+
+      const { code, output } = await checkDeploy(url, '--ws');
+
+      expect(code).toBe(1);
+      expect(output).toMatch(/^FAIL \/api\/mp\/ws: closed with 4003, expected 4001$/m);
+    });
+
+    it('fails when nothing answers the upgrade (no bot token: a plain 404)', async () => {
+      const url = await serve('production');
+
+      const { code, output } = await checkDeploy(url, '--ws');
+
+      expect(code).toBe(1);
+      expect(output).toMatch(/^FAIL \/api\/mp\/ws: closed with 1006, expected 4001$/m);
+    });
+
+    it('opens no socket without the flag', async () => {
+      let seen: SeenBySocket | undefined;
+      const url = await serve('production', (nest) => {
+        seen = fakeGateway(nest, 4001);
+      });
+
+      const { code, output } = await checkDeploy(url);
+
+      expect(code).toBe(0);
+      expect(output).not.toContain('/api/mp/ws');
+      expect(seen?.paths).toEqual([]);
+    });
+  });
+
   it('fails when the commit is missing or not the expected one', async () => {
     const url = await serve('production');
 
@@ -118,6 +231,8 @@ describe('scripts/check-deploy.mjs', { timeout: 30_000 }, () => {
 
     const usage = await checkDeploy();
     expect(usage.code).toBe(2);
-    expect(usage.output).toContain('Usage: node scripts/check-deploy.mjs <url> [--commit <sha>]');
+    expect(usage.output).toContain(
+      'Usage: node scripts/check-deploy.mjs <url> [--commit <sha>] [--ws]',
+    );
   });
 });

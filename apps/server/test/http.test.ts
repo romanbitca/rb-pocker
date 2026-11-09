@@ -24,7 +24,8 @@ const INDEX_HTML = readFileSync(new URL('./fixtures/web-dist/index.html', import
 const PLAN_CSP =
   "default-src 'self';script-src 'self';style-src 'self' 'unsafe-inline';img-src 'self' data:;" +
   "font-src 'self';connect-src 'self';worker-src 'self';manifest-src 'self';object-src 'none';" +
-  "base-uri 'none';form-action 'none';frame-ancestors 'none'";
+  "base-uri 'none';form-action 'none';" +
+  'frame-ancestors https://web.telegram.org https://webk.telegram.org https://weba.telegram.org';
 
 const IMMUTABLE = 'public, max-age=31536000, immutable';
 
@@ -70,6 +71,19 @@ describe('HTTP server (PLAN §2.6, §17.2)', () => {
       expect(CONTENT_SECURITY_POLICY).not.toContain('upgrade-insecure-requests');
     });
 
+    it('only Telegram Web may frame the game (§19.11): no other source, no X-Frame-Options', () => {
+      const directive = CONTENT_SECURITY_POLICY.split(';').find((d) =>
+        d.startsWith('frame-ancestors '),
+      );
+
+      expect(directive?.split(' ').slice(1)).toEqual([
+        'https://web.telegram.org',
+        'https://webk.telegram.org',
+        'https://weba.telegram.org',
+      ]);
+      expect(Object.keys(SECURITY_HEADERS)).not.toContain('x-frame-options');
+    });
+
     it.each([
       ['/', 'index.html'],
       ['/table/42', 'the SPA fallback'],
@@ -83,18 +97,19 @@ describe('HTTP server (PLAN §2.6, §17.2)', () => {
       expect(res.headers['permissions-policy']).toBe(
         'camera=(), microphone=(), geolocation=(), payment=(), usb=()',
       );
-      expect(res.headers['x-frame-options']).toBe('DENY');
+      expect(res.headers['x-frame-options']).toBeUndefined();
       expect(res.headers['referrer-policy']).toBe('no-referrer');
       expect(res.headers['x-content-type-options']).toBe('nosniff');
     });
 
     it.each(EVERY_KIND_OF_RESPONSE)(
-      '%s: every security header, no X-Powered-By, no HSTS outside production, no Set-Cookie',
+      '%s: every security header, no X-Powered-By, no X-Frame-Options, no HSTS outside production, no Set-Cookie',
       async (path) => {
         const res = await get(path);
 
         expect(securityHeadersOf(res)).toEqual(SECURITY_HEADERS);
         expect(res.headers['x-powered-by']).toBeUndefined();
+        expect(res.headers['x-frame-options']).toBeUndefined();
         expect(res.headers['strict-transport-security']).toBeUndefined();
         expect(res.headers['set-cookie']).toBeUndefined();
       },
@@ -197,6 +212,7 @@ describe('HTTP server (PLAN §2.6, §17.2)', () => {
         'content-security-policy': "default-src 'none'",
       });
       expect(res.headers['x-powered-by']).toBeUndefined();
+      expect(res.headers['x-frame-options']).toBeUndefined();
       expect(res.headers['strict-transport-security']).toBeUndefined();
       expect(res.headers['set-cookie']).toBeUndefined();
     });
@@ -275,6 +291,7 @@ describe('HSTS: only when NODE_ENV=production (§17.2, pitfall 41)', () => {
 
         expect(res.headers['strict-transport-security'], path).toBe(STRICT_TRANSPORT_SECURITY);
         expect(securityHeadersOf(res), path).toEqual(SECURITY_HEADERS);
+        expect(res.headers['x-frame-options'], path).toBeUndefined();
         expect(res.headers['set-cookie'], path).toBeUndefined();
       }
       expect(STRICT_TRANSPORT_SECURITY).toBe('max-age=31536000; includeSubDomains');
