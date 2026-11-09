@@ -55,6 +55,8 @@ export interface MpDriverOptions {
   openSocket?: (url: string) => WebSocketLike;
   /** Default: the browser's `localStorage`, through `persist/storage.ts`. */
   storage?: SafeStorage;
+  /** What a reload keeps and a new launch does not (default: `sessionStorage`), §19.6. */
+  session?: SafeStorage;
   /** A clock the phone's own clock cannot move (default: `performance.now()`), §19.6. */
   monotonic?: () => number;
   /** For the socket's ±20% (tests fix it). */
@@ -67,6 +69,12 @@ export interface MpDriverOptions {
 
 type Intent = { kind: 'create'; settings: TableSettings } | { kind: 'join'; code: string };
 
+/**
+ * sessionStorage: the launch whose start code is used up (the `hash` of its `initData`). A reload
+ * keeps the launch and its code; a new tap on a link is a new launch, with another signature.
+ */
+export const START_SPENT_KEY = 'pc.tg.startSpent';
+
 /** A toast id no controller toast has (its ids count up from 1). */
 const FIRST_TOAST_ID = 1_000_000_000;
 
@@ -74,6 +82,10 @@ const FIRST_TOAST_ID = 1_000_000_000;
 export function socketUrl(location: Pick<Location, 'protocol' | 'host'>): string {
   return `${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}${MP_WS_PATH}`;
 }
+
+/** Sorts `hostChanged` before the other notices of one view, which keep their order. */
+const hostChangedFirst = (a: Notice, b: Notice): number =>
+  Number(b.n === 'hostChanged') - Number(a.n === 'hostChanged');
 
 /** Why a socket that closed for good stopped (§19.4), for the player. */
 function problemOfClose(code: number): MpProblem {
@@ -95,6 +107,7 @@ export class MpDriver {
   private readonly o: MpDriverOptions;
   private readonly store: AppStore;
   private readonly storage: SafeStorage;
+  private readonly session: SafeStorage;
   private readonly monotonic: () => number;
   private readonly unsubscribe: () => void;
   private readonly toastTimers = new Map<number, unknown>();
@@ -113,12 +126,15 @@ export class MpDriver {
   private acting = false;
   /** A new socket: its first view may repeat the last `rev` (§19.4), and the bar waits for it. */
   private awaitsView = false;
+  /** This launch's start code has done its job: `launch()` asks nothing of it (§19.6). */
+  private startSpent = false;
   private toastSeq = FIRST_TOAST_ID;
 
   constructor(options: MpDriverOptions) {
     this.o = options;
     this.store = options.store;
     this.storage = options.storage ?? createSafeStorage();
+    this.session = options.session ?? createSafeStorage(() => sessionStorage);
     this.monotonic = options.monotonic ?? (() => performance.now());
     this.unsubscribe = this.store.subscribe(this.onStore);
     // One registration for the driver's life: `handle` answers only `mp*` until a table is on.
@@ -127,7 +143,10 @@ export class MpDriver {
 
   /** At launch, inside Telegram. Does nothing at all for a player who only plays alone. */
   launch(): void {
-    const { startParam } = this.o.launch;
+    // A reload keeps the launch and its code: what was used or left is not asked for again.
+    const spent = this.session.get(START_SPENT_KEY);
+    this.startSpent = spent.ok && spent.value === this.launchMark();
+    const startParam = this.startSpent ? null : this.o.launch.startParam;
     // Play with friends was tapped before this chunk had loaded: `onStore` could not see it.
     if (this.store.getState().ui.screen === 'mpCreate') this.ensureSocket();
     if (startParam !== null && TABLE_CODE_RE.test(startParam)) {
@@ -165,6 +184,7 @@ export class MpDriver {
     } else if ((prev.ui.screen === 'mpCreate' || prev.ui.screen === 'mpRoom') && !this.active) {
       // Back before any table: nothing is on, so nothing stays connected.
       this.intent = null;
+      this.spendStart();
       this.closeSocket();
     }
   };
@@ -345,6 +365,12 @@ export class MpDriver {
   private readonly onStopped = (code: number): void => {
     this.socket = null;
     if (this.quiet()) return;
+    if (code === 1012 && !this.active) {
+      // A redeploy with no table on (the Create screen, "Joining the table…"): nothing ended, and
+      // the new server answers in a moment.
+      this.ensureSocket();
+      return;
+    }
     if (this.store.getState().mp.problem === null) this.showProblem(problemOfClose(code));
   };
 
@@ -403,6 +429,7 @@ export class MpDriver {
     this.awaitsView = false;
     this.acting = false;
     this.intent = null;
+    this.spendStart();
     this.createScreenAfterWelcome = false;
     const entering = !this.active;
     if (entering) this.enter();
@@ -411,7 +438,8 @@ export class MpDriver {
     if (last?.code !== view.code) this.rememberTable(view.code);
     this.showScreen(view, entering);
     this.syncBustDialog();
-    for (const notice of notices) this.say(notice);
+    // The Table's bar holds one toast, the newest (§12.11): who left says more than who is host.
+    for (const notice of [...notices].sort(hostChangedFirst)) this.say(notice);
   }
 
   private onLeft(): void {
@@ -477,6 +505,7 @@ export class MpDriver {
   private joinFailed(problem: MpProblem): void {
     this.intent = null;
     this.afterLeft = null;
+    this.spendStart();
     this.showProblem(problem);
   }
 
@@ -595,6 +624,7 @@ export class MpDriver {
   private leave(): void {
     this.closeSocket();
     this.forgetTable();
+    this.spendStart();
     this.intent = null;
     this.afterLeft = null;
     this.leaving = false;
@@ -610,6 +640,21 @@ export class MpDriver {
     }
     this.dispatch({ type: 'backTrap', overlay: null });
     this.store.setState({ mp: initialMp() });
+  }
+
+  // -------------------------------------------------------------------------------------------
+  // The start code of this launch, used once (§19.6)
+
+  /** Which launch this is: its signature. A reload has the same one, a new tap on a link not. */
+  private launchMark(): string {
+    const { initData } = this.o.launch;
+    return new URLSearchParams(initData).get('hash') ?? initData;
+  }
+
+  private spendStart(): void {
+    if (this.startSpent || this.o.launch.startParam === null) return;
+    this.startSpent = true;
+    this.session.set(START_SPENT_KEY, this.launchMark());
   }
 
   // -------------------------------------------------------------------------------------------

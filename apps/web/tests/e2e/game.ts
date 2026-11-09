@@ -1,6 +1,7 @@
 import type { Locator, Page, TestInfo } from '@playwright/test';
 import { cardAriaLabel } from '../../src/core/cards.ts';
 import type { HandState, LegalActions, TableState } from '../../src/engine/types.ts';
+import type { TableView } from '../../src/net/protocol.ts';
 import { expect } from './fixtures.ts';
 
 /**
@@ -89,6 +90,13 @@ interface PcState {
   stats: { results: { clean: { hands: number }; practice: { hands: number } } } | null;
   /** The equity slice (§7.6): the win badge's latest estimate. */
   equity: { result: { equity: number; final: boolean } | null } & Record<string, unknown>;
+  /** Stage 10 (§19.6): the table of the server's that is on, and the socket's state. */
+  mp: {
+    active: boolean;
+    view: TableView | null;
+    connection: string;
+    problem: { kind: string } | null;
+  };
 }
 
 /** `window.__pc.faults` (app/testFaults.ts, chunk 6.5): faults for brain.worker. */

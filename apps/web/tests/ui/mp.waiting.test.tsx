@@ -240,6 +240,25 @@ describe('a table that was started and has too few now (§19.10)', () => {
     expect(screen.getByText(W.waiting.tooFew)).toBeTruthy();
     noButton(W.waiting.start);
   });
+
+  it('a player sitting out has "I\'m back" here too: nobody else is playing to be sat out from', () => {
+    const rig = inRoom(
+      room({
+        started: true,
+        you: 1,
+        seats: [seatInfo('Ann', { host: true }), seatInfo('Ben', { status: 'sittingOut' }), null],
+      }),
+    );
+    expect(screen.getByText(W.waiting.tooFew)).toBeTruthy();
+    expect(screen.getByText(W.sittingOut.line)).toBeTruthy();
+    fireEvent.click(button(W.sittingOut.back));
+    expect(rig.ws().sent.at(-1)).toEqual({ t: 'back' });
+  });
+
+  it('a player who is not sitting out has no "I\'m back"', () => {
+    inRoom(room({ started: true }));
+    noButton(W.sittingOut.back);
+  });
 });
 
 describe('leaving (§19.10)', () => {

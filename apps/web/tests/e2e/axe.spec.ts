@@ -1,6 +1,22 @@
 import { AxeBuilder } from '@axe-core/playwright';
 import type { Locator, Page, TestInfo } from '@playwright/test';
-import { expect, test } from './fixtures.ts';
+import { expect, test, type TelegramPlayer } from './fixtures.ts';
+import {
+  createTable,
+  fillCreateForm,
+  leaveTableFromMenu,
+  mpState,
+  pcView,
+  playHand,
+  relaunch,
+  startGame,
+  waitForHand,
+  waitForHandEnd,
+  waitForRoom,
+  waitForTable,
+} from './mpPlay.ts';
+import { startOwnServer, startTcpPlug } from './own-server.ts';
+import { newTelegramUser, TELEGRAM_SERVER_ENV } from './telegram.ts';
 import {
   closeSummary,
   collectErrors,
@@ -756,5 +772,252 @@ test.describe('axe: the first-table tips', () => {
 
     await audit.done();
     expect(errors).toEqual([]);
+  });
+});
+
+// PLAN §18 Stage 10, acceptance 13: the same audit on the screens and dialogs of Play with friends,
+// with real browsers at a real table (chunk 10.10). One phone size per browser (§19.10).
+test.describe('axe: Play with friends', () => {
+  test.use({ multiplayer: true });
+  // eslint-disable-next-line no-empty-pattern -- Playwright reads the fixtures from this pattern
+  test.beforeEach(({}, testInfo) => {
+    test.skip(!testInfo.project.name.endsWith('phone-390x844'), 'one phone size per browser');
+  });
+
+  const ok = (page: Page): Locator =>
+    page.getByRole('alertdialog').getByRole('button', { name: 'OK', exact: true });
+
+  test('Welcome, New table, the waiting room, the Table, its Menu and the Leave dialog', async ({
+    telegram,
+  }, testInfo) => {
+    test.setTimeout(180_000);
+    const ann = await telegram.open(newTelegramUser('Ann'));
+    const annAudit = new Audit(ann.page, testInfo);
+    await expect(button(ann.page, 'Play with friends')).toBeVisible();
+    await annAudit.check('Welcome, inside Telegram');
+    await button(ann.page, 'Play with friends').click();
+    await expect(heading(ann.page)).toHaveText('New table');
+    await annAudit.check('New table');
+    const code = await fillCreateForm(ann.page, { seats: 3, stakes: 'quick', turnSeconds: 60 });
+    await annAudit.check('The waiting room: the host, alone');
+
+    const bob = await telegram.open(newTelegramUser('Bob'), { startParam: code });
+    const bobAudit = new Audit(bob.page, testInfo);
+    await expect(bob.page.getByText('Waiting for Ann to start the game.')).toBeVisible();
+    await bobAudit.check('The waiting room: a guest');
+    await expect(button(ann.page, 'Start game')).toBeEnabled();
+    await annAudit.check('The waiting room: the host, with a toast');
+    await startGame(ann, [ann, bob]);
+
+    await annAudit.check('The Table of the server: a turn');
+    await bobAudit.check('The Table of the server: the other turn');
+    await button(ann.page, 'Menu').click();
+    await expect(button(ann.page, 'Leave table')).toBeVisible();
+    await annAudit.check('The Table of the server: the Menu');
+    // The one thing the Menu still opens over a table of friends, besides leaving (§19.6).
+    await button(ann.page, 'Hand rankings').click();
+    await expect(ann.page.getByRole('dialog', { name: /Poker hands/ })).toBeVisible();
+    await annAudit.check('The Table of the server: the poker hands drawer');
+    await ann.page.keyboard.press('Escape');
+    await expect(ann.page.getByRole('dialog', { name: /Poker hands/ })).toHaveCount(0);
+    await button(ann.page, 'Menu').click();
+    await button(ann.page, 'Leave table').click();
+    await expect(ann.page.getByRole('alertdialog')).toContainText('Leave this table?');
+    await annAudit.check('Dialog: leave this table?');
+    await ann.page.getByRole('button', { name: 'Stay', exact: true }).click();
+    await expect(ann.page.getByRole('alertdialog')).toHaveCount(0);
+
+    const carol = await telegram.open(newTelegramUser('Carol'), { startParam: code });
+    const carolAudit = new Audit(carol.page, testInfo);
+    await waitForTable(carol.page);
+    await expect(carol.page.locator('[data-turn="notDealtIn"]')).toBeVisible();
+    await carolAudit.check('The Table of the server: not dealt in yet');
+
+    const hand = await playHand([ann, bob], () => 'checkOrCall');
+    await waitForHandEnd(ann.page, hand);
+    await annAudit.check('The Table of the server: the hand end, the next hand coming');
+
+    await annAudit.done();
+    await bobAudit.done();
+    await carolAudit.done();
+    for (const player of [ann, bob, carol]) expect(player.errors).toEqual([]);
+  });
+
+  test('joining, a dropped connection and "We can\'t reach the game."', async ({
+    telegram,
+    baseURL,
+  }, testInfo) => {
+    test.setTimeout(150_000);
+    // The socket of this launch opens and nobody answers: "Joining the table…" stays on show.
+    const waiting = await telegram.open(newTelegramUser('Dan'), {
+      startParam: 'ABCD2345',
+      prepare: (context) => context.routeWebSocket(/\/api\/mp\/ws$/, () => {}),
+    });
+    await expect(heading(waiting.page)).toHaveText('Joining the table…');
+    const waitingAudit = new Audit(waiting.page, testInfo);
+    await waitingAudit.check('Joining the table');
+    await waitingAudit.done();
+
+    const plug = await startTcpPlug(Number(new URL(baseURL as string).port));
+    try {
+      // A fake clock for this player: two minutes without the server take no two minutes.
+      const ann = await telegram.open(newTelegramUser('Ann'), {
+        origin: plug.origin,
+        prepare: (context) => context.clock.install(),
+      });
+      const audit = new Audit(ann.page, testInfo);
+      const code = await createTable(ann, { seats: 2, stakes: 'quick', turnSeconds: 60 });
+      const bob = await telegram.open(newTelegramUser('Bob'), { startParam: code });
+      await expect(button(ann.page, 'Start game')).toBeEnabled();
+      await startGame(ann, [ann, bob]);
+      await expect(ann.page.locator('[data-hero-cards] [role="img"]')).toHaveCount(2);
+
+      plug.pull();
+      await expect(ann.page.getByText('Connection lost. Trying again…')).toBeVisible();
+      await audit.check('The Table of the server: connection lost');
+      await expect
+        .poll(
+          async () => {
+            await ann.page.clock.fastForward(30_000);
+            return ann.page.getByText("We can't reach the game.").count();
+          },
+          { timeout: 30_000, intervals: [200] },
+        )
+        .toBe(1);
+      await audit.check("The Table of the server: we can't reach the game");
+      await audit.done();
+    } finally {
+      await plug.close();
+    }
+  });
+
+  test('out of chips: the dialog over the Table, and over the waiting room', async ({
+    telegram,
+  }, testInfo) => {
+    test.setTimeout(180_000);
+    const ann = await telegram.open(newTelegramUser('Ann'));
+    const code = await createTable(ann, { seats: 2, stakes: 'quick', turnSeconds: 60 });
+    const bob = await telegram.open(newTelegramUser('Bob'), { startParam: code });
+    await expect(button(ann.page, 'Start game')).toBeEnabled();
+    const both = [ann, bob];
+    await startGame(ann, both);
+    let loser: TelegramPlayer | undefined;
+    for (let hands = 0; hands < 6 && loser === undefined; hands++) {
+      let shoved = false;
+      const hand = await playHand(both, () => {
+        if (shoved) return 'checkOrCall';
+        shoved = true;
+        return 'allIn';
+      });
+      await Promise.all(both.map((player) => waitForHandEnd(player.page, hand)));
+      for (const player of both) {
+        const view = await pcView(player.page);
+        if (view?.seats[view.you]?.status === 'busted') loser = player;
+      }
+      if (loser === undefined) await waitForHand(ann.page, hand);
+    }
+    if (loser === undefined) throw new Error('nobody lost all their chips in six all-ins');
+    const audit = new Audit(loser.page, testInfo);
+    await expect(loser.page.getByRole('alertdialog')).toBeVisible();
+    await audit.check('Dialog: out of chips, at the Table of the server');
+    await waitForRoom(loser.page);
+    await audit.check('Dialog: out of chips, over the waiting room');
+    await audit.done();
+    const winner = both.find((player) => player !== loser) as TelegramPlayer;
+    const winnerAudit = new Audit(winner.page, testInfo);
+    await winnerAudit.check('The waiting room: a started table with too few players');
+    await winnerAudit.done();
+  });
+
+  test('sitting out: at the Table while the others play, and in the waiting room', async ({
+    telegram,
+  }, testInfo) => {
+    test.setTimeout(240_000);
+    const ann = await telegram.open(newTelegramUser('Ann'));
+    const code = await createTable(ann, { seats: 3, stakes: 'quick', turnSeconds: 15 });
+    const bob = await telegram.open(newTelegramUser('Bob'), { startParam: code });
+    const carol = await telegram.open(newTelegramUser('Carol'), { startParam: code });
+    await expect(button(ann.page, 'Start game')).toBeEnabled();
+    const all = [ann, bob, carol];
+    await startGame(ann, all);
+
+    // Ann never plays: the clock folds her or checks for her, and the others fold to the end.
+    const others = [bob, carol];
+    const line = ann.page.getByRole('main').getByText('You are sitting out.');
+    for (let hands = 0; hands < 6 && (await line.count()) === 0; hands++) {
+      const hand = await playHand(all, (player) => (player === ann ? 'none' : 'fold'));
+      await Promise.all(others.map((player) => waitForHandEnd(player.page, hand)));
+      if ((await line.count()) === 0) await waitForHand(bob.page, hand);
+    }
+    await expect(line).toBeVisible();
+    await expect(button(ann.page, "I'm back")).toBeVisible();
+    const audit = new Audit(ann.page, testInfo);
+    await waitForHand(bob.page, (await mpState(bob.page)).handSeq as number);
+    // Dealt no cards, and not told it will get some: the bar says what to do (§19.10).
+    await expect(ann.page.locator('[data-turn="notDealtIn"]')).toHaveCount(0);
+    await audit.check('The Table of the server: sitting out');
+
+    // The others leave: nobody to play with, and the way back is still there.
+    await leaveTableFromMenu(carol.page);
+    await waitForRoom(ann.page);
+    await expect(button(ann.page, "I'm back")).toBeVisible();
+    await audit.check('The waiting room: sitting out');
+    await audit.done();
+  });
+
+  test('the dialogs: a table that is full, gone or ended, a refused login, another window', async ({
+    telegram,
+  }, testInfo) => {
+    test.setTimeout(180_000);
+    const ann = await telegram.open(newTelegramUser('Ann'));
+    const code = await createTable(ann, { seats: 2, stakes: 'quick', turnSeconds: 60 });
+    const bob = await telegram.open(newTelegramUser('Bob'), { startParam: code });
+    await expect(button(ann.page, 'Start game')).toBeEnabled();
+
+    const carol = await telegram.open(newTelegramUser('Carol'), { startParam: code });
+    const carolAudit = new Audit(carol.page, testInfo);
+    await expect(carol.page.getByRole('alertdialog')).toContainText('This table is full.');
+    await carolAudit.check('Dialog: this table is full');
+    await ok(carol.page).click();
+    await relaunch(carol, { startParam: 'ZZZZ9999' });
+    await expect(carol.page.getByRole('alertdialog')).toContainText('This table is gone.');
+    await carolAudit.check('Dialog: this table is gone');
+    await ok(carol.page).click();
+    await carolAudit.done();
+
+    // The same Telegram user opens the game somewhere else (Carol's browser, as Bob): his stops.
+    await relaunch({ ...carol, user: bob.user }, { startParam: code });
+    const bobAudit = new Audit(bob.page, testInfo);
+    await expect(bob.page.getByRole('alertdialog')).toContainText(
+      'You opened the game in another place.',
+    );
+    await bobAudit.check('Dialog: you opened the game in another place');
+    await bobAudit.done();
+
+    // The same launch, signed with the wrong token: the login is refused.
+    await relaunch(ann, { startParam: code, token: 'wrong:token' });
+    await button(ann.page, 'OK').waitFor();
+    const annAudit = new Audit(ann.page, testInfo);
+    await expect(ann.page.getByRole('alertdialog')).toContainText(
+      'We could not check your Telegram login.',
+    );
+    await annAudit.check('Dialog: we could not check your Telegram login');
+    await annAudit.done();
+
+    await carol.context.close(); // at most three browsers at a time (§19.10)
+    const server = await startOwnServer({ env: TELEGRAM_SERVER_ENV });
+    try {
+      const dan = await telegram.open(newTelegramUser('Dan'), { origin: server.origin });
+      const danAudit = new Audit(dan.page, testInfo);
+      await createTable(dan, { seats: 2, stakes: 'quick', turnSeconds: 60 });
+      await server.terminate();
+      await expect(dan.page.getByRole('alertdialog')).toContainText(
+        'The game was updated, so this table ended.',
+      );
+      await danAudit.check('Dialog: this table ended');
+      await danAudit.done();
+    } finally {
+      await server.stop();
+    }
   });
 });

@@ -1,5 +1,6 @@
 import { fileURLToPath } from 'node:url';
 import { defineConfig, devices } from '@playwright/test';
+import { TELEGRAM_SERVER_ENV } from './tests/e2e/telegram.ts';
 
 /**
  * End-to-end tests (PLAN "Testing strategy", §17.5): Chromium and WebKit at the six §17.5
@@ -99,7 +100,9 @@ export default defineConfig({
     command: 'npm start',
     cwd: repoRoot,
     url: `${baseURL}/api/health`,
-    env: { PORT: String(port) },
+    // A test token (PLAN §19.10): the Telegram specs sign real `initData` with it. An app opened
+    // without Telegram's launch parameters is the plain web app, so every other spec sees that.
+    env: { PORT: String(port), ...TELEGRAM_SERVER_ENV },
     reuseExistingServer: !CI,
     timeout: 60_000,
     stdout: 'ignore',

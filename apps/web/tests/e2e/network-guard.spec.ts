@@ -29,6 +29,37 @@ test.describe('the network guard', () => {
     forbiddenRequests.length = 0;
   });
 
+  test('records a WebSocket', async ({ page, forbiddenRequests }) => {
+    await page.goto('/');
+    const url = await page.evaluate(async () => {
+      const socket = new WebSocket(`ws://${location.host}/api/mp/ws`);
+      await new Promise((resolve) => {
+        socket.onopen = resolve;
+        socket.onerror = resolve;
+      });
+      socket.close();
+      return socket.url;
+    });
+
+    await expect.poll(() => forbiddenRequests).toEqual([`opens a WebSocket: ${url}`]);
+    forbiddenRequests.length = 0;
+  });
+
+  test('a spec of Play with friends may open only the game socket', () => {
+    const app = 'http://localhost:3000';
+    const own = 'ws://localhost:3000/api/mp/ws';
+    expect(forbiddenReason(own, app)).toBe('opens a WebSocket');
+    expect(forbiddenReason(own, app, true)).toBeNull();
+    expect(forbiddenReason('wss://poker.test/api/mp/ws', 'https://poker.test', true)).toBeNull();
+
+    expect(forbiddenReason('ws://localhost:3000/other', app, true)).toBe('opens a WebSocket');
+    expect(forbiddenReason('ws://127.0.0.1:3000/api/mp/ws', app, true)).toBe('opens a WebSocket');
+    expect(forbiddenReason('wss://localhost:3000/api/mp/ws', app, true)).toBe('opens a WebSocket');
+    expect(forbiddenReason('ws://evil.test/api/mp/ws', app, true)).toBe('opens a WebSocket');
+    // Everything else is judged as it always was.
+    expect(forbiddenReason(`${app}/api/health`, app, true)).toBe('goes to /api');
+  });
+
   test('classifies URLs', () => {
     const app = 'http://localhost:3000';
     expect(forbiddenReason(`${app}/`, app)).toBeNull();

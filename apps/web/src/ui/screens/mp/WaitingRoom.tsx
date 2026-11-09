@@ -120,7 +120,22 @@ function Room({ view }: { view: TableView }) {
         <Invite link={view.invite} />
         <Seats view={view} />
         {view.started ? (
-          <p className={styles.hint}>{t.tooFew}</p>
+          <div className={styles.section}>
+            <p className={styles.hint}>{t.tooFew}</p>
+            {/* Nobody else can play, so this room is where the way back has to be (§19.10). */}
+            {me?.status === 'sittingOut' && (
+              <>
+                <p style={{ margin: 0 }}>{mpWords.sittingOut.line}</p>
+                <button
+                  type="button"
+                  className={styles.primary}
+                  onClick={() => dispatch({ type: 'mpImBack' })}
+                >
+                  {mpWords.sittingOut.back}
+                </button>
+              </>
+            )}
+          </div>
         ) : me?.host === true ? (
           <div className={styles.section}>
             <button
