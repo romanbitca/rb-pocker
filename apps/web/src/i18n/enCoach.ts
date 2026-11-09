@@ -102,7 +102,7 @@ export const enCoach = {
       'FOLD_PRICE.close':
         'You need {need}% to call. You win about {E}%. It is close, but folding is a little better.',
       'FOLD_PRICE.realise':
-        'You need {need}% to call. You win about {E}% if you see every card. Later bets can make you fold before that. Folding saves chips.',
+        'You need {need}% to call. You win about {E}% if you see every card. Later bets can make you fold before the river. Folding saves chips.',
       'CALL_ALLIN.close':
         'You need {need}% to call. You win about {E}% against hands that go all-in here. It is close, but calling is a little better.',
       'FOLD_ALLIN.close':
@@ -122,9 +122,9 @@ export const enCoach = {
       'CHECK_WEAK.draw': 'Your {draw} has not hit yet. Check and see the next card for free.',
       'RAISE_PROTECT.river': 'Your hand is strong. Raise now: worse hands can still call.',
       'FOLD_VS_RAISE.realise':
-        'You need {need}% to call. {hand} wins about {E}% against their likely hands if you see every card. Later bets can make you fold before that.',
+        'You need {need}% to call. {hand} wins about {E}% against their likely hands if you see every card. Later bets can make you fold before the river.',
       'FOLD_VS_RAISE.range':
-        '{hand} is in the top {rankPct}% of starting hands. Against this raise, that is too weak to call.',
+        '{hand} is too weak to call this raise, even at this price. It is only in the top {rankPct}% of starting hands.',
       'PUSH_FOLD.fold': {
         count: 'S',
         one: 'Only {S} {g:big blind} left: go {g:all-in} or fold. They fold only about {Pfold}%. If called, you win only about {E}%.',

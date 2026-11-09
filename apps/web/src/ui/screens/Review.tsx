@@ -59,6 +59,7 @@ import {
   netSpoken,
   netText,
   openingStep,
+  resultLines,
   stepLabel,
 } from '../review.ts';
 import type { TableLayout } from '../layout/seats.ts';
@@ -444,7 +445,7 @@ function SummaryOnly({ view }: { view: ReviewSummary }) {
       <p className={styles.lineMain}>
         {view.reason === 'version' ? enReview.version : enReview.broken}
       </p>
-      {[...handEndLines(view.end), netSpoken(view.end.heroNet)].map((line, i) => (
+      {resultLines(view.end).map((line, i) => (
         <p key={i} className={styles.line}>
           {line}
         </p>

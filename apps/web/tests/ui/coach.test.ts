@@ -532,8 +532,12 @@ describe('coachView (§10.2, §12.6)', () => {
       label: 'Counting later bets: about 22%. Need 25%.',
       verdict: 'You win less often than you need.',
     });
-    // Beginner's strip: not "You win about 37%. You need 25%." beside "Fold".
-    expect(realised.strip).toMatchObject({ headline: 'Fold', line: 'You need 25% to call.' });
+    // Beginner's strip: not "You win about 37%. You need 25%." beside "Fold", and not the need
+    // alone: the number the coach compared (1.4.15).
+    expect(realised.strip).toMatchObject({
+      headline: 'Fold',
+      line: 'Counting later bets: about 22%. You need 25%.',
+    });
     // A call that 20% against 25% would not pay, but hitting the draw wins more later.
     const call = decision({
       eRandom: 0.2,
@@ -549,7 +553,9 @@ describe('coachView (§10.2, §12.6)', () => {
       label: 'Win chance 20% (any cards). Counting what you can win later: need about 18%.',
       verdict: 'You win more often than you need.',
     });
-    expect(implied.strip).toMatchObject({ line: 'The price alone needs 25%.' });
+    expect(implied.strip).toMatchObject({
+      line: 'Counting what you can win later: need about 18%.',
+    });
     // No price decision (a committed call under the price): no bar, and the reason in the strip.
     const committed = decision({
       eRandom: 0.2,
@@ -563,6 +569,213 @@ describe('coachView (§10.2, §12.6)', () => {
     // The plain bar keeps the two numbers in Beginner's strip.
     const plain = coachView(coachData(), null, input(FACING));
     expect(plain.strip).toMatchObject({ line: 'You win about 45%. You need 25%.' });
+  });
+
+  describe('the strip agrees with the numbers beside it (§12.6, 1.4.15)', () => {
+    /** The strip's line for `over` in the fixtures' spot (facing 40 into 80: need 25%). */
+    const stripOf = (
+      over: Partial<Decision>,
+      level: 'beginner' | 'intermediate' = 'beginner',
+      spot: Parameters<typeof explanationOf>[1] = {},
+    ): { line: string; lineShort: string } => {
+      const d = decision({ action: { type: 'fold' }, kind: 'fold', need: 0.25, ...over });
+      const v = coachView(
+        coachData({ level, opened: true, decision: d, explanation: explanationOf(d, spot) }),
+        null,
+        input(FACING),
+      );
+      if (v.strip.kind !== 'advice') throw new Error('no advice');
+      return { line: v.strip.line, lineShort: v.strip.lineShort };
+    };
+    const preflop = { street: 'preflop' as const, facing: 'open' as const };
+    /** §8.3's data of FOLD_VS_RAISE: `evCall` > 0 when only the call range folded the hand. */
+    const vsRaise = (E: number, evCall: number, R = 0.85) =>
+      r('FOLD_VS_RAISE', { hand: 'T2o', E, need: 0.25, V: 64, R, evCall, callers: 0 });
+
+    it.each(['beginner', 'intermediate'] as const)(
+      'QA 11 (%s): the call range decided: its rule, not "in the top 91", beside numbers that pay',
+      (level) => {
+        const s = stripOf({ eRandom: 0.42, eRange: 0.4, trace: [vsRaise(0.4, 12)] }, level, {
+          ...preflop,
+          preflopName: 'Ten-Two offsuit',
+          rankPct: 90.2,
+        });
+        expect(s.line).toBe('Ten-Two offsuit is too weak to call this raise, even at this price.');
+        expect(s.lineShort).toBe('Your hand is too weak to call this raise, even at this price.');
+      },
+    );
+
+    it.each(['beginner', 'intermediate'] as const)(
+      'QA 11 (%s): later bets decided: in numbers, not the need alone beside a win chance over it',
+      (level) => {
+        const s = stripOf(
+          { eRandom: 0.26, eRange: 0.27, trace: [vsRaise(0.27, -4, 0.8)] },
+          level,
+          preflop,
+        );
+        expect(s.line).toBe('Counting later bets: about 22%. You need 25%.');
+      },
+    );
+
+    it('both numbers of the pair above the price: not the pair, but the rule that decided', () => {
+      // RANGE_ADJUST shows (HUD 50, likely 40), and both say "call".
+      const realise = { eRandom: 0.5, eRange: 0.4, trace: [vsRaise(0.4, -4, 0.6)] };
+      expect(stripOf(realise, 'beginner', preflop)).toEqual({
+        line: 'Their likely hands: about 40%. Counting later bets: about 24%.',
+        lineShort: 'Counting later bets: about 24%. You need 25%.',
+      });
+      const range = { eRandom: 0.5, eRange: 0.4, trace: [vsRaise(0.4, 12)] };
+      expect(stripOf(range, 'beginner', { ...preflop, preflopName: 'Ten-Two offsuit' }).line).toBe(
+        'Ten-Two offsuit is too weak to call this raise, even at this price.',
+      );
+    });
+
+    it('the pair stays where it does not argue: the likely-hands number is the reason', () => {
+      const below = {
+        eRandom: 0.45,
+        eRange: 0.2,
+        trace: [r('FOLD_PRICE', { E: 0.2, need: 0.25, R: 1 })],
+      };
+      expect(stripOf(below).line).toBe('Any cards: 45%. Their likely hands: about 20%.');
+      // The HUD below the price agrees with the fold; the raiser-alone number has its label.
+      const raiser = {
+        eRandom: 0.15,
+        eRange: 0.15,
+        trace: [vsRaise(0.44, -4, 0.7)],
+      };
+      expect(stripOf(raiser, 'beginner', { ...preflop, nOpp: 5 }).line).toBe(
+        'All 5 players: 15%. Raiser alone: about 44%.',
+      );
+    });
+
+    it('close spots say it is close, never the first half of the comparison', () => {
+      const river = { street: 'river' as const };
+      expect(
+        stripOf(
+          { eRandom: 0.26, eRange: 0.26, trace: [r('FOLD_PRICE', { E: 0.26, need: 0.25, R: 1 })] },
+          'beginner',
+          river,
+        ).line,
+      ).toBe('It is close, but folding is a little better.');
+      expect(
+        stripOf({
+          eRandom: 0.26,
+          eRange: 0.26,
+          trace: [r('FOLD_ALLIN', { E: 0.26, need: 0.25 })],
+        }).line,
+      ).toBe('It is close, but folding is a little better.');
+      const close = { action: { type: 'call' } as const, kind: 'call' as const };
+      expect(
+        stripOf({
+          ...close,
+          eRandom: 0.24,
+          eRange: 0.24,
+          trace: [r('CALL_PROFITABLE', { toCall: 40, pot: 120 })],
+        }).line,
+      ).toBe('It is close, but calling is a little better.');
+      expect(
+        stripOf(
+          { ...close, eRandom: 0.24, eRange: 0.24, trace: [r('CALL_PREFLOP', { E: 0.24 })] },
+          'beginner',
+          preflop,
+        ).line,
+      ).toBe('It is close, but calling is a little better.');
+      expect(
+        stripOf({ ...close, eRandom: 0.24, eRange: 0.24, trace: [r('CALL_ALLIN', { E: 0.24 })] })
+          .line,
+      ).toBe('It is close, but calling is a little better.');
+    });
+
+    it('a call below the price says what pays for it', () => {
+      const call = { action: { type: 'call' } as const, kind: 'call' as const };
+      expect(
+        stripOf(
+          {
+            ...call,
+            eRandom: 0.15,
+            eRange: 0.15,
+            trace: [r('CALL_PREFLOP', { E: 0.15, implied: 0.1 })],
+          },
+          'beginner',
+          preflop,
+        ).line,
+      ).toBe('If you make a set, you can win a big pot.');
+      expect(
+        stripOf({
+          ...call,
+          eRandom: 0.15,
+          eRange: 0.15,
+          trace: [r('IMPLIED', { E: 0.15, need: 0.25, draw: 'flush', needImplied: 0.2 })],
+        }).line,
+      ).toBe('If you hit your flush draw, you can win more later.');
+      expect(
+        stripOf(
+          { ...call, eRandom: 0.15, eRange: 0.15, trace: [r('SET_MINING', {})] },
+          'beginner',
+          preflop,
+        ).line,
+      ).toBe('Call to try for a set.');
+    });
+
+    it('a guardrail says the rule, not "This decision is clear."', () => {
+      expect(
+        stripOf({
+          eRandom: 0.4,
+          eRange: 0.4,
+          trace: [r('GUARDRAIL', { detail: 'riverNoChance' })],
+        }).line,
+      ).toBe('You almost never win here.');
+    });
+
+    it('property: a line beside a price is never the need alone, nor a percentile', () => {
+      const code = fc.constantFrom<ReasonCode>(
+        'FOLD_VS_RAISE',
+        'FOLD_PRICE',
+        'FOLD_ALLIN',
+        'CALL_PROFITABLE',
+        'CALL_PREFLOP',
+        'CALL_ALLIN',
+        'IMPLIED',
+        'SET_MINING',
+        'GUARDRAIL',
+      );
+      fc.assert(
+        fc.property(
+          fc.integer({ min: 2, max: 98 }),
+          fc.integer({ min: 2, max: 98 }),
+          code,
+          fc.boolean(),
+          fc.boolean(),
+          fc.constantFrom('beginner', 'intermediate') as fc.Arbitrary<'beginner' | 'intermediate'>,
+          (random, range, main, call, positive, level) => {
+            const E = range / 100;
+            const d = {
+              eRandom: random / 100,
+              eRange: E,
+              ...(call ? { action: { type: 'call' } as const, kind: 'call' as const } : {}),
+              trace: [
+                r(main, {
+                  E,
+                  need: 0.25,
+                  R: 0.8,
+                  evCall: positive ? 5 : -5,
+                  hand: 'T2o',
+                  draw: 'flush',
+                  needImplied: 0.2,
+                  toCall: 40,
+                  pot: 120,
+                  detail: call ? 'allInPriceGood' : 'allInPriceBad',
+                }),
+              ],
+            };
+            const { line } = stripOf(d, level, { ...preflop, preflopName: 'Ten-Two offsuit' });
+            expect(line).not.toMatch(/^(You need \d+% to call|The price alone needs \d+%)\.$/);
+            expect(line).not.toMatch(/\bin the top \d+%/);
+          },
+        ),
+        { numRuns: 1_000 },
+      );
+    });
   });
 
   it('two numbers for different players (§8.10): the strip and the sheet say whom each counts', () => {
@@ -645,8 +858,11 @@ describe('coachView (§10.2, §12.6)', () => {
           const any = `${pctText(eRandom / 100)}%`;
           const who = callers === 0 ? 'Raiser alone' : `Raiser + ${callers} caller`;
           const everyone = players === 2 ? 'Both players' : `All ${players} players`;
-          expect(v.strip.kind === 'advice' && v.strip.line).toContain(`${everyone}: ${any}.`);
-          expect(v.strip.kind === 'advice' && v.strip.line).toContain(who);
+          // Both numbers above the 25% price beside a fold: the strip says the rule (1.4.15).
+          if (eRandom < 25 || E < 25) {
+            expect(v.strip.kind === 'advice' && v.strip.line).toContain(`${everyone}: ${any}.`);
+            expect(v.strip.kind === 'advice' && v.strip.line).toContain(who);
+          }
           const lower = players === 2 ? 'both players' : `all ${players} players`;
           expect(v.hint?.numbers.win).toBe(`Against ${lower} with any cards: ${any}`);
           expect(v.hint?.numbers.likely).toMatch(

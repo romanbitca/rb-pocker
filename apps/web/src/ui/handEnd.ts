@@ -1,20 +1,31 @@
 /**
  * The hand-end banner's lines (PLAN §12.9, §12.11), from the store's `HandEndView`. Pure.
  *
- * - Everyone else folded: "Everyone folded. You win 120." / "Ben wins 120. Everyone else folded."
- *   No cards are named.
- * - Showdown, one winner: "You win 340!" / "Ben wins 340 with Two Pair, Kings and Sevens."
- * - Showdown, the same amount to several winners: "Split pot: you and Ben each win 170."
- *   Different amounts (side pots, an odd chip): one line per winner.
+ * **One number (1.4.15).** When the hand changed the hero's stack, the hero's own result is the
+ * only amount on the banner: "You won 190" / "You lost 120", what the hand did to the stack. The
+ * pot is not named beside it: "You win 280." over "You won 190" were both true (the pot and the
+ * profit) and read as a contradiction. When the hand cost the hero nothing there is no such number
+ * to confuse, and the winners' amounts stay.
+ *
+ * - Everyone else folded: "Everyone folded." then "You won 120" / "Ben wins. Everyone else
+ *   folded." then "You lost 40" ("Ben wins 120. Everyone else folded." when the hero paid
+ *   nothing). No cards are named.
+ * - Showdown, one winner: "You won 340" / "Ben wins with Two Pair, Kings and Sevens." then "You
+ *   lost 170" ("Ben wins 340 with …" when the hero paid nothing).
+ * - Showdown, the same amount to several winners: "Split pot with Ben." then "You won 20" (nothing
+ *   when the chips only came back) / "Ben and Anna split the pot." then "You lost 40" ("Split pot:
+ *   Ben and Anna each win 170." when the hero paid nothing).
+ * - Different amounts (side pots, an odd chip): "You won 100" when the hero made chips, one line
+ *   per other winner ("Ben wins part of the pot with Straight, Five-high."), then "You lost 900"
+ *   when it did not: a hero who won a side pot and lost more in the main pot never reads "You win
+ *   200!" over it.
  * - When the hero wins a showdown, one line per beaten hand that was shown (at most two):
  *   "Ben: Two Pair — loses to your Flush"; with the same category the full names ("Ben: Pair of
  *   Kings — loses to your Pair of Aces"), and with the same name the card that decided it ("Priya:
  *   Two Pair, Fours and Threes — your King kicker beats their Jack"; a flush: "your King beats
  *   their Queen").
  *
- * The banner (`bannerLines`, 1.3.99) adds the hero's own result after the winners: "You won 340" /
- * "You lost 340", what the hand did to the hero's stack (the chips a winner line names include the
- * hero's own). None when it did not change. Review has its own line for it (`netSpoken`).
+ * Review shows these same lines (`handEndLines`, §12.10).
  *
  * Only hands the engine revealed reach `HandEndView.shown`, so nothing here can name a hidden card.
  *
@@ -37,31 +48,62 @@ const T = en.handEnd;
 
 const categoryName = (category: HandCategory): string => T.category[category];
 
-/** Who won what, in order. Empty when the hand has no winner (not complete). */
-function winnerLines(view: HandEndView): string[] {
-  const { winners, shown } = view;
-  if (winners.length === 0) return [];
-  if (view.endedBy === 'fold') {
-    const w = winners[0] as HandEndView['winners'][number];
-    const x = formatChips(w.amount);
-    return [w.seat === HERO ? T.youWinFold(x) : T.winsFold(w.name, x)];
-  }
+type Winner = HandEndView['winners'][number];
 
-  const lines: string[] = [];
-  const first = winners[0] as HandEndView['winners'][number];
-  if (winners.length > 1 && winners.every((w) => w.amount === first.amount)) {
-    const names = winners.map((w) => (w.seat === HERO ? T.you : w.name));
-    lines.push(T.split(joinNames(names), formatChips(first.amount)));
-  } else {
-    for (const w of winners) {
-      const x = formatChips(w.amount);
-      const hand = shown.find((s) => s.seat === w.seat);
-      if (w.seat === HERO) lines.push(T.youWin(x));
-      else
-        lines.push(hand === undefined ? T.winsNoHand(w.name, x) : T.wins(w.name, x, hand.handName));
-    }
+/**
+ * The line of a winner other than the hero (the module note). `withOwn`: the hero's own result is
+ * on the banner, so this line has no amount.
+ */
+function otherWinnerLine(view: HandEndView, w: Winner, withOwn: boolean): string {
+  const hand = view.shown.find((s) => s.seat === w.seat)?.handName;
+  if (!withOwn) {
+    const x = formatChips(w.amount);
+    return hand === undefined ? T.winsNoHand(w.name, x) : T.wins(w.name, x, hand);
   }
-  return lines;
+  if (view.winners.length > 1) {
+    return hand === undefined ? T.winsPart(w.name) : T.winsPartHand(w.name, hand);
+  }
+  return hand === undefined ? T.winsPlain(w.name) : T.winsHand(w.name, hand);
+}
+
+/** Who won, and the hero's own result (the module note). Empty before a winner. */
+function resultLines(view: HandEndView): BannerLine[] {
+  const { winners, heroNet } = view;
+  const first = winners[0];
+  if (first === undefined) return [];
+  const own = ownResultLine(heroNet);
+  // The hero's own result is on the banner: another amount would read against it (1.4.15).
+  const withOwn = own !== null;
+  const heroWon = winners.some((w) => w.seat === HERO);
+  const others = winners.filter((w) => w.seat !== HERO);
+  const namesOf = (list: readonly Winner[]): string => joinNames(list.map((w) => w.name));
+  const x = formatChips(first.amount);
+  const split = winners.length > 1 && winners.every((w) => w.amount === first.amount);
+
+  let who: string[];
+  if (view.endedBy === 'fold') {
+    who = [
+      heroWon
+        ? T.everyoneFolded
+        : withOwn
+          ? T.winsFoldPlain(first.name)
+          : T.winsFold(first.name, x),
+    ];
+  } else if (split) {
+    who = [
+      heroWon
+        ? T.splitWith(namesOf(others))
+        : withOwn
+          ? T.splitOthers(namesOf(winners))
+          : T.split(namesOf(winners), x),
+    ];
+  } else {
+    who = others.map((w) => otherWinnerLine(view, w, withOwn));
+  }
+  // The result leads when the hero won at a showdown with no line of its own to follow.
+  const heroLeads = heroNet > 0 && view.endedBy !== 'fold' && !split;
+  const lines = own === null ? who : heroLeads ? [own, ...who] : [...who, own];
+  return lines.map((text, i) => ({ text, kind: i === 0 ? 'main' : text === own ? 'own' : 'line' }));
 }
 
 /** At a showdown the hero won: one line per beaten hand that was shown, at most two. */
@@ -94,15 +136,10 @@ function loserLines(view: HandEndView): string[] {
   return lines;
 }
 
-/** The result's lines, in order (the words of the module comment). Empty before a winner. */
-export function handEndLines(view: HandEndView): string[] {
-  return [...winnerLines(view), ...loserLines(view)];
-}
-
 /** One line of the hand-end banner, and how it is drawn. */
 export interface BannerLine {
   readonly text: string;
-  /** 'main': the first line. 'own': the hero's own result. 'line': the rest. */
+  /** 'main': the first line. 'own': the hero's own result under it. 'line': the rest. */
   readonly kind: 'main' | 'own' | 'line';
 }
 
@@ -116,18 +153,18 @@ export function ownResultLine(net: number): string | null {
 }
 
 /**
- * The banner (§12.9, 1.3.99): who won, the hero's own result, then the hands the hero beat. Empty
- * when the hand has no winner (not complete).
+ * The banner (§12.9, the module note): who won, the hero's own result, then the hands the hero
+ * beat. Empty when the hand has no winner (not complete).
  */
 export function bannerLines(view: HandEndView): BannerLine[] {
-  const winners = winnerLines(view);
-  if (winners.length === 0) return [];
-  const own = ownResultLine(view.heroNet);
-  return [
-    ...winners.map((text, i): BannerLine => ({ text, kind: i === 0 ? 'main' : 'line' })),
-    ...(own === null ? [] : [{ text: own, kind: 'own' } as const]),
-    ...loserLines(view).map((text): BannerLine => ({ text, kind: 'line' })),
-  ];
+  const result = resultLines(view);
+  if (result.length === 0) return [];
+  return [...result, ...loserLines(view).map((text): BannerLine => ({ text, kind: 'line' }))];
+}
+
+/** The banner's lines as plain text, for Review (§12.10). Empty before a winner. */
+export function handEndLines(view: HandEndView): string[] {
+  return bannerLines(view).map((line) => line.text);
 }
 
 /** The §7.6 luck line after an all-in run-out. */

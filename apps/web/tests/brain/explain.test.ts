@@ -735,7 +735,7 @@ describe('whom each number counts (§8.10): the raiser alone or every player', (
       "Against all 5 players with any cards, you win 26%. Against the raiser's likely hands alone, you win about 44%.",
     );
     expect(lineText(e.reasons[1] as Line)).toBe(
-      'You need 38% to call. King-Queen suited wins about 44% against their likely hands if you see every card. Later bets can make you fold before that.',
+      'You need 38% to call. King-Queen suited wins about 44% against their likely hands if you see every card. Later bets can make you fold before the river.',
     );
     expect(e.shown).toEqual({
       eRandom: 0.26,
@@ -1302,7 +1302,7 @@ describe('consistency: a sentence never contradicts the numbers it shows', () =>
     );
     expect(keys(e.reasons)).toEqual(['FOLD_PRICE.realise']);
     expect(lineText(e.reasons[0] as Line)).toBe(
-      'You need 25% to call. You win about 30% if you see every card. Later bets can make you fold before that. Folding saves chips.',
+      'You need 25% to call. You win about 30% if you see every card. Later bets can make you fold before the river. Folding saves chips.',
     );
     expect(keys(e.whyNot)).toEqual(['WHY_NOT_RAISE']);
   });
@@ -1824,12 +1824,12 @@ describe('the coach-advice audit (6 Nov 2026): words that fit the numbers and th
     // At or above the price, EV(call) ≤ 0: the realisation R decided (later bets).
     const realise = facingOpen(0.4, { evCall: -5 });
     expect(lineText(explain(realise).reasons[0] as Line)).toBe(
-      'You need 38% to call. Pocket Twos wins about 40% against their likely hands if you see every card. Later bets can make you fold before that.',
+      'You need 38% to call. Pocket Twos wins about 40% against their likely hands if you see every card. Later bets can make you fold before the river.',
     );
     // At or above the price, EV(call) > 0: §8.3's call range folded it.
     const range = facingOpen(0.47, { evCall: 710 });
     expect(lineText(explain(range).reasons[0] as Line)).toBe(
-      'Pocket Twos is in the top 54% of starting hands. Against this raise, that is too weak to call.',
+      'Pocket Twos is too weak to call this raise, even at this price. It is only in the top 54% of starting hands.',
     );
     // The same whole number as the price is not "only" either.
     const equal = facingOpen(0.381, { evCall: -1 });

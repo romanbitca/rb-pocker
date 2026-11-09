@@ -217,7 +217,7 @@ export const direction: CSSProperties = {
 };
 export const center: CSSProperties = { display: 'flex', justifyContent: 'center' };
 
-/** The showdown's result: each best five, the player's own two cards outlined. */
+/** The showdown's result: each best five, a line under the player's own cards (§13.3's bar). */
 export const result: CSSProperties = {
   display: 'grid',
   gap: 8,

@@ -14,6 +14,7 @@ import { renderLine } from '../i18n/coach.ts';
 import { coachWords } from '../i18n/coachUi.ts';
 import { en } from '../i18n/en.ts';
 import { formatAmount, formatBigBlinds, type AmountUnit } from './actionBar.ts';
+import { plainText } from './glossary.ts';
 
 /** What the text needs besides the decision. */
 export interface TextContext {
@@ -40,7 +41,12 @@ export interface HintText {
    * halves of a price comparison, so "You win about 23%." never stands without the need (1.3.100).
    */
   readonly reasonFirst: string;
-  /** The reason's first sentence with its hand said "your hand"; null when it names no hand. */
+  /**
+   * The reason's sentence that says why the advice is right (the strip's, §12.6, 1.4.15): not
+   * the need alone, and not a number without the rule that decided.
+   */
+  readonly reasonWhy: string;
+  /** `reasonWhy` with its hand said "your hand"; null when it names no hand. */
   readonly reasonShort: string | null;
   /** The main reason weighs the win chance against the price (F.1's price sentences). */
   readonly comparesPrice: boolean;
@@ -140,16 +146,38 @@ const PRICE_SENTENCES: Readonly<
 };
 
 /**
- * `first` with its hand said "your hand" ("Your Two Pair, Queens and Sevens is strong…" → "Your
+ * The sentence of a reason that says why, when it is not the first (the strip's, §12.6, 1.4.15).
+ * These reasons start with the price or a bare number; what decided comes after it, and the strip
+ * has room for one sentence.
+ */
+const WHY_SENTENCE: Readonly<Partial<Record<TemplateKey, number>>> = {
+  FOLD_PRICE: 1,
+  'FOLD_PRICE.close': 2,
+  'FOLD_PRICE.realise': 2,
+  'FOLD_VS_RAISE.realise': 2,
+  FOLD_ALLIN: 1,
+  'FOLD_ALLIN.close': 2,
+  CALL_ALLIN: 1,
+  'CALL_ALLIN.close': 2,
+  'CALL_PROFITABLE.close': 2,
+  'CALL_PREFLOP.close': 2,
+  'CALL_PREFLOP.implied': 2,
+  IMPLIED: 1,
+  SET_MINING: 1,
+  GUARDRAIL: 1,
+};
+
+/**
+ * `sentence` with its hand said "your hand" ("Your Two Pair, Queens and Sevens is strong…" → "Your
  * hand is strong…"), for a strip too narrow for the hand's name; null when it names no hand.
  */
-function shortHandSentence(line: Line, first: string): string | null {
+function shortHandSentence(line: Line, sentence: string): string | null {
   for (const key of ['hand', 'handName'] as const) {
     const p = line.params[key];
     if (p?.kind !== 'name') continue;
     const prefix = `Your ${p.text}`;
-    if (first.startsWith(prefix)) return `Your hand${first.slice(prefix.length)}`;
-    if (first.startsWith(p.text)) return `Your hand${first.slice(p.text.length)}`;
+    if (sentence.startsWith(prefix)) return `Your hand${sentence.slice(prefix.length)}`;
+    if (sentence.startsWith(p.text)) return `Your hand${sentence.slice(p.text.length)}`;
   }
   return null;
 }
@@ -157,11 +185,11 @@ function shortHandSentence(line: Line, first: string): string | null {
 /** The main reason's words (§8.10 (2)): the whole, its start, and whether it weighs the price. */
 export function reasonWords(
   e: Explanation,
-): Pick<HintText, 'reason' | 'reasonFirst' | 'reasonShort' | 'comparesPrice'> {
+): Pick<HintText, 'reason' | 'reasonFirst' | 'reasonWhy' | 'reasonShort' | 'comparesPrice'> {
   const rangeNumber = e.shown.eRange;
   const line = e.reasons[rangeNumber === null ? 0 : 1];
   if (line === undefined) {
-    return { reason: '', reasonFirst: '', reasonShort: null, comparesPrice: false };
+    return { reason: '', reasonFirst: '', reasonWhy: '', reasonShort: null, comparesPrice: false };
   }
   const all = sentences(lineMarkup(line));
   const price = PRICE_SENTENCES[line.key];
@@ -174,11 +202,88 @@ export function reasonWords(
   const kept = said ? all.filter((_, i) => i !== price.win) : all;
   // A comparison shows whole: the win chance and the need, side by side.
   const start = price !== undefined && !said ? kept.slice(0, 2) : kept.slice(0, 1);
+  const why = all[WHY_SENTENCE[line.key] ?? 0] ?? '';
   return {
     reason: kept.join(' '),
     reasonFirst: start.join(' '),
-    reasonShort: shortHandSentence(line, all[0] ?? ''),
+    reasonWhy: why,
+    reasonShort: shortHandSentence(line, why),
     comparesPrice: price !== undefined,
+  };
+}
+
+/**
+ * Every number on show argues against a fold or a call: the HUD's number and the number the words
+ * compare (`shown.win`, the price bar's) are on the other side of the price `need` (null: none on
+ * show) than the advice (§12.6, 1.4.15). A raise is left out: it is rarely about the price.
+ */
+export function numbersArgue(e: Explanation, need: number | null): boolean {
+  if (need === null || e.shown.bar?.basis === 'plain') return false;
+  const head = e.headline.key;
+  if (head === 'headline.fold') return e.shown.eRandom >= need;
+  return (head === 'headline.call' || head === 'headline.callAllIn') && e.shown.eRandom < need;
+}
+
+/**
+ * The strip's line under the headline (§12.6), and a shorter one for a narrow strip ('' when there
+ * is none). `beginner`: the level is Beginner. `need` is the price on show, null when none is. In
+ * order:
+ *
+ * - With RANGE_ADJUST, the labelled pair (pitfall 35), each saying whom it counts when the range
+ *   number leaves out players the HUD's counts (§8.10). Not when it argues against the advice.
+ * - Facing a bet, the two numbers that decide it ("You win about 45%. You need 25%."), when they
+ *   do (the price bar's plain comparison agrees with the advice). At Beginner always; at the other
+ *   levels when the reason's own sentence weighs them, so "You win about 23%." never stands without
+ *   the need it compares with (1.3.100).
+ * - Else the rule that decided (1.4.15): every number on show says one thing and the coach says the
+ *   other, so the line must say why. In numbers when the price bar has them, a fold because of later
+ *   bets ("Counting later bets: about 17%. You need 20%."; after RANGE_ADJUST the likely-hands number
+ *   that a 42% would otherwise leave unexplained, "Their likely hands: about 36%. Counting later bets:
+ *   about 30%.") or a call because of what a hit can win later; else the reason's sentence that says
+ *   why. Never the need alone ("You need 20% to call." beside 21% and Fold) and never a percentile
+ *   without its rule ("in the top 91%" beside 42%).
+ */
+export function stripLine(
+  e: Explanation,
+  beginner: boolean,
+  need: number | null,
+): { readonly line: string; readonly short: string } {
+  const { shown } = e;
+  const { bar, eRandom } = shown;
+  const plain = bar?.basis === 'plain';
+  const any = pctText(eRandom);
+  if (shown.eRange !== null && !numbersArgue(e, need)) {
+    const likely = pctText(shown.eRange);
+    const { players, callers } = shown;
+    const line =
+      callers === null
+        ? coachWords.pair(any, likely)
+        : callers === 0
+          ? coachWords.pairRaiser(players, any, likely)
+          : coachWords.pairCallers(players, any, callers, likely);
+    return { line, short: '' };
+  }
+  const words = reasonWords(e);
+  if (need !== null && bar !== null) {
+    if (plain && (beginner || words.comparesPrice)) {
+      return { line: coachWords.winNeed(any, pctText(need)), short: '' };
+    }
+    if (bar.basis === 'realised') {
+      const numbers = coachWords.laterBetsNeed(pctText(bar.win), pctText(need));
+      if (shown.eRange === null) return { line: numbers, short: '' };
+      const range = pctText(shown.eRange);
+      return {
+        line: coachWords.laterBetsRange(shown.callers, range, pctText(bar.win)),
+        short: numbers,
+      };
+    }
+    if (bar.basis === 'implied') {
+      return { line: coachWords.laterWinsNeed(pctText(bar.need)), short: '' };
+    }
+  }
+  return {
+    line: plainText(words.reasonWhy),
+    short: words.reasonShort === null ? '' : plainText(words.reasonShort),
   };
 }
 

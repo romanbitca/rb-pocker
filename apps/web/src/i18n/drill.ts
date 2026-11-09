@@ -161,7 +161,7 @@ export const drillWords = {
     wins: 'Wins',
     loses: 'Loses',
     split: 'Split',
-    legend: "Outlined cards are the player's own 2 cards. The rest come from the table.",
+    legend: "A line under a card means it is the player's own. The rest come from the table.",
   },
 
   /** Why one hand wins (the evaluator's reason, `drill/explain.ts` `Why`). */

@@ -12,6 +12,18 @@ import { about } from './en.ts';
 const allPlayers = (players: number): string =>
   players === 2 ? 'Both players' : `All ${players} players`;
 
+/** The range number's label in the strip: whom it counts when that is not every player (§8.10). */
+const rangeLabel = (callers: number | null, likely: string): string =>
+  callers === null
+    ? `Their likely hands: ${about(likely)}%`
+    : callers === 0
+      ? `Raiser alone: ${about(likely)}%`
+      : `Raiser + ${callers} ${callers === 1 ? 'caller' : 'callers'}: ${about(likely)}%`;
+
+/** The price bar's captions (§12.6), and the strip's line when later bets or later wins decided. */
+const laterBets = (x: string): string => `Counting later bets: ${about(x)}%`;
+const laterWins = (x: string): string => `Counting what you can win later: need ${about(x)}%`;
+
 export const coachWords = {
   /** The strip (§12.6). */
   thinking: 'Coach is thinking…',
@@ -27,18 +39,27 @@ export const coachWords = {
   pill: 'Coach',
   /** Beginner's strip line when facing a bet (§12.6): "You win about 45%. You need 25%." */
   winNeed: (win: string, need: string) => `You win ${about(win)}%. You need ${need}%.`,
+  /**
+   * The strip when every number on show says "call" and the coach folds because of later bets
+   * (§12.6, 1.4.15): the realised number against the price, and with RANGE_ADJUST the labelled
+   * range number first, then what later bets leave of it (the need is on the price chip beside
+   * it). When they say "fold" and it calls for what a hit can win later, the implied price.
+   */
+  laterBetsNeed: (win: string, need: string) => `${laterBets(win)}. You need ${need}%.`,
+  laterBetsRange: (callers: number | null, likely: string, win: string) =>
+    `${rangeLabel(callers, likely)}. ${laterBets(win)}.`,
+  laterWinsNeed: (need: string) => `${laterWins(need)}.`,
   /** The labelled pair when the hint shows both equities (§8.10 RANGE_ADJUST, pitfall 35). */
-  pair: (any: string, likely: string) =>
-    `Any cards: ${any}%. Their likely hands: ${about(likely)}%.`,
+  pair: (any: string, likely: string) => `Any cards: ${any}%. ${rangeLabel(null, likely)}.`,
   /**
    * The pair when the range number counts only the raiser (and the callers already in), fewer
    * players than the HUD's (§8.10): each number says whom. Kept short: the strip shows a sentence a
    * line, and a 360 px phone has 210 px for one beside "Why?" (§12.6).
    */
   pairRaiser: (players: number, any: string, likely: string) =>
-    `${allPlayers(players)}: ${any}%. Raiser alone: ${about(likely)}%.`,
+    `${allPlayers(players)}: ${any}%. ${rangeLabel(0, likely)}.`,
   pairCallers: (players: number, any: string, callers: number, likely: string) =>
-    `${allPlayers(players)}: ${any}%. Raiser + ${callers} ${callers === 1 ? 'caller' : 'callers'}: ${about(likely)}%.`,
+    `${allPlayers(players)}: ${any}%. ${rangeLabel(callers, likely)}.`,
   /** The headline (§8.10 hint structure 1): "Call 40", "Raise to 60 (3 BB)". */
   headline: {
     fold: 'Fold',
@@ -76,8 +97,8 @@ export const coachWords = {
    * The bar's caption when its number is none of the lines above (§12.6): a fold filled to the
    * realised E·R, or a call against the price with what a hit can win later (F.1 `needImplied`).
    */
-  barRealised: (x: string) => `Counting later bets: ${about(x)}%`,
-  barImplied: (x: string) => `Counting what you can win later: need ${about(x)}%`,
+  barRealised: laterBets,
+  barImplied: laterWins,
   /** The bar's name with an implied-price caption: "{win line}. {caption}." */
   barLabelWith: (win: string, caption: string) => `${win}. ${caption}.`,
   yourHand: 'Your hand',
