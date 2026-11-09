@@ -136,7 +136,15 @@ export function startApp(options: StartOptions): TableController {
   if (launch !== null) {
     appStore.setState({ tg: { inside: true } });
     void import('./tg/start.ts').then(
-      (m) => m.startTelegram({ win, store: appStore, controller, launch, timers: realTimers }),
+      (m) =>
+        m.startTelegram({
+          win,
+          store: appStore,
+          controller,
+          launch,
+          timers: realTimers,
+          heroName: options.heroName,
+        }),
       () => {},
     );
   }

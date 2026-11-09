@@ -116,6 +116,7 @@ export function previewSeats(opponents: number, state: PreviewState): SeatView[]
     const base: SeatView = {
       seat,
       name: NAMES[i] ?? `Bot ${seat}`,
+      bot: true,
       personality: PERSONALITIES[i] ?? null,
       stack: [1_250, 2_340, 880, 12_399, 0, 1_975, 2_000, 640][i] ?? 1_000,
       bet: 0,

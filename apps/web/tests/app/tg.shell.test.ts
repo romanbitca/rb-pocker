@@ -5,7 +5,7 @@
  * follows the navigation and goes Back through the store; swipes, viewport, safe area, closing,
  * the invite; and the haptics port, from a store change through `app/device.ts` to the client.
  */
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { TableController, Timers } from '../../src/app/controller.ts';
 import { installDevice, setHapticsPort } from '../../src/app/device.ts';
 import { createAppStore, type AppState, type AppStore } from '../../src/app/store.ts';
@@ -515,6 +515,7 @@ describe('startTelegram (§19.7)', () => {
       controller: {} as TableController,
       launch: { ...LAUNCH, version },
       timers,
+      heroName: 'You',
     });
     return { ...c, store, shell, timers };
   }
@@ -527,6 +528,26 @@ describe('startTelegram (§19.7)', () => {
     send('back_button_pressed');
     expect(store.getState().ui.screen).toBe('welcome');
     expect(typeof shell.shareInvite).toBe('function');
+  });
+
+  it('starts the driver, which opens nothing for a player who only plays alone (§19.6)', () => {
+    const made: string[] = [];
+    vi.stubGlobal(
+      'WebSocket',
+      vi.fn((url: string) => made.push(url)),
+    );
+    try {
+      const { store } = start('8.0');
+      expect(made).toEqual([]);
+      expect(store.getState().mp.connection).toBe('idle');
+      // The remote handler is there: a Play with friends command does not reach the controller.
+      const game = vi.fn();
+      store.setGameHandler(game);
+      store.getState().dispatch({ type: 'mpDismiss' });
+      expect(game).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it('gives the cues Telegram`s haptics', () => {

@@ -20,12 +20,65 @@ import type {
   TableState,
 } from '../../engine/types.ts';
 import type { SeatInfo, TableView } from '../../net/protocol.ts';
-import { NO_SEAT_STATS, seatOrder, type ControllerMode, type GameSlice } from '../store.ts';
+import {
+  NO_SEAT_STATS,
+  type ControllerMode,
+  type GameSlice,
+  type MpTurn,
+  type SeatNote,
+} from '../store.ts';
 
 /** Everything of the `game` slice but the controller's own diagnostics counters. */
 export type LocalGame = Omit<GameSlice, 'diag'>;
 
 const NO_DECISIONS: GameSlice['decisions'] = Object.freeze([]);
+
+/**
+ * The real seats of a table in local order (§19.6): the ones with a player, clockwise from the
+ * viewer, so local seat 0 is always the viewer and an empty seat does not exist.
+ */
+export function seatOrder(view: Pick<TableView, 'seats' | 'you'>): number[] {
+  const count = view.seats.length;
+  const order: number[] = [];
+  for (let i = 0; i < count; i++) {
+    const real = (view.you + i) % count;
+    if (view.seats[real]) order.push(real);
+  }
+  return order;
+}
+
+/**
+ * What the status strip says (§19.10); first match: a hand on show, the viewer not dealt in, the
+ * open decision. Null: nothing to say.
+ */
+export function turnOf(
+  view: TableView,
+  turnEndsAt: number | null,
+  nextHandEndsAt: number | null,
+): MpTurn | null {
+  if (nextHandEndsAt !== null) return { kind: 'nextHand', endsAt: nextHandEndsAt };
+  if (view.hand !== null && view.hand.seats[view.you]?.dealtIn !== true) {
+    return { kind: 'notDealtIn' };
+  }
+  const seat = view.decision?.seat;
+  if (seat === undefined || turnEndsAt === null) return null;
+  if (seat === view.you) return { kind: 'you', endsAt: turnEndsAt };
+  return { kind: 'other', name: view.seats[seat]?.name ?? '', endsAt: turnEndsAt };
+}
+
+function noteOf(seat: SeatInfo | null | undefined): SeatNote | null {
+  if (!seat) return null;
+  if (!seat.online) return 'offline';
+  if (seat.status === 'sittingOut' || seat.status === 'busted' || seat.status === 'leaving') {
+    return 'out';
+  }
+  return seat.status === 'nextHand' ? 'next' : null;
+}
+
+/** Each local seat's note (§19.10), seat 0 first. */
+export function notesOf(view: TableView): (SeatNote | null)[] {
+  return seatOrder(view).map((real) => noteOf(view.seats[real]));
+}
 
 /** Real seat → local seat. Every seat of a hand exists in `view.seats` (§19.5). */
 type ToLocal = (real: number) => number;

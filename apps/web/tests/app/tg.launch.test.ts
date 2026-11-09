@@ -198,6 +198,7 @@ describe('startApp and Telegram (§19.7)', () => {
           startParam: 'abc',
         },
         timers: realTimers,
+        heroName: 'You',
       });
     } finally {
       controller.dispose();

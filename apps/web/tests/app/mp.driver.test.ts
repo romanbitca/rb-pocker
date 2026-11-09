@@ -73,6 +73,7 @@ interface RigOptions {
   data?: Map<string, string>;
   store?: AppStore;
   controller?: { park(): void; unpark(): void };
+  shareInvite?: (url: string, text: string) => void;
 }
 
 function rig(options: RigOptions = {}) {
@@ -110,6 +111,7 @@ function rig(options: RigOptions = {}) {
     monotonic: () => clock.mono,
     random: () => 0.5,
     confirmClosing: (need) => closing.push(need),
+    ...(options.shareInvite !== undefined && { shareInvite: options.shareInvite }),
   });
   return {
     ...factory,
@@ -128,8 +130,11 @@ function rig(options: RigOptions = {}) {
 type Rig = ReturnType<typeof rig>;
 
 /** Launched with a remembered table and sitting at it. */
-function seated(view: TableView = theirTurn()): Rig & { ws: FakeWebSocket } {
-  const r = rig({ remembered: CODE });
+function seated(
+  view: TableView = theirTurn(),
+  options: RigOptions = {},
+): Rig & { ws: FakeWebSocket } {
+  const r = rig({ remembered: CODE, ...options });
   r.driver.launch();
   const ws = r.last();
   ws.open();
@@ -200,6 +205,14 @@ describe('a player who only plays alone makes no connection (§19.6, privacy)', 
 });
 
 describe('when the socket opens (§19.6)', () => {
+  it('Play with friends tapped before the chunk had loaded: `launch` opens it', () => {
+    const store = createAppStore();
+    store.getState().dispatch({ type: 'go', screen: 'mpCreate' });
+    const r = rig({ store });
+    r.driver.launch();
+    expect(r.sockets).toHaveLength(1);
+  });
+
   it('a table code in startapp: "Joining the table…" at once, then hello, then join', () => {
     const r = rig({ startParam: CODE });
     r.driver.launch();
@@ -642,6 +655,24 @@ describe('the commands at a table', () => {
     r.dispatch({ type: 'mpStartGame' });
     r.dispatch({ type: 'mpImBack' });
     expect(r.ws.kinds()).toEqual(expect.arrayContaining(['start', 'back']));
+    expect(r.game).not.toHaveBeenCalled();
+  });
+
+  it('"Invite friends" goes to Telegram, with the view`s link and the screen`s words', () => {
+    const shared: [string, string][] = [];
+    const r = seated(waitingView(), { shareInvite: (url, text) => shared.push([url, text]) });
+    r.dispatch({ type: 'mpShareInvite', text: 'Come and play' });
+    expect(shared).toEqual([[waitingView().invite, 'Come and play']]);
+    expect(r.ws.kinds()).toEqual(['hello']);
+    expect(r.game).not.toHaveBeenCalled();
+  });
+
+  it('"Invite friends" with no table does nothing', () => {
+    const shared: [string, string][] = [];
+    const r = rig({ shareInvite: (url, text) => shared.push([url, text]) });
+    r.driver.launch();
+    r.dispatch({ type: 'mpShareInvite', text: 'Come and play' });
+    expect(shared).toEqual([]);
     expect(r.game).not.toHaveBeenCalled();
   });
 

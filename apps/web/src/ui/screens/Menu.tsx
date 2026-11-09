@@ -31,7 +31,8 @@ export interface MenuProps {
   onOpenDrill?: (() => void) | undefined;
   /** "Recent hands" (Review, §12.10); given only once a hand is finished. */
   onOpenHands?: (() => void) | undefined;
-  onOpenSettings: () => void;
+  /** Absent at a table of the server's (§19.6): Resume, Hand rankings, Sound and Leave table. */
+  onOpenSettings?: (() => void) | undefined;
   onOpenStats?: (() => void) | undefined;
   onOpenLearn?: (() => void) | undefined;
   /** The list of keyboard shortcuts (§12.5 "?"). */
@@ -42,7 +43,7 @@ export interface MenuProps {
   /** To Home; the unfinished hand stays saved (§3.1). */
   onLeaveTable: () => void;
   /** Setup for a new table; the controller asks first when a hand is unfinished (§3.1). */
-  onNewTable: () => void;
+  onNewTable?: (() => void) | undefined;
   /**
    * Compact mode only (§12.3, chunk 9.1): Undo has the mute button's place in the top bar, so the
    * Menu turns sound off or on ("Turn sound off" / "Turn sound on"). `on`: sound is on now.

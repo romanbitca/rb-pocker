@@ -6,6 +6,7 @@ export function seatView(overrides: Partial<SeatView> = {}): SeatView {
   return {
     seat: 3,
     name: 'Anna',
+    bot: true,
     personality: 'rock',
     stack: 1250,
     bet: 50,

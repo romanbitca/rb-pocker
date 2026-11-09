@@ -32,6 +32,7 @@ import {
 import {
   selectBotCard,
   selectInstall,
+  selectInTelegram,
   selectNav,
   selectNudge,
   selectReadOnly,
@@ -86,12 +87,20 @@ function nudgeProps(
   };
 }
 
+/** "Play with friends" (§19.10): only inside Telegram, and absent elsewhere. */
+function useFriendsButton(dispatch: (cmd: Command) => void): (() => void) | undefined {
+  const inside = useAppStore(selectInTelegram);
+  return inside ? () => dispatch({ type: 'go', screen: 'mpCreate' }) : undefined;
+}
+
 function WelcomeScreen() {
   const dispatch = useDispatch();
   const nudge = useAppStore(selectNudge);
+  const friends = useFriendsButton(dispatch);
   return (
     <Welcome
       onPlay={() => dispatch({ type: 'play' })}
+      onPlayWithFriends={friends}
       onSetup={() => dispatch({ type: 'go', screen: 'setup' })}
       onOpenGuide={() => dispatch({ type: 'lesson', lesson: 1 })}
       onOpenPrivacy={() => dispatch({ type: 'go', screen: 'privacy' })}
@@ -107,11 +116,13 @@ function HomeScreen() {
   const install = useAppStore(selectInstall);
   const nudge = useAppStore(selectNudge);
   const { mod } = useScreens();
+  const friends = useFriendsButton(dispatch);
   return (
     <Home
       session={session}
       onPlay={() => dispatch({ type: 'play' })}
       workOn={mod && <mod.WorkOnLine />}
+      onPlayWithFriends={friends}
       onNewTable={() => dispatch({ type: 'go', screen: 'setup' })}
       onOpenDrill={readOnly ? undefined : () => dispatch({ type: 'go', screen: 'drill' })}
       onOpenSettings={() => dispatch({ type: 'go', screen: 'settings' })}
@@ -134,7 +145,9 @@ type LaterScreenName =
   | 'SettingsScreen'
   | 'DrillScreen'
   | 'AboutScreen'
-  | 'PrivacyScreen';
+  | 'PrivacyScreen'
+  | 'MpCreateScreen'
+  | 'MpRoomScreen';
 
 /**
  * A screen from the lazy chunk. It is almost always loaded already and renders at once. Only a
@@ -205,7 +218,14 @@ function ScreenFailed() {
 function LaterOverlay({
   name,
 }: {
-  name: 'MenuOverlay' | 'OutOfChipsOverlay' | 'NewTableOverlay' | 'ImportOverlay' | 'ResetOverlay';
+  name:
+    | 'MenuOverlay'
+    | 'OutOfChipsOverlay'
+    | 'NewTableOverlay'
+    | 'ImportOverlay'
+    | 'ResetOverlay'
+    | 'MpLeaveOverlay'
+    | 'MpProblemOverlay';
 }) {
   const { mod } = useScreens();
   if (mod === null) return null;
@@ -369,9 +389,9 @@ const SCREENS = {
   drill: () => <LaterScreen name="DrillScreen" />,
   about: () => <LaterScreen name="AboutScreen" />,
   privacy: () => <LaterScreen name="PrivacyScreen" />,
-  // Placeholders: nothing can open them before chunk 10.9 brings their screens (§19.6).
-  mpCreate: () => null,
-  mpRoom: () => null,
+  // Play with friends (§19.10): the wrappers are in the screens chunk, the pages a lazy chunk.
+  mpCreate: () => <LaterScreen name="MpCreateScreen" />,
+  mpRoom: () => <LaterScreen name="MpRoomScreen" />,
 } as const;
 
 /**
@@ -438,6 +458,9 @@ const OVERLAYS = {
   // §14.8 (chunk 8.4): Import's preview and Replace, and "Delete my stats", over any screen.
   dataImport: () => <LaterOverlay name="ImportOverlay" />,
   dataReset: () => <LaterOverlay name="ResetOverlay" />,
+  // §19.10: "Leave this table?" and a table that ended or a join that failed.
+  mpLeave: () => <LaterOverlay name="MpLeaveOverlay" />,
+  mpProblem: () => <LaterOverlay name="MpProblemOverlay" />,
 } as const;
 
 // ---------------------------------------------------------------------------------------------

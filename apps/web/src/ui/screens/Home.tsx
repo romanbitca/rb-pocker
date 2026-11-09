@@ -41,6 +41,8 @@ export interface HomeProps {
   onPlay: () => void;
   /** "Work on: Pot odds" (§12.1, from the screens chunk): one line under Play, or nothing. */
   workOn?: ReactNode;
+  /** "Play with friends" (§19.10): given only inside Telegram. */
+  onPlayWithFriends?: (() => void) | undefined;
   /** "New table…" → Setup. */
   onNewTable: () => void;
   /** "Hand drill" (§13.5); hidden while absent (read-only tabs). */
@@ -73,6 +75,7 @@ export function Home({
   session,
   onPlay,
   workOn,
+  onPlayWithFriends,
   onNewTable,
   onOpenDrill,
   onOpenSettings,
@@ -131,6 +134,15 @@ export function Home({
               {workOn}
             </div>
 
+            {onPlayWithFriends && (
+              <button
+                type="button"
+                className={styles.secondary}
+                onClick={() => onPlayWithFriends()}
+              >
+                {en.playWithFriends}
+              </button>
+            )}
             <button type="button" className={styles.secondary} onClick={() => onNewTable()}>
               {en.home.newTable}
             </button>

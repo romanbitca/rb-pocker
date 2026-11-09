@@ -11,6 +11,9 @@
  * - One screen-reader label per seat ("Anna, bot, Careful, stack 1,250, bet 50, folded"); the
  *   drawing inside is `aria-hidden`. With `onSelect` the pod is a button that opens the bot card
  *   (§9.3); it is the same box, so it adds no DOM node.
+ * - At a table of the server's (§19.6): a person is not called "bot", `note` ("Offline", "Out",
+ *   "Next") takes the status tag's place, and `turnMs` draws the ring that runs down this seat's
+ *   time (§19.10), a CSS animation of `transform` only (§12.8).
  */
 import { memo, type CSSProperties } from 'react';
 import { cardAriaLabel } from '../../core/cards.ts';
@@ -35,6 +38,10 @@ export interface SeatProps {
   place: SeatPlace;
   /** Makes the pod a button that opens the bot card (§9.3, §12.1). Pass a stable function. */
   onSelect?: ((seat: number) => void) | undefined;
+  /** A table of the server's (§19.10): "Offline", "Out" or "Next", in the status tag's place. */
+  note?: string | null | undefined;
+  /** It is this seat's turn at a table of the server's: the time left on its clock. */
+  turnMs?: number | undefined;
 }
 
 const join = (...names: (string | false | null | undefined)[]): string =>
@@ -57,10 +64,11 @@ function statusWord(v: SeatView): string | null {
   return v.lastAction === null ? null : L.action[v.lastAction];
 }
 
-/** The seat's screen-reader label (§12.12). */
-export function seatLabel(v: SeatView): string {
+/** The seat's screen-reader label (§12.12); `note`: a table of the server's (§19.10). */
+export function seatLabel(v: SeatView, note?: string | null): string {
   const L = en.seat.label;
-  const parts: string[] = [v.name, L.bot];
+  const parts: string[] = [v.name];
+  if (v.bot) parts.push(L.bot);
   if (v.personality !== null) parts.push(en.personality[v.personality]);
   parts.push(L.stack(formatChips(v.stack)));
   if (v.bet > 0) parts.push(L.betAmount(formatChips(v.bet)));
@@ -69,6 +77,7 @@ export function seatLabel(v: SeatView): string {
   if (v.blind === 'bb') parts.push(L.bigBlind);
   const status = statusWord(v);
   if (status !== null) parts.push(status);
+  if (note != null) parts.push(note);
   if (v.cards.kind === 'revealed') {
     // A winner's cards in its best five are named so ("…, part of the winning hand", §6.1).
     const shown = v.cards.cards.flatMap((c) =>
@@ -134,7 +143,20 @@ function HoleCards({ cards }: { cards: SeatCards }) {
   }
 }
 
-function SeatImpl({ view, place, onSelect }: SeatProps) {
+/**
+ * The ring that runs down this seat's time (§19.10): two half rings, the second starting when the
+ * first has gone, so only `transform` moves (§12.8). `--turn-ms` is what was left when it began.
+ */
+function TurnRing({ ms }: { ms: number }) {
+  return (
+    <span className={styles.ring} style={{ '--turn-ms': `${ms}ms` } as CSSProperties}>
+      <i />
+      <i />
+    </span>
+  );
+}
+
+function SeatImpl({ view, place, onSelect, note, turnMs }: SeatProps) {
   const { pod, bet, inner } = place;
   const revealed = view.cards.kind === 'revealed';
   const podClass = join(
@@ -159,8 +181,9 @@ function SeatImpl({ view, place, onSelect }: SeatProps) {
           {initial(view.name)}
         </span>
       )}
+      {turnMs !== undefined && <TurnRing key={turnMs} ms={turnMs} />}
       <Marker view={view} />
-      <Tag view={view} />
+      {note != null ? <span className={styles.tag}>{note}</span> : <Tag view={view} />}
       <span className={styles.name}>
         {view.personality !== null && (
           <SpriteIcon id={ICONS[view.personality]} className={styles.badge} />
@@ -172,7 +195,7 @@ function SeatImpl({ view, place, onSelect }: SeatProps) {
       </span>
     </span>
   );
-  const label = seatLabel(view);
+  const label = seatLabel(view, note);
   return (
     <div className={styles.seat} style={{ left: pod.x, top: pod.y }} data-seat={view.seat}>
       {onSelect === undefined ? (
@@ -228,6 +251,7 @@ export function seatViewEqual(a: SeatView, b: SeatView): boolean {
     a === b ||
     (a.seat === b.seat &&
       a.name === b.name &&
+      a.bot === b.bot &&
       a.personality === b.personality &&
       a.stack === b.stack &&
       a.bet === b.bet &&
@@ -246,6 +270,8 @@ export function seatViewEqual(a: SeatView, b: SeatView): boolean {
 export function seatPropsEqual(a: SeatProps, b: SeatProps): boolean {
   return (
     a.onSelect === b.onSelect &&
+    a.note === b.note &&
+    a.turnMs === b.turnMs &&
     a.place.inner === b.place.inner &&
     sameRect(a.place.pod, b.place.pod) &&
     sameRect(a.place.bet, b.place.bet) &&

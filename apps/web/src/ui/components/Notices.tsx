@@ -15,6 +15,7 @@ import { useEffect, useLayoutEffect, useRef, useSyncExternalStore, type RefObjec
 import type { SessionSummary, Toast } from '../../app/store.ts';
 import { enStart as en } from '../../i18n/start.ts';
 import { formatChips } from '../format.ts';
+import { mpNoticeWords } from '../mpNotices.ts';
 import { joinNames } from '../names.ts';
 import styles from './Notices.module.css';
 
@@ -57,6 +58,8 @@ export function toastText(toast: Toast, words: LaterWords | null = later): strin
     case 'dataRestored':
     case 'offlineReady':
       return en.toast[toast.kind];
+    case 'mpNotice':
+      return mpNoticeWords.text?.(toast.notice) ?? null;
   }
   if (words === null) return null;
   const t = words.toast;
@@ -67,8 +70,6 @@ export function toastText(toast: Toast, words: LaterWords | null = later): strin
       return t.collection(words.handEnd.category[toast.category]);
     case 'session':
       return sessionText(words, toast.session);
-    case 'mpNotice':
-      return null; // chunk 10.9: the words are in `i18n/mp.ts`, and no table exists before it
     default:
       return t[toast.kind];
   }

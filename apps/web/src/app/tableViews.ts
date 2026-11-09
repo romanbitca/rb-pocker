@@ -53,6 +53,7 @@ export type SeatCardsData =
 export interface SeatViewData {
   readonly seat: number;
   readonly name: string;
+  readonly bot: boolean;
   readonly personality: PersonalityId | null;
   readonly stack: number;
   readonly bet: number;
@@ -256,6 +257,7 @@ export function seatView(hand: HandState, table: TableState, seat: number): Seat
   return {
     seat,
     name: slot?.name ?? '',
+    bot: slot?.kind === 'bot',
     personality: labelVisible(seatLevelOf(table, seat)) ? (slot?.personality ?? null) : null,
     stack: s.stack,
     bet: betOf(hand, s),
@@ -285,6 +287,7 @@ export function sameSeatView(a: SeatViewData, b: SeatViewData): boolean {
   return (
     a.seat === b.seat &&
     a.name === b.name &&
+    a.bot === b.bot &&
     a.personality === b.personality &&
     a.stack === b.stack &&
     a.bet === b.bet &&
