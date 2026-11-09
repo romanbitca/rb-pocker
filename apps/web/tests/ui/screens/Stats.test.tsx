@@ -214,6 +214,22 @@ describe('a leak`s lesson link (§8.9 "Lesson links", Appendix F.10)', () => {
     expect(screen.queryByRole('button', { name: /^Lesson / })).toBeNull();
   }, 15_000);
 
+  /** The cards of Progress by their headings, top to bottom. */
+  const titles = () => screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent);
+
+  it('leaks come first on Progress: what to work on (§14.4, 1.3.101)', () => {
+    show({ stats: leaky(), tab: 'progress' });
+    expect(titles()[0]).toBe(statsWords.progress.leaks);
+    expect(titles()[1]).toBe(statsWords.progress.score);
+  }, 15_000);
+
+  it('with no leak yet the numbers come first, the note where the list was', () => {
+    show({ stats: hands(10), tab: 'progress' });
+    const all = titles();
+    expect(all[0]).toBe(statsWords.progress.score);
+    expect(all.at(-1)).toBe(statsWords.progress.leaks);
+  }, 15_000);
+
   it('every leak tag has its §8.9 lesson, and the titles are the lessons` own (F.8)', () => {
     expect(LEAK_LESSON).toEqual({
       'open-loose': 5,

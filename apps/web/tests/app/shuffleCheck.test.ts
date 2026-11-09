@@ -330,6 +330,7 @@ describe('Review’s hands (app/review.ts) read as the record does', () => {
       heroHole: record.heroHole,
       board: record.board,
       undoCount: record.undoCount,
+      decisions: [],
       commitBeforeDeal: true,
       end,
     };

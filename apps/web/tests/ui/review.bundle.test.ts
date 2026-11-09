@@ -158,8 +158,10 @@ describe('the Stats screen in the production build (chunk 8.2)', () => {
       expect(text(stats), word).toContain(word);
     }
     // A leak's lesson link (§8.9) names its lesson and opens it by number: the lessons themselves
-    // stay in Learn's chunk (its test below), none of their words come with Stats.
-    expect(text(stats)).toContain('Pot odds');
+    // stay in Learn's chunk (its test below), none of their words come with Stats. The four titles
+    // are in `en.ts`, for Home's "Work on" line too (1.3.101), and out of the initial JS.
+    expect(text(chunk('src/i18n/en.ts'))).toContain('Pot odds');
+    for (const file of initial.files) expect(text(file)).not.toContain('Pot odds');
     for (const words of ['A hand, step by step', 'Outs are cards that improve your hand.']) {
       expect(text(stats), words).not.toContain(words);
     }

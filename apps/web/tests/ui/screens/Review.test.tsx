@@ -10,9 +10,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { addHand, initialReview, type ReviewHand } from '../../../src/app/review.ts';
 import { buildReview, type ReviewReplay } from '../../../src/app/reviewViews.ts';
 import { appStore, defaultGameSettings, initialGame, initialUi } from '../../../src/app/store.ts';
+import type { DecisionRecord } from '../../../src/persist/schema.ts';
+import { formatAmount } from '../../../src/ui/actionBar.ts';
 import { AUTOPLAY_MS, frameLines, netSpoken, stepLabel } from '../../../src/ui/review.ts';
 import { ReviewRoute } from '../../../src/ui/screens/Review.tsx';
-import { collectHands } from '../../app/reviewFixtures.ts';
+import { collectHands, decisionOf, undoneHand, withDecisions } from '../../app/reviewFixtures.ts';
 import { SUIT_CODE_POINTS } from '../dom.ts';
 import { smallTargets } from './targets.ts';
 
@@ -436,5 +438,163 @@ describe('a hand that cannot be replayed', () => {
     open([broken]);
     expect(screen.getByText('This hand cannot be replayed.')).toBeTruthy();
     expect(screen.queryByRole('slider')).toBeNull();
+  });
+});
+
+describe('the hero`s decisions on their steps (§12.10, 1.3.101)', () => {
+  const decision = (): HTMLElement | null => document.querySelector('[data-review-decision]');
+  const jump = (name: string) => act(() => void fireEvent.click(button(name)));
+
+  /** The frames where the hero moves. */
+  const heroSteps = (hand: ReviewHand): number[] =>
+    viewOf(hand)
+      .frames.filter((f) => f.events.some((e) => e.kind === 'act' && e.who.hero))
+      .map((f) => f.index);
+
+  /** `show` with its first decision a Mistake the coach would have folded. */
+  function firstIsMistake(): ReviewHand {
+    const hand = withDecisions(show);
+    const [first, ...rest] = hand.decisions as [DecisionRecord, ...DecisionRecord[]];
+    return {
+      ...hand,
+      decisions: [
+        { ...first, grade: 'mistake', rec: { type: 'fold' }, eRandom: 0.3, need: 0.4 },
+        ...rest,
+      ],
+    };
+  }
+
+  it('a hero step shows the hand summary`s row in place of its own line', () => {
+    const hand = firstIsMistake();
+    open([hand]);
+    const first = hand.decisions[0] as DecisionRecord;
+    const did = first.taken.type === 'call' ? 'You called' : 'You checked';
+    const row = decision() as HTMLElement;
+    expect(row.dataset['reviewDecision']).toBe('mistake');
+    expect(row.textContent).toContain(`Before the flop · ${did}`);
+    expect(row.textContent).toContain('Mistake');
+    expect(row.textContent).toContain('Coach: Fold · You had 30%, needed 40%.');
+    expect(row.querySelector('[data-grade-chip="mistake"]')).toBeTruthy();
+    // It is inside the live region, after the step's name; the plain line is gone.
+    const region = caption();
+    expect(region.contains(row)).toBe(true);
+    expect(region.textContent).toMatch(/^Step \d+ of \d+\. /);
+    expect(region.textContent).not.toMatch(/^Step \d+ of \d+\. You (call|check)/);
+  });
+
+  it('the other steps keep their line and show no row', () => {
+    const hand = withDecisions(show);
+    open([hand]);
+    expect(at()).toBe(0);
+    expect(decision()).toBeNull();
+    expect(caption().textContent).toContain('The cards are dealt.');
+    act(() => void fireEvent.click(button('Last step')));
+    expect(decision()).toBeNull();
+    expect(caption().textContent).toContain(netSpoken(hand.end.heroNet));
+  });
+
+  it('"Next decision" and "Previous decision" jump between the hero`s moves', () => {
+    const hand = withDecisions(show);
+    const moves = heroSteps(hand);
+    expect(moves.length).toBeGreaterThan(2);
+    open([hand]);
+    expect(button('Previous decision').getAttribute('aria-disabled')).toBe('true');
+    for (const step of moves) {
+      jump('Next decision');
+      expect(at()).toBe(step);
+      expect(decision()).toBeTruthy();
+    }
+    expect(button('Next decision').getAttribute('aria-disabled')).toBe('true');
+    jump('Next decision'); // off: nothing happens
+    expect(at()).toBe(moves[moves.length - 1]);
+    jump('Previous decision');
+    expect(at()).toBe(moves[moves.length - 2]);
+    act(() => void fireEvent.click(button('First step')));
+    jump('Next decision');
+    expect(at()).toBe(moves[0]);
+    expect(button('Previous decision').getAttribute('aria-disabled')).toBe('true');
+    expect(
+      smallTargets(screen.getByRole('group', { name: 'Your decisions' }), () => false),
+    ).toEqual([]);
+  });
+
+  it('a jump pauses auto-play, like any step by hand', () => {
+    vi.useFakeTimers();
+    open([withDecisions(show)]);
+    act(() => void fireEvent.click(button('Play')));
+    expect(button('Pause')).toBeTruthy();
+    jump('Next decision');
+    expect(button('Play')).toBeTruthy();
+    const here = at();
+    act(() => void vi.advanceTimersByTime(AUTOPLAY_MS * 3));
+    expect(at()).toBe(here);
+  });
+
+  it('a hand with a mistake opens at the first one; any other at the deal', () => {
+    const mistaken = withDecisions(show, (n) =>
+      n === 1 ? 'blunder' : n === 2 ? 'mistake' : 'good',
+    );
+    const { unmount } = open([mistaken]);
+    expect(at()).toBe(heroSteps(mistaken)[1]);
+    expect(decision()?.dataset['reviewDecision']).toBe('blunder');
+    unmount();
+    open([withDecisions(show, () => 'inaccuracy')]);
+    expect(at()).toBe(0);
+    expect(caption().textContent).toContain('The cards are dealt.');
+  });
+
+  it('another hand opens at its own first mistake', () => {
+    appStore.getState().dispatch({ type: 'layout', layout: 'wide' });
+    const first = withDecisions(show, (n) => (n === 0 ? 'mistake' : 'good'));
+    const second = { ...withDecisions(shows[1] as ReviewHand), handSeq: 5000 };
+    open([first, second], second.handSeq);
+    expect(at()).toBe(0);
+    const list = within(screen.getByRole('region', { name: 'Recent hands' }));
+    act(() => void fireEvent.click(list.getAllByRole('button')[1] as HTMLElement));
+    expect(at()).toBe(heroSteps(first)[0]);
+  });
+
+  it('an Undo`s step keeps its line and shows the decision it took back', () => {
+    open([undoneHand()]);
+    expect(at()).toBe(0); // the mistake was taken back: the replay does not open at it
+    jump('Next decision');
+    expect(caption().textContent).toContain('Move taken back.');
+    const row = decision() as HTMLElement;
+    expect(row.dataset['reviewDecision']).toBe('undone');
+    expect(row.textContent).toContain('Taken back with Undo');
+    expect(row.textContent).toContain('Coach: Fold');
+    jump('Next decision');
+    expect(decision()?.dataset['reviewDecision']).toBe('best');
+    expect(decision()?.textContent).toContain('You folded');
+  });
+
+  it('a decision the grader could not grade says so', () => {
+    open([withDecisions(show, () => null)]);
+    jump('Next decision');
+    expect(decision()?.dataset['reviewDecision']).toBe('none');
+    expect(decision()?.textContent).toContain('No grade');
+  });
+
+  it('amounts follow the setting, as on the Table', () => {
+    const hand = withDecisions(show);
+    const raised: ReviewHand = {
+      ...hand,
+      decisions: [
+        decisionOf(0, 'preflop', { type: 'raise', to: 60 }, 'good'),
+        ...hand.decisions.slice(1),
+      ],
+    };
+    appStore.setState({ settings: { ...defaultGameSettings(), amounts: 'bb' } });
+    open([raised]);
+    jump('Next decision');
+    expect(decision()?.textContent).toContain(`You raised to ${formatAmount(60, 20, 'bb')}`);
+  });
+
+  it('a hand without records has no row and no jump buttons', () => {
+    open([show]);
+    act(() => void fireEvent.click(button('Next step')));
+    expect(decision()).toBeNull();
+    expect(screen.queryByRole('group', { name: 'Your decisions' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Next decision' })).toBeNull();
   });
 });

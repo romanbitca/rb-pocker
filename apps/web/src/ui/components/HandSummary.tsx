@@ -20,19 +20,11 @@
  */
 import { memo, useEffect, useId, useMemo } from 'react';
 import { selectCoachLevel, useAppStore, type AppState } from '../../app/store.ts';
-import type { PlayerAction } from '../../engine/types.ts';
-import {
-  isAllInMove,
-  rowNumbers,
-  summaryOf,
-  type SummaryData,
-  type SummaryRow,
-} from '../summary.ts';
+import { summaryOf, type SummaryData } from '../summary.ts';
 import { summaryWords as W } from '../../i18n/summary.ts';
 import { formatAmount } from '../actionBar.ts';
-import { percentText } from '../equity.ts';
 import { formatChips } from '../format.ts';
-import { GradeChip } from './GradeChip.tsx';
+import { DecisionRow } from './DecisionRow.tsx';
 import { Modal } from './Modal.tsx';
 import { LevelSuggestion } from './SuggestionCard.tsx';
 import screen from '../screens/Screen.module.css';
@@ -67,106 +59,6 @@ export const HandSummary = memo(function HandSummary(props: HandSummaryProps) {
 export function netText(net: number): string {
   if (net === 0) return '0';
   return `${net > 0 ? '+' : '−'}${formatChips(Math.abs(net))}`;
-}
-
-const sameMove = (a: PlayerAction, b: PlayerAction): boolean =>
-  a.type === b.type &&
-  (a.type === 'bet' || a.type === 'raise' ? a.to === (b as { to: number }).to : true);
-
-/** The words for each move: "You called" (`did`), "Coach: Call" (`coach`), "Calling" (`doing`)… */
-type MoveWords = typeof W.did | typeof W.coach | typeof W.doing | typeof W.coachDoing;
-
-/**
- * A move of the row in one of the word sets; an all-in says so, as the action bar does ("All-in
- * 200", "Call all-in"; QA-2 of 6 Nov 2026, item 6).
- */
-function moveText(
-  row: SummaryRow,
-  a: PlayerAction,
-  words: MoveWords,
-  money: (x: number) => string,
-): string {
-  const allIn = isAllInMove(row, a);
-  switch (a.type) {
-    case 'fold':
-    case 'check':
-      return words[a.type];
-    case 'call':
-      return allIn ? words.callAllIn : words.call;
-    case 'bet':
-      return allIn ? words.allIn(money(a.to)) : words.bet(money(a.to));
-    case 'raise':
-      return allIn ? words.allIn(money(a.to)) : words.raise(money(a.to));
-  }
-}
-
-/** The row's first line after the street: "You called", "You went all-in for 200". */
-export function rowDid(row: SummaryRow, money: (x: number) => string): string {
-  return moveText(row, row.taken, W.did, money);
-}
-
-/** The numbers of a row in words (`rowNumbers`: the ones that tell the grade's story). */
-function numbersText(row: SummaryRow): string | null {
-  const pct = (x: number): string => percentText(100 * x);
-  const n = rowNumbers(row);
-  const later = (x: number | null): string => (x === null ? '' : ` ${W.later(pct(x))}`);
-  switch (n.kind) {
-    case 'none':
-      return null;
-    case 'win':
-      return W.win(pct(n.win));
-    case 'price':
-      return W.numbers(pct(n.win), pct(n.need)) + later(n.later);
-    case 'likelyOnly':
-      return n.whom === null
-        ? W.likelyOnly(pct(n.win), pct(n.likely))
-        : W.whomOnly(W.whom(n.whom.players, pct(n.win), n.whom.callers, pct(n.likely)));
-    case 'likely':
-      return (
-        (n.whom === null
-          ? W.likely(pct(n.win), pct(n.likely), pct(n.need))
-          : W.whomPrice(
-              W.whom(n.whom.players, pct(n.win), n.whom.callers, pct(n.likely)),
-              pct(n.need),
-            )) + later(n.later)
-      );
-  }
-}
-
-const isPassive = (a: PlayerAction): boolean => a.type === 'check' || a.type === 'call';
-const isAggressive = (a: PlayerAction): boolean => a.type === 'bet' || a.type === 'raise';
-
-/**
- * The second line of a row: the coach's move when it was another, then the numbers. A Best grade
- * for another move says it was as good ("Calling was as good as folding here."), never "Best move"
- * next to a bare "Coach: Fold" (§8.9: the close alternative, or a loss of at most 1% of the pot).
- * A check or a call graded Slightly off or worse where the coach bet or raised says the coach's
- * move wins more ("Raising to 2,100 wins more here."; §8.9 "value missed", QA-2 item 1).
- */
-export function rowNotes(row: SummaryRow, money: (x: number) => string): string {
-  const notes: string[] = [];
-  if (!sameMove(row.taken, row.rec)) {
-    if (row.grade === 'best') {
-      notes.push(
-        W.asGood(
-          moveText(row, row.taken, W.doing, money),
-          moveText(row, row.rec, W.coachDoing, money),
-        ),
-      );
-    } else if (
-      row.grade !== null &&
-      row.grade !== 'good' &&
-      isPassive(row.taken) &&
-      isAggressive(row.rec)
-    ) {
-      notes.push(W.winsMore(moveText(row, row.rec, W.doing, money)));
-    } else {
-      notes.push(moveText(row, row.rec, W.coach, money));
-    }
-  }
-  const numbers = numbersText(row);
-  if (numbers !== null) notes.push(numbers);
-  return notes.join(' · ');
 }
 
 /** The sheet itself (presentational). */
@@ -214,24 +106,11 @@ export const SummarySheet = memo(function SummarySheet({
           <p className={s.bold}>{W.score(summary.score)}</p>
         )}
         <ol className={s.rows}>
-          {summary.rows.map((row, i) => {
-            const notes = rowNotes(row, money);
-            return (
-              <li key={`${row.decisionId}-${i}`} data-summary-row={row.grade ?? 'none'}>
-                <p className={s.bold}>
-                  {W.streets[row.street]} · {rowDid(row, money)}
-                </p>
-                {row.undone ? (
-                  <span className={s.muted}>{W.undone}</span>
-                ) : row.grade === null ? (
-                  <span className={s.muted}>{W.noGrade}</span>
-                ) : (
-                  <GradeChip grade={row.grade} />
-                )}
-                {notes !== '' && <p className={s.muted}>{notes}</p>}
-              </li>
-            );
-          })}
+          {summary.rows.map((row, i) => (
+            <li key={`${row.decisionId}-${i}`} data-summary-row={row.grade ?? 'none'}>
+              <DecisionRow row={row} money={money} />
+            </li>
+          ))}
         </ol>
         <LevelSuggestion />
         <div className={cx(s.row, s.stick)}>

@@ -10,8 +10,13 @@ import { decisionRecord } from '../../src/app/undo.ts';
 import { grade } from '../../src/brain/grade.ts';
 import { hudEquity } from '../../src/brain/features.ts';
 import type { PlayerAction } from '../../src/engine/types.ts';
-import { rowDid, rowNotes } from '../../src/ui/components/HandSummary.tsx';
-import { rowNumbers, type RowNumbers, type SummaryRow } from '../../src/ui/summary.ts';
+import {
+  rowDid,
+  rowNotes,
+  rowNumbers,
+  type RowNumbers,
+  type SummaryRow,
+} from '../../src/ui/summary.ts';
 import { observeSpot, playSpot } from '../brain/fixtures.ts';
 import { bet, call, check, raise } from '../engine/play.ts';
 

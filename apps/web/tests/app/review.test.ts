@@ -20,6 +20,7 @@ import {
 } from '../../src/app/store.ts';
 import { handEndViewOf } from '../../src/app/tableViews.ts';
 import { replay } from '../../src/engine/replay.ts';
+import { stubGrader } from './graders.ts';
 import { drive, heroPolicy, makeHarness, tick, type Harness } from './harness.ts';
 import { collectHands } from './reviewFixtures.ts';
 
@@ -154,6 +155,17 @@ describe('the controller keeps the hands it plays out', () => {
       expect(k.heroHole).toEqual(hand.seats[HERO]?.hole);
       expect(k.end).toEqual(handEndViewOf(hand, k.record.table));
       expect(new Date(k.at).toISOString()).toBe(k.at);
+    }
+  }, 60_000);
+
+  it('a hand keeps its decision records, one per hero move (§12.10)', async () => {
+    const h = makeHarness({ grader: stubGrader(), settings: { players: 2 } });
+    const played = await playHands(h, 3);
+    for (const hand of played) {
+      const k = h.state().review.hands.find((x) => x.handSeq === hand.handSeq) as ReviewHand;
+      const moves = hand.log.filter((e) => e.e === 'act' && e.seat === HERO).length;
+      expect(k.decisions.map((d) => d.decisionId)).toEqual([...Array(moves).keys()]);
+      expect(k.decisions.every((d) => d.grade === 'best')).toBe(true);
     }
   }, 60_000);
 

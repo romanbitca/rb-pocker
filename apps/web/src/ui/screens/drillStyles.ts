@@ -4,6 +4,9 @@
  * only what needs CSS (the animations, reduced motion, a media query, `:focus`), and the buttons
  * and sheets reuse the shared classes (`Levels.module.css` `.button`, `Screen.module.css`,
  * `Overlays.module.css`). RB's tokens throughout. Every control is a 44 px tap target (§12.12).
+ *
+ * ⚠️ One screen (1.3.101): at 360×740 a question, its pickers and Next fit without scrolling, so
+ * every row here is as low as its 44 px targets allow (`tests/e2e/reviewDecisions.spec.ts`).
  */
 import type { CSSProperties } from 'react';
 
@@ -11,6 +14,8 @@ import type { CSSProperties } from 'react';
 const CARD_W = 'min(72px, calc((100vw - 84px) / 5))';
 /** Inside Which wins' hand buttons (their padding and border): a little smaller. */
 const CARD_W_BUTTON = 'min(64px, calc((100vw - 104px) / 5))';
+/** Hold'em's two rows, each beside its label (`seatRows`): five cards, gaps and the label's width. */
+const CARD_W_SIDE = 'min(72px, calc((100vw - 140px) / 5))';
 
 const caps: CSSProperties = {
   fontSize: '0.75rem',
@@ -19,16 +24,21 @@ const caps: CSSProperties = {
   textTransform: 'uppercase',
 };
 
-export const tally: CSSProperties = { display: 'flex', justifyContent: 'center', gap: 24 };
+/** Closer to the title and between its parts than other screens (`.drill`'s gap is 12 px). */
+export const page: CSSProperties = { gap: 8, marginTop: -12 };
+
+export const tally: CSSProperties = { display: 'flex', justifyContent: 'center', gap: 20 };
 export const count: CSSProperties = {
   ...caps,
-  display: 'grid',
-  justifyItems: 'center',
+  display: 'flex',
+  alignItems: 'baseline',
+  gap: 6,
   color: 'var(--muted)',
+  lineHeight: 1.2,
 };
 export const countValue: CSSProperties = {
   color: 'var(--text)',
-  fontSize: '1.5rem',
+  fontSize: '1.125rem',
   letterSpacing: 0,
   fontVariantNumeric: 'tabular-nums',
 };
@@ -39,7 +49,7 @@ export const controls: CSSProperties = {
   zIndex: 2,
   display: 'flex',
   gap: 8,
-  padding: '8px 0',
+  padding: '2px 0',
   background: 'var(--bg)',
 };
 /**
@@ -70,18 +80,27 @@ export const gameName: CSSProperties = {
 export const accentCaps: CSSProperties = { ...caps, color: 'var(--accent)' };
 export const icon18: CSSProperties = { display: 'block', flex: 'none', width: 18, height: 18 };
 
-export const play: CSSProperties = { display: 'grid', gap: 12, scrollMarginTop: 64 };
+export const play: CSSProperties = { display: 'grid', gap: 8, scrollMarginTop: 64 };
 /** The cards lie on the felt (the `felt` class gives its colour). */
 export const stage: CSSProperties = {
   display: 'flex',
   flexDirection: 'column',
   justifyContent: 'center',
   gap: 8,
-  minHeight: 140,
-  padding: '12px 8px',
+  minHeight: 96,
+  padding: 8,
   borderRadius: 'var(--radius-3)',
 };
 export const seat: CSSProperties = { ...caps, margin: 0, textAlign: 'center' };
+/** Hold'em: "Table" and "Your hand" beside their cards, which leaves the pickers on screen. */
+export const seatRows: CSSProperties = {
+  display: 'grid',
+  gridTemplateColumns: '56px auto',
+  alignItems: 'center',
+  justifyContent: 'center',
+  gap: '8px 6px',
+};
+export const seatSide: CSSProperties = { ...caps, margin: 0, lineHeight: 1.2 };
 
 const handBase: CSSProperties = {
   display: 'flex',
@@ -100,6 +119,14 @@ export const handInButton = {
   ...handBase,
   '--board-card-w': CARD_W_BUTTON,
   '--board-card-h': `calc(${CARD_W_BUTTON} * 1.4)`,
+} as CSSProperties;
+export const handSide = {
+  ...handBase,
+  justifyContent: 'flex-start',
+  gap: 6,
+  paddingTop: 0,
+  '--board-card-w': CARD_W_SIDE,
+  '--board-card-h': `calc(${CARD_W_SIDE} * 1.4)`,
 } as CSSProperties;
 
 export const seats: CSSProperties = { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 };
@@ -150,18 +177,23 @@ const PICK: Readonly<Record<Pick, CSSProperties>> = {
   good: { border: '2px solid var(--grade-best)' },
   bad: { border: '2px solid var(--grade-big-mistake)' },
 };
-/** `name`: a hand name to pick (text left, mark right); `option`: an answer; `big`: a big answer. */
+/**
+ * `name`: a hand name to pick, one of three in a row (text left, it wraps inside its 44 px, mark
+ * right); `option`: an answer; `big`: a big answer.
+ */
 export function choice(state: Pick, kind: 'name' | 'option' | 'big' = 'name'): CSSProperties {
+  const name = kind === 'name';
   return {
     display: 'flex',
     alignItems: 'center',
-    justifyContent: kind === 'name' ? 'space-between' : 'center',
+    justifyContent: name ? 'space-between' : 'center',
     gap: 4,
-    minHeight: kind === 'big' ? 88 : 48,
-    padding: '4px 12px',
-    fontSize: kind === 'big' ? '1.25rem' : '1rem',
+    minHeight: kind === 'big' ? 88 : name ? 44 : 48,
+    padding: name ? '2px 6px' : '4px 12px',
+    fontSize: kind === 'big' ? '1.25rem' : name ? '0.875rem' : '1rem',
     fontWeight: kind === 'big' ? 700 : 600,
-    textAlign: kind === 'name' ? 'left' : 'center',
+    lineHeight: name ? 1.15 : undefined,
+    textAlign: name ? 'left' : 'center',
     ...PICK[state],
   };
 }
@@ -210,8 +242,8 @@ export function feedback(result: boolean | null): CSSProperties {
     display: 'flex',
     alignItems: 'center',
     gap: 12,
-    minHeight: 70,
-    padding: '8px 12px',
+    minHeight: 44,
+    padding: '4px 12px',
     borderLeft: `6px solid ${
       result === null
         ? 'var(--control-border)'
@@ -251,24 +283,33 @@ export const label: CSSProperties = {
   display: 'flex',
   justifyContent: 'space-between',
   gap: 8,
-  margin: '0 0 8px',
+  margin: '0 0 4px',
   color: 'var(--muted)',
+  lineHeight: 1.2,
 };
 export const labelNote: CSSProperties = {
   fontWeight: 500,
   letterSpacing: 0,
   textTransform: 'none',
 };
-export const names: CSSProperties = { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 };
+/** Three names to a row, so the ten take four rows (five rows pushed the positions off screen). */
+export const names: CSSProperties = {
+  display: 'grid',
+  gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+  gap: 6,
+};
 export const chips: CSSProperties = {
   display: 'grid',
   gridTemplateColumns: 'repeat(5, 1fr)',
-  gap: '12px 4px',
+  gap: '6px 4px',
   justifyItems: 'center',
 };
 
+/** A position chip's size: the 44 px tap target (§12.12). */
+const CHIP = 44;
+
 /** A poker chip: a white face, its edge spots the dashed border over the colour. */
-export function chip(state: Pick, size = 52): CSSProperties {
+export function chip(state: Pick, size = CHIP): CSSProperties {
   const ring =
     state === 'picked'
       ? 'var(--accent)'
@@ -290,7 +331,7 @@ export function chip(state: Pick, size = 52): CSSProperties {
     color: '#111',
     font: `700 ${Math.round(size * 0.36)}px/1 var(--font-family)`,
     fontVariantNumeric: 'tabular-nums',
-    cursor: size === 52 ? 'pointer' : 'default',
+    cursor: size === CHIP ? 'pointer' : 'default',
     outline: ring === null ? undefined : `3px solid ${ring}`,
     outlineOffset: ring === null ? undefined : 2,
     opacity: state === 'bad' ? 0.8 : undefined,

@@ -32,7 +32,7 @@ button.pod {
   transition: opacity var(--duration-flip) ease-out;
 }
 .folded .body {
-  opacity: 0.45;
+  opacity: var(--seat-folded-opacity, 0.45);
 }
 
 /* The name plate behind the name and stack. */

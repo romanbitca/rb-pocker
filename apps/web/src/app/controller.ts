@@ -1533,6 +1533,7 @@ export class TableController {
       undoCount: this.meta.undoCount,
       commitBeforeDeal: this.commitBeforeDealOf(h),
       end,
+      decisions: this.meta.decisions,
     };
     this.store.setState((s) => ({ review: addHand(s.review, hand) }));
   }
@@ -2005,6 +2006,8 @@ export class TableController {
 
   private addRecord(record: DecisionRecord): void {
     this.meta = withRecord(this.meta, record);
+    // A grade that comes after the hand ended (§11.3 r5): Review has its row too (§12.10).
+    if (this.commitPending && this.hand !== null) this.remember(this.hand);
   }
 
   /** §11.1: the feedback card; nothing moves until Undo or Keep my move. */

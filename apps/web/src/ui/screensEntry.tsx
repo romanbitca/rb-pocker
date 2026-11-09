@@ -34,6 +34,7 @@ import { LoadBoundary } from './components/LoadBoundary.tsx';
 import { RankingsDrawer } from './components/RankingsDrawer.tsx';
 import { useDrillChunks } from './drillModule.ts';
 import { useMediaQuery } from './hooks.ts';
+import { workOnLesson } from './leaks.ts';
 import { ImportDialog, ResetDialog } from './screens/DataDialogs.tsx';
 import { NewTableDialog, OutOfChipsDialog } from './screens/Dialogs.tsx';
 import { wakeLockSupport, type DisplayAndSoundSettings } from './screens/DisplayAndSound.tsx';
@@ -46,6 +47,27 @@ import { AVAILABLE_LEVELS, ownLevelCount, type MoreChoices } from './screens/set
 import { useTableLayout } from './screens/Table.tsx';
 
 export { Table as TableScreen } from './screens/Table.tsx';
+
+/**
+ * Home's "Work on: Pot odds" (§12.1, §14.4; 1.3.101): the lesson about the biggest leak, under
+ * Play. Here, not in Home, so the initial bundle only has to leave room for it; it comes with this
+ * chunk, right after the first paint, and is nothing while Stats would not show a leak.
+ */
+export function WorkOnLine() {
+  const dispatch = useDispatch();
+  const lesson = useAppStore((s) => (s.stats === null ? null : workOnLesson(s.stats)));
+  if (lesson === null) return null;
+  return (
+    <button
+      type="button"
+      className={screen.link}
+      onClick={() => dispatch({ type: 'lesson', lesson })}
+      data-work-on={lesson}
+    >
+      {en.workOn(en.leakLessons[lesson])}
+    </button>
+  );
+}
 
 // ---------------------------------------------------------------------------------------------
 // Screens
@@ -141,6 +163,11 @@ export function SettingsScreen() {
   );
 }
 
+const DRILL_PAGE = {
+  paddingTop: 'max(var(--space-2), env(safe-area-inset-top))',
+  paddingBottom: 'max(var(--space-2), env(safe-area-inset-bottom))',
+} as const;
+
 /**
  * The hand drill (§13.5): Back and the title at once (a screen change moves the focus to the
  * title), then the page when its two chunks are there; "Loading…" only after half a second, as for
@@ -173,8 +200,9 @@ export function DrillScreen() {
   } else {
     body = <p className={`${screen.hint} ${screen.later}`}>{en.screens.loading}</p>;
   }
+  // Less of the page's padding: a question fits on one phone screen (§13.5, 1.3.101).
   return (
-    <main className={screen.page}>
+    <main className={screen.page} style={DRILL_PAGE}>
       <ScreenBar title={en.drill.title} onBack={back} />
       {body}
     </main>

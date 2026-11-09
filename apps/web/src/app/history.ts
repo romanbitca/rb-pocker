@@ -85,6 +85,7 @@ export function reviewHandOf(record: HandRecord): ReviewHand {
       shown: [],
       heroNet: record.net[0] ?? 0,
     },
+    decisions: record.decisions,
   };
 }
 

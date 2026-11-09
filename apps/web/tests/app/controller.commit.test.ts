@@ -195,6 +195,9 @@ describe('the commit waits for the last grade (§11.3 r5)', () => {
     expect(h.state().game.mode).toBe('handEnd');
     expect(profileOf(backend).lastCommittedHandSeq).toBe(before.handSeq - 1);
     expect(sessionOf(backend).hand).toMatchObject({ handSeq: before.handSeq, phase: 'complete' });
+    // Review already has the hand; the decision still waiting for its grade has no row yet.
+    expect(h.state().review.hands[0]?.handSeq).toBe(before.handSeq);
+    expect(h.state().review.hands[0]?.decisions).toEqual([]);
     await vi.advanceTimersByTimeAsync(4000);
     await flush();
     const record = ringOf(backend).at(-1) as HandRecord;
@@ -202,6 +205,9 @@ describe('the commit waits for the last grade (§11.3 r5)', () => {
     expect(record.decisions.at(-1)).toMatchObject({ grade: 'best' });
     expect(profileOf(backend).lastCommittedHandSeq).toBe(before.handSeq);
     expect(sessionOf(backend).hand).toBeNull();
+    // The late grade reaches Review too (§12.10), on the same hand, kept once.
+    expect(h.state().review.hands.filter((x) => x.handSeq === before.handSeq)).toHaveLength(1);
+    expect(h.state().review.hands[0]?.decisions).toEqual(record.decisions);
   }, 30_000);
 
   it('a grade that never comes: the next hand commits the hand, that decision ungraded', async () => {
@@ -217,6 +223,9 @@ describe('the commit waits for the last grade (§11.3 r5)', () => {
     expect(record.handSeq).toBe(before.handSeq);
     expect(record.decisions.at(-1)).toMatchObject({ grade: null });
     expect(profileOf(backend).lastCommittedHandSeq).toBe(before.handSeq);
+    // Review lists that decision as "No grade", as the record does (§12.10).
+    const kept = h.state().review.hands.find((x) => x.handSeq === before.handSeq);
+    expect(kept?.decisions).toEqual(record.decisions);
   }, 30_000);
 });
 

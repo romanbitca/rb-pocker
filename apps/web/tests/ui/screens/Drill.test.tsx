@@ -206,6 +206,45 @@ describe('the hand drill page', { timeout: 15_000 }, () => {
     expect(nav().overlays).toEqual([]);
   });
 
+  it('compact pickers (1.3.101): three names to a row, 44 px chips, one line for the counters', () => {
+    renderDrill({}, 'compact');
+    const names = document.querySelector<HTMLElement>('[data-name]')?.parentElement as HTMLElement;
+    expect(names.style.gridTemplateColumns).toBe('repeat(3, minmax(0, 1fr))');
+    expect(names.querySelectorAll('[data-name]')).toHaveLength(10);
+    const chip = document.querySelector<HTMLElement>('[data-position="1"]') as HTMLElement;
+    expect([chip.style.width, chip.style.height]).toEqual(['44px', '44px']);
+    const streak = screen.getByText(W.streak).parentElement as HTMLElement;
+    expect(streak.style.display).toBe('flex');
+  });
+
+  it('Hold’em names its two rows beside the cards', () => {
+    renderDrill({ game: 'holdem' }, 'holdem-rows');
+    expect(question()).toBe('holdem');
+    const table = screen.getByText(W.table);
+    expect(table.parentElement?.style.gridTemplateColumns).toBe('56px auto');
+    expect(table.nextElementSibling?.querySelectorAll('[role="img"]')).toHaveLength(5);
+    expect(
+      screen.getByText(W.yourHand).nextElementSibling?.querySelectorAll('[role="img"]'),
+    ).toHaveLength(2);
+  });
+
+  it('the pickers’ labels leave the screen once answered, and the pickers keep their names', () => {
+    const { session } = renderDrill({}, 'labels');
+    const section = () =>
+      document.querySelector('section[aria-labelledby$="-names"]') as HTMLElement;
+    const label = () =>
+      document.getElementById(section().getAttribute('aria-labelledby') ?? '') as HTMLElement;
+    expect(label().className).toBe('');
+    expect(label().textContent).toContain(W.pickOne);
+    const q = session.view().question;
+    act(() => {
+      session.pickName(rightName(q) as Position);
+      session.pickPosition(rightPosition(q) as Position);
+    });
+    expect(label().className).toMatch(/srOnly/);
+    expect(label().textContent).toContain(W.hand);
+  });
+
   it('keeps every control at least 44 px and draws no Unicode suit', () => {
     const { session } = renderDrill({ game: 'mixed' }, 'targets');
     const isPrimary = () => false;

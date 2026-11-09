@@ -16,7 +16,9 @@
  * - Under the controls, "Check the shuffle" (§16.3, chunk 9.4): the hand's shuffle code and seed;
  *   the check deals the hand again from the seed and says ✓ or ✗ (drawn marks, never glyphs),
  *   and only then shows the whole deck, folded and unseen cards included.
- * - Stage 6.1 adds a hero decision's grade, win chance and the coach's move to its step.
+ * - A hero decision's step shows the hand summary's row (`DecisionRow`: what you did, the grade,
+ *   the coach's move, the numbers, §12.9). A hand with a mistake opens at its first one, and
+ *   "Previous decision" and "Next decision" jump between the decisions (1.3.101).
  */
 import {
   memo,
@@ -44,10 +46,21 @@ import {
 } from '../../app/store.ts';
 import { en } from '../../i18n/en.ts';
 import { enReview } from '../../i18n/review.ts';
+import { formatAmount } from '../actionBar.ts';
 import { Card } from '../components/Card.tsx';
+import { DecisionRow } from '../components/DecisionRow.tsx';
 import { formatChips } from '../format.ts';
 import { handEndLines } from '../handEnd.ts';
-import { AUTOPLAY_MS, frameLines, netSpoken, netText, stepLabel } from '../review.ts';
+import {
+  AUTOPLAY_MS,
+  decisionSteps,
+  frameLines,
+  jumpFrom,
+  netSpoken,
+  netText,
+  openingStep,
+  stepLabel,
+} from '../review.ts';
 import type { TableLayout } from '../layout/seats.ts';
 import { ChevronLeftIcon } from './icons.tsx';
 import styles from './Review.module.css';
@@ -154,6 +167,30 @@ function StepButton({ label, off, onClick, children }: StepButtonProps) {
   );
 }
 
+/** "Previous decision" and "Next decision": `to` is the step, null when there is none that way. */
+function JumpButton({
+  label,
+  to,
+  go,
+}: {
+  label: string;
+  to: number | null;
+  go: (to: number) => void;
+}) {
+  return (
+    <button
+      type="button"
+      className={cx(styles.textButton, styles.jump, to === null && styles.off)}
+      aria-disabled={to === null ? 'true' : undefined}
+      onClick={() => {
+        if (to !== null) go(to);
+      }}
+    >
+      {label}
+    </button>
+  );
+}
+
 // ---------------------------------------------------------------------------------------------
 // "Check the shuffle" (§16.3)
 
@@ -238,11 +275,16 @@ function Shuffle({ row, check }: ShuffleProps) {
   );
 }
 
-/** One hand, frame by frame. Mount it with `key={handSeq}`: a new hand starts at the deal. */
+/**
+ * One hand, frame by frame. Mount it with `key={handSeq}`: a new hand opens at its first mistake,
+ * or at the deal (§12.10).
+ */
 function Replay({ view, layout }: { view: ReviewReplay; layout: TableLayout }) {
   const last = view.frames.length - 1;
-  const [index, setIndex] = useState(0);
+  const steps = useMemo(() => decisionSteps(view), [view]);
+  const [index, setIndex] = useState(() => openingStep(steps));
   const [playing, setPlaying] = useState(false);
+  const unit = useAppStore((s) => s.settings.amounts);
   const frame = view.frames[index] ?? view.frames[0];
 
   const go = useCallback(
@@ -297,7 +339,12 @@ function Replay({ view, layout }: { view: ReviewReplay; layout: TableLayout }) {
   };
 
   if (frame === undefined) return null;
-  const lines = frameLines(view, frame);
+  const decision = steps.find((step) => step.index === index)?.row ?? null;
+  const money = (x: number): string => formatAmount(x, view.bb, unit);
+  // The row says what the hero did, so it replaces the step's own line ("You call 20."); an Undo's
+  // step ("Move taken back…") and the result on the last step keep theirs.
+  const lines =
+    decision !== null && !decision.undone && index < last ? [] : frameLines(view, frame);
   const label = stepLabel(index, last);
   const landscape = layout === 'landscape';
   return (
@@ -316,14 +363,25 @@ function Replay({ view, layout }: { view: ReviewReplay; layout: TableLayout }) {
           <ReviewHero hero={frame.hero} handSeq={view.handSeq} compact={layout === 'compact'} />
         </div>
       )}
-      {/* Stage 6.1 adds a hero decision's grade, win chance and the coach's move to its step here. */}
-      <div className={styles.story} role="status" aria-atomic="true">
+      <div
+        className={cx(styles.story, steps.length > 0 && styles.storyDecisions)}
+        role="status"
+        aria-atomic="true"
+      >
         <span className={screen.srOnly}>{label}. </span>
         {lines.map((line, i) => (
           <p key={i} className={i === 0 ? styles.lineMain : styles.line}>
             {line}
           </p>
         ))}
+        {decision !== null && (
+          <div
+            className={styles.decision}
+            data-review-decision={decision.undone ? 'undone' : (decision.grade ?? 'none')}
+          >
+            <DecisionRow row={decision} money={money} />
+          </div>
+        )}
       </div>
       <div className={styles.controls}>
         <div className={styles.scrub}>
@@ -360,6 +418,20 @@ function Replay({ view, layout }: { view: ReviewReplay; layout: TableLayout }) {
             <LastIcon />
           </StepButton>
         </div>
+        {steps.length > 0 && (
+          <div className={styles.buttons} role="group" aria-label={enReview.steps.decisions}>
+            <JumpButton
+              label={enReview.steps.prevDecision}
+              to={jumpFrom(steps, index, -1)}
+              go={go}
+            />
+            <JumpButton
+              label={enReview.steps.nextDecision}
+              to={jumpFrom(steps, index, 1)}
+              go={go}
+            />
+          </div>
+        )}
       </div>
     </>
   );
@@ -443,7 +515,7 @@ export function ReviewRoute() {
             {title}
           </h1>
           {view !== null && !wide ? (
-            <button type="button" className={styles.allHands} onClick={() => open(null)}>
+            <button type="button" className={styles.textButton} onClick={() => open(null)}>
               {enReview.allHands}
             </button>
           ) : (
