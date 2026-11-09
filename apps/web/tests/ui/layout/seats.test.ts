@@ -188,6 +188,24 @@ describe('layouts and the table box (PLAN §12.3, §12.5)', () => {
     expect(tableH(900, 560)).toBe(279);
   });
 
+  it('at Exam the panel is smaller and the table bigger (1.3.99), the tray still R14', () => {
+    const exam = { exam: true };
+    expect(wideCoachPanel(800, false, true)).toBe(165);
+    expect(tableFrame({ w: 1280, h: 800 }, exam).box.h).toBe(415);
+    expect(tableFrame({ w: 1280, h: 800 }).box.h).toBe(340);
+    expect(wideCoachPanel(768, false, true)).toBe(165);
+    expect(wideCoachPanel(1200, false, true)).toBe(165);
+    // Short windows as at the other levels: 30% and a 320 px table first, then the head row.
+    expect(wideCoachPanel(620, false, true)).toBe(wideCoachPanel(620));
+    expect(wideCoachPanel(600, false, true)).toBe(61);
+    // The open tray takes its 104 px from the panel's row: the table keeps its size.
+    expect(wideCoachPanel(800, true, true)).toBe(61);
+    const open = tableFrame({ w: 1280, h: 800 }, { ...exam, trayOpen: true }).box.h;
+    expect(open).toBe(415);
+    // Phones have no panel.
+    expect(tableFrame({ w: 390, h: 844 }, exam)).toEqual(tableFrame({ w: 390, h: 844 }));
+  });
+
   it('gives the open sizing tray the coach panel’s room, not the table’s (R14)', () => {
     const open = (w: number, h: number): number => tableFrame({ w, h }, { trayOpen: true }).box.h;
     expect(wideCoachPanel(768, true)).toBe(124);

@@ -187,7 +187,7 @@ test('all-in TV mode: a bar for every face-up hand, then the luck line rule', as
       .catch(() => {});
     const luck = expectedLuck(await snapshot(page));
     if (end === 'end') {
-      const banner = page.locator('[data-hand-end]');
+      const banner = page.locator('[data-hand-result]');
       if (luck === null) await expect(banner).not.toContainText('when the chips went in');
       else await expect(banner).toContainText(luck);
       await attach(page, testInfo, `tv-mode-end-${sizeOf(testInfo)}`);

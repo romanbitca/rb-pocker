@@ -11,6 +11,7 @@ import type { PlayerAction } from '../../../src/engine/types.ts';
 import { en } from '../../../src/i18n/en.ts';
 import {
   actionBarView,
+  skipView,
   useSizing,
   type ActionBarInput,
   type AmountUnit,
@@ -93,6 +94,166 @@ afterEach(() => {
 const later = (ms = TAP_GUARD_MS) => {
   now += ms;
 };
+
+describe('the hand end: one big "Next hand ›" (§12.7, §12.9; 1.3.99)', () => {
+  const waiting = actionBarView(spot('waiting'));
+  const noAct = () => {};
+  const props = {
+    view: waiting,
+    trayOpen: false,
+    amount: 0,
+    onAct: noAct,
+    onOpenTray: noAct,
+    onCloseTray: noAct,
+  };
+  /** Rendered while a hand is played; `end()` ends it, as the Table's `selectHandEndUp` does. */
+  function bar2(onNext = vi.fn<() => void>(), onAct = vi.fn<(a: PlayerAction) => void>()) {
+    const facing = actionBarView(spot('facing'));
+    const utils = render(<ActionBar {...props} view={facing} onAct={onAct} />);
+    return {
+      onNext,
+      onAct,
+      end: () => utils.rerender(<ActionBar {...props} onAct={onAct} onNext={onNext} />),
+      deal: () => utils.rerender(<ActionBar {...props} view={facing} onAct={onAct} />),
+    };
+  }
+  const next = () => document.querySelector('[data-hand-end]') as HTMLElement;
+
+  it('Row A is that one button: no dead "Fold / Waiting… / Raise", the whole row, 56 px', () => {
+    render(<ActionBar {...props} onNext={noAct} />);
+    expect(screen.getAllByRole('button')).toHaveLength(1);
+    expect(document.querySelectorAll('[data-slot]')).toHaveLength(0);
+    expect(next().textContent).toBe(en.handEnd.nextHand);
+    expect(next().getAttribute('aria-keyshortcuts')).toBe('Enter Space');
+    expect(next().getAttribute('aria-disabled')).toBeNull();
+    expect(getComputedStyle(next()).gridColumn.replaceAll(' ', '')).toBe('1/-1');
+    expect(getComputedStyle(next()).height).toBe('56px');
+  });
+
+  it('a tap deals', () => {
+    const { onNext, end } = bar2();
+    end();
+    later();
+    fireEvent.click(next());
+    expect(onNext).toHaveBeenCalledTimes(1);
+  });
+
+  it('the guard: no tap in its first 250 ms, whatever the tap was meant for', () => {
+    const { onNext, end } = bar2();
+    end();
+    later(TAP_GUARD_MS - 1);
+    fireEvent.click(next());
+    expect(onNext).not.toHaveBeenCalled();
+    later(1);
+    fireEvent.click(next());
+    expect(onNext).toHaveBeenCalledTimes(1);
+  });
+
+  it('a double tap deals one hand', () => {
+    const { onNext, end } = bar2();
+    end();
+    later();
+    fireEvent.click(next());
+    later(TAP_GUARD_MS - 1);
+    fireEvent.click(next());
+    expect(onNext).toHaveBeenCalledTimes(1);
+  });
+
+  it('a double tap never acts in the new hand: its buttons wait 250 ms too', () => {
+    const { onNext, onAct, end, deal } = bar2();
+    end();
+    later();
+    fireEvent.click(next());
+    expect(onNext).toHaveBeenCalledTimes(1);
+    deal();
+    later(TAP_GUARD_MS - 1);
+    fireEvent.click(button('Call 120'));
+    expect(onAct).not.toHaveBeenCalled();
+    later(1);
+    fireEvent.click(button('Call 120'));
+    expect(onAct).toHaveBeenCalledTimes(1);
+  });
+
+  it('a hand that ends at once: the second tap of a double tap never skips its result', () => {
+    const { onNext, end, deal } = bar2();
+    end();
+    later();
+    fireEvent.click(next()); // deals the next hand…
+    deal();
+    later(100);
+    end(); // …which is over 100 ms later (a walk at Instant speed)
+    later(TAP_GUARD_MS - 1);
+    fireEvent.click(next());
+    expect(onNext).toHaveBeenCalledTimes(1);
+  });
+
+  it('a held Enter on the focused button deals one hand: its repeats do nothing', () => {
+    const { end } = bar2();
+    end();
+    later();
+    next().focus();
+    // fireEvent returns false when the default was prevented (the browser's click on Enter).
+    expect(fireEvent.keyDown(next(), { key: 'Enter' })).toBe(true);
+    expect(fireEvent.keyDown(next(), { key: 'Enter', repeat: true })).toBe(false);
+  });
+
+  it('the focus on a Row A button that goes stays in the row: "Next hand ›", then the group', () => {
+    const { end, deal } = bar2();
+    button('Fold').focus();
+    end();
+    expect(document.activeElement).toBe(next());
+    deal();
+    // Not on a new hand's button: the next Enter would act there.
+    expect(document.activeElement).toBe(bar());
+  });
+
+  it('nothing else is focused for a player who was not in the row', () => {
+    const { end } = bar2();
+    end();
+    expect(document.activeElement).toBe(document.body);
+  });
+});
+
+describe('after the hero folded: "Skip to result ›" (§12.7, 1.3.99)', () => {
+  const props = {
+    view: skipView(actionBarView(spot('waiting'))),
+    trayOpen: false,
+    amount: 0,
+    onAct: () => {},
+    onOpenTray: () => {},
+    onCloseTray: () => {},
+  };
+
+  it('the middle button reads it, enabled; Fold and Raise stay off', () => {
+    render(<ActionBar {...props} onSkip={() => {}} />);
+    const skip = button(en.actions.skip);
+    expect(skip.getAttribute('data-slot')).toBe('middle');
+    expect(skip.getAttribute('aria-disabled')).toBeNull();
+    expect(button('Fold').getAttribute('aria-disabled')).toBe('true');
+    expect(button('Raise').getAttribute('aria-disabled')).toBe('true');
+  });
+
+  it('a tap skips once; a double tap cannot deal the next hand', () => {
+    const onSkip = vi.fn<() => void>();
+    const onNext = vi.fn<() => void>();
+    const { rerender } = render(<ActionBar {...props} onSkip={onSkip} />);
+    fireEvent.click(button(en.actions.skip));
+    fireEvent.click(button(en.actions.skip));
+    expect(onSkip).toHaveBeenCalledTimes(1);
+    later(100);
+    rerender(<ActionBar {...props} onNext={onNext} />); // the hand is over already
+    later(TAP_GUARD_MS - 1);
+    fireEvent.click(document.querySelector('[data-hand-end]') as HTMLElement);
+    expect(onNext).not.toHaveBeenCalled();
+  });
+
+  it('skipView changes only the middle button', () => {
+    const waiting = actionBarView(spot('waiting'));
+    const view = skipView(waiting);
+    expect(view.middle).toMatchObject({ label: en.actions.skip, enabled: true, skip: true });
+    expect({ ...view, middle: waiting.middle }).toEqual(waiting);
+  });
+});
 
 describe('the disabled Fold (§12.7, Stage 3 acceptance 5)', () => {
   it('with checking free, Fold is disabled, stays focusable and says why when tapped', () => {

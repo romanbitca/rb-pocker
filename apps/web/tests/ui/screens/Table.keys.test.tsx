@@ -16,8 +16,9 @@ import { shortcutWords } from '../../../src/i18n/shortcuts.ts';
 import { actionBarView, stepAmount, trayActionLabel } from '../../../src/ui/actionBar.ts';
 import { App } from '../../../src/ui/App.tsx';
 import { loadCoach } from '../../../src/ui/coachModule.ts';
+import { TAP_GUARD_MS } from '../../../src/ui/components/ActionBar.tsx';
 import { loadScreens } from '../../../src/ui/screensModule.ts';
-import { playUntil, startTableHarness, type TableHarness } from '../tableHarness.ts';
+import { elapse, playUntil, startTableHarness, type TableHarness } from '../tableHarness.ts';
 
 beforeAll(async () => {
   await loadScreens(); // the screens lazy chunk, as App asks for it after the first paint
@@ -327,5 +328,138 @@ describe('the table keys: K, ?, H, S (§12.5)', () => {
     expect(state().ui.overlays).toEqual([]);
     expect(state().game.hand?.handSeq).toBe(handSeq);
     expect(state().game.mode).toBe('handEnd');
+  }, 30_000);
+});
+
+describe('the next hand by keyboard (§12.5, 1.3.99): Enter and Space at the hand end', () => {
+  const handSeq = (): number => state().game.hand?.handSeq ?? -1;
+
+  async function toHandEnd(): Promise<void> {
+    h = startTableHarness({
+      summaries: true,
+      settings: { players: 3, speed: 'normal', autoNext: false },
+    });
+    render(<App />);
+    act(() => state().dispatch({ type: 'play' }));
+    await playUntil(() => state().game.mode === 'handEnd');
+    await settle();
+    expect(state().ui.overlays).toEqual([]);
+  }
+
+  it('Enter deals the next hand, and so does Space; both only then', async () => {
+    h = startTableHarness({ settings: { players: 3, speed: 'normal', autoNext: false } });
+    render(<App />);
+    act(() => state().dispatch({ type: 'play' }));
+    await heroTurnWhere(() => true);
+    const hand = handSeq();
+    press('Enter', document.body); // the hero's turn: nothing to deal
+    press(' ', document.body);
+    expect(handSeq()).toBe(hand);
+    await playUntil(() => state().game.mode === 'handEnd');
+    await elapse(TAP_GUARD_MS);
+    press('Enter', document.body);
+    expect(handSeq()).toBe(hand + 1);
+    await playUntil(() => state().game.mode === 'handEnd');
+    await elapse(TAP_GUARD_MS);
+    press(' ', document.body);
+    expect(handSeq()).toBe(hand + 2);
+  }, 30_000);
+
+  it('through the tap guard: no key in the first 250 ms, a second press does not skip a hand', async () => {
+    await toHandEnd();
+    const hand = handSeq();
+    press('Enter', document.body);
+    expect(handSeq()).toBe(hand);
+    await elapse(TAP_GUARD_MS);
+    press('Enter', document.body);
+    expect(handSeq()).toBe(hand + 1);
+    press('Enter', document.body); // the new hand: nothing to deal
+    expect(handSeq()).toBe(hand + 1);
+  }, 30_000);
+
+  it('a held key deals one hand', async () => {
+    await toHandEnd();
+    const hand = handSeq();
+    await elapse(TAP_GUARD_MS);
+    act(() => {
+      fireEvent.keyDown(document.body, { key: 'Enter', repeat: true });
+    });
+    expect(handSeq()).toBe(hand);
+  }, 30_000);
+
+  it('never while a text field has the focus, or a dialog is open', async () => {
+    await toHandEnd();
+    const hand = handSeq();
+    await elapse(TAP_GUARD_MS);
+    const field = document.createElement('input');
+    document.body.append(field);
+    press('Enter', field);
+    press(' ', field);
+    field.remove();
+    expect(handSeq()).toBe(hand);
+    press('?', document.body);
+    const list = await dialogShown(shortcutWords.title);
+    expect(list.textContent).toContain('Next hand');
+    press('Enter');
+    press(' ', document.body);
+    expect(handSeq()).toBe(hand);
+    expect(state().game.mode).toBe('handEnd');
+  }, 30_000);
+
+  it('never with Ctrl, Alt or Meta', async () => {
+    await toHandEnd();
+    const hand = handSeq();
+    await elapse(TAP_GUARD_MS);
+    act(() => {
+      fireEvent.keyDown(document.body, { key: 'Enter', ctrlKey: true });
+      fireEvent.keyDown(document.body, { key: ' ', metaKey: true });
+    });
+    expect(handSeq()).toBe(hand);
+  }, 30_000);
+
+  it('a control reached with Tab keeps Enter and Space; one focused by a click does not', async () => {
+    await toHandEnd();
+    const hand = handSeq();
+    await elapse(TAP_GUARD_MS);
+    const review = document.querySelector('[data-hand-review]') as HTMLElement;
+    fireEvent.keyDown(document.body, { key: 'Tab' });
+    review.focus();
+    // Left to the browser: not prevented, so the button clicks itself; no hand is dealt.
+    expect(fireEvent.keyDown(review, { key: 'Enter' })).toBe(true);
+    expect(fireEvent.keyDown(review, { key: ' ' })).toBe(true);
+    expect(handSeq()).toBe(hand);
+    // A click left the focus there: the same key is the table's.
+    fireEvent.pointerDown(review);
+    act(() => {
+      expect(fireEvent.keyDown(review, { key: 'Enter' })).toBe(false);
+    });
+    expect(handSeq()).toBe(hand + 1);
+  }, 30_000);
+
+  it('Row A\'s keys do nothing at the hand end: only "Next hand ›" is there', async () => {
+    await toHandEnd();
+    const hand = handSeq();
+    await elapse(TAP_GUARD_MS);
+    for (const key of ['f', 'c', 'r', '1']) press(key, document.body);
+    expect(handSeq()).toBe(hand);
+    expect(state().ui.overlays).toEqual([]);
+    expect(document.querySelector('[data-hand-end]')).not.toBeNull();
+  }, 30_000);
+});
+
+describe('after the hero folded: C presses "Skip to result ›" as a tap does (§12.5, §12.7)', () => {
+  it('the setting stays; the hand runs on', async () => {
+    h = startTableHarness({ settings: { players: 4, speed: 'normal', autoNext: false } });
+    render(<App />);
+    act(() => state().dispatch({ type: 'play' }));
+    await heroTurnWhere((s) => s.game.legal?.canFold === true);
+    act(() => state().dispatch({ type: 'act', action: { type: 'fold' } }));
+    await settle();
+    if (state().game.hand?.phase === 'complete') return; // everyone had folded already
+    expect(slot('middle').textContent).toBe(en.actions.skip);
+    await elapse(TAP_GUARD_MS);
+    press('c', document.body);
+    expect(state().game.skipping).toBe(true);
+    expect(state().settings.speed).toBe('normal');
   }, 30_000);
 });

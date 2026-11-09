@@ -10,6 +10,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vite
 import { initialReview } from '../../src/app/review.ts';
 import { appStore } from '../../src/app/store.ts';
 import { App } from '../../src/ui/App.tsx';
+import { TAP_GUARD_MS } from '../../src/ui/components/ActionBar.tsx';
 import { loadScreens } from '../../src/ui/screensModule.ts';
 import { elapse, playUntil, startTableHarness, type TableHarness } from './tableHarness.ts';
 
@@ -48,7 +49,7 @@ describe('from the hand-end banner', () => {
   it('"Review this hand" opens Review on the hand that just ended; the game waits; Back returns', async () => {
     const harness = await toHandEnd();
     const handSeq = harness.state().game.hand?.handSeq;
-    const banner = document.querySelector('[data-hand-end]') as HTMLElement;
+    const banner = document.querySelector('[data-hand-result]') as HTMLElement;
     const lines = [...banner.querySelectorAll('span')].map((s) => s.textContent);
 
     act(() => void fireEvent.click(screen.getByRole('button', { name: 'Review this hand' })));
@@ -80,15 +81,16 @@ describe('from the hand-end banner', () => {
     expect(harness.state().game.hand?.handSeq).toBe((handSeq ?? 0) + 1);
   }, 60_000);
 
-  it('the banner link is a separate button: the banner itself still just starts the next hand', async () => {
+  it('the links are separate buttons; Row A\'s "Next hand ›" just starts the next hand', async () => {
     const harness = await toHandEnd();
-    const banner = document.querySelector('[data-hand-end]') as HTMLElement;
-    expect(banner.tagName).toBe('BUTTON');
-    expect(within(banner).queryByRole('button')).toBeNull();
-    expect(banner.textContent).toContain('Next hand');
-    expect(banner.textContent).not.toContain('Review this hand');
+    const next = document.querySelector('[data-hand-end]') as HTMLElement;
+    expect(next.tagName).toBe('BUTTON');
+    expect(within(next).queryByRole('button')).toBeNull();
+    expect(next.textContent).toContain('Next hand');
+    expect(next.textContent).not.toContain('Review this hand');
     const before = harness.state().game.hand?.handSeq;
-    act(() => void fireEvent.click(banner));
+    await elapse(TAP_GUARD_MS);
+    act(() => void fireEvent.click(next));
     expect(harness.state().game.hand?.handSeq).toBe((before ?? 0) + 1);
     expect(harness.state().ui.screen).toBe('table');
   }, 60_000);

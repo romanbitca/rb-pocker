@@ -1,7 +1,8 @@
 /**
  * Keyboard shortcuts (PLAN §12.5, §12.12; chunk 9.3): F fold · C check/call · B or R bet/raise ·
  * 1–5 presets · ↑/↓ one step · Enter confirm · Esc close · U undo · H hint · K toggle hands panel ·
- * S hand summary (1.3.92: the hand-end banner's "Hand summary" or "Exam result") · ? list shortcuts.
+ * S hand summary (1.3.92: the hand end's "Hand summary" or "Exam result") · Enter or Space next
+ * hand (1.3.99: Row A's "Next hand ›" at the hand end) · ? list shortcuts.
  *
  * - A key is read as typed (`e.key`), with the physical key (`e.code`) as the fallback when the
  *   keyboard types another alphabet (Cyrillic, Greek…) or needs Shift for digits (AZERTY): F is F
@@ -32,6 +33,8 @@ export type Shortcut =
   | 'up'
   | 'down'
   | 'confirm'
+  /** Space: only Row A's "Next hand ›" (with Enter, `useNextKeys`). */
+  | 'space'
   | 'undo'
   | 'hint'
   | 'hands'
@@ -80,6 +83,8 @@ function shortcutKey(e: KeyLike): Shortcut | null {
       return 'down';
     case 'Enter':
       return 'confirm';
+    case ' ':
+      return 'space';
     case '?':
       return 'help';
   }
@@ -194,7 +199,9 @@ export function rowMove(
 }
 
 /** A `press` the ActionBar hands out: its own tap handler for one slot. */
-export type PressRef = MutableRefObject<((slot: 'fold' | 'middle' | 'right') => void) | null>;
+export type PressRef = MutableRefObject<
+  ((slot: 'fold' | 'middle' | 'right' | 'next') => void) | null
+>;
 
 export interface RowKeysInput {
   readonly view: ActionBarView;
@@ -259,6 +266,40 @@ export function useRowKeys(input: RowKeysInput): void {
     if (!trayOpen || !byKey) return;
     document.getElementById(trayId)?.querySelector<HTMLElement>('input[type="range"]')?.focus();
   }, [trayOpen, trayId]);
+}
+
+/**
+ * Enter and Space at the hand end (§12.5, 1.3.99): `run` deals the next hand, as a tap on Row A's
+ * "Next hand ›" does. Null: off, the hand is not over. Never in a text field or a dialog or sheet.
+ * A control the player reached with Tab keeps its own Enter and Space (a keyboard user opens
+ * "Review this hand" that way); a control that only holds the focus since a click (the Menu after
+ * its sheet closed, the summary's button) does not, and those keys would open it again.
+ */
+export function useNextKeys(run: (() => void) | null): void {
+  const latest = useRef(run);
+  useEffect(() => {
+    latest.current = run;
+  });
+  useEffect(() => {
+    let tabbing = true;
+    const onPointer = (): void => {
+      tabbing = false;
+    };
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === 'Tab') tabbing = true;
+      const key = shortcutOf(e);
+      if ((key !== 'confirm' && key !== 'space') || keysBlocked(e)) return;
+      if (latest.current === null || (tabbing && ownsEnter(e.target))) return;
+      e.preventDefault();
+      latest.current();
+    };
+    document.addEventListener('pointerdown', onPointer, true);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('pointerdown', onPointer, true);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, []);
 }
 
 /**

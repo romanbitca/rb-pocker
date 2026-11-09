@@ -36,8 +36,10 @@ interface PcState {
     }[];
     /** §10: the coach level fixed for the hero's current (or latest) decision, else null. */
     coachLevel: string | null;
-    /** 1.3.92 (§12.9): the summary the hand-end banner offers ('hand', 'exam'), else null. */
+    /** 1.3.92 (§12.9): the summary the hand end offers ('hand', 'exam'), else null. */
     summary: 'hand' | 'exam' | null;
+    /** 1.3.99 (§12.7): "Skip to result ›" was tapped; this hand runs at Instant speed. */
+    skipping: boolean;
     /** Refused inputs, bot fallbacks and voided hands since the launch (§12.14). */
     diag: { engineErrors: number; botFallbacks: number; voidedHands: number };
   };
@@ -282,16 +284,16 @@ export type FlowPoint = 'hero' | 'end' | 'bust';
  * - a first-table tip (§12.11, chunk 9.3; only in specs that turn tips on, `fixtures.ts`): the
  *   game waits for a tap; the helpers tap the tip.
  * At a hand end the summary sheet (§12.9, chunk 6.4) is open only when a spec opened it with the
- * banner's button (`openSummary`; since 1.3.92 it never opens by itself): the hand-end point then
- * waits for its "Next hand ›" (the tap `tapNextHand` and `playHands` make).
+ * hand end's button (`openSummary`; since 1.3.92 it never opens by itself): the hand-end point
+ * then waits for its "Next hand ›" (the tap `tapNextHand` and `playHands` make).
  */
 type Waypoint = FlowPoint | 'feedback' | 'quiz' | 'tip';
 
 /**
  * In the page: the point the game is at, or null while bots act or cards move. The card counts
  * once its Keep my move button is on the page (its code is a lazy chunk); the quiz once its Skip
- * is; a hand end once what to tap is (the summary's "Next hand ›" while it is open, else the
- * banner).
+ * is; a hand end once what to tap is (the summary's "Next hand ›" while it is open, else Row A's,
+ * `data-hand-end`, 1.3.99).
  */
 function readFlowPoint(): Waypoint | null {
   const s = window.__pc?.state();
@@ -329,16 +331,38 @@ export async function skipQuiz(page: Page): Promise<void> {
   await page.locator('[data-quiz-skip]').click();
 }
 
+/** Row A's double-tap guard (§12.7): 250 ms after an action, and after "Next hand ›" came or went. */
+export const TAP_GUARD_MS = 250;
+
 /**
  * At a hand end (`nextFlowPoint` said 'end'): the next hand, by "Next hand ›" on the summary
- * sheet when it is open (§12.9: the next hand waits for it), else by a tap on the banner.
+ * sheet when it is open (§12.9: the next hand waits for it), else by Row A's "Next hand ›"
+ * (1.3.99). That button takes no tap in its first 250 ms (the double-tap guard, §12.7), so the
+ * tap is made again until the game has moved on; the clock must be running (not `pauseAt`). The
+ * new hand's Row A takes no tap for as long: the wait at the end, so a hero who is first to act
+ * is not ignored by a spec's next tap.
  */
 export async function tapNextHand(page: Page): Promise<void> {
   // The sheet is a lazy chunk (prefetched with the Table): tap it once it is on the page.
   const summary = await page.evaluate(
     () => window.__pc?.state().ui.overlays.includes('summary') === true,
   );
-  await page.locator(summary ? '[data-summary-next]' : '[data-hand-end]').click();
+  if (summary) {
+    await page.locator('[data-summary-next]').click();
+    await page.waitForTimeout(TAP_GUARD_MS + 30);
+    return;
+  }
+  const ended = await page.evaluate(() => window.__pc?.state().game.hand?.handSeq);
+  const dealt = (): Promise<boolean> =>
+    page.evaluate((seq) => {
+      const game = window.__pc?.state().game;
+      return game?.mode !== 'handEnd' || game.hand?.handSeq !== seq;
+    }, ended);
+  await expect(async () => {
+    if (!(await dealt())) await page.locator('[data-hand-end]').click({ timeout: 2_000 });
+    expect(await dealt(), 'the next hand was dealt').toBe(true);
+  }).toPass({ timeout: 20_000, intervals: [50, 100] });
+  await page.waitForTimeout(TAP_GUARD_MS + 30);
 }
 
 /**
@@ -376,8 +400,8 @@ export async function openSummary(
 }
 
 /**
- * Closes the hand summary when it is open (Esc, as ✕ or the scrim would), so the banner under it
- * can be read and tapped; the next hand then comes after its 3 s, or on the banner's tap.
+ * Closes the hand summary when it is open (Esc, as ✕ or the scrim would), so the result under it
+ * can be read and Row A's "Next hand ›" tapped.
  */
 export async function closeSummary(page: Page): Promise<void> {
   const open = await page.evaluate(
@@ -500,8 +524,8 @@ export interface PlayOptions {
   /** Move a fake clock on instead of waiting (see nextFlowPoint); needs `page.clock.install()`. */
   fast?: boolean;
   /**
-   * Called at every hand end, before the banner (or the summary's "Next hand ›") is tapped. It
-   * may open the summary with the banner's button (`openSummary`) and close it again.
+   * Called at every hand end, before "Next hand ›" (Row A's, or the summary's) is tapped. It may
+   * open the summary with its button (`openSummary`) and close it again.
    */
   onHandEnd?: (record: HandRecord) => Promise<void>;
   /** Called at every hero turn, before the tap (e.g. to wait for the final win chance). */
@@ -520,8 +544,8 @@ interface FlowView {
   /** Row A's enabled buttons; `tray` = the button opens the sizing tray. */
   slots: { slot: string; tray: boolean; at: Spot }[];
   /**
-   * The hand-end banner (the summary's "Next hand ›" while it is open), the out-of-chips
-   * dialog's Reload button, the card's Keep my move, the quiz's Skip, or a first-table tip.
+   * Row A's "Next hand ›" (the summary's while it is open), the out-of-chips dialog's Reload
+   * button, the card's Keep my move, the quiz's Skip, or a first-table tip.
    */
   tap: Spot | null;
 }
@@ -631,10 +655,27 @@ async function heroTap(page: Page, view: FlowView, random: () => number): Promis
 }
 
 /**
- * Plays `hands` full hands through the UI: the hero taps Row A (as heroAct chooses), the
- * hand-end banner is tapped to deal the next hand (the summary's "Next hand ›" while a spec has
- * it open, Stage 6), "Reload" when the hero is out of chips, Keep my move on a feedback card and Skip on
- * the Advanced quiz (Stage 6), and a tap on a first-table tip (Stage 9, when a spec turns them on).
+ * The last hand of `playHands`: its "Next hand ›" has no later turn of the loop to be tapped again
+ * when the tap came in Row A's first 250 ms (§12.7), and the caller (or its next `playHands`)
+ * expects the next hand. Tapped until the game has moved on (the next hand, or the out-of-chips
+ * dialog, which the next `playHands` answers), then the new Row A's own 250 ms.
+ */
+async function lastNextHand(page: Page, handSeq: number): Promise<void> {
+  const waiting = (v: FlowView): boolean => v.point === 'end' && v.hand?.handSeq === handSeq;
+  await expect(async () => {
+    const now = await page.evaluate(readFlowView);
+    if (waiting(now) && now.tap !== null) await page.mouse.click(now.tap.x, now.tap.y);
+    expect(waiting(await page.evaluate(readFlowView)), 'the next hand was dealt').toBe(false);
+  }).toPass({ timeout: 20_000, intervals: [50, 100] });
+  await page.waitForTimeout(TAP_GUARD_MS + 30);
+}
+
+/**
+ * Plays `hands` full hands through the UI: the hero taps Row A (as heroAct chooses), Row A's "Next
+ * hand ›" deals the next hand (the summary's while a spec has it open, Stage 6; a tap in its first
+ * 250 ms is ignored, the double-tap guard, and the loop taps again), "Reload" when the hero is out
+ * of chips, Keep my move on a feedback card and Skip on the Advanced quiz (Stage 6), and a tap on
+ * a first-table tip (Stage 9, when a spec turns them on).
  * For speed each step reads the state and the buttons' places in one round trip and taps there
  * with real mouse clicks (Playwright's locator checks cost several round trips per tap, which
  * made 50 hands take minutes in WebKit on the CI runner). A tap that misses shows up as no
@@ -680,7 +721,14 @@ export async function playHands(page: Page, options: PlayOptions): Promise<HandR
         view = await page.evaluate(readFlowView);
         if (view.point !== 'end' || view.tap === null) continue;
       }
-      await page.mouse.click(view.tap.x, view.tap.y);
+      // A tap in Row A's first 250 ms is ignored (§12.7). On a fake clock let them pass: nothing
+      // else would.
+      if (options.fast === true) await page.clock.runFor(TAP_GUARD_MS);
+      if (records.length >= options.hands && options.fast !== true) {
+        await lastNextHand(page, hand.handSeq);
+      } else {
+        await page.mouse.click(view.tap.x, view.tap.y);
+      }
     }
   }
   return records;

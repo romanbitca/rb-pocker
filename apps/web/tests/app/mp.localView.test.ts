@@ -300,6 +300,7 @@ describe('legal, mode and the rest', () => {
       decisions: [],
       coachLevel: 'exam',
       summary: null,
+      skipping: false,
     });
     expect(game.seatStats).toBe(NO_SEAT_STATS);
   });

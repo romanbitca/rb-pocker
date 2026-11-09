@@ -65,6 +65,8 @@ export interface MiddleButton extends BarButton {
    * the part of the bet the hero cannot match is not theirs to win).
    */
   readonly sub: string | null;
+  /** "Skip to result ›" after the hero folded (`skipView`, §12.7): its tap finishes the hand. */
+  readonly skip?: boolean;
 }
 
 /** The right button: "Bet ▲" / "Raise ▲" (opens the tray), "All-in 380", or a disabled "Raise". */
@@ -442,6 +444,15 @@ export function lockedView(view: ActionBarView, note: string): ActionBarView {
     right: view.right === null ? null : { ...lock(view.right), opensTray: false },
     tray: null,
   };
+}
+
+/**
+ * Row A after the hero folded (§12.7, 1.3.99): still waiting, but the middle button reads "Skip to
+ * result ›" and finishes the hand at Instant speed (the controller's `skipHand`).
+ */
+export function skipView(view: ActionBarView): ActionBarView {
+  const middle = { ...view.middle, label: en.actions.skip, enabled: true, skip: true };
+  return { ...view, middle };
 }
 
 export function actionBarView(input: ActionBarInput): ActionBarView {

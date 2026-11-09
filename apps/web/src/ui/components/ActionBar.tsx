@@ -22,13 +22,21 @@
  * The keyboard (§12.5, chunk 9.3): F, C and B/R press the three buttons through `pressRef` exactly
  * as a tap does (the same guard, the same notes, the tray's open and confirm); each button names
  * its keys in `aria-keyshortcuts`.
+ *
+ * At the hand end (§12.7, §12.9; 1.3.99, `onNext`) the row is one big "Next hand ›": every hand is
+ * tapped on, so it sits under the thumb. The guard covers it both ways: it takes no tap for 250 ms
+ * after it comes (a tap meant for "Skip to result ›" or the bar before it), and the buttons of the
+ * new hand take none for 250 ms after it went (the second tap of a double tap would act there, or
+ * deal the hand after). After the hero folded (`onSkip`, `skipView`) the middle button reads "Skip
+ * to result ›".
  */
-import { memo, useEffect, useId, useRef, useState, type ReactNode } from 'react';
+import { memo, useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import type { PlayerAction } from '../../engine/types.ts';
 import { en } from '../../i18n/en.ts';
 import { trayAction, trayActionLabel, type ActionBarView, type BarButton } from '../actionBar.ts';
 import type { PressRef } from '../shortcuts.ts';
 import styles from './ActionBar.module.css';
+import { ICONS, SpriteIcon } from './SvgSprite.tsx';
 
 /** Taps within this long after an action are ignored (PLAN §12.7), so a double tap acts once. */
 export const TAP_GUARD_MS = 250;
@@ -55,6 +63,13 @@ export interface ActionBarProps {
    * 3 px accent ring and a "Coach" badge (§10.2, §12.7). Never on a disabled button.
    */
   readonly recommended?: Slot | null | undefined;
+  /**
+   * The hand has ended (§12.7, §12.9): Row A is one big "Next hand ›", and this is its tap (Enter
+   * and Space press it through `pressRef`). Null while a hand is played.
+   */
+  readonly onNext?: (() => void) | null | undefined;
+  /** The hero has folded (`skipView`, §12.7): the tap of "Skip to result ›". */
+  readonly onSkip?: (() => void) | null | undefined;
   /** The keyboard's way in (`ui/shortcuts.ts`): set to this bar's tap handler while mounted. */
   readonly pressRef?: PressRef | undefined;
   readonly className?: string | undefined;
@@ -153,11 +168,17 @@ export const ActionBar = memo(function ActionBar({
   layout = 'row',
   trayId,
   recommended = null,
+  onNext = null,
+  onSkip = null,
   pressRef,
   className,
 }: ActionBarProps) {
   const lastAction = useRef(Number.NEGATIVE_INFINITY);
   const barRef = useRef<HTMLDivElement>(null);
+  const nextRef = useRef<HTMLButtonElement>(null);
+  const lastFocus = useRef<HTMLElement | null>(null);
+  const ended = onNext !== null;
+  const wasEnded = useRef(ended);
   const [tip, setTip] = useState<{ slot: Slot; key: string } | null>(null);
   const foldNoteId = useId();
   const rightNoteId = useId();
@@ -185,8 +206,33 @@ export const ActionBar = memo(function ActionBar({
     onAct(action);
   };
 
-  const onPress = (slot: Slot) => {
+  // The row changes shape when the hand ends and when the next is dealt: the tap guard starts over
+  // (see the module note), and the focus, on a button that has just gone, stays in the row: on
+  // "Next hand ›", or on the row itself (a new hand's button would take the next Enter).
+  useLayoutEffect(() => {
+    if (wasEnded.current === ended) return;
+    wasEnded.current = ended;
+    lastAction.current = performance.now();
+    const focused = lastFocus.current;
+    lastFocus.current = null;
+    const elsewhere = document.activeElement !== null && document.activeElement !== document.body;
+    if (focused === null || focused.isConnected || elsewhere) return;
+    (ended ? nextRef.current : barRef.current)?.focus({ preventScroll: true });
+  }, [ended]);
+
+  const onPress = (slot: Slot | 'next') => {
     if (performance.now() - lastAction.current < TAP_GUARD_MS) return;
+    if (slot === 'next') {
+      lastAction.current = performance.now();
+      onNext?.();
+      return;
+    }
+    if (ended) return; // the hand is over: only "Next hand ›" does anything
+    if (slot === 'middle' && view.middle.skip === true) {
+      lastAction.current = performance.now();
+      onSkip?.();
+      return;
+    }
     const button = slot === 'fold' ? view.fold : slot === 'middle' ? view.middle : right;
     if (button === null) return;
     if (!button.enabled) {
@@ -217,47 +263,77 @@ export const ActionBar = memo(function ActionBar({
       ref={barRef}
       role="group"
       aria-label={en.actions.group}
+      tabIndex={-1}
       className={cx(styles.bar, layout === 'column' && styles.column, className)}
+      onFocusCapture={(e) => {
+        lastFocus.current = e.target as HTMLElement;
+      }}
     >
-      <SlotButton
-        slot="fold"
-        button={view.fold}
-        label={view.fold.label}
-        coach={!view.waiting && recommended === 'fold'}
-        describedBy={view.fold.note === null ? undefined : foldNoteId}
-        onPress={onPress}
-      />
-      <SlotButton
-        slot="middle"
-        button={view.middle}
-        label={view.middle.label}
-        sub={view.middle.sub}
-        wide={right === null}
-        coach={!view.waiting && recommended === 'middle'}
-        onPress={onPress}
-      />
-      {right === null ? null : (
-        <SlotButton
-          slot="right"
-          button={right}
-          label={open && view.tray !== null ? trayActionLabel(view.tray, amount) : right.label}
-          primary={open}
-          coach={!view.waiting && recommended === 'right'}
-          describedBy={right.note === null ? undefined : rightNoteId}
-          expanded={disclosure ? open : undefined}
-          controls={disclosure && open ? trayId : undefined}
-          onPress={onPress}
+      {ended ? (
+        <button
+          ref={nextRef}
+          type="button"
+          className={cx(styles.button, styles.next)}
+          aria-keyshortcuts="Enter Space"
+          data-hand-end=""
+          // A held Enter clicks a focused button again and again: one hand per press.
+          onKeyDown={(e) => {
+            if (e.repeat) e.preventDefault();
+          }}
+          onClick={() => onPress('next')}
         >
-          {right.opensTray && !open ? <Caret /> : null}
-        </SlotButton>
+          <span className={styles.label}>
+            {en.handEnd.nextHand}
+            <SpriteIcon id={ICONS.chevron} className={styles.chevron} />
+          </span>
+        </button>
+      ) : (
+        <>
+          <SlotButton
+            slot="fold"
+            button={view.fold}
+            label={view.fold.label}
+            coach={!view.waiting && recommended === 'fold'}
+            describedBy={view.fold.note === null ? undefined : foldNoteId}
+            onPress={onPress}
+          />
+          <SlotButton
+            slot="middle"
+            button={view.middle}
+            label={view.middle.label}
+            sub={view.middle.sub}
+            wide={right === null}
+            coach={!view.waiting && recommended === 'middle'}
+            onPress={onPress}
+          >
+            {view.middle.skip === true ? (
+              <SpriteIcon id={ICONS.chevron} className={styles.chevron} />
+            ) : null}
+          </SlotButton>
+          {right === null ? null : (
+            <SlotButton
+              slot="right"
+              button={right}
+              label={open && view.tray !== null ? trayActionLabel(view.tray, amount) : right.label}
+              primary={open}
+              coach={!view.waiting && recommended === 'right'}
+              describedBy={right.note === null ? undefined : rightNoteId}
+              expanded={disclosure ? open : undefined}
+              controls={disclosure && open ? trayId : undefined}
+              onPress={onPress}
+            >
+              {right.opensTray && !open ? <Caret /> : null}
+            </SlotButton>
+          )}
+        </>
       )}
       {/* Why a disabled button is disabled: read with the button, and shown when it is tapped. */}
-      {view.fold.note === null ? null : (
+      {ended || view.fold.note === null ? null : (
         <span id={foldNoteId} className={styles.hidden}>
           {view.fold.note}
         </span>
       )}
-      {right?.note == null ? null : (
+      {ended || right?.note == null ? null : (
         <span id={rightNoteId} className={styles.hidden}>
           {right.note}
         </span>

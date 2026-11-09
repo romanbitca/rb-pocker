@@ -6,7 +6,7 @@
  * then leaves the table, and the hand-end banner says who won and starts the next hand on a tap.
  */
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
-import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { selectHandEnd } from '../../../src/app/store.ts';
 import { cardAriaLabel } from '../../../src/core/cards.ts';
 import { describe as describeHand } from '../../../src/eval/describe.ts';
@@ -14,7 +14,8 @@ import type { Card } from '../../../src/core/cards.ts';
 import type { HandState } from '../../../src/engine/types.ts';
 import { en } from '../../../src/i18n/en.ts';
 import { App } from '../../../src/ui/App.tsx';
-import { handEndLines } from '../../../src/ui/handEnd.ts';
+import { TAP_GUARD_MS } from '../../../src/ui/components/ActionBar.tsx';
+import { bannerLines } from '../../../src/ui/handEnd.ts';
 import { loadScreens } from '../../../src/ui/screensModule.ts';
 import { heroPolicy } from '../../app/harness.ts';
 import { elapse, playUntil, startTableHarness, type TableHarness } from '../tableHarness.ts';
@@ -143,20 +144,78 @@ describe('the Table screen', () => {
     expect(h.state().game.mode).toBe('heroTurn');
   }, 20_000);
 
-  it('the hand-end banner says who won; a tap deals the next hand', async () => {
+  it('the hand end: the result says who won, Row A is one "Next hand ›", its tap deals', async () => {
     renderTable();
     const start = hand().handSeq;
     await playUntil(() => h.state().game.mode === 'handEnd');
     const view = selectHandEnd(h.state());
     expect(view).not.toBeNull();
-    const banner = document.querySelector<HTMLElement>('[data-hand-end]');
+    const banner = document.querySelector<HTMLElement>('[data-hand-result]');
     expect(banner?.textContent).toBe(
-      handEndLines(view as NonNullable<typeof view>).join('') + en.handEnd.nextHand,
+      bannerLines(view as NonNullable<typeof view>)
+        .map((l) => l.text)
+        .join(''),
     );
-    fireEvent.click(banner as HTMLElement);
+    expect(document.querySelectorAll('[data-slot]')).toHaveLength(0);
+    const next = document.querySelector<HTMLElement>('[data-hand-end]');
+    expect(next?.textContent).toBe(en.handEnd.nextHand);
+    // The tap guard (§12.7): none in its first 250 ms.
+    fireEvent.click(next as HTMLElement);
+    expect(hand().handSeq).toBe(start);
+    await elapse(TAP_GUARD_MS);
+    fireEvent.click(next as HTMLElement);
     expect(hand().handSeq).toBe(start + 1);
     expect(document.querySelector('[data-hand-end]')).toBeNull();
+    expect(document.querySelector('[data-hand-result]')).toBeNull();
   }, 20_000);
+
+  describe("where the hand end's parts go (§12.7, §12.9; 1.3.99)", () => {
+    const felt = '[data-table-box] [data-hand-result]';
+    const undoRow = '[data-tip-anchor="coachStrip"] [data-hand-review]';
+    const panel = '[data-hand-panel]';
+    const heroStrip = 'section[aria-label="Your hand"] [data-hand-review]';
+    const toEnd = async (layout: 'portrait' | 'landscape' | 'wide'): Promise<void> => {
+      renderTable();
+      act(() => h.state().dispatch({ type: 'layout', layout }));
+      await playUntil(() => h.state().game.mode === 'handEnd');
+      expect(document.querySelector('[data-hand-end]')).not.toBeNull();
+      expect(document.querySelectorAll('[data-hand-result]')).toHaveLength(1);
+      expect(document.querySelectorAll('[data-hand-review]')).toHaveLength(1);
+    };
+
+    it('portrait: the result on the felt, the links in the Undo row', async () => {
+      await toEnd('portrait');
+      expect(document.querySelector(felt)).not.toBeNull();
+      expect(document.querySelector(undoRow)).not.toBeNull();
+    }, 20_000);
+
+    it('landscape: the result in the column, the links in its Undo row', async () => {
+      await toEnd('landscape');
+      expect(document.querySelector('aside [data-hand-result]')).not.toBeNull();
+      expect(document.querySelector(`aside ${undoRow}`)).not.toBeNull();
+      expect(document.querySelector(felt)).toBeNull();
+    }, 20_000);
+
+    it('wide: the result and the links in the panel, none of it on the felt', async () => {
+      await toEnd('wide');
+      expect(document.querySelector(`${panel} [data-hand-result]`)).not.toBeNull();
+      expect(document.querySelector(`${panel} [data-hand-review]`)).not.toBeNull();
+      expect(document.querySelector(felt)).toBeNull();
+    }, 20_000);
+
+    it('compact: the result on the felt, the links in the hero strip', async () => {
+      vi.stubGlobal('matchMedia', (query: string) => ({
+        matches: query === '(max-height: 640px)',
+        media: query,
+        addEventListener: () => {},
+        removeEventListener: () => {},
+      }));
+      await toEnd('portrait');
+      expect(document.querySelector(felt)).not.toBeNull();
+      expect(document.querySelector(heroStrip)).not.toBeNull();
+      vi.unstubAllGlobals();
+    }, 20_000);
+  });
 
   it('the top bar says the blinds and the hand; the Menu opens and pauses the bots', async () => {
     renderTable();

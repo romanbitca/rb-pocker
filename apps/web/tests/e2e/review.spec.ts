@@ -11,6 +11,7 @@ import {
   prng,
   seedFor,
   sizeOf,
+  tapNextHand,
 } from './game.ts';
 
 // PLAN §12.10 (chunk 6.3): Review, the read-only replay of a finished hand. From the hand-end
@@ -65,14 +66,14 @@ test('Review replays the hand that just ended, step by step, and hides what the 
     await heroAct(page, random);
     point = await nextFlowPoint(page, true);
   }
-  const banner = page.locator('[data-hand-end]');
+  const banner = page.locator('[data-hand-result]');
   await expect(banner).toBeVisible();
   const result = (await banner.locator('span').first().textContent()) ?? '';
   expect(result).not.toBe('');
   const handSeq = (await pcState(page)).game.hand?.handSeq;
 
-  // The link under the banner opens Review on this hand; the URL stays "/". (Beginner's hand
-  // summary does not cover it: since 1.3.92 only the banner's "Hand summary" opens it, §12.9.)
+  // The link opens Review on this hand; the URL stays "/". (Beginner's hand summary does not
+  // cover it: since 1.3.92 only the "Hand summary" button opens it, §12.9.)
   const link = page.getByRole('button', { name: 'Review this hand' });
   await expect(link).toBeVisible();
   await link.click();
@@ -163,7 +164,7 @@ test('Review replays the hand that just ended, step by step, and hides what the 
   await page.getByRole('button', { name: 'Back', exact: true }).click();
 
   // The next hand deals as usual.
-  await banner.click();
+  await tapNextHand(page);
   await expect(banner).toHaveCount(0);
   expect(errors).toEqual([]);
 });

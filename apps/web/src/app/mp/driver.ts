@@ -205,6 +205,7 @@ export class MpDriver {
         this.leaveTable();
         return true;
       case 'nextHand':
+      case 'skipHand':
       case 'topUp':
       case 'undo':
       case 'keepMove':

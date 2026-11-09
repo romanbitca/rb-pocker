@@ -12,6 +12,10 @@
  *   Two Pair, Fours and Threes — your King kicker beats their Jack"; a flush: "your King beats
  *   their Queen").
  *
+ * The banner (`bannerLines`, 1.3.99) adds the hero's own result after the winners: "You won 340" /
+ * "You lost 340", what the hand did to the hero's stack (the chips a winner line names include the
+ * hero's own). None when it did not change. Review has its own line for it (`netSpoken`).
+ *
  * Only hands the engine revealed reach `HandEndView.shown`, so nothing here can name a hidden card.
  *
  * After an all-in the §7.6 luck line follows (`luckLine`, from the store's `LuckLineData`): "You
@@ -33,8 +37,8 @@ const T = en.handEnd;
 
 const categoryName = (category: HandCategory): string => T.category[category];
 
-/** The banner's lines, in order. Empty when the hand has no winner (not complete). */
-export function handEndLines(view: HandEndView): string[] {
+/** Who won what, in order. Empty when the hand has no winner (not complete). */
+function winnerLines(view: HandEndView): string[] {
   const { winners, shown } = view;
   if (winners.length === 0) return [];
   if (view.endedBy === 'fold') {
@@ -57,32 +61,73 @@ export function handEndLines(view: HandEndView): string[] {
         lines.push(hand === undefined ? T.winsNoHand(w.name, x) : T.wins(w.name, x, hand.handName));
     }
   }
+  return lines;
+}
 
-  const heroWon = winners.some((w) => w.seat === HERO);
+/** At a showdown the hero won: one line per beaten hand that was shown, at most two. */
+function loserLines(view: HandEndView): string[] {
+  const { winners, shown } = view;
+  if (view.endedBy === 'fold') return [];
   const heroHand = shown.find((s) => s.seat === HERO);
-  if (heroWon && heroHand !== undefined) {
-    const beaten = shown.filter((s) => s.seat !== HERO && !winners.some((w) => w.seat === s.seat));
-    for (const s of beaten.slice(0, MAX_LOSER_LINES)) {
-      // The same name too ("Two Pair, Fours and Threes — loses to your Two Pair, Fours and
-      // Threes") says nothing either: the card that decided it does (QA-5).
-      const d = s.decider;
-      if (d !== null) {
-        const [yours, theirs] = [RANK_NAMES[d.yours] as string, RANK_NAMES[d.theirs] as string];
-        lines.push(
-          d.kicker
-            ? T.losesKicker(s.name, s.handName, yours, theirs)
-            : T.losesCard(s.name, s.handName, yours, theirs),
-        );
-        continue;
-      }
-      // The same category ("Pair — loses to your Pair") says nothing: name the full hands then.
-      const same = s.category === heroHand.category;
-      const theirs = same ? s.handName : categoryName(s.category);
-      const yours = same ? heroHand.handName : categoryName(heroHand.category);
-      lines.push(T.loses(s.name, theirs, yours));
+  if (!winners.some((w) => w.seat === HERO) || heroHand === undefined) return [];
+  const lines: string[] = [];
+  const beaten = shown.filter((s) => s.seat !== HERO && !winners.some((w) => w.seat === s.seat));
+  for (const s of beaten.slice(0, MAX_LOSER_LINES)) {
+    // The same name too ("Two Pair, Fours and Threes — loses to your Two Pair, Fours and
+    // Threes") says nothing either: the card that decided it does (QA-5).
+    const d = s.decider;
+    if (d !== null) {
+      const [yours, theirs] = [RANK_NAMES[d.yours] as string, RANK_NAMES[d.theirs] as string];
+      lines.push(
+        d.kicker
+          ? T.losesKicker(s.name, s.handName, yours, theirs)
+          : T.losesCard(s.name, s.handName, yours, theirs),
+      );
+      continue;
     }
+    // The same category ("Pair — loses to your Pair") says nothing: name the full hands then.
+    const same = s.category === heroHand.category;
+    const theirs = same ? s.handName : categoryName(s.category);
+    const yours = same ? heroHand.handName : categoryName(heroHand.category);
+    lines.push(T.loses(s.name, theirs, yours));
   }
   return lines;
+}
+
+/** The result's lines, in order (the words of the module comment). Empty before a winner. */
+export function handEndLines(view: HandEndView): string[] {
+  return [...winnerLines(view), ...loserLines(view)];
+}
+
+/** One line of the hand-end banner, and how it is drawn. */
+export interface BannerLine {
+  readonly text: string;
+  /** 'main': the first line. 'own': the hero's own result. 'line': the rest. */
+  readonly kind: 'main' | 'own' | 'line';
+}
+
+/**
+ * The hero's own result (§12.9, 1.3.99): "You won 340" / "You lost 340"; null when the hand did
+ * not change the hero's stack (a fold with no chips in, a split that gave them back).
+ */
+export function ownResultLine(net: number): string | null {
+  if (net === 0) return null;
+  return net > 0 ? T.youWon(formatChips(net)) : T.youLost(formatChips(-net));
+}
+
+/**
+ * The banner (§12.9, 1.3.99): who won, the hero's own result, then the hands the hero beat. Empty
+ * when the hand has no winner (not complete).
+ */
+export function bannerLines(view: HandEndView): BannerLine[] {
+  const winners = winnerLines(view);
+  if (winners.length === 0) return [];
+  const own = ownResultLine(view.heroNet);
+  return [
+    ...winners.map((text, i): BannerLine => ({ text, kind: i === 0 ? 'main' : 'line' })),
+    ...(own === null ? [] : [{ text: own, kind: 'own' } as const]),
+    ...loserLines(view).map((text): BannerLine => ({ text, kind: 'line' })),
+  ];
 }
 
 /** The §7.6 luck line after an all-in run-out. */

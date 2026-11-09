@@ -35,15 +35,21 @@
  * takes the coach's place on 1 in 4 decisions, and Row A waits for it (portrait: the strip's row
  * grows; compact: over the bottom of the table, like the tray; landscape: the column; wide: the
  * panel); the rankings show tips, "By river" and "Which hand wins?" by level. At the hand end the
- * banner offers the summary when the level shows one ("Hand summary", Exam's "Exam result"), and
+ * links offer the summary when the level shows one ("Hand summary", Exam's "Exam result"), and
  * its tap opens the sheet (a lazy chunk); it never opens by itself (1.3.92).
  *
+ * The hand end (§12.7, §12.9; 1.3.99): Row A is one big "Next hand ›", under the thumb. The result
+ * goes on the felt under the board (portrait, compact), never over it, in the right column
+ * (landscape) or in the panel under the hero (wide). The links ("Hand summary", "Review this hand")
+ * go in the Undo row (portrait, landscape), the hero strip's last row (compact) or the panel (wide).
+ * After the hero folded, Row A's middle button is "Skip to result ›".
+ *
  * Keys and first-table tips (§12.5, §12.11, §12.12; chunk 9.3, `ui/shortcuts.ts`, `ui/tips.ts`):
- * F, C, B/R press Row A as a tap does, 1–5 and ↑/↓ size the tray, Enter confirms it, U undoes, H
- * does what a tap on the coach does, K shows or hides the hand rankings, S opens the hand summary
- * the banner offers and ? lists the keys (a lazy dialog). The tips point at what they explain
- * (`data-tip-anchor`), one at a time, once each, never before the hero's cards are dealt and never
- * over the tray and Row A (`data-action-area`).
+ * F, C, B/R press Row A as a tap does, 1–5 and ↑/↓ size the tray, Enter confirms it (at the hand end
+ * Enter and Space deal the next hand), U undoes, H does what a tap on the coach does, K shows or
+ * hides the hand rankings, S opens the hand summary and ? lists the keys (a lazy dialog). The tips
+ * point at what they explain (`data-tip-anchor`), one at a time, once each, never before the hero's
+ * cards are dealt and never over the tray and Row A (`data-action-area`).
  */
 import {
   lazy,
@@ -64,12 +70,14 @@ import {
   selectBigMove,
   selectBoardView,
   selectByRiver,
+  selectCanSkip,
   selectCoach,
   selectCoachLevel,
   selectDrawChips,
   selectFeedback,
   selectGradeChip,
   selectHandEnd,
+  selectHandEndUp,
   selectHeroHandView,
   selectHeroView,
   selectLayout,
@@ -96,14 +104,15 @@ import type { Grade } from '../../brain/types.ts';
 import type { PlayerAction } from '../../engine/types.ts';
 import type { HandCategory } from '../../eval/evaluate.ts';
 import { en } from '../../i18n/en.ts';
-import { actionBarView, lockedView, useSizing } from '../actionBar.ts';
+import { actionBarView, lockedView, skipView, useSizing } from '../actionBar.ts';
 import { coachAdvice } from '../coachAdvice.ts';
+import type { StripView } from '../coach.ts';
 import { loadCoach, useCoachModule, useCoachView } from '../coachModule.ts';
 import { ActionBar } from '../components/ActionBar.tsx';
 import { Board } from '../components/Board.tsx';
 import type { StripVariant } from '../components/CoachStrip.tsx';
 import { DrawChips } from '../components/DrawChips.tsx';
-import { HandEndBanner } from '../components/HandEndBanner.tsx';
+import { HandEndBanner, HandEndLinks } from '../components/HandEndBanner.tsx';
 import { HandsTab } from '../components/HandsTab.tsx';
 import { HeroCards, HeroChips, HeroLabel } from '../components/HeroStrip.tsx';
 import { LoadBoundary } from '../components/LoadBoundary.tsx';
@@ -119,7 +128,7 @@ import { UndoButton, useUndoKey } from '../components/UndoButton.tsx';
 import { BigMoveLine, PriceChip, WinBadge, type BadgePlacement } from '../components/WinBadge.tsx';
 import { bigMoveView, drawChipViews, priceChipView, useBadgeView } from '../equity.ts';
 import { betChips, formatChips } from '../format.ts';
-import { handEndLines } from '../handEnd.ts';
+import { bannerLines, type BannerLine } from '../handEnd.ts';
 import { useElementSize, useMediaQuery } from '../hooks.ts';
 import {
   BET,
@@ -132,7 +141,7 @@ import {
   type TableLayout,
 } from '../layout/seats.ts';
 import { useHandsTabDot } from '../rankings.ts';
-import { useRowKeys, useShortcut, type PressRef } from '../shortcuts.ts';
+import { useNextKeys, useRowKeys, useShortcut, type PressRef } from '../shortcuts.ts';
 import { dueTip, TIP_DELAY_MS } from '../tips.ts';
 import styles from './Table.module.css';
 
@@ -152,10 +161,16 @@ export function useTableLayout(): TableLayout {
 }
 
 /** The table box before it can be measured: the §12.3 shell sizes for the window. */
-function estimatedBox(): Size {
-  const frame = tableFrame({ w: window.innerWidth, h: window.innerHeight });
+function estimatedBox(exam: boolean): Size {
+  const frame = tableFrame({ w: window.innerWidth, h: window.innerHeight }, { exam });
   return { w: frame.box.w, h: frame.box.h };
 }
+
+/**
+ * Wide at Exam (§12.5, 1.3.99): the smaller panel row. The settings' level, not the one in force,
+ * so the row never changes between decisions.
+ */
+const selectExamPanel = (s: AppState): boolean => s.settings.coachLevel === 'exam';
 
 // ---------------------------------------------------------------------------------------------
 // Top bar
@@ -316,53 +331,43 @@ const HeroBet = memo(function HeroBet({ geometry }: { geometry: TableGeometry })
   );
 });
 
-/** The banner's lines while the hand-end banner is up (mode `handEnd`), else null. */
-function useHandEndLines(): readonly string[] | null {
+/** The result's lines while the hand end is up (mode `handEnd`), else null. */
+function useHandEndLines(): readonly BannerLine[] | null {
   const view = useAppStore((s) => (s.game.mode === 'handEnd' ? selectHandEnd(s) : null));
   // After an all-in: the §7.6 luck line under the result (§12.9).
   const luck = useLuckLine();
   return useMemo(() => {
     if (view === null) return null;
-    const lines = handEndLines(view);
+    const lines = bannerLines(view);
     if (lines.length === 0) return null;
-    return luck === null ? lines : [...lines, luck];
+    return luck === null ? lines : [...lines, { text: luck, kind: 'line' }];
   }, [view, luck]);
 }
 
-/** Where the banner goes in the table box (`bannerPlace`). */
-export interface BannerPlace {
-  /** The column the banner may use: clear of the side pods, from the box's top to the hero. */
-  readonly area: CSSProperties;
-  /** The room above its place under the board; it gives way first when the banner is taller. */
-  readonly gap: number;
-}
+/** Between the board and the result; the board's raised cards go up, not down (§6.1). */
+const BANNER_GAP = 6;
 
 /**
- * The banner's place in the table (§12.9): under the board, clear of the side pods, when it fits
- * there; else it slides up to end just above the hero's cards, over the board, and never reaches
- * above the table box, where the top bar is (the old spot above the pot did on the 340 px tall
- * wide table, and its result lines sat under the top bar); taller still, it scrolls. A flex
- * column (`area`) whose first child, a spacer `gap` tall, shrinks first, so the place comes from
- * the banner's real height (1.3.92: an estimate of ~110 px left "Hand summary" and "Review this
- * hand", two lines each on a phone, over the hero's cards at 375×667, and long results ran over
- * them at Large text). Wide screens put the links in the card's "Next hand ›" row, so the card
- * there may be 440 px wide (at Large text too); always, so a late grade's button moves nothing.
+ * The result's place on the felt (§12.9, portrait and compact; 1.3.99): the room between the board
+ * and the hero's cards, clear of the side pods. It never covers the board: until 1.3.99 it slid
+ * up over it when it was tall (three lines at 390×664), and "Next hand ›" and the links took
+ * 66 px more of the same room. Taller than the room it scrolls inside (HandEndBanner.module.css).
  */
-export function bannerPlace(geometry: TableGeometry): BannerPlace {
+export function bannerPlace(geometry: TableGeometry): CSSProperties {
   const { size, board, hero } = geometry;
-  const max = geometry.layout === 'wide' ? 440 : 360;
-  const width = Math.max(180, Math.min(max, size.w - 2 * 76));
-  const left = Math.round((size.w - width) / 2);
-  const top = 4;
+  const width = Math.max(180, Math.min(360, size.w - 2 * 76));
+  const top = board.y + board.h + BANNER_GAP;
   // The lowest it may reach: the hero strip's cards reach up into the box.
   const limit = hero.y - 4;
   return {
-    area: { left, top, width, height: Math.max(0, limit - top) },
-    gap: Math.max(0, board.y + board.h + 10 - top),
+    left: Math.round((size.w - width) / 2),
+    top,
+    width,
+    height: Math.max(0, limit - top),
   };
 }
 
-/** "Review this hand" on the banner: the Review screen on the hand that just ended (§12.10). */
+/** "Review this hand" (§12.9): the Review screen on the hand that just ended (§12.10). */
 function useReviewHand(): () => void {
   const dispatch = useDispatch();
   const handSeq = useAppStore((s) => s.game.hand?.handSeq ?? null);
@@ -370,8 +375,8 @@ function useReviewHand(): () => void {
 }
 
 /**
- * "Hand summary" (Exam's "Exam result") on the banner (§10.2, §12.9; 1.3.92): what the controller
- * offers for the hand that just ended, and the tap that opens the sheet. It never opens by itself.
+ * "Hand summary" (Exam's "Exam result"; §10.2, §12.9; 1.3.92): what the controller offers for the
+ * hand that just ended, and the tap that opens the sheet. It never opens by itself.
  */
 function useSummaryButton(): [offer: SummaryOffer, open: () => void] {
   const offer = useAppStore(selectSummaryOffer);
@@ -380,27 +385,41 @@ function useSummaryButton(): [offer: SummaryOffer, open: () => void] {
   return [offer, open];
 }
 
+/** The result on the felt (portrait and compact, §12.9). */
 const BannerLayer = memo(function BannerLayer({ geometry }: { geometry: TableGeometry }) {
   const lines = useHandEndLines();
-  const dispatch = useDispatch();
-  const next = useCallback(() => dispatch({ type: 'nextHand' }), [dispatch]);
+  if (lines === null) return null;
+  return (
+    <div className={styles.bannerArea} style={bannerPlace(geometry)}>
+      <HandEndBanner lines={lines} />
+    </div>
+  );
+});
+
+/**
+ * "Hand summary" (Exam's "Exam result") and "Review this hand" while the hand end is up (§12.9,
+ * 1.3.99): the Undo row (portrait and landscape), the hero strip's last row (compact), the wide
+ * screen's panel.
+ */
+const EndLinks = memo(function EndLinks({
+  place,
+  className,
+}: {
+  place?: 'side' | 'panel' | 'hero' | undefined;
+  className?: string | undefined;
+}) {
+  const up = useAppStore(selectHandEndUp);
   const review = useReviewHand();
   const [summary, openSummary] = useSummaryButton();
-  if (lines === null) return null;
-  const place = bannerPlace(geometry);
+  if (!up) return null;
   return (
-    <div className={styles.bannerArea} style={place.area}>
-      <div className={styles.bannerGap} style={{ flexBasis: place.gap }} aria-hidden="true" />
-      <HandEndBanner
-        lines={lines}
-        onNext={next}
-        onReview={review}
-        summary={summary}
-        onSummary={openSummary}
-        wide={geometry.layout === 'wide'}
-        className={styles.bannerHolder}
-      />
-    </div>
+    <HandEndLinks
+      onReview={review}
+      summary={summary}
+      onSummary={openSummary}
+      place={place}
+      className={className}
+    />
   );
 });
 
@@ -430,7 +449,8 @@ const TabSlot = memo(function TabSlot() {
 const TableArea = memo(function TableArea({ layout }: { layout: TableLayout }) {
   const boxRef = useRef<HTMLDivElement>(null);
   const opponents = useAppStore((s) => selectTableInfo(s)?.opponents ?? 0);
-  const fallback = useMemo(estimatedBox, []);
+  const exam = useAppStore(selectExamPanel);
+  const fallback = useMemo(() => estimatedBox(exam), [exam]);
   const { w, h } = useElementSize(boxRef, fallback);
   const geometry = useMemo(
     () => (opponents >= 1 ? tableGeometry(layout, { w, h }, opponents) : null),
@@ -447,11 +467,8 @@ const TableArea = memo(function TableArea({ layout }: { layout: TableLayout }) {
             <SeatsLayer geometry={geometry} />
             <HeroBet geometry={geometry} />
             <RunoutBars bets={geometry.bets} hero={heroBetRect(geometry)} />
-            {layout === 'landscape' ? (
-              <HeroInset rect={geometry.hero} />
-            ) : (
-              <BannerLayer geometry={geometry} />
-            )}
+            {layout === 'landscape' && <HeroInset rect={geometry.hero} />}
+            {(layout === 'portrait' || layout === 'compact') && <BannerLayer geometry={geometry} />}
           </>
         )}
       </div>
@@ -581,6 +598,8 @@ const HeroStrip = memo(function HeroStrip({
               <CoachSlot variant="pill" />
             </div>
           )}
+          {/* No Undo row in compact mode: the links take the strip's last row (§12.9). */}
+          {layout === 'compact' && <LinksAfterChip place="hero" className={styles.heroLinks} />}
         </>
       )}
     </section>
@@ -633,24 +652,10 @@ const SideHero = memo(function SideHero({ onOpenRankings }: { onOpenRankings: ()
   );
 });
 
-/** Landscape: the hand-end banner in the right column, above the buttons. */
+/** Landscape: the result in the right column, above the buttons. */
 const SideBanner = memo(function SideBanner() {
   const lines = useHandEndLines();
-  const dispatch = useDispatch();
-  const next = useCallback(() => dispatch({ type: 'nextHand' }), [dispatch]);
-  const review = useReviewHand();
-  const [summary, openSummary] = useSummaryButton();
-  if (lines === null) return null;
-  return (
-    <HandEndBanner
-      lines={lines}
-      onNext={next}
-      onReview={review}
-      summary={summary}
-      onSummary={openSummary}
-      side
-    />
-  );
+  return lines === null ? null : <HandEndBanner lines={lines} side />;
 });
 
 // ---------------------------------------------------------------------------------------------
@@ -706,6 +711,21 @@ function useGradeChip(): Grade | null {
   }, [chip?.key, fresh]);
   return chip !== null && fresh ? chip.grade : null;
 }
+
+/**
+ * The links where they share one place with the last decision's grade chip, too narrow for both
+ * (landscape's Undo row, compact mode's hero strip): the chip first, while it shows (at most 1.5 s,
+ * the row keeps its height), then the links.
+ */
+const LinksAfterChip = memo(function LinksAfterChip({
+  place,
+  className,
+}: {
+  place: 'side' | 'hero';
+  className: string | undefined;
+}) {
+  return useGradeChip() === null ? <EndLinks place={place} className={className} /> : null;
+});
 
 /** The Advanced quiz (§10.3): a lazy chunk, loaded when the level in force is Advanced. */
 const loadQuiz = () => import('../quizEntry.ts');
@@ -802,7 +822,8 @@ const CoachSlot = memo(function CoachSlot({
 /**
  * Landscape (§12.5): the coach rows under the label, the reason wrapping, the toolbar Undo at the
  * left of the first; "›" opens the sheet over the table column. The open sizing tray takes their
- * place (the hero is deciding then: nothing to undo).
+ * place (the hero is deciding then: nothing to undo). At the hand end the links are in the Undo
+ * row (§12.9), and the result under it has the room the links' own row would take.
  */
 const SideCoach = memo(function SideCoach() {
   const trayOpen = useAppStore(selectOverlayOpen('tray'));
@@ -811,6 +832,22 @@ const SideCoach = memo(function SideCoach() {
     <div className={styles.sideCoach} data-tip-anchor="coachStrip" data-tip-side="left">
       <UndoSlot className={styles.stripUndo} />
       <CoachSlot variant="strip" wrap collapse className={styles.coachSide} />
+      <LinksAfterChip place="side" className={styles.sideLinks} />
+    </div>
+  );
+});
+
+/** The panel's head row at the hand end: only the last decision's grade chip, while it shows. */
+const NOTHING_TO_SAY: StripView = { kind: 'empty' };
+
+/** The wide screen's panel at the hand end (§12.5, §12.9; 1.3.99): the result and its links. */
+const PanelResult = memo(function PanelResult() {
+  const lines = useHandEndLines();
+  if (lines === null) return null;
+  return (
+    <div className={styles.panelResult}>
+      <HandEndBanner lines={lines} panel className={styles.panelWords} />
+      <EndLinks place="panel" />
     </div>
   );
 });
@@ -828,7 +865,30 @@ const CoachPanel = memo(function CoachPanel({ coachSize }: { coachSize: CoachSiz
   const quiz = useQuizShows();
   const { onOpen, onHint, onRetry } = useCoachActions();
   const onUseSize = useCallback(() => coachSize.current?.(), [coachSize]);
+  const ended = useAppStore(selectHandEndUp);
   const undo = <UndoSlot className={styles.panelUndo} />;
+  // The hand is over (§12.5, §12.9): the result and its links; Row A under it is "Next hand ›".
+  if (ended) {
+    return (
+      <div className={styles.coachBox} data-tip-anchor="coachStrip">
+        {undo}
+        <div className={styles.coachPanel} data-hand-panel="">
+          {mod !== null && chip !== null && (
+            <mod.CoachStrip
+              view={NOTHING_TO_SAY}
+              variant="header"
+              onOpen={onOpen}
+              onHint={onHint}
+              onRetry={onRetry}
+              chip={chip}
+              className={styles.panelChip}
+            />
+          )}
+          <PanelResult />
+        </div>
+      </div>
+    );
+  }
   // The Advanced quiz takes the panel (§10.3).
   if (quiz) {
     return (
@@ -945,10 +1005,17 @@ const ActionArea = memo(function ActionArea({
   const input = useAppStore(selectActionBarInput);
   // The Advanced quiz asks (§10.3): Row A waits, its buttons say why when tapped.
   const quizAsking = useAppStore(selectQuizAsking);
+  // The hero has folded: the middle button finishes the hand at Instant speed (§12.7, 1.3.99).
+  const canSkip = useAppStore(selectCanSkip);
   const view = useMemo(() => {
     const bar = actionBarView(input ?? NO_HAND);
-    return quizAsking ? lockedView(bar, en.actions.quizFirst) : bar;
-  }, [input, quizAsking]);
+    if (quizAsking) return lockedView(bar, en.actions.quizFirst);
+    return canSkip ? skipView(bar) : bar;
+  }, [input, quizAsking, canSkip]);
+  // The hand is over: Row A is one big "Next hand ›" (§12.7, §12.9; 1.3.99).
+  const ended = useAppStore(selectHandEndUp);
+  const onNext = useCallback(() => dispatch({ type: 'nextHand' }), [dispatch]);
+  const onSkip = useCallback(() => dispatch({ type: 'skipHand' }), [dispatch]);
   // The coach's advice while on show: the ring on Row A, the tray's start and its coach chip.
   const coach = useAppStore(selectCoach);
   const advice = useMemo(() => coachAdvice(coach), [coach]);
@@ -1006,6 +1073,8 @@ const ActionArea = memo(function ActionArea({
     setAmount,
     trayId,
   });
+  // Enter and Space at the hand end (§12.5, 1.3.99), through the same tap handler and its guard.
+  useNextKeys(ended ? () => press.current?.('next') : null);
   const placement = layout === 'landscape' ? 'panel' : layout === 'compact' ? 'overlay' : 'inline';
   return (
     <div className={styles.actions} data-action-area="">
@@ -1039,6 +1108,8 @@ const ActionArea = memo(function ActionArea({
         onCloseTray={closeTray}
         recommended={advice.ring}
         layout={layout === 'landscape' ? 'column' : 'row'}
+        onNext={ended ? onNext : null}
+        onSkip={canSkip ? onSkip : null}
         pressRef={press}
       />
     </div>
@@ -1186,7 +1257,7 @@ const loadSummary = () => import('../summaryEntry.ts');
 const HandSummary = lazy(() => loadSummary().then((m) => ({ default: m.HandSummary })));
 
 /**
- * The summary sheet while the `summary` overlay is open (the banner's "Hand summary" or "Exam
+ * The summary sheet while the `summary` overlay is open (the hand end's "Hand summary" or "Exam
  * result" opens it, §12.9; never the controller, 1.3.92); the sheet itself closes the overlay when
  * there is nothing to show (a new hand began).
  */
@@ -1306,13 +1377,13 @@ const CoachKey = memo(function CoachKey({ layout }: { layout: TableLayout }) {
 });
 
 /**
- * K, S and ? (§12.5): show or hide the hand rankings (the top bar's Hands button); the banner's
+ * K, S and ? (§12.5): show or hide the hand rankings (the top bar's Hands button); the hand end's
  * "Hand summary" or "Exam result" while the hand end offers one (1.3.92); list the keys.
  */
 const TableKeys = memo(function TableKeys({ onToggleHands }: { onToggleHands: () => void }) {
   const [, setHelp] = useOverlay('shortcuts');
   const openHelp = useCallback(() => setHelp(true), [setHelp]);
-  // The offer is there only while the hand-end banner is (`game.summary`).
+  // The offer is there only while the hand end is up (`game.summary`).
   const [summary, openSummary] = useSummaryButton();
   useShortcut('hands', onToggleHands);
   useShortcut('summary', summary !== null ? openSummary : null);
@@ -1348,6 +1419,7 @@ export function Table() {
   const dispatch = useDispatch();
   const [drawerOpen, setDrawerOpen] = useOverlay('rankings');
   const collapsed = useAppStore((s) => s.settings.handsPanel === 'collapsed');
+  const examPanel = useAppStore(selectExamPanel);
 
   const setCollapsed = useCallback(
     (next: boolean) =>
@@ -1386,7 +1458,12 @@ export function Table() {
 
   return (
     <main
-      className={cx(styles.table, styles[layout], wide && collapsed && styles.collapsed)}
+      className={cx(
+        styles.table,
+        styles[layout],
+        wide && collapsed && styles.collapsed,
+        wide && examPanel && styles.examPanel,
+      )}
       data-layout={layout}
     >
       <h1 className={styles.srOnly}>{en.table.heading}</h1>
@@ -1413,6 +1490,7 @@ export function Table() {
             <div className={styles.coach} data-tip-anchor="coachStrip">
               <UndoSlot className={styles.stripUndo} />
               <CoachSlot variant="strip" />
+              <EndLinks className={styles.stripLinks} />
             </div>
           )}
           {wide && <CoachPanel coachSize={coachSize} />}

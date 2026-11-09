@@ -114,10 +114,10 @@ test('a full hand at Normal speed plays to its end', async ({ page }, testInfo) 
     if (point === 'hero') await slot(page, 'middle').click();
     point = await nextFlowPoint(page, true);
   }
-  const banner = page.locator('[data-hand-end]');
+  const banner = page.locator('[data-hand-result]');
   await expect(banner).toBeVisible();
   await expect(banner).toContainText(/win|folded|split/);
-  await expect(banner).toContainText('Next hand');
+  await expect(page.locator('[data-hand-end]')).toContainText('Next hand');
   // No next hand by itself: 10 s on (the old wait was 3 s), the same hand's banner is there.
   const ended = await page.evaluate(() => window.__pc?.state().game.hand?.handSeq);
   await page.clock.runFor(10_000);
@@ -137,7 +137,7 @@ test('a full hand at Normal speed plays to its end', async ({ page }, testInfo) 
   const text = await page.evaluate(() => document.documentElement.outerHTML);
   expect(SUITS.test(text)).toBe(false);
 
-  // Beginner's hand summary does not open by itself (§10.2, §12.9; 1.3.92): the banner's tap
+  // Beginner's hand summary does not open by itself (§10.2, §12.9; 1.3.92): "Next hand ›"
   // moves on to the next hand.
   expect(await page.evaluate(() => window.__pc?.state().ui.overlays)).not.toContain('summary');
   await expect(page.locator('[data-summary]')).toHaveCount(0);

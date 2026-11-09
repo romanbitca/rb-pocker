@@ -77,6 +77,12 @@ export const SHELL = {
    * but the table box keeps 320 px (R14), and the panel keeps its 61 px head row.
    */
   wideCoachMax: 0.3,
+  /**
+   * Wide at Exam (1.3.99): the coach has only "Hint (counts as help)" to show, so the panel is
+   * smaller and the table bigger. The head row (61 px) and the sizing tray's 104 px, so the tray
+   * still leaves the table its size (R14); room for the hand-end result too.
+   */
+  wideCoachExam: 165,
   wideCoachMin: 61,
   wideTableMin: 320,
 } as const;
@@ -145,10 +151,12 @@ export interface TableFrame {
  * `height`, as Table.module.css computes it (safe-area insets taken as 0). Whatever the coach
  * says, the table box keeps its size (§15.3). With the sizing tray open the row gives the tray its
  * 104 px, down to the panel's head row, so the table keeps its size while a bet is sized too (R14).
+ * `exam` (the settings' level, so it never changes between decisions, 1.3.99): a smaller row.
  */
-export function wideCoachPanel(height: number, trayOpen = false): number {
+export function wideCoachPanel(height: number, trayOpen = false, exam = false): number {
   const room = height - SHELL.topBar - SHELL.heroStrip - SHELL.actionBar - SHELL.wideTableMin;
-  const row = Math.min(SHELL.wideCoachMax * height, room) - (trayOpen ? SHELL.sizingTray : 0);
+  const most = exam ? SHELL.wideCoachExam : Number.POSITIVE_INFINITY;
+  const row = Math.min(SHELL.wideCoachMax * height, room, most) - (trayOpen ? SHELL.sizingTray : 0);
   return Math.round(Math.max(SHELL.wideCoachMin, row));
 }
 
@@ -158,6 +166,8 @@ export interface FrameOptions {
   readonly coachPanel?: number;
   /** Wide: the rankings column is collapsed to its 44 px rail (`settings.handsPanel`, §13.1). */
   readonly handsCollapsed?: boolean;
+  /** Wide: the coach level is Exam, whose panel is smaller (`wideCoachPanel`, 1.3.99). */
+  readonly exam?: boolean;
   /**
    * The sizing tray is open (§12.7). Portrait: a 104 px row above Row A, taken from the table;
    * wide: taken from the coach panel's row first (R14); compact and landscape: no change (over
@@ -184,7 +194,7 @@ export function tableFrame(viewport: Size, options: FrameOptions = {}): TableFra
       const column =
         options.handsCollapsed === true ? HANDS_RAIL : Math.min(max, Math.max(min, vw * W));
       const trayOpen = options.trayOpen === true;
-      const coach = options.coachPanel ?? wideCoachPanel(H, trayOpen);
+      const coach = options.coachPanel ?? wideCoachPanel(H, trayOpen, options.exam === true);
       const tray = trayOpen ? SHELL.sizingTray : 0;
       const h = H - SHELL.topBar - SHELL.heroStrip - coach - tray - SHELL.actionBar;
       return { layout, box: { x: 0, y: SHELL.topBar, w: W - column, h }, tab: null };

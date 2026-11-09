@@ -1,6 +1,7 @@
 import type { Locator, Page } from '@playwright/test';
 import { expect } from './fixtures.ts';
 import { newTable, openApp, pcState, slot } from './game.ts';
+export { TAP_GUARD_MS } from './game.ts';
 
 /**
  * The scripted table of the Stage 6 E2E specs (`undo.spec.ts`, `grading.spec.ts`, `levels.spec.ts`;
@@ -21,7 +22,6 @@ import { newTable, openApp, pcState, slot } from './game.ts';
 
 export const SEED = '46';
 export const SCRIPT = '&script=river-min-bet';
-export const TAP_GUARD_MS = 250;
 /**
  * How far a spec moves the paused clock per try while it waits for a lazy chunk to show (React's
  * Suspense reveal is throttled by a timer: 300 ms).
