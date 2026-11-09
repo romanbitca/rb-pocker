@@ -28,7 +28,9 @@
  *    outs, and one count only for one kind of out; no "free card" or "draws pay" on the river.
  *    And the words the UI makes of a hint (`checkHintText`, 1.3.100): "both players", never "all 2
  *    players"; the win chance RANGE_ADJUST has just said is not said again; the start of a price
- *    reason shows the win chance and the need together.
+ *    reason shows the win chance and the need together; and (1.4.15) the strip's line beside a
+ *    price says why (`stripLineProblem`): never the need alone or a percentile, and not the
+ *    numbers themselves when they argue against the advice.
  * 4. **Lessons** (`checkLessons`, `data/lessons.ts`, F.8; chunk 9.2): at most 150 words a lesson
  *    (its picture's labels and line, the price bar's numbers and its text), every sentence at most
  *    15 words, whole-number percentages, no stray brace.
@@ -66,7 +68,7 @@ import {
   type GlossaryEntry,
   type Segment,
 } from '../src/i18n/coach.ts';
-import { reasonWords, sentences } from '../src/ui/coachText.ts';
+import { numbersArgue, reasonWords, sentences, stripLine } from '../src/ui/coachText.ts';
 import { LESSONS, type Lesson, type LessonBlock } from '../src/data/lessons.ts';
 import { aboutWords, type AboutTerm, type HelpLine } from '../src/i18n/about.ts';
 import { enCoach } from '../src/i18n/enCoach.ts';
@@ -520,7 +522,33 @@ export function checkHintText(e: Explanation, strings: CoachStrings = EN_COACH):
     const halves = /\bwins?\b.*\d+%/i.test(reasonFirst) && /\bneed\b.*\d+%/i.test(reasonFirst);
     if (!halves) problems.push(`"${reasonFirst}" shows only half of its comparison`);
   }
+  // Beside a price the strip's line says why (§12.6, 1.4.15).
+  if (e.shown.price) {
+    const { need } = e.shown;
+    const against = numbersArgue(e, need);
+    for (const beginner of [true, false]) {
+      const problem = stripLineProblem(stripLine(e, beginner, need).line, against);
+      if (problem !== null) problems.push(`strip: ${problem}`);
+    }
+  }
   return problems;
+}
+
+/** The need alone, or a starting-hand percentile: neither says why (§12.6, 1.4.15). */
+const SAYS_NOTHING =
+  /^(You need [<>]?\d+% to call|The price alone needs [<>]?\d+%)\.$|\bin the top \d+%/;
+/** The labelled pair, or the two numbers of the plain comparison. */
+const THE_NUMBERS =
+  /^(Any cards:|All \d+ players:|Both players:|You win (about )?[<>]?\d+%\. You need)/;
+
+/**
+ * What the strip's line may not say beside a price (§12.6, 1.4.15): the need alone, a percentile,
+ * or, when the numbers on show argue against the advice (`against`), the numbers themselves.
+ */
+export function stripLineProblem(line: string, against: boolean): string | null {
+  if (SAYS_NOTHING.test(line)) return `"${line}" does not say why`;
+  if (against && THE_NUMBERS.test(line)) return `"${line}" argues against the advice`;
+  return null;
 }
 
 /** The `{outs}` counts inside a line, nested lines included (SEMI_BLUFF's `{groups}`). */

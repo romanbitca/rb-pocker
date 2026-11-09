@@ -9,7 +9,14 @@ import {
 } from '../../src/app/reviewViews.ts';
 import { SUIT_CODE_POINTS } from './dom.ts';
 import { handEndLines } from '../../src/ui/handEnd.ts';
-import { eventLines, frameLines, netSpoken, netText, stepLabel } from '../../src/ui/review.ts';
+import {
+  eventLines,
+  frameLines,
+  netSpoken,
+  netText,
+  resultLines,
+  stepLabel,
+} from '../../src/ui/review.ts';
 import { collectHands } from '../app/reviewFixtures.ts';
 
 const you: ReviewActor = { seat: 0, name: 'You', hero: true };
@@ -119,9 +126,26 @@ describe('frameLines', () => {
     expect(lines[0]).toMatch(/\.$/);
   });
 
-  it('the last step is the result the hand-end banner showed, then your net', () => {
+  it('the last step is the result as the hand-end banner said it (§12.9, 1.4.15)', () => {
     const lines = frameLines(view, view.frames[last] ?? fail());
-    expect(lines).toEqual([...handEndLines(view.end), netSpoken(view.end.heroNet)]);
+    expect(lines).toEqual(resultLines(view.end));
+    expect(lines.slice(0, handEndLines(view.end).length)).toEqual(handEndLines(view.end));
+  });
+
+  it('one number there too: the banner says it once, and "You broke even." only with none', () => {
+    const paid = {
+      ...view.end,
+      endedBy: 'fold' as const,
+      heroNet: 190,
+      winners: [{ seat: 0, name: 'You', amount: 280 }],
+    };
+    expect(resultLines(paid)).toEqual(['Everyone folded.', 'You won 190']);
+    const none = {
+      ...paid,
+      heroNet: 0,
+      winners: [{ seat: 2, name: 'Anna', amount: 30 }],
+    };
+    expect(resultLines(none)).toEqual(['Anna wins 30. Everyone else folded.', 'You broke even.']);
   });
 
   it('no step ever uses a suit symbol', () => {

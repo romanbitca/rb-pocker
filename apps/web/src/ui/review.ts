@@ -3,14 +3,14 @@
  * the store's `ReviewFrame` data into the sentences of `en.review`. Cards are named in words
  * ("King of spades"), never with suit symbols (pitfall 31).
  *
- * The last frame shows the result as the hand-end banner worded it (`handEndLines`, §12.9) and the
- * hero's net, instead of the step's own events.
+ * The last frame shows the result as the hand-end banner worded it (`resultLines`, §12.9), the
+ * hero's own result included, instead of the step's own events.
  *
  * The hero's decisions go on their steps (1.3.101): `decisionSteps` matches the records to the
  * replay, `openingStep` picks where a replay opens, `jumpFrom` is "Next decision" and "Previous
  * decision". What a decision says is the hand summary's row (`ui/summary.ts`, §12.9).
  */
-import type { ReviewEvent, ReviewFrame, ReviewReplay } from '../app/store.ts';
+import type { HandEndView, ReviewEvent, ReviewFrame, ReviewReplay } from '../app/store.ts';
 import { cardAriaLabel } from '../core/cards.ts';
 import { en } from '../i18n/en.ts';
 import { enReview } from '../i18n/review.ts';
@@ -73,11 +73,18 @@ export function netSpoken(net: number): string {
   return net < 0 ? enReview.youLost(formatChips(-net)) : enReview.even;
 }
 
+/**
+ * The result as the hand-end banner said it (§12.9, §12.10); a hand that did not change the hero's
+ * stack says so too (the banner has no line for it).
+ */
+export function resultLines(end: HandEndView): string[] {
+  const lines = handEndLines(end);
+  return end.heroNet === 0 ? [...lines, enReview.even] : lines;
+}
+
 /** The lines under the table at `frame`: its events, or the result on the last frame. */
 export function frameLines(view: ReviewReplay, frame: ReviewFrame): string[] {
-  if (frame.index === view.frames.length - 1) {
-    return [...handEndLines(view.end), netSpoken(view.end.heroNet)];
-  }
+  if (frame.index === view.frames.length - 1) return resultLines(view.end);
   const lines = frame.events.flatMap(eventLines);
   return frame.index === 0 ? [enReview.says.deal, ...lines] : lines;
 }

@@ -138,6 +138,15 @@ describe('the drill’s other words', () => {
     );
   });
 
+  it('the showdown legend names the mark on the cards (§13.5, 1.4.15)', () => {
+    // Since the gold rule (1.3.100) all five cards of each hand have the gold edge: what tells the
+    // player's own cards is the line under them, and there are not always two of them.
+    expect(drillWords.answer.legend).toBe(
+      "A line under a card means it is the player's own. The rest come from the table.",
+    );
+    expect(drillWords.answer.legend).not.toMatch(/outlined|2 cards/i);
+  });
+
   it('keeps every static line short', () => {
     const lines: string[] = [
       ...Object.values(drillWords.prompts),

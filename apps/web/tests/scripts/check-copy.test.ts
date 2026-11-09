@@ -27,6 +27,7 @@ import {
   checkTemplates,
   sampleLine,
   sentenceWords,
+  stripLineProblem,
 } from '../../scripts/copy-rules.ts';
 import { rngFromSeed } from '../../src/core/rng.ts';
 import { reasonWords } from '../../src/ui/coachText.ts';
@@ -370,6 +371,32 @@ describe('failing fixtures: lines and hints', () => {
     expect(reasonWords(explain(SPOT)).reasonFirst).toBe(
       'You win about 40%. You need 25% to call 40 into 120.',
     );
+  });
+
+  it('the strip beside a price says why (§12.6, 1.4.15)', () => {
+    expect(stripLineProblem('You need 20% to call.', true)).toMatch(/does not say why/);
+    expect(stripLineProblem('The price alone needs 31%.', true)).toMatch(/does not say why/);
+    expect(stripLineProblem('Ten-Two offsuit is in the top 91% of starting hands.', false)).toMatch(
+      /does not say why/,
+    );
+    expect(stripLineProblem('Any cards: 42%. Their likely hands: about 38%.', true)).toMatch(
+      /argues against/,
+    );
+    expect(stripLineProblem('You win about 42%. You need 33%.', true)).toMatch(/argues against/);
+    // The same numbers agree with the advice, or the line says the rule that decided.
+    expect(stripLineProblem('You win about 42%. You need 33%.', false)).toBeNull();
+    expect(stripLineProblem('Counting later bets: about 30%. You need 33%.', true)).toBeNull();
+    expect(
+      stripLineProblem('Ten-Two offsuit is too weak to call this raise, even at this price.', true),
+    ).toBeNull();
+    // A real hint: a fold the price alone would pay.
+    const fold: ExplainInput = {
+      ...SPOT,
+      action: { type: 'fold' },
+      position: 'OOP',
+      trace: [{ code: 'FOLD_PRICE', data: { R: 0.5 } }],
+    };
+    expect(checkHint(explain(fold), fold)).toEqual([]);
   });
 
   it('a price sentence that contradicts its numbers, a false "close", a bare range number', () => {

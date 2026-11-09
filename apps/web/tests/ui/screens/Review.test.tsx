@@ -12,6 +12,7 @@ import { buildReview, type ReviewReplay } from '../../../src/app/reviewViews.ts'
 import { appStore, defaultGameSettings, initialGame, initialUi } from '../../../src/app/store.ts';
 import type { DecisionRecord } from '../../../src/persist/schema.ts';
 import { formatAmount } from '../../../src/ui/actionBar.ts';
+import { ownResultLine } from '../../../src/ui/handEnd.ts';
 import { AUTOPLAY_MS, frameLines, netSpoken, stepLabel } from '../../../src/ui/review.ts';
 import { ReviewRoute } from '../../../src/ui/screens/Review.tsx';
 import { collectHands, decisionOf, undoneHand, withDecisions } from '../../app/reviewFixtures.ts';
@@ -25,6 +26,8 @@ const [show] = shows as [ReviewHand, ReviewHand];
 
 const numberOf = (hand: ReviewHand): number => hand.record.table.handsDealt + 1;
 const viewOf = (hand: ReviewHand): ReviewReplay => buildReview(hand) as ReviewReplay;
+/** The banner's own-result line, which Review's last step repeats (§12.9, 1.4.15). */
+const ownWords = (net: number): string => ownResultLine(net) ?? 'You broke even.';
 
 beforeEach(() => {
   appStore.setState({
@@ -143,7 +146,7 @@ describe('a replay', () => {
     const view = viewOf(fold);
     const text = caption().textContent ?? '';
     expect(text).toContain(frameLines(view, view.frames[view.frames.length - 1] as never)[0]);
-    expect(text).toContain(netSpoken(view.end.heroNet));
+    expect(text).toContain(ownWords(view.end.heroNet));
   });
 
   it('the line under the table is one polite live region that names the step', () => {
@@ -428,7 +431,7 @@ describe('a hand that cannot be replayed', () => {
     const old = { ...fold, record: { ...fold.record, engineVersion: '1.0.0' } };
     open([old]);
     expect(screen.getByText(/saved by an older version of the game/)).toBeTruthy();
-    expect(screen.getByText(netSpoken(fold.end.heroNet))).toBeTruthy();
+    expect(screen.getByText(ownWords(fold.end.heroNet))).toBeTruthy();
     expect(screen.queryByRole('slider')).toBeNull();
     expect(screen.queryByRole('button', { name: 'Next step' })).toBeNull();
   });
@@ -490,7 +493,7 @@ describe('the hero`s decisions on their steps (§12.10, 1.3.101)', () => {
     expect(caption().textContent).toContain('The cards are dealt.');
     act(() => void fireEvent.click(button('Last step')));
     expect(decision()).toBeNull();
-    expect(caption().textContent).toContain(netSpoken(hand.end.heroNet));
+    expect(caption().textContent).toContain(ownWords(hand.end.heroNet));
   });
 
   it('"Next decision" and "Previous decision" jump between the hero`s moves', () => {

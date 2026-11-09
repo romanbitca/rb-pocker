@@ -20,6 +20,7 @@ import { COACH } from '../../src/brain/profiles.ts';
 import type { Decision } from '../../src/brain/types.ts';
 import type { EngineInput, Observation, PersonalityId } from '../../src/engine/types.ts';
 import { hintText, lineText } from '../../src/i18n/coach.ts';
+import { stripLine } from '../../src/ui/coachText.ts';
 import { checkHint } from '../../scripts/copy-rules.ts';
 import { bet, call, check, fold, raise } from '../engine/play.ts';
 import { observeSpot, playSpot } from './fixtures.ts';
@@ -298,9 +299,14 @@ describe('#6: a fold facing a raise says "wins only about X%" only below the pri
     // EV(call) > 0 by the price (about 42% against the raiser, need 33%): the fold is §8.3's
     // call range, and the words say so.
     expect(x.reasons).toContain(
-      'Jack-Three suited is in the top 51% of starting hands. Against this raise, that is too weak to call.',
+      'Jack-Three suited is too weak to call this raise, even at this price. It is only in the top 51% of starting hands.',
     );
     expect(x.problems).toEqual([]);
+    // On a phone (§12.6, 1.4.15): the HUD's 31% is below the 33% price and agrees with the fold,
+    // and the raiser-alone number keeps its label: the pair stays.
+    expect(stripLine(x.e, true, x.e.shown.need).line).toBe(
+      'Both players: 31%. Raiser alone: about 42%.',
+    );
   }, 20_000);
 
   it('P15: 72o in the big blind against the button: 31% beats 27%, later bets decide', () => {
@@ -314,8 +320,63 @@ describe('#6: a fold facing a raise says "wins only about X%" only below the pri
     expect(x.decision.action).toEqual({ type: 'fold' });
     expect(winsOnly(x)).toBeNull();
     expect(x.reasons).toMatch(
-      /You need 27% to call\. Seven-Two offsuit wins about 3\d% against their likely hands if you see every card\. Later bets can make you fold before that\./,
+      /You need 27% to call\. Seven-Two offsuit wins about 3\d% against their likely hands if you see every card\. Later bets can make you fold before the river\./,
     );
+    expect(x.problems).toEqual([]);
+  }, 20_000);
+});
+
+// ── QA of 9 Nov 2026 (1.4.15): the strip beside the numbers ────────────────────────────────────
+
+describe('the strip says why when the numbers on show seem to pay for the call (§12.6)', () => {
+  /** Beginner's, then Intermediate's. */
+  const lines = (x: Hinted): string[] =>
+    [true, false].map((beginner) => stripLine(x.e, beginner, x.e.shown.need).line);
+  const T2O: AuditSpot = {
+    stacks: [7550, 5000, 1800, 45000],
+    button: 1,
+    hero: 0,
+    holes: { 0: '2d Tc' },
+    inputs: [call(0), fold(1), fold(2), raise(3, 350)],
+  };
+
+  it('the QA hand, a maniac raises: the price pays, the call range folds it', () => {
+    const x = hinted({
+      ...T2O,
+      labels: [null, null, null, 'maniac'],
+      levels: ['medium', 'medium', 'medium', 'medium'],
+    });
+    expect(x.decision.action).toEqual({ type: 'fold' });
+    expect(x.e.reasons[0]?.key).toBe('FOLD_VS_RAISE.range');
+    expect(lines(x)).toEqual([
+      'Ten-Two offsuit is too weak to call this raise, even at this price.',
+      'Ten-Two offsuit is too weak to call this raise, even at this price.',
+    ]);
+    expect(x.problems).toEqual([]);
+  }, 20_000);
+
+  it('T2o limped, raised to 3.5 bb, 4 players: 42% and about 36% beat 33%, later bets decide', () => {
+    const x = hinted(T2O);
+    expect(x.decision.action).toEqual({ type: 'fold' });
+    expect(x.e.shown.eRandom).toBeGreaterThanOrEqual(x.e.shown.need);
+    expect(x.e.shown.win).toBeGreaterThanOrEqual(x.e.shown.need);
+    expect(lines(x)).toEqual([
+      'Their likely hands: about 36%. Counting later bets: about 30%.',
+      'Their likely hands: about 36%. Counting later bets: about 30%.',
+    ]);
+    expect(x.problems).toEqual([]);
+  }, 20_000);
+
+  it('42o in the big blind, a raise and a call: 21% beats 20%, "You need 20% to call" said nothing', () => {
+    const x = hinted({
+      stacks: st(4),
+      button: 2,
+      hero: 0,
+      holes: { 0: '4d 2h' },
+      inputs: [fold(1), raise(2, 250), call(3)],
+    });
+    expect(x.decision.action).toEqual({ type: 'fold' });
+    expect(lines(x)[0]).toBe('Counting later bets: about 17%. You need 20%.');
     expect(x.problems).toEqual([]);
   }, 20_000);
 });

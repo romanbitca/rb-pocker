@@ -21,7 +21,9 @@
  * sheet shows the reason right after RANGE_ADJUST. When the range number counts only the raiser
  * (and the callers already in) while the HUD's counts every player, each label says whom ("All 5
  * players: 26%. Raiser alone: about 44%."; the sheet "Against all 5 players with any cards: 26%"),
- * so a beginner never reads two win chances that look contradictory.
+ * so a beginner never reads two win chances that look contradictory. The one exception is a pair
+ * that argues against the advice: both numbers say "call" and the coach folds. Then the strip says
+ * the rule that decided instead (`stripLine` in `coachText.ts`, 1.4.15).
  *
  * This module (with `coachText.ts`, `glossary.ts` and `i18n/coachUi.ts`) is part of the coach's lazy
  * chunk (`ui/coachEntry.ts`, §15.3); the ring and the tray's amount come from `coachAdvice.ts`.
@@ -38,8 +40,7 @@ import {
   type PriceView,
 } from './actionBar.ts';
 import { coachAdvice, uiLevel, type BarSlot, type CoachUiLevel } from './coachAdvice.ts';
-import { hintText, pctText, sentences, type HintText, type TextContext } from './coachText.ts';
-import { plainText } from './glossary.ts';
+import { hintText, pctText, stripLine, type HintText, type TextContext } from './coachText.ts';
 
 export { slotOf, uiLevel, type BarSlot, type CoachUiLevel } from './coachAdvice.ts';
 
@@ -272,46 +273,6 @@ export function hintView(
   };
 }
 
-/** The strip's line under the headline (§12.6), and a shorter one for a narrow strip. */
-function adviceLine(
-  decision: Decision,
-  hint: HintView,
-  level: CoachUiLevel,
-): { readonly line: string; readonly short: string } {
-  // Pitfall 35: with RANGE_ADJUST, only the labelled pair; each says whom it counts when the
-  // range number leaves out players the HUD's counts (§8.10).
-  if (hint.rangeAdjust !== null) {
-    const any = pctText(decision.eRandom);
-    const likely = pctText(hint.shown.eRange ?? decision.eRange);
-    const { players, callers } = hint.shown;
-    if (callers === null) return { line: coachWords.pair(any, likely), short: '' };
-    return {
-      line:
-        callers === 0
-          ? coachWords.pairRaiser(players, any, likely)
-          : coachWords.pairCallers(players, any, callers, likely),
-      short: '',
-    };
-  }
-  // Facing a bet, the two numbers that decide it ("You win about 45%. You need 25%."), when they
-  // do: the price bar's plain comparison agrees with the advice (§12.6). At Beginner always; at
-  // the other levels when the reason's own sentence weighs them, so "You win about 23%." never
-  // stands without the need it compares with (1.3.100). Else (a fold the price alone would pay,
-  // a call it would not, an open) the reason says why.
-  if (
-    (level === 'beginner' || hint.comparesPrice) &&
-    hint.numbers.needValue !== null &&
-    hint.shown.bar?.basis === 'plain'
-  ) {
-    return {
-      line: coachWords.winNeed(pctText(decision.eRandom), pctText(hint.numbers.needValue)),
-      short: '',
-    };
-  }
-  const short = hint.reasonShort === null ? '' : plainText(hint.reasonShort);
-  return { line: plainText(sentences(hint.reasonFirst)[0] ?? ''), short };
-}
-
 /** Everything the coach's places show for this moment. */
 export function coachView(
   data: CoachData,
@@ -349,9 +310,14 @@ export function coachView(
       };
     case 'ready': {
       const decision = data.decision as Decision;
-      const hint = hintView(decision, data.explanation as Explanation, level, input);
+      const explanation = data.explanation as Explanation;
+      const hint = hintView(decision, explanation, level, input);
       const { shown, ring, size } = coachAdvice(data);
-      const { line, short: lineShort } = adviceLine(decision, hint, level);
+      const { line, short: lineShort } = stripLine(
+        explanation,
+        level === 'beginner',
+        hint.numbers.needValue,
+      );
       return {
         ...base,
         hint,

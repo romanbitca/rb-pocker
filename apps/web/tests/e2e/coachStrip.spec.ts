@@ -27,6 +27,11 @@ const PAIRS = [
   coachWords.pairCallers(8, '100', 1, '100'),
   coachWords.pairRaiser(8, '>99', '>99'),
   coachWords.pair('>99', '>99'),
+  // When the numbers on show argue against the advice (§12.6, 1.4.15).
+  coachWords.laterBetsRange(6, '99', '99'),
+  coachWords.laterBetsRange(null, '99', '99'),
+  coachWords.laterBetsNeed('99', '99'),
+  coachWords.laterWinsNeed('99'),
 ];
 const TOO_LONG = `${LONGEST} ${LONGEST}`;
 

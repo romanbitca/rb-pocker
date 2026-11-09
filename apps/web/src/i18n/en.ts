@@ -585,13 +585,21 @@ export const en = {
       straightFlush: 'Straight Flush',
       royalFlush: 'Royal Flush',
     },
-    youWin: (x: string) => `You win ${x}!`,
+    /** The hand cost the hero nothing: the winners' amounts have nothing to be read against. */
     wins: (name: string, x: string, hand: string) => `${name} wins ${x} with ${hand}.`,
     winsNoHand: (name: string, x: string) => `${name} wins ${x}.`,
-    youWinFold: (x: string) => `Everyone folded. You win ${x}.`,
     winsFold: (name: string, x: string) => `${name} wins ${x}. Everyone else folded.`,
-    /** "Split pot: you and Ben each win 170." */
     split: (names: string, x: string) => `Split pot: ${names} each win ${x}.`,
+    /** The hero's own result is on the banner: no other amount beside it (§12.9, 1.4.15). */
+    everyoneFolded: 'Everyone folded.',
+    winsHand: (name: string, hand: string) => `${name} wins with ${hand}.`,
+    winsPlain: (name: string) => `${name} wins.`,
+    winsFoldPlain: (name: string) => `${name} wins. Everyone else folded.`,
+    /** Side pots or an odd chip: several winners, different amounts. */
+    winsPartHand: (name: string, hand: string) => `${name} wins part of the pot with ${hand}.`,
+    winsPart: (name: string) => `${name} wins part of the pot.`,
+    splitWith: (names: string) => `Split pot with ${names}.`,
+    splitOthers: (names: string) => `${names} split the pot.`,
     you: 'you',
     /** At a showdown the hero won: "Ben: Two Pair — loses to your Flush". */
     loses: (name: string, hand: string, yours: string) =>

@@ -2,6 +2,7 @@
  * The hand-end banner's lines (PLAN §12.9, §12.11) and the toasts' text, in the PLAN's own words:
  * every line below is quoted from docs/PLAN.md.
  */
+import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 import type { HandEndView } from '../../src/app/store.ts';
 import { deciderOf, handEndViewOf } from '../../src/app/tableViews.ts';
@@ -9,7 +10,7 @@ import { parseCards } from '../../src/core/cards.ts';
 import { describe as describeHand } from '../../src/eval/describe.ts';
 import { en } from '../../src/i18n/en.ts';
 import { deal, rigDeck, tableWith } from '../engine/helpers.ts';
-import { ADVANCE, call, check, play } from '../engine/play.ts';
+import { ADVANCE, call, check, play, raise } from '../engine/play.ts';
 import { toastText } from '../../src/ui/components/Notices.tsx';
 import { bannerLines, handEndLines, luckLine, ownResultLine } from '../../src/ui/handEnd.ts';
 import { joinNames } from '../../src/ui/names.ts';
@@ -64,7 +65,8 @@ describe('handEndLines', () => {
   it('the hero wins at the showdown: one line per beaten hand shown (at most two)', () => {
     const lines = handEndLines(
       view({
-        winners: [{ seat: 0, name: 'You', amount: 340 }],
+        heroNet: 340,
+        winners: [{ seat: 0, name: 'You', amount: 680 }],
         shown: [
           shown(0, 'You', 'Flush, Ace-high', 'flush'),
           shown(2, 'Ben', 'Two Pair, Kings and Sevens', 'twoPair'),
@@ -74,7 +76,7 @@ describe('handEndLines', () => {
       }),
     );
     expect(lines).toEqual([
-      'You win 340!',
+      'You won 340',
       'Ben: Two Pair — loses to your Flush',
       'Anna: Pair — loses to your Flush',
     ]);
@@ -85,6 +87,7 @@ describe('handEndLines', () => {
   it('the same category names the full hands', () => {
     const lines = handEndLines(
       view({
+        heroNet: 100,
         winners: [{ seat: 0, name: 'You', amount: 200 }],
         shown: [shown(0, 'You', 'Pair of Aces', 'pair'), shown(1, 'Ben', 'Pair of Kings', 'pair')],
       }),
@@ -101,13 +104,14 @@ describe('handEndLines', () => {
         ],
       }),
     );
-    expect(lines).toEqual(['Split pot: you and Ben each win 170.']);
+    expect(lines).toEqual(['Split pot with Ben.']);
     expect(PLAN).toContain(`"${lines[0]}"`);
   });
 
-  it('different amounts (side pots, an odd chip): one line per winner', () => {
+  it('different amounts (side pots, an odd chip): one line per other winner', () => {
     const lines = handEndLines(
       view({
+        heroNet: 100,
         winners: [
           { seat: 0, name: 'You', amount: 300 },
           { seat: 3, name: 'Ben', amount: 400 },
@@ -117,20 +121,22 @@ describe('handEndLines', () => {
       }),
     );
     expect(lines).toEqual([
-      'You win 300!',
-      'Ben wins 400 with Straight, Five-high.',
-      'Nora wins 25.',
+      'You won 100',
+      'Ben wins part of the pot with Straight, Five-high.',
+      'Nora wins part of the pot.',
     ]);
   });
 
   it('everyone folded: no cards named', () => {
     expect(
-      handEndLines(view({ endedBy: 'fold', winners: [{ seat: 0, name: 'You', amount: 120 }] })),
-    ).toEqual(['Everyone folded. You win 120.']);
+      handEndLines(
+        view({ endedBy: 'fold', heroNet: 90, winners: [{ seat: 0, name: 'You', amount: 120 }] }),
+      ),
+    ).toEqual(['Everyone folded.', 'You won 90']);
     expect(
       handEndLines(view({ endedBy: 'fold', winners: [{ seat: 4, name: 'Ben', amount: 1250 }] })),
     ).toEqual(['Ben wins 1,250. Everyone else folded.']);
-    expect(PLAN).toContain('"Everyone folded. You win 120."');
+    expect(PLAN).toContain('"Everyone folded."');
     expect(PLAN).toContain(`"${en.handEnd.winsFold('{name}', '{x}')}"`);
   });
 
@@ -138,6 +144,7 @@ describe('handEndLines', () => {
     const fours = 'Two Pair, Fours and Threes';
     const lines = handEndLines(
       view({
+        heroNet: 25,
         winners: [{ seat: 0, name: 'You', amount: 50 }],
         shown: [
           shown(0, 'You', fours, 'twoPair'),
@@ -145,11 +152,12 @@ describe('handEndLines', () => {
         ],
       }),
     );
-    expect(lines).toEqual(['You win 50!', `Priya: ${fours} — your King kicker beats their Jack`]);
+    expect(lines).toEqual(['You won 25', `Priya: ${fours} — your King kicker beats their Jack`]);
     expect(PLAN).toContain(`"${lines[1]}"`);
     // A flush is compared card by card: no kicker.
     const flush = handEndLines(
       view({
+        heroNet: 25,
         winners: [{ seat: 0, name: 'You', amount: 50 }],
         shown: [
           shown(0, 'You', 'Flush, Ace-high', 'flush'),
@@ -184,7 +192,7 @@ describe('handEndLines', () => {
     expect(theirs?.decider).toEqual({ yours: 11, theirs: 9, kicker: true });
     expect(end.shown.find((s) => s.seat === 0)?.decider).toBeNull();
     expect(handEndLines(end)).toEqual([
-      `You win ${end.winners[0]?.amount ?? 0}!`,
+      `You won ${end.heroNet}`,
       `${table.slots[1]?.name}: Two Pair, Fours and Threes — your King kicker beats their Jack`,
     ]);
   });
@@ -232,10 +240,9 @@ describe("bannerLines: the hero's own result (§12.9, 1.3.99)", () => {
       ],
     });
 
-  it('after the winners and before the hands the hero beat', () => {
+  it('the hero wins at the showdown: its result first, then the hands it beat', () => {
     expect(bannerLines(showdown(340))).toEqual([
-      { text: 'You win 440!', kind: 'main' },
-      { text: 'You won 340', kind: 'own' },
+      { text: 'You won 340', kind: 'main' },
       { text: 'Sam: Pair — loses to your Flush', kind: 'line' },
     ]);
   });
@@ -246,13 +253,13 @@ describe("bannerLines: the hero's own result (§12.9, 1.3.99)", () => {
       winners: [{ seat: 1, name: 'Ben', amount: 340 }],
       shown: [shown(1, 'Ben', 'Two Pair, Kings and Sevens', 'twoPair')],
     });
-    expect(bannerLines(v).map((l) => l.text)).toEqual([
-      'Ben wins 340 with Two Pair, Kings and Sevens.',
-      'You lost 120',
+    expect(bannerLines(v)).toEqual([
+      { text: 'Ben wins with Two Pair, Kings and Sevens.', kind: 'main' },
+      { text: 'You lost 120', kind: 'own' },
     ]);
   });
 
-  it('several winners: after their lines', () => {
+  it('several winners with different amounts: the hero first when it made chips', () => {
     const v = view({
       heroNet: 60,
       winners: [
@@ -261,7 +268,10 @@ describe("bannerLines: the hero's own result (§12.9, 1.3.99)", () => {
       ],
       shown: [shown(1, 'Ben', 'Two Pair, Kings and Sevens', 'twoPair')],
     });
-    expect(bannerLines(v).map((l) => l.kind)).toEqual(['main', 'line', 'own']);
+    expect(bannerLines(v)).toEqual([
+      { text: 'You won 60', kind: 'main' },
+      { text: 'Ben wins part of the pot with Two Pair, Kings and Sevens.', kind: 'line' },
+    ]);
   });
 
   it('the hero folded with no chips in, or got them back: the result alone', () => {
@@ -273,15 +283,137 @@ describe("bannerLines: the hero's own result (§12.9, 1.3.99)", () => {
     expect(bannerLines(v)).toEqual([{ text: 'Anna wins 30. Everyone else folded.', kind: 'main' }]);
   });
 
-  it('Review keeps its own line: handEndLines has no such line', () => {
-    expect(handEndLines(showdown(340))).toEqual([
-      'You win 440!',
-      'Sam: Pair — loses to your Flush',
-    ]);
+  it('Review reads the same words: handEndLines is the banner without its styles', () => {
+    expect(handEndLines(showdown(340))).toEqual(['You won 340', 'Sam: Pair — loses to your Flush']);
   });
 
   it('no winner yet: no lines', () => {
     expect(bannerLines(view({ heroNet: 40 }))).toEqual([]);
+  });
+});
+
+describe("one number (§12.9, 1.4.15): the hero's own result is the only amount", () => {
+  const ben = { seat: 1, name: 'Ben', amount: 340 };
+  const nora = { seat: 2, name: 'Nora', amount: 340 };
+  const benHand = shown(1, 'Ben', 'Two Pair, Kings and Sevens', 'twoPair');
+  const text = (v: HandEndView): string =>
+    bannerLines(v)
+      .map((l) => l.text)
+      .join(' / ');
+
+  it('QA: a fold win says the profit, never the pot beside it', () => {
+    const v = view({
+      endedBy: 'fold',
+      heroNet: 190,
+      winners: [{ seat: 0, name: 'You', amount: 280 }],
+    });
+    expect(bannerLines(v)).toEqual([
+      { text: 'Everyone folded.', kind: 'main' },
+      { text: 'You won 190', kind: 'own' },
+    ]);
+    expect(text(v)).not.toContain('280');
+  });
+
+  it('a bot wins by folds and the hero paid: what it cost, and no pot', () => {
+    const v = view({ endedBy: 'fold', heroNet: -40, winners: [ben] });
+    expect(text(v)).toBe('Ben wins. Everyone else folded. / You lost 40');
+  });
+
+  it('a split pot, the hero made chips: who shared, then the profit', () => {
+    const v = view({
+      heroNet: 20,
+      winners: [
+        { seat: 0, name: 'You', amount: 170 },
+        { seat: 3, name: 'Ben', amount: 170 },
+      ],
+    });
+    expect(text(v)).toBe('Split pot with Ben. / You won 20');
+  });
+
+  it('a split that gave the chips back: who shared, no number at all', () => {
+    const v = view({
+      winners: [
+        { seat: 0, name: 'You', amount: 170 },
+        { seat: 3, name: 'Ben', amount: 170 },
+      ],
+    });
+    expect(bannerLines(v)).toEqual([{ text: 'Split pot with Ben.', kind: 'main' }]);
+  });
+
+  it('a split of other players: their shares only when the hand cost the hero nothing', () => {
+    expect(text(view({ winners: [ben, nora] }))).toBe('Split pot: Ben and Nora each win 340.');
+    expect(text(view({ heroNet: -40, winners: [ben, nora] }))).toBe(
+      'Ben and Nora split the pot. / You lost 40',
+    );
+  });
+
+  it("another player's amounts stay when the hero has no result to read them against", () => {
+    expect(text(view({ winners: [ben], shown: [benHand] }))).toBe(
+      'Ben wins 340 with Two Pair, Kings and Sevens.',
+    );
+    expect(text(view({ winners: [ben] }))).toBe('Ben wins 340.');
+    expect(PLAN).toContain('"Ben wins with Two Pair, Kings and Sevens."');
+  });
+
+  it('a winner whose hand was not shown, the hero paid', () => {
+    expect(text(view({ heroNet: -40, winners: [ben] }))).toBe('Ben wins. / You lost 40');
+  });
+
+  it('side pots through the engine (Appendix B14–B16): each pot is a number the hero never sees', () => {
+    const table = tableWith([100, 300, 10000], { button: 2 });
+    let h = rigDeck(deal(table), {
+      holes: { 0: 'Ah Ad', 1: 'Kh Kd', 2: '7c 8d' },
+      board: '2c 5d 9h Js 3s',
+    });
+    h = play(h, raise(2, 600), call(0), call(1));
+    while (h.phase !== 'complete') {
+      h = h.phase === 'betting' ? play(h, check(h.toAct as number)) : play(h, ADVANCE);
+    }
+    expect(h.result?.net).toEqual([200, 100, -300]);
+    const end = handEndViewOf(h, table) as HandEndView;
+    expect(end.winners.map((w) => w.amount)).toEqual([300, 400]);
+    const lines = bannerLines(end).map((l) => l.text);
+    const ben2 = end.shown.find((s) => s.seat === 1)?.handName as string;
+    expect(lines[0]).toBe('You won 200');
+    expect(lines[1]).toBe(`${table.slots[1]?.name} wins part of the pot with ${ben2}.`);
+    expect(lines.join(' ')).not.toMatch(/\b[34]00\b/);
+  });
+
+  it('won a side pot, lost overall: never "You win 200!" over "You lost 900"', () => {
+    const v = view({
+      heroNet: -900,
+      winners: [
+        { seat: 0, name: 'You', amount: 200 },
+        { seat: 1, name: 'Ben', amount: 3000 },
+      ],
+      shown: [benHand],
+    });
+    expect(text(v)).toBe(
+      'Ben wins part of the pot with Two Pair, Kings and Sevens. / You lost 900',
+    );
+  });
+
+  it("property: with a result of the hero's on the banner, its number is the only one", () => {
+    const winner = fc.record({
+      seat: fc.integer({ min: 0, max: 4 }),
+      name: fc.constantFrom('Ben', 'Nora', 'Sam', 'Anna', 'Kofi'),
+      amount: fc.integer({ min: 1, max: 99_999 }),
+    });
+    fc.assert(
+      fc.property(
+        fc.uniqueArray(winner, { minLength: 1, maxLength: 3, selector: (w) => w.seat }),
+        fc.constantFrom<HandEndView['endedBy']>('fold', 'showdown'),
+        fc.integer({ min: -9_999, max: 9_999 }).filter((n) => n !== 0),
+        (raw, endedBy, net) => {
+          const winners = endedBy === 'fold' ? raw.slice(0, 1) : raw;
+          // A hero with no payout cannot be up (`net` = payout − chips in).
+          const heroNet = winners.some((w) => w.seat === 0) ? net : -Math.abs(net);
+          const amounts = text(view({ endedBy, heroNet, winners })).match(/\d[\d,]*/g) ?? [];
+          expect(amounts).toEqual([Math.abs(heroNet).toLocaleString('en-US')]);
+        },
+      ),
+      { numRuns: 500 },
+    );
   });
 });
 
