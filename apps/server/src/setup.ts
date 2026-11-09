@@ -1,6 +1,8 @@
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import compression from 'compression';
+import { WEBHOOK_PATH, webhookGate } from './bot/webhook.controller.js';
 import { apiNoStore, securityHeaders } from './security.js';
+import { TelegramConfig } from './telegram/config.js';
 
 /**
  * App-wide HTTP settings, shared by main.ts and the HTTP tests so the tests exercise the real
@@ -17,5 +19,8 @@ export function configureApp(app: NestExpressApplication, nodeEnv = process.env.
   app.use(compression());
   app.use(...securityHeaders(nodeEnv));
   app.use('/api', apiNoStore);
+  // Here, and so before Nest's body parser: a caller without the secret costs nothing (§19.8).
+  const telegram = app.get(TelegramConfig);
+  if (telegram.enabled) app.use(WEBHOOK_PATH, webhookGate(telegram.botToken));
   app.setGlobalPrefix('api');
 }
