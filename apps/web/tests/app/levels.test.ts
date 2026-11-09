@@ -178,6 +178,7 @@ function stateAt(
     stats: null,
     history: null,
     tg: { inside: false },
+    mp: createAppStore().getState().mp,
     dispatch: () => {},
   } as AppState;
 }

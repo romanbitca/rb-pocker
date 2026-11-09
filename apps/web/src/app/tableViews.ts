@@ -225,8 +225,9 @@ function isWinner(hand: HandState, seat: number): boolean {
  */
 function cardsOf(hand: HandState, seat: number): SeatCardsData {
   const s = hand.seats[seat] as SeatState;
-  if (!s.dealtIn || s.folded || s.hole === null) return { kind: 'none' };
-  if (!hand.revealed.includes(seat)) return { kind: 'hidden' };
+  if (!s.dealtIn || s.folded) return { kind: 'none' };
+  // At a remote table (§19.6) `hole` is null until the seat is revealed: card backs, as for a bot.
+  if (s.hole === null || !hand.revealed.includes(seat)) return { kind: 'hidden' };
   const info = atShowdown(hand) && isWinner(hand, seat) ? describe(s.hole, hand.board) : null;
   return {
     kind: 'revealed',

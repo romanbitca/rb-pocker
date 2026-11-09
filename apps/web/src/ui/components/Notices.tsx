@@ -67,6 +67,8 @@ export function toastText(toast: Toast, words: LaterWords | null = later): strin
       return t.collection(words.handEnd.category[toast.category]);
     case 'session':
       return sessionText(words, toast.session);
+    case 'mpNotice':
+      return null; // chunk 10.9: the words are in `i18n/mp.ts`, and no table exists before it
     default:
       return t[toast.kind];
   }

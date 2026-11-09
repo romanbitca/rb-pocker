@@ -296,6 +296,8 @@ function Flow({ navigation }: { navigation: PreviewNavigation }) {
         // So is About (ui/screens/About.tsx, both ways in).
         about: () => <h1>About</h1>,
         privacy: () => <h1>About</h1>,
+        mpCreate: () => <h1>New table</h1>,
+        mpRoom: () => <h1>Waiting room</h1>,
       }}
       overlays={{
         menu: () => (

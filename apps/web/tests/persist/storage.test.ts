@@ -22,6 +22,7 @@ describe('persist/storage keys', () => {
       diag: 'pc.v1.diag',
       preimport: 'pc.v1.preimport',
       drill: 'pc.v1.drill',
+      mpTable: 'pc.v1.mpTable',
     });
     expect(CORRUPT_KEY_PREFIX).toBe('pc.corrupt.');
   });

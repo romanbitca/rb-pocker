@@ -1,7 +1,8 @@
 /**
  * The app's one Zustand store (PLAN §2.5): slices `game`, `equity`, `coach`, `ui`, `settings`,
  * `review` and `data` (the tab lock, `persist()` and Import's preview: chunk 8.3, §14.7, §14.8),
- * and the profile's stats and Stats → History rows (`stats`, `history`, chunk 8.2).
+ * and the profile's stats and Stats → History rows (`stats`, `history`, chunk 8.2), and `mp` (a
+ * table of the server's, §19.6).
  *
  * - It holds the reducer's output and UI state only; it never runs game logic. The TableController
  *   (`app/controller.ts`) drives every hand and writes the `game` slice; its equity jobs
@@ -38,6 +39,7 @@ import type {
 } from '../engine/types.ts';
 import { defaultSettings } from '../persist/schema.ts';
 import type { DecisionRecord, SessionSummary, Settings, Stats } from '../persist/schema.ts';
+import type { EndReason, Notice, SeatInfo, TableSettings, TableView } from '../net/protocol.ts';
 import type { ImportCheckProblem } from './dataTools.ts';
 import type { HistoryItem } from './history.ts';
 import type { Suggestion } from './suggestions.ts';
@@ -45,9 +47,11 @@ import { heroDecisionKey, levelInForce } from './coachViews.ts';
 import { choiceCount, quizQuestions } from './quiz.ts';
 import { UNDO_POLICY, type FeedbackView } from './undo.ts';
 import {
+  backCloses,
   currentScreen,
   initialNav,
   navigate,
+  topOverlay,
   type Nav,
   type NavAction,
   type Overlay,
@@ -188,6 +192,8 @@ export const OVERLAY_GATE: Readonly<Record<Overlay, Gate | null>> = {
   drillGames: 'sheet',
   drillStats: 'sheet',
   shortcuts: 'sheet',
+  mpLeave: 'dialog',
+  mpProblem: 'dialog',
 };
 
 /** Layout (§12.3): one CSS media query each; first match wins. */
@@ -233,7 +239,9 @@ export type Toast =
    * that gives `category` its first date in `stats.collection` (§14.4). While it shows, the
    * rankings row of that category is marked (and pulses once).
    */
-  | { id: number; kind: 'collection'; category: HandCategory };
+  | { id: number; kind: 'collection'; category: HandCategory }
+  /** What a table says once (§19.4 `Notice`, §19.10); a voided hand is the `handVoided` above. */
+  | { id: number; kind: 'mpNotice'; notice: Exclude<Notice, { n: 'handVoided' }> };
 
 /**
  * The first-table tips (§12.11, chunk 9.3), each shown at most once (`profile.flags.tips`): on the
@@ -470,6 +478,11 @@ export interface UiSlice {
    * is what marks it seen (the controller).
    */
   tip: TipId | null;
+  /**
+   * §19.6: a `back` that no open overlay would take opens this overlay instead of leaving the
+   * screen ("Leave this table?"); null: Back works as always. Set by the `backTrap` command.
+   */
+  backTrap: Overlay | null;
 }
 
 /** Learn's lessons (Appendix F.8): `data/lessons.ts` has this many (a test keeps them equal). */
@@ -535,6 +548,41 @@ export function initialData(): DataSlice {
   };
 }
 
+/** The socket of Play with friends (§19.4); `lost`: two minutes of failures, "Try again". */
+export type MpConnection = 'idle' | 'connecting' | 'online' | 'reconnecting' | 'lost';
+
+/** What the `mpProblem` dialog says (§19.10). `gone`: `welcome` says the table is no more. */
+export type MpProblem =
+  | { kind: 'ended'; reason: EndReason | 'gone' }
+  | { kind: 'joinGone' | 'joinFull' | 'tooManyTables' | 'login' | 'outdated' | 'replaced' }
+  /** "You are already at another table.": `other` is its code. */
+  | { kind: 'alreadySeated'; other: string };
+
+/** A table of the server's (§19.6). Only `MpDriver` writes this slice. */
+export interface MpSlice {
+  /** A table is on: the driver owns the `game` slice and the controller is parked. */
+  active: boolean;
+  /** The last view applied (`rev` order); null before the first and after leaving. */
+  view: TableView | null;
+  connection: MpConnection;
+  problem: MpProblem | null;
+  /** When the open decision's clock ends, in `performance.now()` time; null without one. */
+  turnEndsAt: number | null;
+  /** When the next hand is dealt, in `performance.now()` time; null when none is on show. */
+  nextHandEndsAt: number | null;
+}
+
+export function initialMp(): MpSlice {
+  return {
+    active: false,
+    view: null,
+    connection: 'idle',
+    problem: null,
+    turnEndsAt: null,
+    nextHandEndsAt: null,
+  };
+}
+
 /**
  * The player's settings: Appendix A.7 `Settings`, as stored in `pc.v1.profile` (chunk 3.2). The
  * controller saves every change (debounced 250 ms, §14.2) and keeps `seatLevels.length ===
@@ -596,10 +644,33 @@ export type UiCommand =
    * the player reads) with `tip` on show, only over nothing (no other overlay is open). Any tap or
    * key closes it (`close`).
    */
-  | { type: 'tip'; tip: TipId };
+  | { type: 'tip'; tip: TipId }
+  /** §19.6: what Back opens instead of leaving the screen (`ui.backTrap`); null: no trap. */
+  | { type: 'backTrap'; overlay: Overlay | null };
 
-/** Commands the TableController handles. */
+/**
+ * What the Play with friends screens ask of `MpDriver` (§19.6): only the remote handler answers
+ * these. Leaving a table, reloading and acting are the game commands the Table already sends.
+ */
+export type MpCommand =
+  /** "Create table". */
+  | { type: 'mpCreateTable'; settings: TableSettings }
+  /** The host's "Start game". */
+  | { type: 'mpStartGame' }
+  /** "I'm back" (the seat is sitting out). */
+  | { type: 'mpImBack' }
+  /** "Try again", after two minutes without the server. */
+  | { type: 'mpTryAgain' }
+  /** The `mpProblem` dialog's OK. */
+  | { type: 'mpDismiss' }
+  /** `alreadySeated`: "Go to my table". */
+  | { type: 'mpGoToMyTable' }
+  /** `alreadySeated`: "Leave it and join this one". */
+  | { type: 'mpLeaveAndJoin' };
+
+/** Commands the TableController handles, and `MpCommand`s (the remote handler's). */
 export type GameCommand =
+  | MpCommand
   /** Welcome / Home Play (§12.1): continue the table, else start one with the last-used settings. */
   | { type: 'play' }
   /**
@@ -720,6 +791,7 @@ const UI_COMMANDS: ReadonlySet<string> = new Set([
   'botCard',
   'lesson',
   'tip',
+  'backTrap',
 ]);
 
 export const isUiCommand = (cmd: Command): cmd is UiCommand => UI_COMMANDS.has(cmd.type);
@@ -789,6 +861,8 @@ export interface AppState {
   history: readonly HistoryItem[] | null;
   /** Launched as a Telegram Mini App (§19.7, written once by `boot.ts`). */
   tg: { inside: boolean };
+  /** A table of the server's (§19.6), written only by `MpDriver`. */
+  mp: MpSlice;
   /** The one way to change anything (the UI dispatches through the controller, §2.1). Stable. */
   dispatch: (cmd: Command) => void;
 }
@@ -796,6 +870,11 @@ export interface AppState {
 export interface AppStore extends StoreApi<AppState> {
   /** The TableController registers here (null to unregister); game commands go to it. */
   setGameHandler(handler: ((cmd: GameCommand) => void) | null): void;
+  /**
+   * `MpDriver` registers here (null to unregister): asked first for every game command; a command
+   * it returns true for does not reach the controller (§19.6).
+   */
+  setRemoteHandler(handler: ((cmd: GameCommand) => boolean) | null): void;
 }
 
 export function initialGame(): GameSlice {
@@ -838,12 +917,14 @@ export function initialUi(firstLaunch = true): UiSlice {
     botCardSeat: null,
     lesson: 1,
     tip: null,
+    backTrap: null,
   });
 }
 
 /** A fresh store (tests make their own; the app uses `appStore`). */
 export function createAppStore(): AppStore {
   let gameHandler: ((cmd: GameCommand) => void) | null = null;
+  let remoteHandler: ((cmd: GameCommand) => boolean) | null = null;
   const api = createStore<AppState>()((set) => ({
     game: initialGame(),
     equity: initialEquity(),
@@ -855,6 +936,7 @@ export function createAppStore(): AppStore {
     stats: null,
     history: null,
     tg: { inside: false },
+    mp: initialMp(),
     dispatch: (cmd) => {
       if (cmd.type === 'review') {
         set((s) => showReview(s, cmd));
@@ -868,7 +950,7 @@ export function createAppStore(): AppStore {
           const coach = reduceCoach(s, cmd);
           return coach === s.coach ? s : { coach };
         });
-      } else if (gameHandler !== null) {
+      } else if (remoteHandler?.(cmd) !== true && gameHandler !== null) {
         gameHandler(cmd);
       }
     },
@@ -876,6 +958,9 @@ export function createAppStore(): AppStore {
   return Object.assign(api, {
     setGameHandler(handler: ((cmd: GameCommand) => void) | null): void {
       gameHandler = handler;
+    },
+    setRemoteHandler(handler: ((cmd: GameCommand) => boolean) | null): void {
+      remoteHandler = handler;
     },
   });
 }
@@ -906,9 +991,11 @@ export function reduceUi(ui: UiSlice, cmd: UiCommand): UiSlice {
     case 'back':
     case 'open':
     case 'close': {
-      const nav = navigate(ui.nav, cmd);
+      const nav = navigate(ui.nav, trapped(ui, cmd));
       return nav === ui.nav ? ui : withNav(ui, nav);
     }
+    case 'backTrap':
+      return cmd.overlay === ui.backTrap ? ui : { ...ui, backTrap: cmd.overlay };
     case 'lesson': {
       const { lesson } = cmd;
       if (!Number.isSafeInteger(lesson) || lesson < 1 || lesson > LESSON_COUNT) return ui;
@@ -951,6 +1038,13 @@ export function reduceUi(ui: UiSlice, cmd: UiCommand): UiSlice {
     case 'dismissStorageBanner':
       return ui.storageBanner ? { ...ui, storageBanner: false } : ui;
   }
+}
+
+/** §19.6: a `back` with no overlay that Back may close opens the trap instead of leaving. */
+function trapped(ui: UiSlice, cmd: NavAction): NavAction {
+  if (cmd.type !== 'back' || ui.backTrap === null) return cmd;
+  const top = topOverlay(ui.nav);
+  return top !== null && backCloses(top) ? cmd : { type: 'open', overlay: ui.backTrap };
 }
 
 /** `ui` on `nav`: the screen and overlays follow it, gates are re-derived. */
@@ -1110,6 +1204,81 @@ export const selectCanTopUp = (s: AppState): boolean => {
   if (next === null || (s.game.mode !== 'handEnd' && s.game.mode !== 'idle')) return false;
   const hero = next.slots[0];
   return hero !== undefined && hero.stack > 0 && hero.stack < next.config.startingStack;
+};
+
+// ---------------------------------------------------------------------------------------------
+// A table of the server's (§19.6)
+
+/** A multiplayer table is on: the driver writes `game`, the Table shows it without a coach. */
+export const selectRemote = (s: AppState): boolean => s.mp.active;
+export const selectMpView = (s: AppState): TableView | null => s.mp.view;
+export const selectConnection = (s: AppState): MpConnection => s.mp.connection;
+export const selectMpProblem = (s: AppState): MpProblem | null => s.mp.problem;
+/** Launched as a Telegram Mini App (§19.7): only then is Play with friends offered. */
+export const selectInTelegram = (s: AppState): boolean => s.tg.inside;
+
+/**
+ * The real seats of a table in local order (§19.6): the ones with a player, clockwise from the
+ * viewer, so local seat 0 is always the viewer and an empty seat does not exist.
+ */
+export function seatOrder(view: Pick<TableView, 'seats' | 'you'>): number[] {
+  const count = view.seats.length;
+  const order: number[] = [];
+  for (let i = 0; i < count; i++) {
+    const real = (view.you + i) % count;
+    if (view.seats[real]) order.push(real);
+  }
+  return order;
+}
+
+/** What the status strip says (§19.10); `endsAt` is `performance.now()` time. */
+export type MpTurn =
+  | { kind: 'you'; endsAt: number }
+  | { kind: 'other'; name: string; endsAt: number }
+  | { kind: 'nextHand'; endsAt: number }
+  | { kind: 'notDealtIn' };
+
+function turnOf({ view, turnEndsAt, nextHandEndsAt }: MpSlice): MpTurn | null {
+  if (view === null) return null;
+  if (nextHandEndsAt !== null) return { kind: 'nextHand', endsAt: nextHandEndsAt };
+  if (view.hand !== null && view.hand.seats[view.you]?.dealtIn !== true) {
+    return { kind: 'notDealtIn' };
+  }
+  const seat = view.decision?.seat;
+  if (seat === undefined || turnEndsAt === null) return null;
+  if (seat === view.you) return { kind: 'you', endsAt: turnEndsAt };
+  return { kind: 'other', name: view.seats[seat]?.name ?? '', endsAt: turnEndsAt };
+}
+
+let turnFor: { mp: MpSlice; turn: MpTurn | null } | null = null;
+/** The strip's line; the same object until the `mp` slice changes. Null: nothing to say. */
+export const selectTurn = (s: AppState): MpTurn | null => {
+  if (turnFor?.mp !== s.mp) turnFor = { mp: s.mp, turn: turnOf(s.mp) };
+  return turnFor.turn;
+};
+
+/** A pod's note (§19.10). */
+export type SeatNote = 'offline' | 'out' | 'next';
+
+function noteOf(seat: SeatInfo | null | undefined): SeatNote | null {
+  if (!seat) return null;
+  if (!seat.online) return 'offline';
+  if (seat.status === 'sittingOut' || seat.status === 'busted' || seat.status === 'leaving') {
+    return 'out';
+  }
+  return seat.status === 'nextHand' ? 'next' : null;
+}
+
+const NO_NOTES: readonly (SeatNote | null)[] = [];
+let notesFor: { view: TableView; notes: readonly (SeatNote | null)[] } | null = null;
+/** Each local seat's note, seat 0 first; the same array until the view changes. */
+export const selectSeatNotes = (s: AppState): readonly (SeatNote | null)[] => {
+  const { view } = s.mp;
+  if (view === null) return NO_NOTES;
+  if (notesFor?.view !== view) {
+    notesFor = { view, notes: seatOrder(view).map((real) => noteOf(view.seats[real])) };
+  }
+  return notesFor.notes;
 };
 
 // ---------------------------------------------------------------------------------------------

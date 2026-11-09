@@ -29,8 +29,18 @@ const SCREENS: Screen[] = [
   'handRankings',
   'glossary',
   'drill',
+  'mpCreate',
+  'mpRoom',
 ];
-const OVERLAYS: Overlay[] = ['menu', 'outOfChips', 'newTable', 'drillGames', 'drillStats'];
+const OVERLAYS: Overlay[] = [
+  'menu',
+  'outOfChips',
+  'newTable',
+  'drillGames',
+  'drillStats',
+  'mpLeave',
+  'mpProblem',
+];
 
 /** Runs actions from `nav` and returns every state on the way (the start included). */
 function run(nav: Nav, ...actions: NavAction[]): Nav[] {
@@ -274,13 +284,14 @@ describe('navigate: properties over random action sequences', () => {
     );
   });
 
-  it('one Back lowers historyDepth by one, except over the out-of-chips dialog', () => {
+  it('one Back lowers historyDepth by one, except over a dialog Back may not close', () => {
     fc.assert(
       fc.property(fc.boolean(), fc.array(actionArb, { maxLength: 30 }), (first, actions) => {
         const nav = last(run(initialNav(first), ...actions));
         const after = navigate(nav, back);
         const depth = historyDepth(nav);
-        if (topOverlay(nav) === 'outOfChips') {
+        const top = topOverlay(nav);
+        if (top !== null && !backCloses(top)) {
           // It takes its screen with it; on the first screen nothing changes.
           if (nav.screens.length > 1) {
             expect(after).toEqual({ screens: nav.screens.slice(0, -1), overlays: [] });
