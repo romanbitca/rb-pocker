@@ -7,13 +7,26 @@
  * a person can tap Play. The synth itself is a second lazy chunk that `cues.ts` loads only while
  * sound is on.
  */
-import { installCues } from './cues.ts';
+import { installCues, type HapticsPort } from './cues.ts';
 import type { AppStore } from './store.ts';
 import { installWakeLock } from './wakeLock.ts';
 
+let hapticsPort: HapticsPort | null = null;
+
+/**
+ * Inside Telegram its haptic feedback replaces `navigator.vibrate`, which iOS lacks (§19.7);
+ * null goes back to `navigator.vibrate`. May come before or after `installDevice`: two lazy chunks.
+ */
+export function setHapticsPort(port: HapticsPort | null): void {
+  hapticsPort = port;
+}
+
 /** Sounds, vibration and the wake lock on `store`. Returns one uninstall. */
 export function installDevice(win: Window, store: AppStore): () => void {
-  const off = [installCues(win, store), installWakeLock(win, store)];
+  const off = [
+    installCues(win, store, { haptics: () => hapticsPort }),
+    installWakeLock(win, store),
+  ];
   return () => {
     for (const f of off) f();
   };

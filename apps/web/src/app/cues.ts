@@ -1,8 +1,8 @@
 /**
  * Sounds and vibration at the table (PLAN §12.8, §12.13). What happens in a hand is read from the
  * store's changes and becomes cues for the synth (`sound/synth.ts`, a lazy chunk loaded only while
- * sound is on) and for `navigator.vibrate` (Android; a no-op where it is missing, as on iOS).
- * This file is part of the lazy `app/device.ts` chunk.
+ * sound is on) and for `navigator.vibrate` (Android; a no-op where it is missing, as on iOS; inside
+ * Telegram its haptic feedback instead, §19.7). This file is part of the lazy `app/device.ts` chunk.
  *
  * The cues (`nextCues`, pure):
  * - deal: a hand comes on screen just dealt (the hero's two cards, `DEAL_STAGGER_MS` apart at
@@ -190,9 +190,16 @@ export interface SynthModule {
   createSynth(host: AudioHost): Synth | null;
 }
 
+/** Another way to buzz the player's hand for a cue, `delayMs` from now (Telegram's, §19.7). */
+export interface HapticsPort {
+  pulse(cue: Cue, delayMs: number): void;
+}
+
 export interface CueOptions {
   /** Loads the synth (tests pass a fake); default: the lazy chunk `sound/synth.ts`. */
   loadSynth?: () => Promise<SynthModule>;
+  /** The port that replaces `navigator.vibrate` right now, if any (asked at each cue). */
+  haptics?: () => HapticsPort | null;
 }
 
 /** The taps that may start audio (user activation): a later tap at the table retries. */
@@ -226,7 +233,11 @@ export function installCues(win: Window, store: AppStore, options: CueOptions = 
     for (const { cue, delayMs } of next.cues) {
       if (s.settings.sound) synth?.play(cue, delayMs);
       const ms = HAPTIC_MS[cue];
-      if (ms !== undefined && s.settings.haptics) vibrate(win.navigator, ms, delayMs);
+      if (ms !== undefined && s.settings.haptics) {
+        const port = options.haptics?.() ?? null;
+        if (port !== null) port.pulse(cue, delayMs);
+        else vibrate(win.navigator, ms, delayMs);
+      }
     }
   };
 

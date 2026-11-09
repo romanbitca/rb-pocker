@@ -15,7 +15,8 @@
   min-height: 100dvh;
   padding-top: max(var(--space-4), env(safe-area-inset-top));
   padding-right: max(var(--space-4), env(safe-area-inset-right));
-  padding-bottom: max(var(--space-4), env(safe-area-inset-bottom));
+  /* Inside Telegram its safe area counts too (§19.7). */
+  padding-bottom: max(var(--space-4), env(safe-area-inset-bottom), var(--tg-safe-bottom, 0px));
   padding-left: max(var(--space-4), env(safe-area-inset-left));
   background: var(--bg);
   color: var(--text);

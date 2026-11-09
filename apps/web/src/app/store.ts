@@ -787,6 +787,8 @@ export interface AppState {
    * `history` command asks; null until then and again after each new hand.
    */
   history: readonly HistoryItem[] | null;
+  /** Launched as a Telegram Mini App (§19.7, written once by `boot.ts`). */
+  tg: { inside: boolean };
   /** The one way to change anything (the UI dispatches through the controller, §2.1). Stable. */
   dispatch: (cmd: Command) => void;
 }
@@ -852,6 +854,7 @@ export function createAppStore(): AppStore {
     data: initialData(),
     stats: null,
     history: null,
+    tg: { inside: false },
     dispatch: (cmd) => {
       if (cmd.type === 'review') {
         set((s) => showReview(s, cmd));
