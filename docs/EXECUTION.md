@@ -159,7 +159,7 @@ Legend: `[ ]` todo · `[~]` in progress (branch exists) · `[x]` merged to `main
 - [x] 10.6 `chore/headers-for-telegram` - `frame-ancestors` for Telegram Web, check-deploy. Merged #97 960d59f.
 - [x] 10.7 `feature/telegram-shell` - launch params, bridge, theme, BackButton, safe area, haptics. Merged #99 748c697.
 - [x] 10.8 `feature/mp-client-driver` - the Table driven by the server (needs 10.1). Merged #104 ef44ff6.
-- [ ] 10.9 `feature/mp-screens` - Create, Share, Join, Waiting, Playing, Busted, Ended (needs 10.7, 10.8).
+- [x] 10.9 `feature/mp-screens` - Create, Share, Join, Waiting, Playing, Busted, Ended (needs 10.7, 10.8). Merged #108.
 - [ ] 10.10 `test/mp-end-to-end` - 2–3 browser contexts with signed `initData`, leak, connection (needs 10.4, 10.6, 10.7, 10.9).
 - [x] 10.11 `docs/telegram-privacy-and-owner-steps` - privacy text, owner's steps, cover image. Merged #101 25766ac.
 - [ ] 10.12 `feature/mp-quick-match` - public tables for strangers (after the core).
