@@ -83,6 +83,8 @@ test('Review replays the hand that just ended, step by step, and hides what the 
   await expect(slider).toBeVisible();
   const last = Number(await slider.getAttribute('max'));
   expect(last).toBeGreaterThan(2);
+  // A hand with a mistake opens at it (1.3.101); this walk starts at the deal.
+  await page.keyboard.press('Home');
   await expect(slider).toHaveValue('0');
   await expect(page.getByRole('group', { name: /^Hand \d+$/ })).toBeVisible();
 

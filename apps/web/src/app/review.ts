@@ -12,6 +12,7 @@
  */
 import type { Card } from '../core/cards.ts';
 import type { ReplayRecord } from '../engine/types.ts';
+import type { DecisionRecord } from '../persist/schema.ts';
 import type { HandEndView } from './tableViews.ts';
 
 /** How many finished hands are kept: Stats → History keeps the last 100 (§14.4). */
@@ -34,6 +35,8 @@ export interface ReviewHand {
   commitBeforeDeal: boolean;
   /** The result as the hand-end banner shows it (§12.9); `shown` holds only hands that were shown. */
   end: HandEndView;
+  /** The hero's decisions (A.7 `HandRecord.decisions`, undone ones too): Review's rows (§12.10). */
+  decisions: readonly DecisionRecord[];
 }
 
 /** Newest first. `selected` is the hand the Review screen shows (`handSeq`); null = the list. */

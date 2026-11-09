@@ -27,6 +27,7 @@ import {
   type Street,
   type TableState,
 } from '../engine/types.ts';
+import type { DecisionRecord } from '../persist/schema.ts';
 import type { ReviewHand } from './review.ts';
 import {
   boardViewOf,
@@ -106,6 +107,8 @@ export interface ReviewReplay {
   readonly frames: readonly ReviewFrame[];
   /** The result, shown on the last frame (§12.9). */
   readonly end: HandEndView;
+  /** The hero's decisions (no card in them): `ui/review.ts` puts them on their steps. */
+  readonly decisions: readonly DecisionRecord[];
 }
 
 /** A hand that cannot be replayed: its result only (§4.7 "Review shows the stored summary only"). */
@@ -245,5 +248,6 @@ export function buildReview(hand: ReviewHand): ReviewView {
     opponents: table.config.seatCount - 1,
     frames: states.map((h, i) => frameOf(h, states[i - 1] ?? null, i, table)),
     end,
+    decisions: hand.decisions,
   };
 }

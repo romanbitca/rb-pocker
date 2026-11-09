@@ -42,6 +42,42 @@ const tap = (name: string | RegExp) =>
   act(() => void fireEvent.click(screen.getByRole('button', { name })));
 const page = (name: string) => act(() => void fireEvent.click(screen.getByRole('radio', { name })));
 
+describe('Home`s "Work on" line (§12.1, §14.4; 1.3.101)', () => {
+  /** A later launch: Home, with `hands` clean hands counted and one leak seen 5 times. */
+  function home(hands: number): void {
+    const fake = new FakeStorage();
+    const profile = defaultProfile(new Date());
+    profile.stats.results.clean.hands = hands;
+    profile.stats.leaks = { overfold: { count: 5, lossMilliBB: 9000 } };
+    fake.setItem(STORAGE_KEYS.profile, JSON.stringify(profile));
+    h = startTableHarness({ storage: createSafeStorage(() => fake) });
+    render(<App />);
+  }
+
+  it('names the biggest leak`s lesson, under Play; a tap opens it, Back returns Home', async () => {
+    home(12);
+    const line = screen.getByRole('button', { name: 'Work on: Pot odds' });
+    const buttons = screen.getAllByRole('button').map((b) => b.textContent);
+    expect(buttons.slice(0, 2)).toEqual(['Play', 'Work on: Pot odds']);
+    act(() => void fireEvent.click(line));
+    await loaded();
+    expect(h?.state().ui.screen).toBe('lesson');
+    expect(h?.state().ui.lesson).toBe(6);
+    tap('Back');
+    expect(h?.state().ui.screen).toBe('home');
+    expect(screen.getByRole('button', { name: 'Work on: Pot odds' })).toBeTruthy();
+  }, 30_000);
+
+  it('shows nothing with too few hands, and Play still deals with one tap', async () => {
+    home(4);
+    expect(screen.queryByRole('button', { name: /^Work on/ })).toBeNull();
+    tap('Play');
+    expect(h?.state().ui.screen).toBe('table');
+    expect(h?.state().game.hand).not.toBeNull();
+    await loaded();
+  }, 30_000);
+});
+
 describe('Stats in the app', () => {
   it('Home → Stats: the lazy screen, its empty state, and Back', async () => {
     // A later launch (a profile is stored): Home.

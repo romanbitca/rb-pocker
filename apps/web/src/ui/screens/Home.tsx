@@ -12,8 +12,11 @@
  * tab writes (a read-only tab has no drill: Home and Learn leave it out).
  *
  * The one-time card about installing (§12.11, §12.13, chunk 8.4) sits under the tiles.
+ *
+ * Under Play, "Work on: Pot odds" when Stats would show a leak (§12.1, 1.3.101): the screens chunk
+ * draws it (`workOn`, `WorkOnLine`), so the initial bundle carries neither the rule nor its words.
  */
-import { Fragment, useId } from 'react';
+import { Fragment, useId, type ReactNode } from 'react';
 import type { BotLevel, CoachLevel } from '../../engine/types.ts';
 import { enStart as en } from '../../i18n/start.ts';
 import { NudgeCard, type NudgeCardProps } from '../components/NudgeCard.tsx';
@@ -36,6 +39,8 @@ export interface HomeProps {
   session: SessionLine | null;
   /** Play: continue the session, else start a table with the last-used settings. */
   onPlay: () => void;
+  /** "Work on: Pot odds" (§12.1, from the screens chunk): one line under Play, or nothing. */
+  workOn?: ReactNode;
   /** "New table…" → Setup. */
   onNewTable: () => void;
   /** "Hand drill" (§13.5); hidden while absent (read-only tabs). */
@@ -67,6 +72,7 @@ export function sessionParts(s: SessionLine): string[] {
 export function Home({
   session,
   onPlay,
+  workOn,
   onNewTable,
   onOpenDrill,
   onOpenSettings,
@@ -122,6 +128,7 @@ export function Home({
                   ))}
                 </p>
               )}
+              {workOn}
             </div>
 
             <button type="button" className={styles.secondary} onClick={() => onNewTable()}>

@@ -15,9 +15,10 @@
  * - Chunk 8.4: the level suggestion card (§10.4) at the top of Progress, and History's footer
  *   [Export] [Import] (§14.4, the same commands as Settings → Data; the Data chunk loads when Stats
  *   opens, `DATA_SCREENS`, so Export's share sheet opens inside the tap).
- * - Each leak links to the lesson about it (§8.9, `LEAK_LESSON`): "Lesson 6: Pot odds" opens it
- *   in Learn over Stats (the `lesson` command, by number: Learn's lessons stay in its own chunk),
- *   and Back comes back to Progress.
+ * - The leaks lead Progress (1.3.101: what to work on comes before the numbers); with none yet the
+ *   numbers do. Each leak links to the lesson about it (§8.9, `LEAK_LESSON`): "Lesson 6: Pot odds"
+ *   opens it in Learn over Stats (the `lesson` command, by number: Learn's lessons stay in its own
+ *   chunk), and Back comes back to Progress.
  */
 import {
   memo,
@@ -340,11 +341,49 @@ function Empty({ hands }: { hands: number }) {
 // ---------------------------------------------------------------------------------------------
 // Pages
 
+/** The top 3 leaks with what they cost and the lesson about each (§8.9, §14.4). */
+function Leaks({ p, onLesson }: { p: ProgressView; onLesson: (n: LeakLesson) => void }) {
+  return (
+    <Section title={W.progress.leaks}>
+      {p.leaks.length === 0 ? (
+        <p style={S.text}>{W.progress.leaksNone}</p>
+      ) : (
+        <ol style={S.rows}>
+          {p.leaks.map((leak) => {
+            const lesson = LEAK_LESSON[leak.id];
+            return (
+              <li key={leak.id} data-leak={leak.id}>
+                <span style={S.strong}>{W.leaks[leak.id]}</span>
+                <br />
+                <span style={S.muted}>
+                  {W.progress.leakLine(formatChips(leak.count), formatChips(leak.chips))}
+                </span>
+                <button
+                  type="button"
+                  className={screen.link}
+                  style={S.lessonLink}
+                  onClick={() => onLesson(lesson)}
+                  data-leak-lesson={lesson}
+                >
+                  {W.progress.lessonLink(lesson, W.lessons[lesson])}
+                </button>
+              </li>
+            );
+          })}
+        </ol>
+      )}
+    </Section>
+  );
+}
+
 function Progress({ p, onLesson }: { p: ProgressView; onLesson: (n: LeakLesson) => void }) {
   const sessionLabel = p.score.last ? W.progress.lastSession : W.progress.session;
+  const hasLeaks = p.leaks.length > 0;
   return (
     <div style={S.page}>
       <LevelSuggestion />
+      {/* What to work on first (1.3.101); with no leak yet the numbers come first. */}
+      {hasLeaks && <Leaks p={p} onLesson={onLesson} />}
       <Section title={W.progress.score}>
         <p className={screen.hint}>{W.progress.scoreHint}</p>
         <Rows
@@ -401,35 +440,7 @@ function Progress({ p, onLesson }: { p: ProgressView; onLesson: (n: LeakLesson) 
         </p>
       </Section>
 
-      <Section title={W.progress.leaks}>
-        {p.leaks.length === 0 ? (
-          <p style={S.text}>{W.progress.leaksNone}</p>
-        ) : (
-          <ol style={S.rows}>
-            {p.leaks.map((leak) => {
-              const lesson = LEAK_LESSON[leak.id];
-              return (
-                <li key={leak.id} data-leak={leak.id}>
-                  <span style={S.strong}>{W.leaks[leak.id]}</span>
-                  <br />
-                  <span style={S.muted}>
-                    {W.progress.leakLine(formatChips(leak.count), formatChips(leak.chips))}
-                  </span>
-                  <button
-                    type="button"
-                    className={screen.link}
-                    style={S.lessonLink}
-                    onClick={() => onLesson(lesson)}
-                    data-leak-lesson={lesson}
-                  >
-                    {W.progress.lessonLink(lesson, W.lessons[lesson])}
-                  </button>
-                </li>
-              );
-            })}
-          </ol>
-        )}
-      </Section>
+      {!hasLeaks && <Leaks p={p} onLesson={onLesson} />}
 
       <div style={S.card}>
         <p style={S.text} data-stat="undo">

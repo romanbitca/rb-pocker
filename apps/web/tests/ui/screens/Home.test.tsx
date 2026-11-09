@@ -62,6 +62,35 @@ describe('Home', () => {
     ).toEqual(['Hand 1', '9 players', 'You have 1,000,000 chips', 'Expert bots', 'Exam coach']);
   });
 
+  it('the "Work on" line sits under Play and the session line, and never before Play', () => {
+    const { container, onPlay } = renderHome({
+      session: SESSION,
+      workOn: <button type="button">Work on: Pot odds</button>,
+    });
+    expect(screen.getAllByRole('button').map((b) => b.textContent)).toEqual([
+      'Play',
+      'Work on: Pot odds',
+      'New table…',
+      'Settings',
+    ]);
+    // Play is still the first thing on the page, one tap (§12.1).
+    expect(document.querySelector('button')?.textContent).toBe('Play');
+    const session = screen.getByText(/You have/);
+    const line = screen.getByRole('button', { name: 'Work on: Pot odds' });
+    expect(session.compareDocumentPosition(line) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Play' }));
+    expect(onPlay).toHaveBeenCalledTimes(1);
+    expect(container.querySelectorAll('[role="dialog"]')).toHaveLength(0);
+  });
+
+  it('a read-only tab has no "Work on" line, as it has no Play (§14.7)', () => {
+    renderHome({
+      workOn: <button type="button">Work on: Pot odds</button>,
+      onPlayHere: vi.fn(),
+    });
+    expect(screen.queryByRole('button', { name: 'Work on: Pot odds' })).toBeNull();
+  });
+
   it('has no session line without a session', () => {
     renderHome();
     expect(screen.queryByText(/You have/)).toBeNull();

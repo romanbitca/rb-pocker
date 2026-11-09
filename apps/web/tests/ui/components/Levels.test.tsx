@@ -22,11 +22,11 @@ import { categoryOf, score5 } from '../../../src/eval/evaluate.ts';
 import type { StripView } from '../../../src/ui/coach.ts';
 import { CoachStrip } from '../../../src/ui/components/CoachStrip.tsx';
 import { GRADE_CHIP_TEXT, GradeChip } from '../../../src/ui/components/GradeChip.tsx';
-import { netText, rowNotes, SummarySheet } from '../../../src/ui/components/HandSummary.tsx';
+import { netText, SummarySheet } from '../../../src/ui/components/HandSummary.tsx';
 import { QuizStrip, rightText } from '../../../src/ui/components/QuizStrip.tsx';
 import { ruleText, WhichHandWins } from '../../../src/ui/components/WhichHandWins.tsx';
 import type { PlayerAction } from '../../../src/engine/types.ts';
-import type { SummaryData, SummaryRow } from '../../../src/ui/summary.ts';
+import { rowNotes, type SummaryData, type SummaryRow } from '../../../src/ui/summary.ts';
 import { smallTargets } from '../screens/targets.ts';
 
 afterEach(cleanup);

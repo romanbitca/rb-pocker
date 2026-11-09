@@ -9,7 +9,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Toast } from '../../src/app/store.ts';
 import type { LegalActions, PlayerAction } from '../../src/engine/types.ts';
-import type { Profile, SessionState, Settings, Stats } from '../../src/persist/schema.ts';
+import type { HandRing, Profile, SessionState, Settings, Stats } from '../../src/persist/schema.ts';
 import { SESSION_IDLE_MS } from '../../src/persist/stats.ts';
 import { createSafeStorage, STORAGE_KEYS } from '../../src/persist/storage.ts';
 import { statsView } from '../../src/ui/stats.ts';
@@ -332,6 +332,11 @@ describe('Stats → History (§14.4)', () => {
     expect(s.review.selected).toBe(first);
     expect(s.review.hands.map((x) => x.handSeq)).toEqual([first]);
     expect(s.review.hands[0]?.end.heroNet).toBe(hands[0]?.result?.net[0]);
+    // With the hand's decisions, so Review can show them on their steps (§12.10).
+    const stored = (JSON.parse(backend.data.get(STORAGE_KEYS.hands) as string) as HandRing).hands;
+    expect(s.review.hands[0]?.decisions).toEqual(
+      stored.find((r) => r.handSeq === first)?.decisions,
+    );
 
     // A new hand makes the rows stale; asking again lists it.
     again.dispatch({ type: 'back' });

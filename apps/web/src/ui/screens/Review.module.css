@@ -89,7 +89,7 @@
   outline: none;
 }
 
-.allHands {
+.textButton {
   justify-self: end;
   min-width: var(--tap-min);
   min-height: var(--tap-min);
@@ -139,6 +139,34 @@
   align-self: start;
   padding-top: var(--space-4);
   text-align: left;
+}
+
+/* A hand with decisions: room for their rows, so the table keeps its size from step to step. */
+.storyDecisions {
+  min-height: 96px;
+}
+
+/* The hand summary's row on the hero's step (§12.9, §12.10): what you did and the grade chip side
+   by side, the notes under them. */
+.decision {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 2px var(--space-2);
+}
+.decision > :nth-child(3) {
+  flex-basis: 100%;
+}
+.landscape .decision {
+  justify-content: flex-start;
+}
+
+/* "Previous decision" and "Next decision": the two share the row, 8 px under the step buttons. */
+.jump {
+  flex: 1 1 0;
+  margin-top: var(--space-1);
+  padding: 0 var(--space-2);
 }
 
 .lineMain,
@@ -244,7 +272,7 @@
 .step:focus-visible,
 .play:focus-visible,
 .slider:focus-visible,
-.allHands:focus-visible,
+.textButton:focus-visible,
 .row:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;

@@ -88,12 +88,13 @@ interface RowProps {
   facts: HandFacts | null;
   /** The deal order of the first card (a second row continues the first). */
   start: number;
-  inButton?: boolean | undefined;
+  /** A smaller card than the felt's full width allows (`css.handInButton`, `css.handSide`). */
+  look?: CSSProperties | undefined;
 }
 
-const CardRow = memo(function CardRow({ cards, facts, start, inButton }: RowProps) {
+const CardRow = memo(function CardRow({ cards, facts, start, look }: RowProps) {
   return (
-    <span style={inButton === true ? css.handInButton : css.hand}>
+    <span style={look ?? css.hand}>
       {cards.map((card, i) => {
         const core = facts?.core.includes(card) ?? false;
         const counted = facts?.best5.includes(card) ?? false;
@@ -213,12 +214,12 @@ function Stage({ view, right, onOption }: StageProps) {
       return <CardRow cards={q.cards} facts={answered ? q.hand : null} start={0} />;
     case 'holdem':
       return (
-        <>
-          <p style={css.seat}>{W.table}</p>
-          <CardRow cards={q.board} facts={answered ? q.hand : null} start={0} />
-          <p style={css.seat}>{W.yourHand}</p>
-          <CardRow cards={q.hole} facts={answered ? q.hand : null} start={5} />
-        </>
+        <div style={css.seatRows}>
+          <p style={css.seatSide}>{W.table}</p>
+          <CardRow cards={q.board} facts={answered ? q.hand : null} start={0} look={css.handSide} />
+          <p style={css.seatSide}>{W.yourHand}</p>
+          <CardRow cards={q.hole} facts={answered ? q.hand : null} start={5} look={css.handSide} />
+        </div>
       );
     case 'showdown': {
       const tie = q.answer === 'split';
@@ -278,7 +279,7 @@ function Stage({ view, right, onOption }: StageProps) {
                   cards={q.cards[i] as readonly CardValue[]}
                   facts={answered ? facts : null}
                   start={i * 5}
-                  inButton
+                  look={css.handInButton}
                 />
                 {answered && <b>{W.answer.handLine(facts.name, facts.pos)}</b>}
               </button>
@@ -330,6 +331,30 @@ function Stage({ view, right, onOption }: StageProps) {
         </p>
       );
   }
+}
+
+/** A picker's heading. Once answered there is nothing to pick: only a screen reader hears it. */
+function PickerLabel({
+  id,
+  answered,
+  name,
+  note,
+}: {
+  id: string;
+  answered: boolean;
+  name: string;
+  note: string;
+}) {
+  return (
+    <p
+      id={id}
+      style={answered ? undefined : css.label}
+      className={answered ? screen.srOnly : undefined}
+    >
+      <span>{name}</span>
+      <span style={css.labelNote}>{note}</span>
+    </p>
+  );
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -574,7 +599,7 @@ export function DrillPage({ logic, Drawer }: DrillPageProps) {
   };
 
   return (
-    <div className={s.drill}>
+    <div className={s.drill} style={css.page}>
       <div style={css.tally}>
         <Counter
           label={W.streak}
@@ -684,10 +709,7 @@ export function DrillPage({ logic, Drawer }: DrillPageProps) {
 
       {showNames && (
         <section aria-labelledby={`${ids}-names`}>
-          <p style={css.label} id={`${ids}-names`}>
-            <span>{W.hand}</span>
-            <span style={css.labelNote}>{W.pickOne}</span>
-          </p>
+          <PickerLabel id={`${ids}-names`} answered={answered} name={W.hand} note={W.pickOne} />
           <div style={css.names}>
             {BY_NAME.map((p) => {
               const picked = view.picks.name === p;
@@ -713,10 +735,12 @@ export function DrillPage({ logic, Drawer }: DrillPageProps) {
 
       {showPositions && (
         <section aria-labelledby={`${ids}-positions`}>
-          <p style={css.label} id={`${ids}-positions`}>
-            <span>{W.position}</span>
-            <span style={css.labelNote}>{W.ladder}</span>
-          </p>
+          <PickerLabel
+            id={`${ids}-positions`}
+            answered={answered}
+            name={W.position}
+            note={W.ladder}
+          />
           <div style={css.chips}>
             {logic.POSITIONS.map((p) => {
               const picked = view.picks.position === p;

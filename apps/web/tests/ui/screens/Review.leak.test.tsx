@@ -15,7 +15,7 @@ import { replayStates } from '../../../src/engine/replay.ts';
 import type { HandState } from '../../../src/engine/types.ts';
 import { en } from '../../../src/i18n/en.ts';
 import { ReviewRoute } from '../../../src/ui/screens/Review.tsx';
-import { collectHands } from '../../app/reviewFixtures.ts';
+import { collectHands, withDecisions } from '../../app/reviewFixtures.ts';
 import { SUIT_CODE_POINTS } from '../dom.ts';
 
 beforeEach(() => {
@@ -64,6 +64,7 @@ function walk(hand: ReviewHand, tally: Tally): void {
   const { unmount } = render(<ReviewRoute />);
   const states = replayStates(hand.record);
   const next = screen.getByRole('button', { name: 'Next step' });
+  act(() => void fireEvent.click(screen.getByRole('button', { name: 'First step' }))); // a mistake opens the replay at it
   tally.hands++;
   states.forEach((h, i) => {
     tally.frames++;
@@ -153,6 +154,24 @@ describe('Review never shows a card that was not shown in the real hand', () => 
     for (const hand of collectHands(6, 'showdown', 6)) walk(hand, t);
     expect(t.faceUp).toBeGreaterThan(20);
     expect(t.hidden).toBeGreaterThan(100);
+  }, 120_000);
+
+  it('the hero`s decision rows on their steps add nothing hidden (1.3.101)', () => {
+    const t = tally();
+    for (const hand of collectHands(5, 'fold', 6)) {
+      walk(
+        withDecisions(hand, (n) => (n === 0 ? 'mistake' : 'good')),
+        t,
+      );
+    }
+    for (const hand of collectHands(3, 'showdown', 6)) {
+      walk(
+        withDecisions(hand, () => 'blunder'),
+        t,
+      );
+    }
+    expect(t.hidden).toBeGreaterThan(100);
+    expect(t.folded).toBeGreaterThan(30);
   }, 120_000);
 
   it('the same, with the list showing beside the replay (wide screens)', () => {

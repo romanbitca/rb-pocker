@@ -3,6 +3,7 @@
  * They load with the screen's lazy chunk (`ui/screens/Stats.tsx`, §15.3); the screen's loading and
  * failure lines are in `en.stats`. Numbers arrive formatted ("2,340", "+640", "45%").
  */
+import { en } from './en.ts';
 import { GRADE_WORDS } from './grades.ts';
 
 export const statsWords = {
@@ -75,17 +76,8 @@ export const statsWords = {
     sizing: 'Bet sizes too big or too small',
   },
 
-  /**
-   * The titles of the lessons the leaks link to (Appendix F.8; `LEAK_LESSON` in `ui/stats.ts`).
-   * Only these four, so the lessons themselves stay in Learn's chunk; a test keeps them equal to
-   * `data/lessons.ts`.
-   */
-  lessons: {
-    3: 'Your options',
-    5: 'Position',
-    6: 'Pot odds',
-    7: 'Outs',
-  },
+  /** The titles of the lessons the leaks link to (`en.ts`: Home's line uses them too). */
+  lessons: en.leakLessons,
 
   results: {
     hands: 'Hands',

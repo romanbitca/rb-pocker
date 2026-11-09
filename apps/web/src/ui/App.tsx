@@ -106,10 +106,12 @@ function HomeScreen() {
   const readOnly = useAppStore(selectReadOnly);
   const install = useAppStore(selectInstall);
   const nudge = useAppStore(selectNudge);
+  const { mod } = useScreens();
   return (
     <Home
       session={session}
       onPlay={() => dispatch({ type: 'play' })}
+      workOn={mod && <mod.WorkOnLine />}
       onNewTable={() => dispatch({ type: 'go', screen: 'setup' })}
       onOpenDrill={readOnly ? undefined : () => dispatch({ type: 'go', screen: 'drill' })}
       onOpenSettings={() => dispatch({ type: 'go', screen: 'settings' })}

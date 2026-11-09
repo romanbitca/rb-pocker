@@ -5,6 +5,10 @@
  *
  * The last frame shows the result as the hand-end banner worded it (`handEndLines`, §12.9) and the
  * hero's net, instead of the step's own events.
+ *
+ * The hero's decisions go on their steps (1.3.101): `decisionSteps` matches the records to the
+ * replay, `openingStep` picks where a replay opens, `jumpFrom` is "Next decision" and "Previous
+ * decision". What a decision says is the hand summary's row (`ui/summary.ts`, §12.9).
  */
 import type { ReviewEvent, ReviewFrame, ReviewReplay } from '../app/store.ts';
 import { cardAriaLabel } from '../core/cards.ts';
@@ -13,6 +17,7 @@ import { enReview } from '../i18n/review.ts';
 import { formatChips } from './format.ts';
 import { handEndLines } from './handEnd.ts';
 import { joinNames } from './names.ts';
+import { rowOf, type SummaryRow } from './summary.ts';
 
 const T = enReview.says;
 
@@ -80,4 +85,49 @@ export function frameLines(view: ReviewReplay, frame: ReviewFrame): string[] {
 /** "Start" on the deal, else "Step 7 of 23" (the deal is step 0). */
 export function stepLabel(index: number, last: number): string {
   return index === 0 ? enReview.steps.start : enReview.steps.of(index, last);
+}
+
+/** A hero decision on the replay: the frame it shows on, and its row of the hand summary. */
+export interface DecisionStep {
+  readonly index: number;
+  readonly row: SummaryRow;
+}
+
+/**
+ * The hero's decisions as steps of the replay, in order (§12.10). A decision's `decisionId` is the
+ * number of hero moves before it (§11.3 r1), so the n-th hero move of the replay is decision n and
+ * shows the record that stood. An Undo took its move out of the replay and left a step of its own
+ * (`reshuffle`, right after the moves before it): the record it took back shows there. A move
+ * without a record (a hand the app finished by itself, §3.1) gets no row.
+ */
+export function decisionSteps(view: ReviewReplay): DecisionStep[] {
+  const stood = new Map<number, SummaryRow>();
+  const undone = new Map<number, SummaryRow>();
+  for (const d of view.decisions) (d.undone ? undone : stood).set(d.decisionId, rowOf(d));
+  const steps: DecisionStep[] = [];
+  let moves = 0;
+  for (const frame of view.frames) {
+    for (const e of frame.events) {
+      const move = e.kind === 'act' && e.who.hero;
+      if (!move && e.kind !== 'reshuffle') continue;
+      const row = (move ? stood : undone).get(moves);
+      if (row !== undefined) steps.push({ index: frame.index, row });
+      if (move) moves++;
+    }
+  }
+  return steps;
+}
+
+/** Where a replay opens (§12.10): at the first mistake that stands, else at the deal. */
+export function openingStep(steps: readonly DecisionStep[]): number {
+  const mistake = steps.find(
+    ({ row }) => !row.undone && (row.grade === 'mistake' || row.grade === 'blunder'),
+  );
+  return mistake?.index ?? 0;
+}
+
+/** The frame of the next decision after `index` (`by` 1) or before it (-1), or null. */
+export function jumpFrom(steps: readonly DecisionStep[], index: number, by: 1 | -1): number | null {
+  const order = by === 1 ? steps : [...steps].reverse();
+  return order.find((step) => by * (step.index - index) > 0)?.index ?? null;
 }

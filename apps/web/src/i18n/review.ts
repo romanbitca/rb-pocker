@@ -35,6 +35,10 @@ export const enReview = {
     slider: 'Step',
     start: 'Start',
     of: (i: number, n: number) => `Step ${i} of ${n}`,
+    /** The two buttons that jump between the hero's decisions (1.3.101), and their group's name. */
+    decisions: 'Your decisions',
+    prevDecision: 'Previous decision',
+    nextDecision: 'Next decision',
   },
   /** What happened at a step, one short sentence each. */
   says: {

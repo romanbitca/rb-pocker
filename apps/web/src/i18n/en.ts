@@ -50,6 +50,20 @@ export const en = {
    */
   about: 'About',
 
+  /**
+   * The titles of the lessons the leaks link to (Appendix F.8; `LEAK_LESSON` in `ui/leaks.ts`).
+   * Only these four, so the lessons themselves stay in Learn's chunk; a test keeps them equal to
+   * `data/lessons.ts`. Here, not in `i18n/stats.ts`: Home's line uses them too (1.3.101).
+   */
+  leakLessons: {
+    3: 'Your options',
+    5: 'Position',
+    6: 'Pot odds',
+    7: 'Outs',
+  },
+  /** Home's line under Play (§12.1): the lesson about the biggest leak. */
+  workOn: (lesson: string) => `Work on: ${lesson}`,
+
   /** "Set up your table" (PLAN §12.2). Amounts arrive formatted ("2,000"). */
   setup: {
     title: 'Set up your table',
