@@ -49,6 +49,7 @@ Direct dependencies:
 | helmet | 8.3.0 | MIT | Evan Hahn, Adam Baldwin | https://github.com/helmetjs/helmet |
 | reflect-metadata | 0.2.2 | Apache-2.0 | Ron Buckton (Microsoft) | https://github.com/rbuckton/reflect-metadata |
 | rxjs | 7.8.2 | Apache-2.0 | Google, Inc., Netflix, Inc., Microsoft Corp. and contributors | https://github.com/ReactiveX/rxjs |
+| ws (the multiplayer socket, chunk 10.4) | 8.22.2 | MIT | Einar Otto Stangvik, Arnout Kazemier, Luigi Pinca and contributors | https://github.com/websockets/ws |
 
 The packages they install (93 more; list them with `npm ls --omit=dev --all -w @rb/server`):
 
@@ -104,6 +105,7 @@ strategy", Oracles).
 | @types/node | 24.19.0 | MIT |
 | @types/react, @types/react-dom | 19.3.0 | MIT |
 | @types/supertest | 7.2.1 | MIT |
+| @types/ws | 8.18.2 | MIT |
 | @vitejs/plugin-react | 6.1.1 | MIT |
 | @vitest/coverage-v8 | 5.0.2 | MIT |
 | eslint | 10.11.0 | MIT |

@@ -34,6 +34,24 @@ export const VOIDED_HANDS_TO_END = 2;
 
 // The limits of §19.4.
 
+/** After the socket opens; no `hello` by then closes it 4004. */
+export const HELLO_DEADLINE_MS = 5_000;
+/** No message in this long closes the socket 4009 (the client pings every 20 s). */
+export const SILENT_SOCKET_MS = 45_000;
+/** Messages per socket: a token bucket. */
+export const TOKEN_BUCKET_SIZE = 20;
+export const TOKEN_BUCKET_REFILL_PER_S = 5;
+/** Messages dropped by the bucket that close the socket 4008. */
+export const MAX_DROPS = 50;
+/** Undecodable messages on one socket that close it 4005. */
+export const MAX_BAD_MESSAGES = 3;
+/** `ws.bufferedAmount` over this closes the socket 1008. */
+export const MAX_OUTBOUND_BYTES = 262_144;
+/** Open sockets; one more upgrade is refused with 503. */
+export const MAX_SOCKETS = 1_000;
+/** How long the clients get to answer the close of a shutdown before they are cut off. */
+export const SHUTDOWN_GRACE_MS = 2_000;
+
 /** Tables open at once; more is `server_full`. */
 export const MAX_ROOMS = 200;
 /** `create` per user in `CREATE_WINDOW_MS`; more is `rate_limited`. */
