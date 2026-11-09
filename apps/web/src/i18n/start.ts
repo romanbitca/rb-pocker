@@ -46,6 +46,9 @@ export const enStart = {
     tryAgain: 'Try again',
   },
 
+  /** Welcome's and Home's button inside Telegram (§19.10): its other words are `i18n/mp.ts`. */
+  playWithFriends: 'Play with friends',
+
   /** First launch (PLAN §12.1). The wordmark and tagline are `app.name` and `app.tagline`. */
   welcome: {
     bullets: [

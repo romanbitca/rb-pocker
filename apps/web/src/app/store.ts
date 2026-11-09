@@ -39,7 +39,7 @@ import type {
 } from '../engine/types.ts';
 import { defaultSettings } from '../persist/schema.ts';
 import type { DecisionRecord, SessionSummary, Settings, Stats } from '../persist/schema.ts';
-import type { EndReason, Notice, SeatInfo, TableSettings, TableView } from '../net/protocol.ts';
+import type { EndReason, Notice, TableSettings, TableView } from '../net/protocol.ts';
 import type { ImportCheckProblem } from './dataTools.ts';
 import type { HistoryItem } from './history.ts';
 import type { Suggestion } from './suggestions.ts';
@@ -576,6 +576,10 @@ export interface MpSlice {
   turnEndsAt: number | null;
   /** When the next hand is dealt, in `performance.now()` time; null when none is on show. */
   nextHandEndsAt: number | null;
+  /** What the status strip says (the driver's chunk works it out: `turnOf`, `localView.ts`). */
+  turn: MpTurn | null;
+  /** Each local seat's note, seat 0 first (`notesOf`, `localView.ts`). */
+  notes: readonly (SeatNote | null)[];
 }
 
 export function initialMp(): MpSlice {
@@ -586,8 +590,12 @@ export function initialMp(): MpSlice {
     problem: null,
     turnEndsAt: null,
     nextHandEndsAt: null,
+    turn: null,
+    notes: NO_NOTES,
   };
 }
+
+const NO_NOTES: readonly (SeatNote | null)[] = [];
 
 /**
  * The player's settings: Appendix A.7 `Settings`, as stored in `pc.v1.profile` (chunk 3.2). The
@@ -661,6 +669,8 @@ export type UiCommand =
 export type MpCommand =
   /** "Create table". */
   | { type: 'mpCreateTable'; settings: TableSettings }
+  /** "Invite friends": Telegram's share list with the table's link and these words (§19.7). */
+  | { type: 'mpShareInvite'; text: string }
   /** The host's "Start game". */
   | { type: 'mpStartGame' }
   /** "I'm back" (the seat is sitting out). */
@@ -1226,20 +1236,6 @@ export const selectMpProblem = (s: AppState): MpProblem | null => s.mp.problem;
 /** Launched as a Telegram Mini App (§19.7): only then is Play with friends offered. */
 export const selectInTelegram = (s: AppState): boolean => s.tg.inside;
 
-/**
- * The real seats of a table in local order (§19.6): the ones with a player, clockwise from the
- * viewer, so local seat 0 is always the viewer and an empty seat does not exist.
- */
-export function seatOrder(view: Pick<TableView, 'seats' | 'you'>): number[] {
-  const count = view.seats.length;
-  const order: number[] = [];
-  for (let i = 0; i < count; i++) {
-    const real = (view.you + i) % count;
-    if (view.seats[real]) order.push(real);
-  }
-  return order;
-}
-
 /** What the status strip says (§19.10); `endsAt` is `performance.now()` time. */
 export type MpTurn =
   | { kind: 'you'; endsAt: number }
@@ -1247,48 +1243,13 @@ export type MpTurn =
   | { kind: 'nextHand'; endsAt: number }
   | { kind: 'notDealtIn' };
 
-function turnOf({ view, turnEndsAt, nextHandEndsAt }: MpSlice): MpTurn | null {
-  if (view === null) return null;
-  if (nextHandEndsAt !== null) return { kind: 'nextHand', endsAt: nextHandEndsAt };
-  if (view.hand !== null && view.hand.seats[view.you]?.dealtIn !== true) {
-    return { kind: 'notDealtIn' };
-  }
-  const seat = view.decision?.seat;
-  if (seat === undefined || turnEndsAt === null) return null;
-  if (seat === view.you) return { kind: 'you', endsAt: turnEndsAt };
-  return { kind: 'other', name: view.seats[seat]?.name ?? '', endsAt: turnEndsAt };
-}
-
-let turnFor: { mp: MpSlice; turn: MpTurn | null } | null = null;
-/** The strip's line; the same object until the `mp` slice changes. Null: nothing to say. */
-export const selectTurn = (s: AppState): MpTurn | null => {
-  if (turnFor?.mp !== s.mp) turnFor = { mp: s.mp, turn: turnOf(s.mp) };
-  return turnFor.turn;
-};
-
 /** A pod's note (§19.10). */
 export type SeatNote = 'offline' | 'out' | 'next';
 
-function noteOf(seat: SeatInfo | null | undefined): SeatNote | null {
-  if (!seat) return null;
-  if (!seat.online) return 'offline';
-  if (seat.status === 'sittingOut' || seat.status === 'busted' || seat.status === 'leaving') {
-    return 'out';
-  }
-  return seat.status === 'nextHand' ? 'next' : null;
-}
-
-const NO_NOTES: readonly (SeatNote | null)[] = [];
-let notesFor: { view: TableView; notes: readonly (SeatNote | null)[] } | null = null;
+/** The strip's line; the same object until the driver publishes again. Null: nothing to say. */
+export const selectTurn = (s: AppState): MpTurn | null => s.mp.turn;
 /** Each local seat's note, seat 0 first; the same array until the view changes. */
-export const selectSeatNotes = (s: AppState): readonly (SeatNote | null)[] => {
-  const { view } = s.mp;
-  if (view === null) return NO_NOTES;
-  if (notesFor?.view !== view) {
-    notesFor = { view, notes: seatOrder(view).map((real) => noteOf(view.seats[real])) };
-  }
-  return notesFor.notes;
-};
+export const selectSeatNotes = (s: AppState): readonly (SeatNote | null)[] => s.mp.notes;
 
 // ---------------------------------------------------------------------------------------------
 // Review (§12.10)

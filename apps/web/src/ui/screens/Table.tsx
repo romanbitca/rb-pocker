@@ -50,6 +50,13 @@
  * hides the hand rankings, S opens the hand summary and ? lists the keys (a lazy dialog). The tips
  * point at what they explain (`data-tip-anchor`), one at a time, once each, never before the hero's
  * cards are dealt and never over the tray and Row A (`data-action-area`).
+ *
+ * At a table of the server's (§19.6, `selectRemote`) the driver writes the `game` slice, and this
+ * screen is the same but for the places of the §19.6 table: the status strip (`TurnStrip`, from
+ * the lazy Play-with-friends chunk) in the coach's, a seat note and a time ring on the pods and no
+ * bot card, no "Next hand ›" and no links at the hand end (the next hand is the server's), "I'm
+ * back" instead of Row A while sitting out, and no coach sheet, tips or coach key. The coach's
+ * places go quiet by the data (`coachLevel: 'exam'`).
  */
 import {
   lazy,
@@ -86,10 +93,13 @@ import {
   selectPotView,
   selectQuiz,
   selectQuizAsking,
+  selectRemote,
+  selectSeatNotes,
   selectSeatViews,
   selectSummaryOffer,
   selectTableInfo,
   selectTip,
+  selectTurn,
   selectUndoButton,
   selectWinBadge,
   useAppStore,
@@ -129,6 +139,7 @@ import { BigMoveLine, PriceChip, WinBadge, type BadgePlacement } from '../compon
 import { bigMoveView, drawChipViews, priceChipView, useBadgeView } from '../equity.ts';
 import { betChips, formatChips } from '../format.ts';
 import { bannerLines, type BannerLine } from '../handEnd.ts';
+import type { TurnStripVariant } from '../components/TurnStrip.tsx';
 import { useElementSize, useMediaQuery } from '../hooks.ts';
 import {
   BET,
@@ -141,6 +152,7 @@ import {
   type TableLayout,
 } from '../layout/seats.ts';
 import { useHandsTabDot } from '../rankings.ts';
+import { useMpModule } from '../mpModule.ts';
 import { useNextKeys, useRowKeys, useShortcut, type PressRef } from '../shortcuts.ts';
 import { dueTip, TIP_DELAY_MS } from '../tips.ts';
 import styles from './Table.module.css';
@@ -170,7 +182,7 @@ function estimatedBox(exam: boolean): Size {
  * Wide at Exam (§12.5, 1.3.99): the smaller panel row. The settings' level, not the one in force,
  * so the row never changes between decisions.
  */
-const selectExamPanel = (s: AppState): boolean => s.settings.coachLevel === 'exam';
+const selectExamPanel = (s: AppState): boolean => s.settings.coachLevel === 'exam' || s.mp.active;
 
 // ---------------------------------------------------------------------------------------------
 // Top bar
@@ -254,7 +266,7 @@ const TopBar = memo(function TopBar({
  * overlay, which closes the `sheet` gate (no bot acts behind the card). The card itself is mounted
  * by `App` only while it is open, so this adds no DOM to the table.
  */
-const SeatsLayer = memo(function SeatsLayer({ geometry }: { geometry: TableGeometry }) {
+const BotSeats = memo(function BotSeats({ geometry }: { geometry: TableGeometry }) {
   const seats = useAppStore(selectSeatViews);
   const dispatch = useDispatch();
   const openBotCard = useCallback(
@@ -277,6 +289,50 @@ const SeatsLayer = memo(function SeatsLayer({ geometry }: { geometry: TableGeome
         );
       })}
     </>
+  );
+});
+
+/**
+ * The other players' pods at a table of the server's (§19.6): no bot card, a note ("Offline", "Out",
+ * "Next") when there is one, and the ring on the seat whose turn it is. The ring's time is read
+ * once per turn: a view that changes something else must not restart it.
+ */
+const RemoteSeats = memo(function RemoteSeats({ geometry }: { geometry: TableGeometry }) {
+  const seats = useAppStore(selectSeatViews);
+  const notes = useAppStore(selectSeatNotes);
+  const turn = useAppStore(selectTurn);
+  const { mod } = useMpModule();
+  const endsAt = turn?.kind === 'other' ? turn.endsAt : null;
+  const turnMs = useMemo(
+    () => (endsAt === null ? undefined : Math.max(0, endsAt - performance.now())),
+    [endsAt],
+  );
+  return (
+    <>
+      {seats.map((view, i) => {
+        const pod = geometry.pods[i];
+        const bet = geometry.bets[i];
+        if (pod === undefined || bet === undefined) return null;
+        const note = notes[view.seat] ?? null;
+        return (
+          <Seat
+            key={view.seat}
+            view={view}
+            place={{ pod, bet, inner: geometry.inner[i] ?? 'right' }}
+            note={note === null || mod === null ? null : mod.mpWords.seatNote[note]}
+            turnMs={view.toAct ? turnMs : undefined}
+          />
+        );
+      })}
+    </>
+  );
+});
+
+const SeatsLayer = memo(function SeatsLayer({ geometry }: { geometry: TableGeometry }) {
+  return useAppStore(selectRemote) ? (
+    <RemoteSeats geometry={geometry} />
+  ) : (
+    <BotSeats geometry={geometry} />
   );
 });
 
@@ -411,7 +467,9 @@ const EndLinks = memo(function EndLinks({
   const up = useAppStore(selectHandEndUp);
   const review = useReviewHand();
   const [summary, openSummary] = useSummaryButton();
-  if (!up) return null;
+  // A table of the server's has neither (§19.6): no Review, no summary.
+  const remote = useAppStore(selectRemote);
+  if (!up || remote) return null;
   return (
     <HandEndLinks
       onReview={review}
@@ -446,8 +504,15 @@ const TabSlot = memo(function TabSlot() {
   );
 });
 
+/** "Connection lost…" over the table (§19.10), at a table of the server's. */
+const ConnectionSlot = memo(function ConnectionSlot() {
+  const { mod } = useMpModule();
+  return mod === null ? null : <mod.ConnectionBanner />;
+});
+
 const TableArea = memo(function TableArea({ layout }: { layout: TableLayout }) {
   const boxRef = useRef<HTMLDivElement>(null);
+  const remote = useAppStore(selectRemote);
   const opponents = useAppStore((s) => selectTableInfo(s)?.opponents ?? 0);
   const exam = useAppStore(selectExamPanel);
   const fallback = useMemo(() => estimatedBox(exam), [exam]);
@@ -473,6 +538,7 @@ const TableArea = memo(function TableArea({ layout }: { layout: TableLayout }) {
         )}
       </div>
       {layout !== 'wide' && <TabSlot />}
+      {remote && <ConnectionSlot />}
     </div>
   );
 });
@@ -565,6 +631,7 @@ const HeroStrip = memo(function HeroStrip({
 }) {
   const hero = useAppStore(selectHeroView);
   const nuts = useAppStore(selectNuts);
+  const remote = useAppStore(selectRemote);
   return (
     <section className={styles.hero} aria-label={en.table.yourHand} data-tip-anchor="heroStrip">
       {hero !== null && (
@@ -595,7 +662,7 @@ const HeroStrip = memo(function HeroStrip({
           {/* Compact mode: the coach strip becomes a "Coach" pill here (§12.3). */}
           {layout === 'compact' && (
             <div className={styles.heroPill} data-tip-anchor="coachStrip">
-              <CoachSlot variant="pill" />
+              {remote ? <TurnSlot variant="pill" /> : <CoachSlot variant="pill" />}
             </div>
           )}
           {/* No Undo row in compact mode: the links take the strip's last row (§12.9). */}
@@ -660,6 +727,15 @@ const SideBanner = memo(function SideBanner() {
 
 // ---------------------------------------------------------------------------------------------
 // The coach (§10.2, §12.3, §12.5, §12.6)
+
+/**
+ * The coach's places at a table of the server's (§19.6): the status strip says whose turn it is
+ * and the seconds left. It comes with the lazy Play-with-friends chunk.
+ */
+const TurnSlot = memo(function TurnSlot({ variant }: { variant: TurnStripVariant }) {
+  const { mod } = useMpModule();
+  return mod === null ? null : <mod.TurnStrip variant={variant} />;
+});
 
 /** "Use coach size" (§12.6): the action area puts its handler here for the sheet and the panels. */
 type CoachSizeRef = MutableRefObject<(() => void) | null>;
@@ -827,7 +903,9 @@ const CoachSlot = memo(function CoachSlot({
  */
 const SideCoach = memo(function SideCoach() {
   const trayOpen = useAppStore(selectOverlayOpen('tray'));
+  const remote = useAppStore(selectRemote);
   if (trayOpen) return null;
+  if (remote) return <TurnSlot variant="side" />;
   return (
     <div className={styles.sideCoach} data-tip-anchor="coachStrip" data-tip-side="left">
       <UndoSlot className={styles.stripUndo} />
@@ -848,6 +926,18 @@ const PanelResult = memo(function PanelResult() {
     <div className={styles.panelResult}>
       <HandEndBanner lines={lines} panel className={styles.panelWords} />
       <EndLinks place="panel" />
+    </div>
+  );
+});
+
+/** The wide panel at a table of the server's (§19.6): the strip and, at the hand end, the result. */
+const RemotePanel = memo(function RemotePanel() {
+  return (
+    <div className={styles.coachBox}>
+      <div className={styles.coachPanel} data-hand-panel="">
+        <TurnSlot variant="panel" />
+        <PanelResult />
+      </div>
     </div>
   );
 });
@@ -989,6 +1079,18 @@ const NO_HAND: ActionBarInputData = {
   amounts: 'chips',
 };
 
+/** A table of the server's (§19.10): after two timeouts the viewer's seat sits out. */
+const selectSittingOut = (s: AppState): boolean => {
+  const view = s.mp.view;
+  return view?.seats[view.you]?.status === 'sittingOut';
+};
+
+/** "You are sitting out." and "I'm back", in Row A's place. */
+const SittingOutSlot = memo(function SittingOutSlot({ column }: { column: boolean }) {
+  const { mod } = useMpModule();
+  return mod === null ? null : <mod.SittingOut column={column} />;
+});
+
 /**
  * The tray and Row A share `useSizing` (§12.7). The tray is also the `tray` overlay of the
  * navigation model, so Android Back closes it before anything else (§12.1, Stage 3 acceptance 8):
@@ -1005,6 +1107,8 @@ const ActionArea = memo(function ActionArea({
   const input = useAppStore(selectActionBarInput);
   // The Advanced quiz asks (§10.3): Row A waits, its buttons say why when tapped.
   const quizAsking = useAppStore(selectQuizAsking);
+  // A table of the server's (§19.6): the next hand is the server's.
+  const remote = useAppStore(selectRemote);
   // The hero has folded: the middle button finishes the hand at Instant speed (§12.7, 1.3.99).
   const canSkip = useAppStore(selectCanSkip);
   const view = useMemo(() => {
@@ -1013,7 +1117,7 @@ const ActionArea = memo(function ActionArea({
     return canSkip ? skipView(bar) : bar;
   }, [input, quizAsking, canSkip]);
   // The hand is over: Row A is one big "Next hand ›" (§12.7, §12.9; 1.3.99).
-  const ended = useAppStore(selectHandEndUp);
+  const ended = useAppStore(selectHandEndUp) && !remote;
   const onNext = useCallback(() => dispatch({ type: 'nextHand' }), [dispatch]);
   const onSkip = useCallback(() => dispatch({ type: 'skipHand' }), [dispatch]);
   // The coach's advice while on show: the ring on Row A, the tray's start and its coach chip.
@@ -1076,6 +1180,7 @@ const ActionArea = memo(function ActionArea({
   // Enter and Space at the hand end (§12.5, 1.3.99), through the same tap handler and its guard.
   useNextKeys(ended ? () => press.current?.('next') : null);
   const placement = layout === 'landscape' ? 'panel' : layout === 'compact' ? 'overlay' : 'inline';
+  const sittingOut = useAppStore(selectSittingOut);
   return (
     <div className={styles.actions} data-action-area="">
       {/* Compact mode has no strip: the quiz sits over the bottom of the table, as the tray. */}
@@ -1098,20 +1203,24 @@ const ActionArea = memo(function ActionArea({
           }
         />
       )}
-      <ActionBar
-        view={view}
-        trayOpen={trayOpen}
-        amount={sizing.amount}
-        trayId={trayId}
-        onAct={act}
-        onOpenTray={openTray}
-        onCloseTray={closeTray}
-        recommended={advice.ring}
-        layout={layout === 'landscape' ? 'column' : 'row'}
-        onNext={ended ? onNext : null}
-        onSkip={canSkip ? onSkip : null}
-        pressRef={press}
-      />
+      {sittingOut ? (
+        <SittingOutSlot column={layout === 'landscape'} />
+      ) : (
+        <ActionBar
+          view={view}
+          trayOpen={trayOpen}
+          amount={sizing.amount}
+          trayId={trayId}
+          onAct={act}
+          onOpenTray={openTray}
+          onCloseTray={closeTray}
+          recommended={advice.ring}
+          layout={layout === 'landscape' ? 'column' : 'row'}
+          onNext={ended ? onNext : null}
+          onSkip={canSkip ? onSkip : null}
+          pressRef={press}
+        />
+      )}
     </div>
   );
 });
@@ -1147,6 +1256,7 @@ const DrawerHost = memo(function DrawerHost({
   const rules = LEVEL_RULES[useAppStore(selectCoachLevel)];
   const collected = useAppStore(selectCollected);
   const onOpenChange = useCallback((next: boolean) => setOpen(next), [setOpen]);
+  const remote = useAppStore(selectRemote);
   return (
     <div className={styles.drawerHost}>
       <RankingsDrawer
@@ -1158,7 +1268,7 @@ const DrawerHost = memo(function DrawerHost({
         whichWins={rules.whichWins}
         collected={collected}
       />
-      <CoachSheetHost tall={layout === 'landscape'} coachSize={coachSize} />
+      {!remote && <CoachSheetHost tall={layout === 'landscape'} coachSize={coachSize} />}
     </div>
   );
 });
@@ -1445,11 +1555,14 @@ export function Table() {
   }, [wide, drawerOpen, setDrawerOpen, coachOpen, setCoachOpen]);
 
   // The coach's words and sheet: a lazy chunk, asked for now, long before the first hint; the
-  // hand summary's too (§12.9), and the quiz's when the level is Advanced (§10.3).
+  // hand summary's too (§12.9), and the quiz's when the level is Advanced (§10.3). A table of the
+  // server's has neither (§19.6).
+  const remote = useAppStore(selectRemote);
   useEffect(() => {
+    if (remote) return;
     void loadCoach().catch(() => {});
     void loadSummary().catch(() => {});
-  }, []);
+  }, [remote]);
   const quizLevel = LEVEL_RULES[useAppStore(selectCoachLevel)].quiz;
   useEffect(() => {
     if (quizLevel) void loadQuiz().catch(() => {});
@@ -1488,12 +1601,18 @@ export function Table() {
           <HeroStrip layout={layout} onOpenRankings={openRankings} />
           {layout === 'portrait' && (
             <div className={styles.coach} data-tip-anchor="coachStrip">
-              <UndoSlot className={styles.stripUndo} />
-              <CoachSlot variant="strip" />
-              <EndLinks className={styles.stripLinks} />
+              {remote ? (
+                <TurnSlot variant="strip" />
+              ) : (
+                <>
+                  <UndoSlot className={styles.stripUndo} />
+                  <CoachSlot variant="strip" />
+                  <EndLinks className={styles.stripLinks} />
+                </>
+              )}
             </div>
           )}
-          {wide && <CoachPanel coachSize={coachSize} />}
+          {wide && (remote ? <RemotePanel /> : <CoachPanel coachSize={coachSize} />)}
           <ActionArea layout={layout} coachSize={coachSize} />
         </>
       )}
@@ -1504,9 +1623,9 @@ export function Table() {
       )}
       <FeedbackLayer />
       <SummaryLayer />
-      <TipLayer />
+      {!remote && <TipLayer />}
       <ShortcutsLayer />
-      <CoachKey layout={layout} />
+      {!remote && <CoachKey layout={layout} />}
       <TableKeys onToggleHands={toggleHands} />
     </main>
   );

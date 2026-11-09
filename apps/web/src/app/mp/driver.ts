@@ -39,7 +39,7 @@ import {
   type MpSlice,
   type Toast,
 } from '../store.ts';
-import { localView } from './localView.ts';
+import { localView, notesOf, turnOf } from './localView.ts';
 import { MpSocket, type WebSocketLike } from './socket.ts';
 
 export interface MpDriverOptions {
@@ -61,6 +61,8 @@ export interface MpDriverOptions {
   random?: () => number;
   /** Telegram asks before closing while a table is on (`shell.confirmClosing`, §19.7). */
   confirmClosing?: (need: boolean) => void;
+  /** Telegram's own share list (`shell.shareInvite`, §19.7). */
+  shareInvite?: (url: string, text: string) => void;
 }
 
 type Intent = { kind: 'create'; settings: TableSettings } | { kind: 'join'; code: string };
@@ -126,6 +128,8 @@ export class MpDriver {
   /** At launch, inside Telegram. Does nothing at all for a player who only plays alone. */
   launch(): void {
     const { startParam } = this.o.launch;
+    // Play with friends was tapped before this chunk had loaded: `onStore` could not see it.
+    if (this.store.getState().ui.screen === 'mpCreate') this.ensureSocket();
     if (startParam !== null && TABLE_CODE_RE.test(startParam)) {
       this.intent = { kind: 'join', code: startParam };
       this.dispatch({ type: 'go', screen: 'mpRoom' }); // "Joining the table…"
@@ -170,6 +174,9 @@ export class MpDriver {
     switch (cmd.type) {
       case 'mpCreateTable':
         this.create(cmd.settings);
+        return true;
+      case 'mpShareInvite':
+        if (this.view !== null) this.o.shareInvite?.(this.view.invite, cmd.text);
         return true;
       case 'mpStartGame':
         this.socket?.send({ t: 'start' });
@@ -511,9 +518,11 @@ export class MpDriver {
         : old?.nextHandAt === nextHandAt && mp.nextHandEndsAt !== null
           ? mp.nextHandEndsAt
           : now + (nextHandAt - view.now);
+    const turn = turnOf(view, turnEndsAt, nextHandEndsAt);
+    const notes = old === view ? mp.notes : notesOf(view);
     this.store.setState((s) => ({
       game: { ...local, legal: locked ? null : local.legal, diag: s.game.diag },
-      mp: { ...s.mp, active: true, view, turnEndsAt, nextHandEndsAt },
+      mp: { ...s.mp, active: true, view, turnEndsAt, nextHandEndsAt, turn, notes },
     }));
   }
 

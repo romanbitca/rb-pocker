@@ -18,6 +18,8 @@ import styles from './Screen.module.css';
 export interface WelcomeProps {
   /** Play: start a table at once with the defaults. Called synchronously from the tap. */
   onPlay: () => void;
+  /** "Play with friends" (§19.10): given only inside Telegram. */
+  onPlayWithFriends?: (() => void) | undefined;
   /** "Choose players, chips and levels" → Setup. */
   onSetup: () => void;
   /** "New to poker? 1-minute guide" → Learn lesson 1. Hidden while absent (Learn comes later). */
@@ -28,7 +30,14 @@ export interface WelcomeProps {
   nudge?: NudgeCardProps | undefined;
 }
 
-export function Welcome({ onPlay, onSetup, onOpenGuide, onOpenPrivacy, nudge }: WelcomeProps) {
+export function Welcome({
+  onPlay,
+  onPlayWithFriends,
+  onSetup,
+  onOpenGuide,
+  onOpenPrivacy,
+  nudge,
+}: WelcomeProps) {
   return (
     <main className={`${styles.page} ${styles.felt}`}>
       <div className={styles.column}>
@@ -50,6 +59,11 @@ export function Welcome({ onPlay, onSetup, onOpenGuide, onOpenPrivacy, nudge }: 
           <button type="button" className={styles.primary} onClick={() => onPlay()}>
             {en.welcome.play}
           </button>
+          {onPlayWithFriends && (
+            <button type="button" className={styles.secondary} onClick={() => onPlayWithFriends()}>
+              {en.playWithFriends}
+            </button>
+          )}
           <button type="button" className={styles.link} onClick={() => onSetup()}>
             {en.welcome.setup}
           </button>

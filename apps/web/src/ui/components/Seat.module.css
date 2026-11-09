@@ -75,6 +75,56 @@ button.pod {
   border-color: var(--accent);
 }
 
+/* The ring round the avatar that runs down the seat's time (§19.10): two half rings, each turned
+   out of its clipping half in turn, so only `transform` moves (§12.8). */
+.ring {
+  position: absolute;
+  top: -4px;
+  left: 10px;
+  width: 44px;
+  height: 44px;
+}
+.ring i {
+  position: absolute;
+  left: 50%;
+  width: 50%;
+  height: 100%;
+  overflow: hidden;
+  transform-origin: 0 50%;
+}
+.ring i + i {
+  transform: rotate(180deg);
+}
+.ring i::before {
+  content: '';
+  position: absolute;
+  left: -100%;
+  width: 200%;
+  height: 100%;
+  box-sizing: border-box;
+  border: 3px solid transparent;
+  border-color: var(--accent) var(--accent) transparent transparent;
+  border-radius: 50%;
+  transform: rotate(45deg);
+  animation: run-down calc(var(--turn-ms) / 2) linear both;
+}
+.ring i + i::before {
+  animation-delay: calc(var(--turn-ms) / 2);
+}
+@keyframes run-down {
+  to {
+    transform: rotate(225deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  :root:not([data-motion='full']) .ring i::before {
+    animation: none;
+  }
+}
+:root[data-motion='reduced'] .ring i::before {
+  animation: none;
+}
+
 .name,
 .stack {
   position: absolute;

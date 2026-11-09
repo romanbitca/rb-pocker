@@ -17,7 +17,9 @@
  * - the initial JS and the CSS are within the CI budgets (`scripts/size-budget.ts`);
  * - About (chunk 9.2c) is a chunk of its own, asked for by the screens chunk only, and the built
  *   game holds code from no npm package that About's licence list (`data/licences.ts`) leaves out;
- * - of Telegram's code (§19.7) only `app/tg/launch.ts` is initial, the rest is one lazy chunk.
+ * - of Telegram's code (§19.7) only `app/tg/launch.ts` is initial, the rest is one lazy chunk;
+ * - Play with friends (§19.3): the driver is in Telegram's chunk, the screens and words in a lazy
+ *   chunk of their own, and the first paint has one word of it.
  */
 import { readFileSync } from 'node:fs';
 import { build, type Plugin } from 'vite';
@@ -26,6 +28,7 @@ import { BUDGETS, measureBudgets, type Row } from '../../scripts/size-budget.ts'
 import { SHIPPED_PACKAGES } from '../../src/data/licences.ts';
 import { MP_WS_PATH } from '../../src/net/protocol.ts';
 import { en } from '../../src/i18n/en.ts';
+import { mpWords } from '../../src/i18n/mp.ts';
 import { enStart } from '../../src/i18n/start.ts';
 import { LEARN_MARKER } from '../../src/ui/screens/learnMarker.ts';
 import { REVIEW_MARKER } from '../../src/ui/screens/reviewMarker.ts';
@@ -369,7 +372,7 @@ describe('Telegram in the production build (§19.7, Stage 10 acceptance 14)', ()
   });
 });
 
-describe('Play with friends in the production build (§19.3, chunk 10.8)', () => {
+describe('Play with friends in the production build (§19.3, chunks 10.8 and 10.9)', () => {
   it('no module of §19.3 is in an initial chunk: the store knows them only by their types', () => {
     const initial = rowOf('Initial JS').files;
     const modules = [
@@ -377,15 +380,61 @@ describe('Play with friends in the production build (§19.3, chunk 10.8)', () =>
       'src/app/mp/localView.ts',
       'src/app/mp/driver.ts',
       'src/net/protocol.ts',
-      'src/engine/project.ts',
+      'src/i18n/mp.ts',
+      'src/ui/mpEntry.tsx',
+      'src/ui/components/TurnStrip.tsx',
     ];
-    for (const source of modules) {
-      // A module nothing imports yet (the Telegram entry comes with chunk 10.9) is in no chunk.
-      const file = chunkOf.get(source);
-      if (file !== undefined) expect(initial, source).not.toContain(file);
-    }
+    for (const source of modules) expect(initial, source).not.toContain(chunk(source));
+    // Only the server reads this one: the game's own bundle does not hold it at all.
+    expect(chunkOf.get('src/engine/project.ts')).toBeUndefined();
     // Whatever reaches the first paint at run time would bring the protocol's path with it.
     for (const file of initial) expect(text(file), file).not.toContain(MP_WS_PATH);
+  });
+
+  it('the driver travels with the chunk only a launch inside Telegram asks for', () => {
+    const start = chunk('src/app/tg/start.ts');
+    for (const source of ['src/app/mp/driver.ts', 'src/app/mp/socket.ts']) {
+      expect(chunk(source), source).toBe(start);
+    }
+    expectOnlyDynamicImports(start);
+    expect(rowOf('Total precache').files).toContain(start);
+  });
+
+  it('the screens and words are one lazy chunk: by import(), precached, never initial', () => {
+    const initial = rowOf('Initial JS').files;
+    const mp = chunk('src/ui/mpEntry.tsx');
+    expect(mp).toMatch(/^assets\/mpEntry-[\w-]+\.js$/);
+    for (const source of [
+      'src/i18n/mp.ts',
+      'src/ui/components/TurnStrip.tsx',
+      'src/ui/screens/mp/Create.tsx',
+      'src/ui/screens/mp/WaitingRoom.tsx',
+      'src/ui/screens/mp/Dialogs.tsx',
+      'src/ui/screens/mp/TableParts.tsx',
+    ]) {
+      expect(chunk(source), source).toBe(mp);
+    }
+    expect(initial).not.toContain(mp);
+    expect(rowOf('Total precache').files).toContain(mp);
+    // Its words travel with it; none is in a file that a page outside Telegram must load.
+    for (const word of [mpWords.joining, mpWords.leave.text, mpWords.strip.notDealtIn]) {
+      expect(text(mp), word).toContain(word);
+      for (const file of initial) expect(text(file), word).not.toContain(word);
+    }
+    // Only the loader asks for it, and only through import(); the loader is not initial either.
+    const loader = chunk('src/ui/mpModule.ts');
+    expect(initial).not.toContain(loader);
+    const name = mp.slice('assets/'.length).replace('.', '\\.');
+    expect(text(loader)).toMatch(new RegExp(`import\\(\\s*["'\`]\\./${name}["'\`]`));
+    expect(text(loader)).not.toMatch(new RegExp(`(?:from|import)\\s*["']\\./${name}["']`));
+  });
+
+  it('the first paint has only its one word (§19.10) and stays one file', () => {
+    const initial = rowOf('Initial JS').files;
+    expect(initial.some((file) => text(file).includes(enStart.playWithFriends))).toBe(true);
+    // The lazy chunk importing `Notices.tsx` once split these out of the entry (`ui/mpNotices.ts`).
+    expect(chunk('src/i18n/start.ts')).toBe(chunk('src/main.tsx'));
+    expect(chunk('src/ui/components/Notices.tsx')).toBe(chunk('src/main.tsx'));
   });
 });
 

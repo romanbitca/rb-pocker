@@ -16,25 +16,33 @@ export interface OutOfChipsDialogProps {
   onTopUp: () => void;
   /** → Setup; the old table's session ends (`{ type: 'replace', screen: 'setup' }`). */
   onChangeTable: () => void;
+  /** A table of the server's (§19.6, §19.10): its words ("Get 2,000 chips", "Leave table"). */
+  words?: { text: string; reload: string; change: string } | undefined;
 }
 
 /**
  * "You're out of chips. That's okay: chips are free here." It cannot be dismissed: no Esc, no
  * scrim. Back leaves the Table for Home (the navigation reducer), and Home's Play opens it again.
  */
-export function OutOfChipsDialog({ startingStack, onTopUp, onChangeTable }: OutOfChipsDialogProps) {
+export function OutOfChipsDialog({
+  startingStack,
+  onTopUp,
+  onChangeTable,
+  words,
+}: OutOfChipsDialogProps) {
   const textId = useId();
+  const t = en.dialog.outOfChips;
   return (
     <Modal kind="dialog" alert labelledBy={textId}>
       <p id={textId} className={o.text}>
-        {en.dialog.outOfChips.text}
+        {words?.text ?? t.text}
       </p>
       <div className={o.buttons}>
         <button type="button" className={styles.primary} onClick={() => onTopUp()}>
-          {en.dialog.outOfChips.reload(formatChips(startingStack))}
+          {words?.reload ?? t.reload(formatChips(startingStack))}
         </button>
         <button type="button" className={styles.secondary} onClick={() => onChangeTable()}>
-          {en.dialog.outOfChips.changeTable}
+          {words?.change ?? t.changeTable}
         </button>
       </div>
     </Modal>

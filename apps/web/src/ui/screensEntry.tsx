@@ -10,8 +10,9 @@
  * (§12.1); the service worker precaches it like every chunk, so it also loads offline. About's own
  * page is one more chunk, asked for when About first opens (`ui/aboutModule.ts`, chunk 9.2c).
  */
-import { useCallback } from 'react';
+import { useCallback, type ReactNode } from 'react';
 import {
+  appStore,
   missingFeatures,
   secureFeatures,
   selectCanTopUp,
@@ -22,6 +23,7 @@ import {
   selectInstall,
   selectLayout,
   selectPersisted,
+  selectRemote,
   selectReviewCount,
   useAppStore,
   useAppStoreShallow,
@@ -35,10 +37,12 @@ import { RankingsDrawer } from './components/RankingsDrawer.tsx';
 import { useDrillChunks } from './drillModule.ts';
 import { useMediaQuery } from './hooks.ts';
 import { workOnLesson } from './leaks.ts';
+import { loadMp, useMpModule, type MpModule } from './mpModule.ts';
 import { ImportDialog, ResetDialog } from './screens/DataDialogs.tsx';
 import { NewTableDialog, OutOfChipsDialog } from './screens/Dialogs.tsx';
 import { wakeLockSupport, type DisplayAndSoundSettings } from './screens/DisplayAndSound.tsx';
 import { Menu } from './screens/Menu.tsx';
+import { formatChips } from './screens/numbers.ts';
 import { ScreenBar } from './screens/ScreenBar.tsx';
 import screen from './screens/Screen.module.css';
 import { Settings } from './screens/Settings.tsx';
@@ -68,6 +72,10 @@ export function WorkOnLine() {
     </button>
   );
 }
+
+// Inside Telegram its screens are wanted soon (a tap, an invite, a table to return to), so they
+// load now, as this chunk does; outside Telegram they are never asked for (§19.3).
+if (appStore.getState().tg.inside) void loadMp().catch(() => {});
 
 // ---------------------------------------------------------------------------------------------
 // Screens
@@ -249,10 +257,108 @@ export function PrivacyScreen() {
   return <AboutPage at="privacy" />;
 }
 
+/**
+ * A screen of Play with friends over its lazy chunk (§19.3, `mpModule.ts`): at once when the chunk
+ * is there, else "Loading…" after half a second, as for the screens of this chunk. If it cannot
+ * load: the line, Try again (a reload) and Back.
+ */
+function MpPage({ show }: { show: (mod: MpModule) => ReactNode }) {
+  const dispatch = useDispatch();
+  const { mod, failed } = useMpModule();
+  if (mod !== null) return show(mod);
+  return (
+    <main className={screen.page}>
+      {failed ? (
+        <>
+          <h1 className={screen.title}>{en.screens.loadFailed}</h1>
+          <button type="button" className={screen.primary} onClick={() => window.location.reload()}>
+            {en.screens.tryAgain}
+          </button>
+          <button
+            type="button"
+            className={screen.secondary}
+            onClick={() => dispatch({ type: 'back' })}
+          >
+            {en.back}
+          </button>
+        </>
+      ) : (
+        <h1 className={`${screen.title} ${screen.later}`}>{en.screens.loading}</h1>
+      )}
+    </main>
+  );
+}
+
+/** "New table" (§19.10), only inside Telegram. */
+export function MpCreateScreen() {
+  return <MpPage show={(mod) => <mod.Create />} />;
+}
+
+/** "Joining the table…", then the waiting room (§19.10). */
+export function MpRoomScreen() {
+  return <MpPage show={(mod) => <mod.WaitingRoom />} />;
+}
+
 // ---------------------------------------------------------------------------------------------
 // Overlays (the rankings drawer and the sizing tray belong to the Table)
 
+/** A dialog of Play with friends: nothing until its chunk is there. */
+function MpOverlay({ show }: { show: (mod: MpModule) => ReactNode }) {
+  const { mod } = useMpModule();
+  return mod === null ? null : show(mod);
+}
+
+/** "Leave this table?" (§19.10). */
+export function MpLeaveOverlay() {
+  return <MpOverlay show={(mod) => <mod.LeaveDialog />} />;
+}
+
+/** A table that ended, a join that failed… (§19.10): only its own buttons close it. */
+export function MpProblemOverlay() {
+  return <MpOverlay show={(mod) => <mod.ProblemDialog />} />;
+}
+
+/** The Menu at a table of the server's (§19.6): Resume, Hand rankings, Sound, Leave table. */
+function RemoteMenu() {
+  const dispatch = useDispatch();
+  const wide = useAppStore((s) => selectLayout(s) === 'wide');
+  const compact = useTableLayout() === 'compact';
+  const soundOn = useAppStore((s) => s.settings.sound);
+  const close = () => dispatch({ type: 'close', overlay: 'menu' });
+  return (
+    <Menu
+      onResume={close}
+      topUpTo={null}
+      onTopUp={close}
+      onOpenRankings={() => {
+        close();
+        if (wide) dispatch({ type: 'settings', patch: { handsPanel: 'open' } });
+        else dispatch({ type: 'open', overlay: 'rankings' });
+      }}
+      onLeaveTable={() => {
+        close();
+        dispatch({ type: 'open', overlay: 'mpLeave' });
+      }}
+      sound={
+        compact
+          ? {
+              on: soundOn,
+              onToggle: () => {
+                dispatch({ type: 'settings', patch: { sound: !soundOn } });
+                close();
+              },
+            }
+          : undefined
+      }
+    />
+  );
+}
+
 export function MenuOverlay() {
+  return useAppStore(selectRemote) ? <RemoteMenu /> : <LocalMenu />;
+}
+
+function LocalMenu() {
   const dispatch = useDispatch();
   const canTopUp = useAppStore(selectCanTopUp);
   const startingStack = useAppStore((s) => selectCurrentTable(s)?.config.startingStack ?? null);
@@ -319,6 +425,27 @@ export function MenuOverlay() {
 }
 
 export function OutOfChipsOverlay() {
+  return useAppStore(selectRemote) ? <RemoteOutOfChips /> : <LocalOutOfChips />;
+}
+
+/** §19.10 Busted: "Get {x} chips" and "Leave table"; the table goes on behind it. */
+function RemoteOutOfChips() {
+  const dispatch = useDispatch();
+  const startingStack = useAppStore((s) => selectCurrentTable(s)?.config.startingStack ?? 0);
+  const { mod } = useMpModule();
+  if (mod === null) return null;
+  const t = mod.mpWords.busted;
+  return (
+    <OutOfChipsDialog
+      startingStack={startingStack}
+      onTopUp={() => dispatch({ type: 'reload' })}
+      onChangeTable={() => dispatch({ type: 'changeTable' })}
+      words={{ text: t.text, reload: t.reload(formatChips(startingStack)), change: t.leave }}
+    />
+  );
+}
+
+function LocalOutOfChips() {
   const dispatch = useDispatch();
   const startingStack = useAppStore((s) => selectCurrentTable(s)?.config.startingStack ?? 0);
   return (

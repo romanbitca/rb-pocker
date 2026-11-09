@@ -51,6 +51,8 @@ export interface SeatView {
   /** Engine seat index, 1..8. */
   readonly seat: number;
   readonly name: string;
+  /** A bot, not a person at a table of the server's (§19.6): the label says "bot" only then. */
+  readonly bot: boolean;
   /** The personality badge; `null` hides it (it shows only at Easy and Medium, §12.4). */
   readonly personality: SeatPersonality | null;
   readonly stack: number;
