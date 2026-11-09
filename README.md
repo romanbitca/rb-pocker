@@ -100,8 +100,9 @@ Only you can do steps 1 to 4, and only once. After that, every push to `main` de
    that points to the Coolify server's IP address. Ports 80 and 443 must be open on the server.
    The proxy (Traefik, the default) then gets a free Let's Encrypt certificate by itself. Turn
    **Force HTTPS** on (check it: its default is not confirmed).
-4. **Environment.** Add one variable: `NODE_ENV` = `production` (runtime). Nothing else; the app
-   has no secrets. Leave **Include Source Commit in Build** off, so the build cache keeps working.
+4. **Environment.** Add one variable: `NODE_ENV` = `production` (runtime). Nothing else for now;
+   the [Telegram steps](#telegram-steps-for-the-owner) add three more, and the bot token is the
+   only secret. Leave **Include Source Commit in Build** off, so the build cache keeps working.
    The app still reports the commit: it reads `SOURCE_COMMIT`, which Coolify sets when it runs
    the container.
 5. **Health check.** Nothing to set. Coolify uses the health check inside the `Dockerfile`
@@ -123,6 +124,37 @@ Only you can do steps 1 to 4, and only once. After that, every push to `main` de
    in airplane mode.
 8. **Optional:** in GitHub → Settings → Secrets and variables → Actions → **Variables**, add
    `DEPLOY_URL` = your address. The `slow` workflow then runs the same check when it is run (by hand: Actions → slow → Run workflow).
+
+## Telegram steps for the owner
+
+Do this once, in Telegram. Everything else is ready without it: until you do it, Telegram stays off
+and the app works as before.
+
+1. Open **@BotFather**. Send `/newbot`. Name: `RB Poker Coach`. Username: anything that ends in
+   `bot`, for example `rb_poker_coach_bot`. BotFather sends a **token**. Keep it secret.
+2. Send `/newapp` and choose your bot. Title: `RB Poker Coach`. Description:
+   `Learn poker by playing. Free, play money only.` Photo: use
+   [`docs/assets/telegram-app-640x360.png`](docs/assets/telegram-app-640x360.png) (BotFather asks
+   for 640×360). GIF: send `/empty`. URL: `https://poker.romanbitca.com`. Short name: `play`.
+3. Send `/setinline`, choose your bot, send `Invite friends`.
+4. Send the agent the token, the bot's username and the short name. Or do it yourself in Coolify:
+   app `rb-poker`, **Environment**, add `TELEGRAM_BOT_TOKEN`, `TELEGRAM_BOT_USERNAME` and
+   `TELEGRAM_APP_SHORT_NAME`. Turn off **Available at Buildtime** for all three (a build-time token
+   would end up in the image), then click **Redeploy**.
+5. Open `https://t.me/<your bot>/play` on your phone. Tap **Play with friends**, **Create table**,
+   **Invite friends**. Send the link to a friend and play one hand.
+6. To post in your channel: send `/post` to your bot, and forward the message to the channel. Or
+   paste the link `https://t.me/<your bot>/play` in your own post.
+7. Tell the agent if anything looks wrong. A screenshot is enough.
+
+After step 4, this also checks that the game's connection for tables works through the proxies:
+
+```sh
+node scripts/check-deploy.mjs https://poker.romanbitca.com --ws
+```
+
+If BotFather asks something else, answer as it says: the only values that matter are the URL and
+the short name. The photo is drawn in code: `npm run gen:telegram-cover -w @rb/web`.
 
 ## Where things are
 

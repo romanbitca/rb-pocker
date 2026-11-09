@@ -30,7 +30,7 @@ export const aboutWords = {
     terms: [
       {
         name: 'The game:',
-        text: "No-Limit Texas Hold'em against computer bots, with play chips only.",
+        text: "No-Limit Texas Hold'em against computer bots, or with friends in Telegram, with play chips only.",
       },
       {
         name: 'Undo:',
@@ -46,7 +46,7 @@ export const aboutWords = {
       },
       {
         name: 'Your data:',
-        text: "saved on this device only. We do not use cookies; we use the browser's local storage, which stays on your device and is never sent anywhere.",
+        text: "saved on this device only. We do not use cookies; we use the browser's local storage, which stays on your device and is never sent anywhere. Only Play with friends uses our server (see Privacy).",
       },
       {
         name: 'The coach:',
@@ -54,7 +54,7 @@ export const aboutWords = {
       },
       {
         name: 'Fair cards:',
-        text: 'The bots and the coach never see hidden cards. We test this automatically. The win chance never uses the bots\' real cards. Each hand is shuffled from a secret seed. Before the cards are dealt, the game saves a shuffle code made from it. After the hand, Review shows the seed, and "Check the shuffle" shows that the cards came from it.',
+        text: 'The bots and the coach never see hidden cards. We test this automatically. The win chance never uses the bots\' real cards. Each hand is shuffled from a secret seed. Before the cards are dealt, the game saves a shuffle code made from it. After the hand, Review shows the seed, and "Check the shuffle" shows that the cards came from it. At tables with friends, our server deals the cards, so there is no shuffle code and no Review.',
       },
     ] satisfies readonly AboutTerm[],
   },
@@ -96,11 +96,11 @@ export const aboutWords = {
     terms: [
       {
         name: 'What we store:',
-        text: 'your settings, your game in progress, and your stats (hands, decisions, grades).',
+        text: "your settings, your game in progress, and your stats (hands, decisions, grades). While you are at a table with friends, we also store that table's code, so you can come back to it. It is deleted when you leave or the table ends.",
       },
       {
         name: 'Where:',
-        text: 'only on this device, inside this browser ("local storage"). There is no account, and nothing is sent to us or anyone else. While you play, the app only loads its own files and checks for updates. Nothing about you or your games is sent.',
+        text: 'only on this device, inside this browser ("local storage"). There is no account. While you play alone, the app only loads its own files and checks for updates, and nothing about you or your games is sent. Play with friends is different: see below.',
       },
       { name: 'Why:', text: 'so you can continue your game and see your progress. Nothing else.' },
       {
@@ -111,13 +111,17 @@ export const aboutWords = {
         name: 'Hosting:',
         text: "the app's files come from our own server. Like any web server, it sees your IP address so it can send you the files. The app does not store it. We do not use cookies, analytics or ads.",
       },
+      {
+        name: 'Play with friends (inside Telegram only):',
+        text: 'when you use it (you open it, tap an invite to a table, or come back to your table), and only then, Telegram gives our server your Telegram user ID (a number, not your phone number), your first name and other profile details, such as your last name, username and photo link. The server reads only the ID and the first name, so it can bring you back to your table and the table knows who is who. If you do not sit at a table, it forgets them when the connection closes. The other players at your table see your first name, your chips and your moves. They see your cards only if the hand goes to a showdown. The server keeps this in its memory only, and only while the table is open. Nothing is saved after the table ends, except a count of your tries to make or join a table, which stops abuse and is gone within 10 minutes. Hands at these tables do not go to your Stats. We keep no list of players and no chat.',
+      },
     ] satisfies readonly AboutTerm[],
   },
 
   /** G.1, in full (its first sentence is the heading). */
   playMoney: {
     title: 'Play money only',
-    text: 'This is a free poker learning game. You play against computer bots with virtual chips that have no value. They cannot be bought, sold, won as prizes, or exchanged for money. Success here does not mean you will win at real-money poker. Intended for adults.',
+    text: 'This is a free poker learning game. You play against computer bots, or with friends at a private table in Telegram, with virtual chips that have no value. They cannot be bought, sold, won as prizes, or exchanged for money. Success here does not mean you will win at real-money poker. Intended for adults.',
   },
 
   /**
