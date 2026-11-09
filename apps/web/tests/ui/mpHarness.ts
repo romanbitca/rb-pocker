@@ -76,6 +76,7 @@ export function startMp(options: { startParam?: string | null; inside?: boolean 
     location: { protocol: 'https:', host: 'poker.test' },
     openSocket: factory.open,
     storage: createSafeStorage(() => backend),
+    session: createSafeStorage(() => null), // each harness is a new launch: nothing is kept
     random: () => 0.5,
     shareInvite: (url, text) => shared.push([url, text]),
   });

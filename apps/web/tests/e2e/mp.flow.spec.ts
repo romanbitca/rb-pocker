@@ -79,6 +79,19 @@ async function leaveWaitingRoom(player: TelegramPlayer): Promise<void> {
   await expect(player.page.getByRole('button', { name: 'Play', exact: true })).toBeVisible();
 }
 
+/**
+ * After a reload: the app has started again, and the driver has decided (it runs right after the
+ * shell says `web_app_ready`), and it stayed where a player without a table is.
+ */
+async function expectStayedHome(player: TelegramPlayer): Promise<void> {
+  await expect
+    .poll(async () => (await player.events()).some((e) => e.type === 'web_app_ready'))
+    .toBe(true);
+  await expect(player.page.getByRole('button', { name: 'Play', exact: true })).toBeVisible();
+  expect(['home', 'welcome']).toContain((await pcState(player.page)).ui.screen);
+  await player.page.waitForTimeout(300); // what a socket opened by then would have told us
+}
+
 /** The player the first turn of the hand belongs to. */
 async function waitForFirstOnTurn(players: readonly TelegramPlayer[]): Promise<TelegramPlayer> {
   let found: TelegramPlayer | undefined;
@@ -353,7 +366,7 @@ test('leaving: the waiting room, the middle of a hand, a table that goes on with
   expect(view?.seats[view.you]?.host).toBe(true);
 
   // A friend taps the invite again, and the table goes on by itself.
-  await carol.page.reload();
+  await relaunch(carol, { startParam: code });
   await waitForTable(carol.page);
   await waitForTable(bob.page);
   await expect(carol.page.locator('[data-hero-cards] [role="img"]')).toHaveCount(2);
@@ -366,6 +379,51 @@ test('leaving: the waiting room, the middle of a hand, a table that goes on with
   await ann.page.reload();
   await expect(ann.page.getByRole('button', { name: 'Play', exact: true })).toBeVisible();
   expect(ann.sockets.length).toBe(before);
+  expectNoErrors([ann, bob, carol]);
+});
+
+test('an invite is used once: a reload after leaving stays Home, a new tap joins again', async ({
+  telegram,
+}) => {
+  test.setTimeout(120_000);
+  const ann = await telegram.open(newTelegramUser('Ann'));
+  const code = await createTable(ann, LONG_TURNS);
+
+  const bob = await telegram.open(newTelegramUser('Bob'), { startParam: code });
+  await expect(bob.page.getByText('Waiting for Ann to start the game.')).toBeVisible();
+  await leaveWaitingRoom(bob);
+  await expectToast(ann.page, 'Bob left the table.');
+
+  // The reload keeps the launch and its code in the URL: the code has done its job.
+  const seen = bob.sockets.length;
+  await bob.page.reload();
+  await expectStayedHome(bob);
+  expect(bob.sockets.length).toBe(seen);
+  await expect(ann.page.getByText('Empty seat')).toHaveCount(2);
+
+  // A new tap on the same link is a new launch, and it joins.
+  await relaunch(bob, { startParam: code });
+  await expect(mpHeading(bob.page)).toHaveText(`Table ${code}`);
+  await expectToast(ann.page, 'Bob joined the table.');
+  expect(bob.sockets.length).toBe(seen + 1);
+
+  // While seated, a reload is no new join: the remembered table brings him back.
+  await bob.page.reload();
+  await expect(mpHeading(bob.page)).toHaveText(`Table ${code}`);
+  await expect(ann.page.getByText('Empty seat')).toHaveCount(1);
+
+  // Back from "Joining the table…" (here nobody answers) gives the code up too.
+  const carol = await telegram.open(newTelegramUser('Carol'), {
+    startParam: code,
+    prepare: (context) => context.routeWebSocket(/\/api\/mp\/ws$/, () => {}),
+  });
+  await expect(mpHeading(carol.page)).toHaveText('Joining the table…');
+  await carol.page.getByRole('button', { name: 'Back' }).first().click();
+  await expect(carol.page.getByRole('button', { name: 'Play', exact: true })).toBeVisible();
+  const before = carol.sockets.length;
+  await carol.page.reload();
+  await expectStayedHome(carol);
+  expect(carol.sockets.length).toBe(before);
   expectNoErrors([ann, bob, carol]);
 });
 

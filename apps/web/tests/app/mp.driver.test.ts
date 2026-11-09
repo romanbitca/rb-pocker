@@ -71,6 +71,10 @@ interface RigOptions {
   remembered?: string;
   /** The device's storage: pass another rig's for "a later launch on this device". */
   data?: Map<string, string>;
+  /** The WebView's sessionStorage: pass another rig's for "the same launch, reloaded". */
+  session?: Map<string, string>;
+  /** The launch's `initData`: another value is a new launch (a new tap on a link). */
+  initData?: string;
   store?: AppStore;
   controller?: { park(): void; unpark(): void };
   shareInvite?: (url: string, text: string) => void;
@@ -82,15 +86,16 @@ function rig(options: RigOptions = {}) {
   const factory = socketFactory();
   const data = options.data ?? new Map<string, string>();
   if (options.remembered !== undefined) data.set(STORAGE_KEYS.mpTable, options.remembered);
-  const backend: StorageBackend = {
-    getItem: (key) => data.get(key) ?? null,
+  const session = options.session ?? new Map<string, string>();
+  const backendOf = (map: Map<string, string>): StorageBackend => ({
+    getItem: (key) => map.get(key) ?? null,
     setItem: (key, value) => {
-      data.set(key, value);
+      map.set(key, value);
     },
     removeItem: (key) => {
-      data.delete(key);
+      map.delete(key);
     },
-  };
+  });
   const controller = options.controller ?? {
     park: vi.fn<() => void>(),
     unpark: vi.fn<() => void>(),
@@ -104,10 +109,11 @@ function rig(options: RigOptions = {}) {
     controller,
     timers: realTimers,
     heroName: 'You',
-    launch: { initData: INIT_DATA, startParam: options.startParam ?? null },
+    launch: { initData: options.initData ?? INIT_DATA, startParam: options.startParam ?? null },
     location: { protocol: 'https:', host: 'poker.test' },
     openSocket: factory.open,
-    storage: createSafeStorage(() => backend),
+    storage: createSafeStorage(() => backendOf(data)),
+    session: createSafeStorage(() => backendOf(session)),
     monotonic: () => clock.mono,
     random: () => 0.5,
     confirmClosing: (need) => closing.push(need),
@@ -120,6 +126,7 @@ function rig(options: RigOptions = {}) {
     controller,
     game,
     data,
+    session,
     clock,
     closing,
     state: () => store.getState(),
@@ -416,6 +423,121 @@ describe('when the socket opens (§19.6)', () => {
     expect(socketUrl({ protocol: 'http:', host: 'localhost:3000' })).toBe(
       'ws://localhost:3000/api/mp/ws',
     );
+  });
+});
+
+describe('a start code is used once per launch (§19.6)', () => {
+  /** Launched from an invite, with `welcome` answered; `join` has gone. */
+  function invited(options: RigOptions = {}): Rig & { ws: FakeWebSocket } {
+    const r = rig({ startParam: CODE, ...options });
+    r.driver.launch();
+    const ws = r.last();
+    ws.open();
+    ws.receive(welcome(null));
+    expect(ws.kinds()).toEqual(['hello', 'join']);
+    return { ...r, ws };
+  }
+
+  /** The same launch again: the page reloaded, so the device and the session are the same. */
+  const reloaded = (r: Rig): Rig => {
+    const next = rig({ startParam: CODE, data: r.data, session: r.session });
+    next.driver.launch();
+    return next;
+  };
+
+  it('a reload after leaving a table joined by invite does not join again', () => {
+    const r = invited();
+    r.ws.receive(tableMsg(waitingView()));
+    r.dispatch({ type: 'leaveTable' });
+    r.ws.receive({ t: 'left' });
+    expect(r.state().ui.screen).toBe('home');
+
+    const next = reloaded(r);
+    expect(next.sockets).toEqual([]);
+    expect(next.state().ui.screen).toBe('home');
+  });
+
+  it('a new tap on the same link joins again: a new launch has another signature', () => {
+    const r = invited();
+    r.ws.receive(tableMsg(waitingView()));
+    r.dispatch({ type: 'leaveTable' });
+    r.ws.receive({ t: 'left' });
+
+    const next = rig({
+      startParam: CODE,
+      data: r.data,
+      session: r.session,
+      initData: 'user=INIT-SECRET&hash=another-launch',
+    });
+    next.driver.launch();
+    expect(next.state().ui.screen).toBe('mpRoom');
+    const ws = next.last();
+    ws.open();
+    ws.receive(welcome(null));
+    expect(ws.kinds()).toEqual(['hello', 'join']);
+  });
+
+  it('a reload while seated goes back through the remembered table, with no join', () => {
+    const r = invited();
+    r.ws.receive(tableMsg(waitingView()));
+
+    const next = reloaded(r);
+    const ws = next.last();
+    ws.open();
+    ws.receive(welcome(CODE));
+    ws.receive(tableMsg(waitingView()));
+    expect(ws.kinds()).toEqual(['hello']);
+    expect(next.state().ui.screen).toBe('mpRoom');
+  });
+
+  it('a join the server refused is not asked again by a reload', () => {
+    const r = invited();
+    r.ws.receive({ t: 'error', code: 'not_found', re: 'join' });
+    r.dispatch({ type: 'mpDismiss' });
+    expect(r.state().ui.screen).toBe('home');
+
+    expect(reloaded(r).sockets).toEqual([]);
+  });
+
+  it('Back from "Joining the table…" is not asked again by a reload', () => {
+    const r = rig({ startParam: CODE });
+    r.driver.launch();
+    r.dispatch({ type: 'back' });
+    expect(r.state().ui.screen).toBe('home');
+
+    expect(reloaded(r).sockets).toEqual([]);
+  });
+
+  it('a reload before anything came back still joins', () => {
+    const r = rig({ startParam: CODE });
+    r.driver.launch();
+
+    const next = reloaded(r);
+    expect(next.state().ui.screen).toBe('mpRoom');
+    const ws = next.last();
+    ws.open();
+    ws.receive(welcome(null));
+    expect(ws.kinds()).toEqual(['hello', 'join']);
+  });
+
+  it('startapp=new is used once too: Back, then a reload, stays Home', () => {
+    const r = rig({ startParam: 'new' });
+    r.driver.launch();
+    expect(r.state().ui.screen).toBe('mpCreate');
+    r.dispatch({ type: 'back' });
+
+    const next = rig({ startParam: 'new', data: r.data, session: r.session });
+    next.driver.launch();
+    expect(next.state().ui.screen).toBe('home');
+    expect(next.sockets).toEqual([]);
+  });
+
+  it('a launch with no start code writes nothing to the session', () => {
+    const r = rig();
+    r.driver.launch();
+    r.dispatch({ type: 'go', screen: 'mpCreate' });
+    r.dispatch({ type: 'back' });
+    expect([...r.session.keys()]).toEqual([]);
   });
 });
 

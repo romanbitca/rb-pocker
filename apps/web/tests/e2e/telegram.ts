@@ -1,4 +1,4 @@
-import { createHmac, randomInt } from 'node:crypto';
+import { createHmac, randomBytes, randomInt } from 'node:crypto';
 
 /**
  * Telegram in the end-to-end tests (PLAN §19.10, chunk 10.10). There is no backdoor in the server
@@ -74,7 +74,8 @@ function hashOf(fields: Readonly<Record<string, string>>, token: string): string
 /** The `initData` of a launch: percent-encoded as Telegram sends it (`%20`, not `+`). */
 export function signInitData(user: TelegramUser, options: LaunchOptions = {}): string {
   const fields: Record<string, string> = {
-    query_id: 'AAHdF6IQAAAAAN0XohDhrOrc',
+    // New for every launch, as Telegram's: `auth_date` alone can repeat within a second.
+    query_id: `AAH${randomBytes(12).toString('base64url')}`,
     auth_date: String(options.authDate ?? Math.floor(Date.now() / 1000)),
     user: JSON.stringify(user),
     // Ed25519 for third parties: not checked by us, but covered by the hash (§19.2).
