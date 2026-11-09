@@ -64,10 +64,10 @@ export interface TableConfig {
 }
 
 export interface PlayerSlot {
-  playerId: string; // "hero" or "bot-7" (unique for the table's life: 'bot-' + nameCursor, §9.3)
+  playerId: string; // "hero", "bot-7" ('bot-' + nameCursor, unique for the table's life, §9.3), or 's' + seat
   name: string;
-  kind: 'hero' | 'bot';
-  personality: PersonalityId | null; // null for the hero
+  kind: 'hero' | 'bot' | 'remote'; // remote: a person at a table of the server's (§19.3), never saved
+  personality: PersonalityId | null; // null for the hero and a remote player
   stack: number; // chips between hands
 }
 
@@ -250,6 +250,45 @@ export interface Observation {
   seatStats: (SeatStats | null)[];
   visiblePersonality: (PersonalityId | null)[];
   seatLevels: BotLevel[];
+}
+
+// ---------------------------------------------------------------------------------------------
+// Appendix A.4b (§19.4): the public view of a hand, built only by project.ts.
+
+/**
+ * One seat of a hand, as one player may see it. `hole`: this player's own cards, or another
+ * seat's only after it is in `revealed`; otherwise null. Built only by engine/project.ts.
+ */
+export interface PublicSeat {
+  dealtIn: boolean;
+  stack: number;
+  hole: [Card, Card] | null;
+  folded: boolean;
+  allIn: boolean;
+  streetBet: number;
+  totalBet: number;
+}
+
+/** A hand as one player may see it: no deck, no seed, no other seat's hidden cards. */
+export interface PublicHand {
+  handSeq: number;
+  sb: number;
+  bb: number;
+  seats: PublicSeat[];
+  button: number;
+  sbSeat: number;
+  bbSeat: number;
+  street: Street;
+  phase: Phase;
+  board: Card[];
+  currentBet: number;
+  minRaiseInc: number;
+  toAct: number | null;
+  runout: boolean;
+  revealed: number[];
+  startStacks: number[];
+  log: LogEvent[];
+  result: HandResult | null;
 }
 
 /**

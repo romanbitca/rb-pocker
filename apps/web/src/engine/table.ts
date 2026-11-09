@@ -111,7 +111,8 @@ function checkConfig(cfg: TableConfig): void {
 }
 
 /**
- * Slot 0 is the hero, the rest are bots; ids and names are unique; stacks are whole numbers ≥ 0.
+ * Slot 0 is the hero and the rest are bots, or every slot is `remote` with no personality (a
+ * table of the server's, §19.3); ids and names are unique; stacks are whole numbers ≥ 0.
  * (Between hands a table may have a single player with chips: a hero who busted heads-up waits
  * for a reload. `createTable` and `startHand` ask for two.)
  */
@@ -119,15 +120,18 @@ function checkSlots(slots: readonly PlayerSlot[], seatCount: number): void {
   if (!Array.isArray(slots) || slots.length !== seatCount) {
     badAmount(`expected ${seatCount} slots, got ${Array.isArray(slots) ? slots.length : 'none'}`);
   }
+  const remote = slots.every((slot) => slot.kind === 'remote' && slot.personality === null);
   const ids = new Set<string>();
   const names = new Set<string>();
   let total = 0;
   slots.forEach((slot, i) => {
-    if (i === 0 ? slot.kind !== 'hero' || slot.personality !== null : slot.kind !== 'bot') {
-      illegal(`seat ${i} must be ${i === 0 ? 'the hero, with no personality' : 'a bot'}`);
-    }
-    if (i > 0 && !PERSONALITY_IDS.includes(slot.personality as PersonalityId)) {
-      illegal(`seat ${i} has no valid personality`);
+    if (!remote) {
+      if (i === 0 ? slot.kind !== 'hero' || slot.personality !== null : slot.kind !== 'bot') {
+        illegal(`seat ${i} must be ${i === 0 ? 'the hero, with no personality' : 'a bot'}`);
+      }
+      if (i > 0 && !PERSONALITY_IDS.includes(slot.personality as PersonalityId)) {
+        illegal(`seat ${i} has no valid personality`);
+      }
     }
     if (typeof slot.playerId !== 'string' || slot.playerId === '' || ids.has(slot.playerId)) {
       illegal(`seat ${i}: playerId must be unique and not empty`);
@@ -146,9 +150,9 @@ function checkSlots(slots: readonly PlayerSlot[], seatCount: number): void {
 }
 
 /**
- * Throws `EngineError` unless `table` is usable: a valid config (§3.2), a hero and bots with
- * unique ids and names, whole-number stacks, and the button, cursors and counters in range. Every
- * function here checks its input table with it; `startHand` does too.
+ * Throws `EngineError` unless `table` is usable: a valid config (§3.2), a hero and bots (or only
+ * remote players) with unique ids and names, whole-number stacks, and the button, cursors and
+ * counters in range. Every function here checks its input table with it; `startHand` does too.
  */
 export function validateTable(table: TableState): void {
   checkConfig(table.config);
@@ -322,7 +326,8 @@ function nextName(
  * `personalityCursor` advances) and the next name of the table's name order at `nameCursor`,
  * skipping every name seated now (so never two at once, and never the name that just busted);
  * its id is `'bot-' + nameCursor` before the cursor advances. A busted hero stays at 0: the
- * controller offers a reload (`topUp`) before the next hand.
+ * controller offers a reload (`topUp`) before the next hand. So does a busted remote player: the
+ * server's room decides what happens to its seat (§19.5).
  * Throws `EngineError('BAD_PHASE')` unless `done` is a complete hand dealt from `table`, and
  * `InvariantError` if `done` breaks an invariant.
  */
@@ -340,7 +345,7 @@ export function nextTable(table: TableState, done: HandState): TableState {
   const seated = new Set(table.slots.map((slot) => slot.name));
   next.slots = next.slots.map((slot, seat): PlayerSlot => {
     const stack = (done.seats[seat] as HandState['seats'][number]).stack;
-    if (slot.kind === 'hero' || stack > 0) return { ...slot, stack };
+    if (slot.kind !== 'bot' || stack > 0) return { ...slot, stack };
     const personality = personalityFor(next.config, seat, next.personalityCursor);
     next.personalityCursor++;
     const { name, at } = nextName(names, next.nameCursor, seated);

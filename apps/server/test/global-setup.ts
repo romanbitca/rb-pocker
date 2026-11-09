@@ -1,9 +1,13 @@
+import { execFileSync } from 'node:child_process';
 import { cpSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 /**
+ * Makes the generated copy of the game (apps/server/src/game/, PLAN §19.3) current first: a single
+ * Vitest file can be run without any npm hook having run.
+ *
  * Serves the HTTP tests a small fixture of the built game (test/fixtures/web-dist) instead of
  * apps/web/dist, so they need no web build (PLAN "Testing strategy", Server row).
  *
@@ -13,6 +17,11 @@ import { fileURLToPath } from 'node:url';
  * 44). Runs once, before the test workers start; they inherit WEB_DIST_DIR, which app.module.ts reads.
  */
 export default function setup(): () => void {
+  execFileSync(
+    process.execPath,
+    [fileURLToPath(new URL('../../../scripts/sync-game.mjs', import.meta.url))],
+    { stdio: 'inherit' },
+  );
   const dir = mkdtempSync(join(tmpdir(), 'rb-web-dist-'));
   cpSync(fileURLToPath(new URL('./fixtures/web-dist', import.meta.url)), dir, { recursive: true });
   process.env.WEB_DIST_DIR = dir;

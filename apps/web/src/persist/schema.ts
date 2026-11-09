@@ -697,7 +697,7 @@ const tableConfig: Check<TableConfig> = refine(
 const playerSlot: Check<PlayerSlot> = object<PlayerSlot>({
   playerId: text,
   name: text,
-  kind: oneOf<PlayerSlot['kind']>({ hero: true, bot: true }),
+  kind: oneOf<Exclude<PlayerSlot['kind'], 'remote'>>({ hero: true, bot: true }), // never saved (§19.3)
   personality: nullable(oneOf(PERSONALITY)),
   stack: count,
 });
