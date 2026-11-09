@@ -6,7 +6,9 @@
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
   width: 100%;
-  padding: 4px max(8px, env(safe-area-inset-right)) max(4px, env(safe-area-inset-bottom))
+  /* Inside Telegram its safe area counts too (§19.7). */
+  padding: 4px max(8px, env(safe-area-inset-right))
+    max(4px, env(safe-area-inset-bottom), var(--tg-safe-bottom, 0px))
     max(8px, env(safe-area-inset-left));
   background: var(--bg);
   /* Game surface (§12.13): no double-tap zoom, no callout, no selection, no tap flash. */

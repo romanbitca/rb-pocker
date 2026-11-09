@@ -16,7 +16,8 @@
  *   (chunk 9.7);
  * - the initial JS and the CSS are within the CI budgets (`scripts/size-budget.ts`);
  * - About (chunk 9.2c) is a chunk of its own, asked for by the screens chunk only, and the built
- *   game holds code from no npm package that About's licence list (`data/licences.ts`) leaves out.
+ *   game holds code from no npm package that About's licence list (`data/licences.ts`) leaves out;
+ * - of Telegram's code (§19.7) only `app/tg/launch.ts` is initial, the rest is one lazy chunk.
  */
 import { readFileSync } from 'node:fs';
 import { build, type Plugin } from 'vite';
@@ -344,6 +345,24 @@ describe('the service worker code in the production build (§15.1, chunk 9.5)', 
     expect(text(port)).not.toMatch(/\bimport\b/);
     // The plugin's own registration code (`virtual:pwa-register`, workbox-window) is gone.
     expect(rowOf('Total precache').files.some((f) => f.includes('workbox-window'))).toBe(false);
+  });
+});
+
+describe('Telegram in the production build (§19.7, Stage 10 acceptance 14)', () => {
+  it('only app/tg/launch.ts is initial; the shell is a lazy chunk: by import(), precached', () => {
+    const initial = rowOf('Initial JS');
+    expect(initial.files).toContain(chunk('src/app/tg/launch.ts'));
+    const start = chunk('src/app/tg/start.ts');
+    expect(chunk('src/app/tg/bridge.ts')).toBe(start);
+    expect(chunk('src/app/tg/shell.ts')).toBe(start);
+    expect(initial.files).not.toContain(start);
+    expectOnlyDynamicImports(start);
+    expect(rowOf('Total precache').files).toContain(start);
+    // The bridge's words for the client are in no file a page outside Telegram must load.
+    for (const file of initial.files) {
+      expect(text(file), file).not.toContain('web_app_ready');
+      expect(text(file), file).not.toContain('TelegramWebviewProxy');
+    }
   });
 });
 

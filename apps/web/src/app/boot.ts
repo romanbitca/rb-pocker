@@ -24,6 +24,7 @@ import { pageSha256 } from './shuffleCode.ts';
 import { appStore, setDrillLoader } from './store.ts';
 import type { UpdatePort } from './swUpdate.ts';
 import { browserTabLockEnv, createTabLock } from './tabLock.ts';
+import { parseLaunch } from './tg/launch.ts';
 import { startBrainWorker, startEquityWorker } from './workerClient.ts';
 import type { SafeStorage } from '../persist/storage.ts';
 import type * as TestHooks from './testHooks.ts';
@@ -129,6 +130,16 @@ export function startApp(options: StartOptions): TableController {
     // §12.8: the system asks for less motion, so the first launch's speed is Fast.
     reducedMotion: win.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true,
   });
+  // Inside Telegram only (§19.7): outside it nothing else runs and no chunk loads. Not loaded (the
+  // network went away): the game plays on without Telegram's buttons.
+  const launch = parseLaunch(win);
+  if (launch !== null) {
+    appStore.setState({ tg: { inside: true } });
+    void import('./tg/start.ts').then(
+      (m) => m.startTelegram({ win, store: appStore, controller, launch, timers: realTimers }),
+      () => {},
+    );
+  }
   installLifecycle(win, appStore);
   // The hand drill's logic, loaded when its page opens (§13.5).
   setDrillLoader(() => import('./drill.ts'));
